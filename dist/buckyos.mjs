@@ -81,6 +81,55 @@ class kRPCClient {
     }
   }
 }
+class AuthClient {
+  constructor(zone_base_url, appId) {
+    __publicField(this, "zone_hostname");
+    __publicField(this, "clientId");
+    __publicField(this, "cookieOptions");
+    __publicField(this, "authWindow");
+    this.zone_hostname = zone_base_url;
+    this.clientId = appId;
+    this.authWindow = null;
+  }
+  async login(redirect_uri = null) {
+    try {
+      const token = await this._openAuthWindow(redirect_uri);
+      let account_info = JSON.parse(token);
+      return account_info;
+    } catch (error) {
+      throw new Error(error || "Login failed");
+    }
+  }
+  async request(action, params) {
+  }
+  async _openAuthWindow(redirect_uri = null) {
+    return new Promise((resolve, reject) => {
+      const width = 500;
+      const height = 600;
+      const left = window.screen.width / 2 - width / 2;
+      const top = window.screen.height / 2 - height / 2;
+      let sso_url = window.location.protocol + "//sys." + this.zone_hostname + "/login.html";
+      const authUrl = `${sso_url}?client_id=${this.clientId}&redirect_uri=${encodeURIComponent(redirect_uri)}&response_type=token`;
+      alert(authUrl);
+      this.authWindow = window.open(authUrl, "BuckyOS Login", `width=${width},height=${height},top=${top},left=${left}`);
+      window.addEventListener("message", (event) => {
+        console.log("message event", event);
+        if (event.origin !== new URL(sso_url).origin) {
+          return;
+        }
+        const { token, error } = event.data;
+        if (token) {
+          resolve(token);
+        } else {
+          reject(error || "BuckyOSLogin failed");
+        }
+        if (this.authWindow) {
+          this.authWindow.close();
+        }
+      }, false);
+    });
+  }
+}
 const t = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/", n = "ARRAYBUFFER not supported by this environment", e = "UINT8ARRAY not supported by this environment";
 function r(t2, n2, e2, r2) {
   let i2, s2, o2;
@@ -736,166 +785,275 @@ class ht {
     return this.P.getHMAC(t2, n2);
   }
 }
-class AuthClient {
-  constructor(zone_base_url, appId, token) {
-    __publicField(this, "zone_base_url");
-    __publicField(this, "clientId");
-    __publicField(this, "cookieOptions");
-    __publicField(this, "authWindow");
-    __publicField(this, "token");
-    this.zone_base_url = zone_base_url;
-    this.clientId = appId;
-    this.authWindow = null;
-    this.token = token;
+function hash_password(username, password, nonce = null) {
+  const shaObj = new ht("SHA-256", "TEXT", { encoding: "UTF8" });
+  shaObj.update(password + username + ".buckyos");
+  let org_password_hash_str = shaObj.getHash("B64");
+  if (nonce == null) {
+    return org_password_hash_str;
   }
-  static async hash_password(username, password, nonce = null) {
-    const shaObj = new ht("SHA-256", "TEXT", { encoding: "UTF8" });
-    shaObj.update(password + username + ".buckyos");
-    let org_password_hash_str = shaObj.getHash("B64");
-    if (nonce == null) {
-      return org_password_hash_str;
-    }
-    const shaObj2 = new ht("SHA-256", "TEXT", { encoding: "UTF8" });
-    let salt = org_password_hash_str + nonce.toString();
-    shaObj2.update(salt);
-    let result = shaObj2.getHash("B64");
-    return result;
+  const shaObj2 = new ht("SHA-256", "TEXT", { encoding: "UTF8" });
+  let salt = org_password_hash_str + nonce.toString();
+  shaObj2.update(salt);
+  let result = shaObj2.getHash("B64");
+  return result;
+}
+function cleanLocalAccountInfo(appId) {
+  localStorage.removeItem("buckyos.account_info");
+  let cookie_options = {
+    path: "/",
+    expires: /* @__PURE__ */ new Date(0),
+    secure: true,
+    sameSite: "Lax"
+  };
+  document.cookie = `${appId}_token=; ${Object.entries(cookie_options).map(([key, value]) => `${key}=${value}`).join("; ")}`;
+}
+function saveLocalAccountInfo(appId, account_info) {
+  if (account_info.session_token == null) {
+    console.error("session_token is null,can't save account info");
+    return;
   }
-  async login(redirect_uri = null) {
-    if (this.token) {
-      return this.token;
-    }
-    try {
-      const token = await this._openAuthWindow(redirect_uri);
-      this.token = token;
-      return token;
-    } catch (error) {
-      throw new Error(error || "Login failed");
-    }
+  localStorage.setItem("buckyos.account_info", JSON.stringify(account_info));
+  let cookie_options = {
+    path: "/",
+    expires: new Date(Date.now() + 1e3 * 60 * 60 * 24 * 30),
+    // 30天
+    secure: true,
+    sameSite: "Lax"
+  };
+  document.cookie = `${appId}_token=${account_info.session_token}; ${Object.entries(cookie_options).map(([key, value]) => `${key}=${value}`).join("; ")}`;
+}
+function getLocalAccountInfo(appId) {
+  let account_info = localStorage.getItem("buckyos.account_info");
+  if (account_info == null) {
+    return null;
   }
-  async request(action, params) {
+  return JSON.parse(account_info);
+}
+async function doLogin(username, password) {
+  let appId = buckyos.getAppId();
+  if (appId == null) {
+    console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
+    return null;
   }
-  async _openAuthWindow(redirect_uri = null) {
-    return new Promise((resolve, reject) => {
-      const width = 500;
-      const height = 600;
-      const left = window.screen.width / 2 - width / 2;
-      const top = window.screen.height / 2 - height / 2;
-      let sso_url = "http://sys." + this.zone_base_url + "/login.html";
-      console.log("sso_url: ", sso_url);
-      const authUrl = `${sso_url}?client_id=${this.clientId}&redirect_uri=${encodeURIComponent(redirect_uri)}&response_type=token`;
-      alert(authUrl);
-      this.authWindow = window.open(authUrl, "BuckyOS Login", `width=${width},height=${height},top=${top},left=${left}`);
-      window.addEventListener("message", (event) => {
-        console.log("message event", event);
-        if (event.origin !== new URL(sso_url).origin) {
-          return;
-        }
-        const { token, error } = event.data;
-        if (token) {
-          resolve(token);
-        } else {
-          reject(error || "BuckyOSLogin failed");
-        }
-        if (this.authWindow) {
-          this.authWindow.close();
-        }
-      }, false);
+  let login_nonce = Date.now();
+  let password_hash = hash_password(username, password, login_nonce);
+  console.log("password_hash: ", password_hash);
+  localStorage.removeItem("account_info");
+  try {
+    let rpc_client = buckyos.getServiceRpcClient(BS_SERVICE_VERIFY_HUB);
+    let account_info = await rpc_client.call("login", {
+      type: "password",
+      username,
+      password: password_hash,
+      appid: appId,
+      source_url: window.location.href
     });
-  }
-  getToken() {
-    return this.token;
-  }
-  logout() {
-    this.token = null;
-    if (this.useCookie) {
-      this.deleteCookie(this.tokenKey);
-    } else {
-      localStorage.removeItem(this.tokenKey);
-    }
-  }
-  // Utility function to set a cookie
-  setCookie(name, value, options = {}) {
-    let cookieString = `${encodeURIComponent(name)}=${encodeURIComponent(value)}`;
-    if (options.expires) {
-      const expires = new Date(options.expires);
-      cookieString += `; expires=${expires.toUTCString()}`;
-    }
-    if (options.path) {
-      cookieString += `; path=${options.path}`;
-    }
-    if (options.domain) {
-      cookieString += `; domain=${options.domain}`;
-    }
-    if (options.secure) {
-      cookieString += `; secure`;
-    }
-    if (options.httpOnly) {
-      cookieString += `; HttpOnly`;
-    }
-    document.cookie = cookieString;
-  }
-  // Utility function to get a cookie
-  getCookie(name) {
-    const matches = document.cookie.match(new RegExp(
-      `(?:^|; )${encodeURIComponent(name)}=([^;]*)`
-    ));
-    return matches ? decodeURIComponent(matches[1]) : null;
-  }
-  // Utility function to delete a cookie
-  deleteCookie(name) {
-    this.setCookie(name, "", { expires: "Thu, 01 Jan 1970 00:00:00 GMT", path: "/" });
+    saveLocalAccountInfo(appId, account_info);
+    return account_info;
+  } catch (error) {
+    console.error("login failed: ", error);
+    throw error;
   }
 }
-var _all_web3_bridges = [];
-var _this_zone_hostname = null;
-function add_web3_bridge(bridge_hostname) {
-  _all_web3_bridges.push(bridge_hostname);
-}
-function set_zone_host_name(hostname) {
-  _this_zone_hostname = hostname;
-}
-function get_zone_host_name(hostname) {
-  if (_this_zone_hostname != null) {
-    if (hostname.endsWith(_this_zone_hostname)) {
-      return _this_zone_hostname;
+const BS_SERVICE_VERIFY_HUB = "verify_hub";
+var _current_config = null;
+var _current_account_info = null;
+const default_config = {
+  zone_host_name: "",
+  appid: "",
+  default_protocol: "http://"
+};
+async function tryGetZoneHostName() {
+  const protocol = window.location.protocol;
+  const host = window.location.host;
+  const configUrl = `${protocol}//${host}/zone_config.json`;
+  try {
+    const response = await fetch(configUrl);
+    if (response.ok) {
+      return host;
     }
+  } catch (error) {
   }
-  if (hostname.endsWith(".did")) {
-    let sub_hosts = hostname.split(".");
-    if (sub_hosts.length > 2) {
-      sub_hosts[sub_hosts.length - 3];
-      return sub_hosts.slice(-2).join(".");
+  try {
+    let up_host = host.split(".").slice(1).join(".");
+    const configUrl2 = `${protocol}//${up_host}/zone_config.json`;
+    const response2 = await fetch(configUrl2);
+    if (response2.ok) {
+      return up_host;
     }
-  }
-  for (let bridge_hostname of _all_web3_bridges) {
-    if (hostname.endsWith(bridge_hostname)) {
-      let prefix = hostname.substring(0, hostname.length - bridge_hostname.length - 1);
-      let sub_hosts = prefix.split(".");
-      if (sub_hosts.length > 1) {
-        return sub_hosts[sub_hosts.length - 1] + "." + bridge_hostname;
-      } else {
-        return prefix + "." + bridge_hostname;
-      }
-    }
+  } catch (error) {
   }
   return null;
 }
-function get_verify_rpc_url() {
-  return "http://" + _this_zone_hostname + "/kapi/verify_hub";
+async function initBuckyOS(appid, config = null) {
+  if (_current_config) {
+    console.warn("BuckyOS WebSDK is already initialized!");
+  }
+  if (config) {
+    _current_config = config;
+  } else {
+    config = default_config;
+    config.appid = appid;
+    config.default_protocol = window.location.protocol + "//";
+    try {
+      let up_host = window.location.host.split(".").slice(1).join(".");
+      config.zone_host_name = up_host;
+    } catch (error) {
+      config.zone_host_name = window.location.host;
+    }
+    let zone_host_name = localStorage.getItem("buckyos.zone_host_name");
+    if (zone_host_name) {
+      config.zone_host_name = zone_host_name;
+    } else {
+      zone_host_name = await tryGetZoneHostName();
+      if (zone_host_name) {
+        localStorage.setItem("buckyos.zone_host_name", zone_host_name);
+        config.zone_host_name = zone_host_name;
+      }
+    }
+    return await initBuckyOS(appid, config);
+  }
 }
-function init_buckyos(zone_host_name) {
-  set_zone_host_name(zone_host_name);
+function getRuntimeType() {
+  if (typeof window !== "undefined") {
+    const userAgent = window.navigator.userAgent.toLowerCase();
+    return "Browser-" + userAgent;
+  }
+  if (typeof process !== "undefined" && process.versions && process.versions.node) {
+    return "NodeJS-" + process.versions.node;
+  }
+  return "Unknown";
+}
+function attachEvent(event_name, callback) {
+}
+function removeEvent(cookie_id) {
+}
+function getAccountInfo() {
+  if (_current_account_info) {
+    return _current_account_info;
+  }
+  if (_current_config == null) {
+    console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
+    return null;
+  }
+  return null;
+}
+async function login(auto_login = true) {
+  if (_current_config == null) {
+    console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
+    return null;
+  }
+  let appId = getAppId();
+  if (appId == null) {
+    console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
+    return null;
+  }
+  if (auto_login) {
+    let account_info = getLocalAccountInfo();
+    if (account_info) {
+      _current_account_info = account_info;
+      return _current_account_info;
+    }
+  }
+  cleanLocalAccountInfo(appId);
+  let zone_host_name = getZoneHostName();
+  if (zone_host_name == null) {
+    console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
+    return null;
+  }
+  try {
+    let auth_client = new AuthClient(zone_host_name, appId);
+    let account_info = await auth_client.login();
+    if (account_info) {
+      saveLocalAccountInfo(appId, account_info);
+      _current_account_info = account_info;
+    }
+    return account_info;
+  } catch (error) {
+    console.error("login failed: ", error);
+    throw error;
+  }
+}
+function logout(clean_account_info = true) {
+  if (_current_config == null) {
+    console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
+    return;
+  }
+  let appId = getAppId();
+  if (appId == null) {
+    console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
+    return;
+  }
+  if (_current_account_info == null) {
+    console.error("BuckyOS WebSDK is not login,call login first");
+    return;
+  }
+  if (clean_account_info) {
+    cleanLocalAccountInfo(appId);
+  }
+}
+function getAppSetting(setting_name = null) {
+}
+function setAppSetting(setting_name = null, setting_value) {
+}
+function getZoneHostName() {
+  if (_current_config == null) {
+    console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
+    return null;
+  }
+  return _current_config.zone_host_name;
+}
+function getZoneServiceURL(service_name) {
+  if (_current_config == null) {
+    console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
+    throw new Error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
+  }
+  return _current_config.default_protocol + _current_config.zone_host_name + "/kapi/" + service_name;
+}
+function getServiceRpcClient(service_name) {
+  if (_current_config == null) {
+    console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
+    throw new Error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
+  }
+  let session_token = null;
+  if (_current_account_info) {
+    session_token = _current_account_info.session_token;
+  }
+  return new kRPCClient(getZoneServiceURL(service_name), session_token);
+}
+function getAppId() {
+  if (_current_config) {
+    return _current_config.appid;
+  }
+  console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
+  return null;
+}
+function getBuckyOSConfig() {
+  return _current_config;
 }
 const buckyos = {
   kRPCClient,
   AuthClient,
-  init_buckyos,
-  add_web3_bridge,
-  get_zone_host_name,
-  get_verify_rpc_url
+  initBuckyOS,
+  getBuckyOSConfig,
+  getRuntimeType,
+  getAppId,
+  attachEvent,
+  removeEvent,
+  getAccountInfo,
+  doLogin,
+  login,
+  logout,
+  getAppSetting,
+  setAppSetting,
+  //add_web3_bridge,        
+  getZoneHostName,
+  getZoneServiceURL,
+  getServiceRpcClient
 };
 export {
-  buckyos as default
+  BS_SERVICE_VERIFY_HUB,
+  buckyos
 };
 //# sourceMappingURL=buckyos.mjs.map
