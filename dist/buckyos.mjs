@@ -810,7 +810,7 @@ function toCryptBase64(bytes) {
 }
 function hashPassword(username, password, nonce = null) {
   const shaObj = new ht("SHA-512", "TEXT", { encoding: "UTF8" });
-  let salt = username;
+  let salt = username + ".buckyos";
   shaObj.update(salt + password);
   let hash_bytes = shaObj.getHash("UINT8ARRAY");
   let base64_hash = toCryptBase64(hash_bytes);

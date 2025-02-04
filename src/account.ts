@@ -40,7 +40,7 @@ function toCryptBase64(bytes: Uint8Array): string {
 
 export function hashPassword(username:string,password:string,nonce:number|null=null):string {
     const shaObj = new jsSHA("SHA-512", "TEXT", { encoding: "UTF8" });
-    let salt = username;
+    let salt = username+".buckyos";
     shaObj.update(salt + password);
     let hash_bytes = shaObj.getHash("UINT8ARRAY");
     let base64_hash = toCryptBase64(hash_bytes);
