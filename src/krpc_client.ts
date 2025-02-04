@@ -25,7 +25,7 @@ enum RPCProtocolType {
       this.serverUrl = url;
       this.protocolType = RPCProtocolType.HttpPostJson;
       // 使用毫秒时间戳作为初始序列号
-      this.seq = seq ? seq : Date.now() * 1000;
+      this.seq = seq ? seq : Date.now();
       this.sessionToken = token || null;
       this.initToken = token || null;
     }
@@ -33,6 +33,10 @@ enum RPCProtocolType {
     // 公开的调用方法
     async call(method: string, params: any): Promise<any> {
       return this._call(method, params);
+    }
+
+    setSeq(seq:number) {
+      this.seq = seq;
     }
   
 

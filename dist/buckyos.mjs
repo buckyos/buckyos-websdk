@@ -19,13 +19,16 @@ class kRPCClient {
     __publicField(this, "initToken");
     this.serverUrl = url;
     this.protocolType = "HttpPostJson";
-    this.seq = seq ? seq : Date.now() * 1e3;
+    this.seq = seq ? seq : Date.now();
     this.sessionToken = token || null;
     this.initToken = token || null;
   }
   // 公开的调用方法
   async call(method, params) {
     return this._call(method, params);
+  }
+  setSeq(seq) {
+    this.seq = seq;
   }
   async _call(method, params) {
     const currentSeq = this.seq;
