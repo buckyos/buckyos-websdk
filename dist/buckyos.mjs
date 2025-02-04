@@ -785,16 +785,38 @@ class ht {
     return this.P.getHMAC(t2, n2);
   }
 }
-function hash_password(username, password, nonce = null) {
-  const shaObj = new ht("SHA-256", "TEXT", { encoding: "UTF8" });
-  shaObj.update(password + username + ".buckyos");
-  let org_password_hash_str = shaObj.getHash("B64");
-  if (nonce == null) {
-    return org_password_hash_str;
+const CRYPT_BASE64_CHARS = "./0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+function toCryptBase64(bytes) {
+  let result = "";
+  let buffer = 0;
+  let bufferSize = 0;
+  for (let i2 = 0; i2 < bytes.length; i2++) {
+    buffer = buffer << 8 | bytes[i2];
+    bufferSize += 8;
+    while (bufferSize >= 6) {
+      bufferSize -= 6;
+      const index = buffer >> bufferSize & 63;
+      result += CRYPT_BASE64_CHARS[index];
+    }
   }
-  const shaObj2 = new ht("SHA-256", "TEXT", { encoding: "UTF8" });
-  let salt = org_password_hash_str + nonce.toString();
-  shaObj2.update(salt);
+  if (bufferSize > 0) {
+    buffer = buffer << 6 - bufferSize;
+    result += CRYPT_BASE64_CHARS[buffer & 63];
+  }
+  return result;
+}
+function hashPassword(username, password, nonce = null) {
+  const shaObj = new ht("SHA-512", "TEXT", { encoding: "UTF8" });
+  let salt = username;
+  shaObj.update(salt + password);
+  let hash_bytes = shaObj.getHash("UINT8ARRAY");
+  let base64_hash = toCryptBase64(hash_bytes);
+  let hash_str = `$6$${salt}$${base64_hash}`;
+  if (nonce == null) {
+    return hash_str;
+  }
+  const shaObj2 = new ht("SHA-512", "TEXT", { encoding: "UTF8" });
+  shaObj2.update(hash_str + nonce.toString());
   let result = shaObj2.getHash("B64");
   return result;
 }
@@ -837,7 +859,7 @@ async function doLogin(username, password) {
     return null;
   }
   let login_nonce = Date.now();
-  let password_hash = hash_password(username, password, login_nonce);
+  let password_hash = hashPassword(username, password, login_nonce);
   console.log("password_hash: ", password_hash);
   localStorage.removeItem("account_info");
   try {
@@ -1045,6 +1067,7 @@ const buckyos = {
   doLogin,
   login,
   logout,
+  hashPassword,
   getAppSetting,
   setAppSetting,
   //add_web3_bridge,        

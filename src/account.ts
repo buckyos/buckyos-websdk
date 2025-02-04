@@ -1,4 +1,5 @@
 import jsSHA from 'jssha';
+import unixCrypt from 'unix-crypt';
 import {buckyos,BS_SERVICE_VERIFY_HUB} from './index';
 
 export interface AccountInfo {
@@ -11,16 +12,44 @@ export interface AccountInfo {
 // 定义自定义事件
 export const LOGIN_EVENT = 'onLogin';
 
-function hash_password(username:string,password:string,nonce:number|null=null):string {
-    const shaObj = new jsSHA("SHA-256", "TEXT", { encoding: "UTF8" });
-    shaObj.update(password+username+".buckyos");
-    let org_password_hash_str = shaObj.getHash("B64");
-    if (nonce == null) {
-        return org_password_hash_str;
+const CRYPT_BASE64_CHARS = './0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+function toCryptBase64(bytes: Uint8Array): string {
+    let result = '';
+    let buffer = 0;
+    let bufferSize = 0;
+
+    for (let i = 0; i < bytes.length; i++) {
+        buffer = (buffer << 8) | bytes[i];
+        bufferSize += 8;
+
+        while (bufferSize >= 6) {
+            bufferSize -= 6;
+            const index = (buffer >> bufferSize) & 0x3F;
+            result += CRYPT_BASE64_CHARS[index];
+        }
     }
-    const shaObj2 = new jsSHA("SHA-256", "TEXT", { encoding: "UTF8" });
-    let salt = org_password_hash_str + nonce.toString();
-    shaObj2.update(salt);
+
+    // 处理剩余的位
+    if (bufferSize > 0) {
+        buffer = buffer << (6 - bufferSize);
+        result += CRYPT_BASE64_CHARS[buffer & 0x3F];
+    }
+
+    return result;
+}
+
+export function hashPassword(username:string,password:string,nonce:number|null=null):string {
+    const shaObj = new jsSHA("SHA-512", "TEXT", { encoding: "UTF8" });
+    let salt = username;
+    shaObj.update(salt + password);
+    let hash_bytes = shaObj.getHash("UINT8ARRAY");
+    let base64_hash = toCryptBase64(hash_bytes);
+    let hash_str = `$6$${salt}$${base64_hash}`;
+    if (nonce == null) {
+        return hash_str;
+    }
+    const shaObj2 = new jsSHA("SHA-512", "TEXT", { encoding: "UTF8" });
+    shaObj2.update(hash_str+nonce.toString());
     let result = shaObj2.getHash("B64");
     return result;
 }
@@ -71,7 +100,7 @@ export async function doLogin(username:string, password:string) {
     }
 
     let login_nonce = Date.now();
-    let password_hash = hash_password(username,password,login_nonce);
+    let password_hash = hashPassword(username,password,login_nonce);
     console.log("password_hash: ", password_hash);
     localStorage.removeItem("account_info");
     

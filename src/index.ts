@@ -1,6 +1,7 @@
 import { kRPCClient } from "./krpc_client";
 import { AuthClient } from "./auth_client";
-import { AccountInfo,doLogin,cleanLocalAccountInfo, getLocalAccountInfo,saveLocalAccountInfo} from "./account";
+import { hashPassword,AccountInfo,doLogin,cleanLocalAccountInfo, getLocalAccountInfo,saveLocalAccountInfo} from "./account";
+
 
 
 export interface BuckyOSConfig {
@@ -250,7 +251,7 @@ export const buckyos = {
     doLogin,
     login,
     logout,
-
+    hashPassword,
     getAppSetting,
     setAppSetting,
     
