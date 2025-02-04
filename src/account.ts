@@ -48,8 +48,11 @@ export function hashPassword(username:string,password:string,nonce:number|null=n
     if (nonce == null) {
         return hash_str;
     }
+    console.log("hash_str: ", hash_str);
     const shaObj2 = new jsSHA("SHA-512", "TEXT", { encoding: "UTF8" });
-    shaObj2.update(hash_str+nonce.toString());
+    let nonce_str = nonce.toString();
+    console.log("will hash_str+nonce_str: ", hash_str+nonce_str);
+    shaObj2.update(hash_str+nonce_str);
     let result = shaObj2.getHash("B64");
     return result;
 }
