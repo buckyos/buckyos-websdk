@@ -1,5 +1,4 @@
 import jsSHA from 'jssha';
-import unixCrypt from 'unix-crypt';
 import {buckyos,BS_SERVICE_VERIFY_HUB} from './index';
 
 export interface AccountInfo {
@@ -29,10 +28,14 @@ function toCryptBase64(bytes: Uint8Array): string {
         }
     }
 
-    // 处理剩余的位
     if (bufferSize > 0) {
         buffer = buffer << (6 - bufferSize);
-        result += CRYPT_BASE64_CHARS[buffer & 0x3F];
+        const index = buffer & 0x3F;
+        result += CRYPT_BASE64_CHARS[index];
+    }
+
+    while (result.length < 86) {
+        result += CRYPT_BASE64_CHARS[0]; // 用第一个字符('.')填充
     }
 
     return result;
@@ -109,6 +112,7 @@ export async function doLogin(username:string, password:string) {
     
     try {
         let rpc_client = buckyos.getServiceRpcClient(BS_SERVICE_VERIFY_HUB);
+        rpc_client.setSeq(login_nonce);
         let account_info = await rpc_client.call("login", {
             type: "password",
             username: username,

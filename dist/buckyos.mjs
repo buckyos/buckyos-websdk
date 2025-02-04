@@ -804,7 +804,11 @@ function toCryptBase64(bytes) {
   }
   if (bufferSize > 0) {
     buffer = buffer << 6 - bufferSize;
-    result += CRYPT_BASE64_CHARS[buffer & 63];
+    const index = buffer & 63;
+    result += CRYPT_BASE64_CHARS[index];
+  }
+  while (result.length < 86) {
+    result += CRYPT_BASE64_CHARS[0];
   }
   return result;
 }
@@ -870,6 +874,7 @@ async function doLogin(username, password) {
   localStorage.removeItem("account_info");
   try {
     let rpc_client = buckyos.getServiceRpcClient(BS_SERVICE_VERIFY_HUB);
+    rpc_client.setSeq(login_nonce);
     let account_info = await rpc_client.call("login", {
       type: "password",
       username,
