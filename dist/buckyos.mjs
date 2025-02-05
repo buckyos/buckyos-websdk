@@ -1,9 +1,3 @@
-var __defProp = Object.defineProperty;
-var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
-var __publicField = (obj, key, value) => {
-  __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
-  return value;
-};
 class RPCError extends Error {
   constructor(message) {
     super(message);
@@ -12,11 +6,6 @@ class RPCError extends Error {
 }
 class kRPCClient {
   constructor(url, token = null, seq = null) {
-    __publicField(this, "serverUrl");
-    __publicField(this, "protocolType");
-    __publicField(this, "seq");
-    __publicField(this, "sessionToken");
-    __publicField(this, "initToken");
     this.serverUrl = url;
     this.protocolType = "HttpPostJson";
     this.seq = seq ? seq : Date.now();
@@ -86,10 +75,6 @@ class kRPCClient {
 }
 class AuthClient {
   constructor(zone_base_url, appId) {
-    __publicField(this, "zone_hostname");
-    __publicField(this, "clientId");
-    __publicField(this, "cookieOptions");
-    __publicField(this, "authWindow");
     this.zone_hostname = zone_base_url;
     this.clientId = appId;
     this.authWindow = null;
@@ -788,45 +773,16 @@ class ht {
     return this.P.getHMAC(t2, n2);
   }
 }
-const CRYPT_BASE64_CHARS = "./0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
-function toCryptBase64(bytes) {
-  let result = "";
-  let buffer = 0;
-  let bufferSize = 0;
-  for (let i2 = 0; i2 < bytes.length; i2++) {
-    buffer = buffer << 8 | bytes[i2];
-    bufferSize += 8;
-    while (bufferSize >= 6) {
-      bufferSize -= 6;
-      const index = buffer >> bufferSize & 63;
-      result += CRYPT_BASE64_CHARS[index];
-    }
-  }
-  if (bufferSize > 0) {
-    buffer = buffer << 6 - bufferSize;
-    const index = buffer & 63;
-    result += CRYPT_BASE64_CHARS[index];
-  }
-  while (result.length < 86) {
-    result += CRYPT_BASE64_CHARS[0];
-  }
-  return result;
-}
 function hashPassword(username, password, nonce = null) {
-  const shaObj = new ht("SHA-512", "TEXT", { encoding: "UTF8" });
-  let salt = username + ".buckyos";
-  shaObj.update(salt + password);
-  let hash_bytes = shaObj.getHash("UINT8ARRAY");
-  let base64_hash = toCryptBase64(hash_bytes);
-  let hash_str = `$6$${salt}$${base64_hash}`;
+  const shaObj = new ht("SHA-256", "TEXT", { encoding: "UTF8" });
+  shaObj.update(password + username + ".buckyos");
+  let org_password_hash_str = shaObj.getHash("B64");
   if (nonce == null) {
-    return hash_str;
+    return org_password_hash_str;
   }
-  console.log("hash_str: ", hash_str);
-  const shaObj2 = new ht("SHA-512", "TEXT", { encoding: "UTF8" });
-  let nonce_str = nonce.toString();
-  console.log("will hash_str+nonce_str: ", hash_str + nonce_str);
-  shaObj2.update(hash_str + nonce_str);
+  const shaObj2 = new ht("SHA-256", "TEXT", { encoding: "UTF8" });
+  let salt = org_password_hash_str + nonce.toString();
+  shaObj2.update(salt);
   let result = shaObj2.getHash("B64");
   return result;
 }

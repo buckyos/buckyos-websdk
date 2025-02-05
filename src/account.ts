@@ -11,51 +11,16 @@ export interface AccountInfo {
 // 定义自定义事件
 export const LOGIN_EVENT = 'onLogin';
 
-const CRYPT_BASE64_CHARS = './0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
-function toCryptBase64(bytes: Uint8Array): string {
-    let result = '';
-    let buffer = 0;
-    let bufferSize = 0;
-
-    for (let i = 0; i < bytes.length; i++) {
-        buffer = (buffer << 8) | bytes[i];
-        bufferSize += 8;
-
-        while (bufferSize >= 6) {
-            bufferSize -= 6;
-            const index = (buffer >> bufferSize) & 0x3F;
-            result += CRYPT_BASE64_CHARS[index];
-        }
-    }
-
-    if (bufferSize > 0) {
-        buffer = buffer << (6 - bufferSize);
-        const index = buffer & 0x3F;
-        result += CRYPT_BASE64_CHARS[index];
-    }
-
-    while (result.length < 86) {
-        result += CRYPT_BASE64_CHARS[0]; // 用第一个字符('.')填充
-    }
-
-    return result;
-}
-
 export function hashPassword(username:string,password:string,nonce:number|null=null):string {
-    const shaObj = new jsSHA("SHA-512", "TEXT", { encoding: "UTF8" });
-    let salt = username+".buckyos";
-    shaObj.update(salt + password);
-    let hash_bytes = shaObj.getHash("UINT8ARRAY");
-    let base64_hash = toCryptBase64(hash_bytes);
-    let hash_str = `$6$${salt}$${base64_hash}`;
+    const shaObj = new jsSHA("SHA-256", "TEXT", { encoding: "UTF8" });
+    shaObj.update(password+username+".buckyos");
+    let org_password_hash_str = shaObj.getHash("B64");
     if (nonce == null) {
-        return hash_str;
+        return org_password_hash_str;
     }
-    console.log("hash_str: ", hash_str);
-    const shaObj2 = new jsSHA("SHA-512", "TEXT", { encoding: "UTF8" });
-    let nonce_str = nonce.toString();
-    console.log("will hash_str+nonce_str: ", hash_str+nonce_str);
-    shaObj2.update(hash_str+nonce_str);
+    const shaObj2 = new jsSHA("SHA-256", "TEXT", { encoding: "UTF8" });
+    let salt = org_password_hash_str + nonce.toString();
+    shaObj2.update(salt);
     let result = shaObj2.getHash("B64");
     return result;
 }
