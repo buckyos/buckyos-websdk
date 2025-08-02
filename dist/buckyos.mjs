@@ -845,60 +845,67 @@ async function doLogin(username, password) {
     throw error;
   }
 }
-const BS_SERVICE_VERIFY_HUB = "verify_hub";
-var _current_config = null;
-var _current_account_info = null;
-const default_config = {
-  zone_host_name: "",
-  appid: "",
-  default_protocol: "http://"
+var RuntimeType = /* @__PURE__ */ ((RuntimeType2) => {
+  RuntimeType2["Browser"] = "Browser";
+  RuntimeType2["NodeJS"] = "NodeJS";
+  RuntimeType2["AppRuntime"] = "AppRuntime";
+  RuntimeType2["Unknown"] = "Unknown";
+  return RuntimeType2;
+})(RuntimeType || {});
+const WEB3_BRIDGE_HOST = "web3.buckyos.ai";
+const BS_SERVICE_VERIFY_HUB = "verify-hub";
+var _currentConfig = null;
+var _currentAccountInfo = null;
+const DEFAULT_CONFIG = {
+  zoneHost: "",
+  appId: "",
+  defaultProtocol: "http://",
+  runtimeType: "Unknown"
+  /* Unknown */
 };
-async function tryGetZoneHostName() {
-  const protocol = window.location.protocol;
-  const host = window.location.host;
-  const configUrl = `${protocol}//${host}/zone_config.json`;
-  try {
-    const response = await fetch(configUrl);
-    if (response.ok) {
-      return host;
-    }
-  } catch (error) {
+async function tryGetZoneHostName(appid, host) {
+  if (!host.startsWith(appid)) {
+    return host;
+  } else if (host.startsWith(appid + "-")) {
+    let parts = host.split(".");
+    let first_part = parts[0];
+    let part_name = first_part.split("-")[-1];
+    return part_name + "." + parts.slice(1).join(".");
+  } else if (host.startsWith(appid + ".")) {
+    let parts = host.split(".");
+    return parts.join(".");
   }
-  try {
-    let up_host = host.split(".").slice(1).join(".");
-    const configUrl2 = `${protocol}//${up_host}/zone_config.json`;
-    const response2 = await fetch(configUrl2);
-    if (response2.ok) {
-      return up_host;
-    }
-  } catch (error) {
-  }
-  return null;
+  return host;
+}
+function getStorageKey(key) {
+  const domain = window.location.hostname.split(".").slice(-2).join(".");
+  return `buckyos.${domain}.${key}`;
 }
 async function initBuckyOS(appid, config = null) {
-  if (_current_config) {
+  if (_currentConfig) {
     console.warn("BuckyOS WebSDK is already initialized!");
   }
   if (config) {
-    _current_config = config;
+    _currentConfig = config;
   } else {
-    config = default_config;
-    config.appid = appid;
-    config.default_protocol = window.location.protocol + "//";
+    config = DEFAULT_CONFIG;
+    config.appId = appid;
+    config.defaultProtocol = window.location.protocol + "//";
     try {
       let up_host = window.location.host.split(".").slice(1).join(".");
-      config.zone_host_name = up_host;
+      config.zoneHost = up_host;
     } catch (error) {
-      config.zone_host_name = window.location.host;
+      config.zoneHost = window.location.host;
     }
-    let zone_host_name = localStorage.getItem("buckyos.zone_host_name");
+    let zone_host_name = localStorage.getItem(getStorageKey("zone_host_name"));
     if (zone_host_name) {
-      config.zone_host_name = zone_host_name;
+      config.zoneHost = zone_host_name;
     } else {
-      zone_host_name = await tryGetZoneHostName();
+      let this_host = window.location.host;
+      zone_host_name = await tryGetZoneHostName(appid, this_host);
       if (zone_host_name) {
-        localStorage.setItem("buckyos.zone_host_name", zone_host_name);
-        config.zone_host_name = zone_host_name;
+        localStorage.setItem(getStorageKey("zone_host_name"), zone_host_name);
+        config.zoneHost = zone_host_name;
       }
     }
     return await initBuckyOS(appid, config);
@@ -906,11 +913,13 @@ async function initBuckyOS(appid, config = null) {
 }
 function getRuntimeType() {
   if (typeof window !== "undefined") {
-    const userAgent = window.navigator.userAgent.toLowerCase();
-    return "Browser-" + userAgent;
+    return "Browser";
   }
   if (typeof process !== "undefined" && process.versions && process.versions.node) {
-    return "NodeJS-" + process.versions.node;
+    return "NodeJS";
+  }
+  if (typeof process !== "undefined" && process.versions && process.versions.electron) {
+    return "AppRuntime";
   }
   return "Unknown";
 }
@@ -919,17 +928,17 @@ function attachEvent(event_name, callback) {
 function removeEvent(cookie_id) {
 }
 function getAccountInfo() {
-  if (_current_account_info) {
-    return _current_account_info;
+  if (_currentAccountInfo) {
+    return _currentAccountInfo;
   }
-  if (_current_config == null) {
+  if (_currentConfig == null) {
     console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
     return null;
   }
   return null;
 }
 async function login(auto_login = true) {
-  if (_current_config == null) {
+  if (_currentConfig == null) {
     console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
     return null;
   }
@@ -941,8 +950,8 @@ async function login(auto_login = true) {
   if (auto_login) {
     let account_info = getLocalAccountInfo();
     if (account_info) {
-      _current_account_info = account_info;
-      return _current_account_info;
+      _currentAccountInfo = account_info;
+      return _currentAccountInfo;
     }
   }
   cleanLocalAccountInfo(appId);
@@ -956,7 +965,7 @@ async function login(auto_login = true) {
     let account_info = await auth_client.login();
     if (account_info) {
       saveLocalAccountInfo(appId, account_info);
-      _current_account_info = account_info;
+      _currentAccountInfo = account_info;
     }
     return account_info;
   } catch (error) {
@@ -965,7 +974,7 @@ async function login(auto_login = true) {
   }
 }
 function logout(clean_account_info = true) {
-  if (_current_config == null) {
+  if (_currentConfig == null) {
     console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
     return;
   }
@@ -974,7 +983,7 @@ function logout(clean_account_info = true) {
     console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
     return;
   }
-  if (_current_account_info == null) {
+  if (_currentAccountInfo == null) {
     console.error("BuckyOS WebSDK is not login,call login first");
     return;
   }
@@ -987,39 +996,39 @@ function getAppSetting(setting_name = null) {
 function setAppSetting(setting_name = null, setting_value) {
 }
 function getZoneHostName() {
-  if (_current_config == null) {
+  if (_currentConfig == null) {
     console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
     return null;
   }
-  return _current_config.zone_host_name;
+  return _currentConfig.zoneHost;
 }
 function getZoneServiceURL(service_name) {
-  if (_current_config == null) {
+  if (_currentConfig == null) {
     console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
     throw new Error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
   }
-  return _current_config.default_protocol + _current_config.zone_host_name + "/kapi/" + service_name;
+  return _currentConfig.defaultProtocol + _currentConfig.zoneHost + "/kapi/" + service_name;
 }
 function getServiceRpcClient(service_name) {
-  if (_current_config == null) {
+  if (_currentConfig == null) {
     console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
     throw new Error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
   }
   let session_token = null;
-  if (_current_account_info) {
-    session_token = _current_account_info.session_token;
+  if (_currentAccountInfo) {
+    session_token = _currentAccountInfo.session_token;
   }
   return new kRPCClient(getZoneServiceURL(service_name), session_token);
 }
 function getAppId() {
-  if (_current_config) {
-    return _current_config.appid;
+  if (_currentConfig) {
+    return _currentConfig.appId;
   }
   console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
   return null;
 }
 function getBuckyOSConfig() {
-  return _current_config;
+  return _currentConfig;
 }
 const buckyos = {
   kRPCClient,
@@ -1044,6 +1053,8 @@ const buckyos = {
 };
 export {
   BS_SERVICE_VERIFY_HUB,
+  RuntimeType,
+  WEB3_BRIDGE_HOST,
   buckyos
 };
 //# sourceMappingURL=buckyos.mjs.map

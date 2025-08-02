@@ -1,13 +1,22 @@
 {
   "name": "buckyos",
   "version": "1.0.0",
-  "main": "src/index.ts",
+  "description": "BuckyOS WebSDK for browser and Node.js environments",
+  "main": "dist/buckyos.umd.js",
+  "module": "dist/buckyos.mjs",
+  "types": "dist/index.d.ts",
   "browser": "dist/buckyos.mjs",
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
     "build": "vite build",
-    "types": "tsc --emitDeclarationOnly",
+    "types": "tsc --emitDeclarationOnly --outDir dist",
+    "build:all": "pnpm run build && pnpm run types",
     "dev": "vite",
-    "test": "jest"
+    "test": "jest",
+    "prepublishOnly": "pnpm run build:all"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.6.3",
