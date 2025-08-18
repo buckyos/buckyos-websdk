@@ -863,23 +863,20 @@ const DEFAULT_CONFIG = {
   runtimeType: "Unknown"
   /* Unknown */
 };
-async function tryGetZoneHostName(appid, host) {
-  if (!host.startsWith(appid)) {
+async function tryGetZoneHostName(appid, host, default_protocol) {
+  let zone_doc_url = default_protocol + host + "/1.0/identifiers/self";
+  let response = await fetch(zone_doc_url);
+  if (response.status == 200) {
     return host;
-  } else if (host.startsWith(appid + "-")) {
-    let parts = host.split(".");
-    let first_part = parts[0];
-    let part_name = first_part.split("-")[-1];
-    return part_name + "." + parts.slice(1).join(".");
-  } else if (host.startsWith(appid + ".")) {
-    let parts = host.split(".");
-    return parts.join(".");
+  } else {
+    let up_host = host.split(".").slice(1).join(".");
+    zone_doc_url = default_protocol + up_host + "/1.0/identifiers/self";
+    response = await fetch(zone_doc_url);
+    if (response.status == 200) {
+      return up_host;
+    }
   }
   return host;
-}
-function getStorageKey(key) {
-  const domain = window.location.hostname.split(".").slice(-2).join(".");
-  return `buckyos.${domain}.${key}`;
 }
 async function initBuckyOS(appid, config = null) {
   if (_currentConfig) {
@@ -891,22 +888,13 @@ async function initBuckyOS(appid, config = null) {
     config = DEFAULT_CONFIG;
     config.appId = appid;
     config.defaultProtocol = window.location.protocol + "//";
-    try {
-      let up_host = window.location.host.split(".").slice(1).join(".");
-      config.zoneHost = up_host;
-    } catch (error) {
-      config.zoneHost = window.location.host;
-    }
-    let zone_host_name = localStorage.getItem(getStorageKey("zone_host_name"));
+    let zone_host_name = localStorage.getItem("zone_host_name");
     if (zone_host_name) {
       config.zoneHost = zone_host_name;
     } else {
-      let this_host = window.location.host;
-      zone_host_name = await tryGetZoneHostName(appid, this_host);
-      if (zone_host_name) {
-        localStorage.setItem(getStorageKey("zone_host_name"), zone_host_name);
-        config.zoneHost = zone_host_name;
-      }
+      zone_host_name = await tryGetZoneHostName(appid, window.location.host, config.defaultProtocol);
+      localStorage.setItem("zone_host_name", zone_host_name);
+      config.zoneHost = zone_host_name;
     }
     return await initBuckyOS(appid, config);
   }
