@@ -69,7 +69,8 @@ class kRPCClient {
       if (error instanceof RPCError) {
         throw error;
       }
-      throw new RPCError(`RPC call failed: ${error.message}`);
+      const message = error instanceof Error ? error.message : String(error);
+      throw new RPCError(`RPC call failed: ${message}`);
     }
   }
 }
@@ -85,7 +86,8 @@ class AuthClient {
       let account_info = JSON.parse(token);
       return account_info;
     } catch (error) {
-      throw new Error(error || "Login failed");
+      const message = error instanceof Error ? error.message : String(error ?? "Login failed");
+      throw new Error(message);
     }
   }
   async request(action, params) {
@@ -97,7 +99,8 @@ class AuthClient {
       const left = window.screen.width / 2 - width / 2;
       const top = window.screen.height / 2 - height / 2;
       let sso_url = window.location.protocol + "//sys." + this.zone_hostname + "/login.html";
-      const authUrl = `${sso_url}?client_id=${this.clientId}&redirect_uri=${encodeURIComponent(redirect_uri)}&response_type=token`;
+      const redirectTarget = redirect_uri ?? window.location.href;
+      const authUrl = `${sso_url}?client_id=${this.clientId}&redirect_uri=${encodeURIComponent(redirectTarget)}&response_type=token`;
       alert(authUrl);
       this.authWindow = window.open(authUrl, "BuckyOS Login", `width=${width},height=${height},top=${top},left=${left}`);
       window.addEventListener("message", (event) => {
@@ -900,13 +903,15 @@ async function initBuckyOS(appid, config = null) {
   }
 }
 function getRuntimeType() {
+  var _a, _b;
+  const runtimeProcess = globalThis.process;
   if (typeof window !== "undefined") {
     return "Browser";
   }
-  if (typeof process !== "undefined" && process.versions && process.versions.node) {
+  if ((_a = runtimeProcess == null ? void 0 : runtimeProcess.versions) == null ? void 0 : _a.node) {
     return "NodeJS";
   }
-  if (typeof process !== "undefined" && process.versions && process.versions.electron) {
+  if ((_b = runtimeProcess == null ? void 0 : runtimeProcess.versions) == null ? void 0 : _b.electron) {
     return "AppRuntime";
   }
   return "Unknown";
