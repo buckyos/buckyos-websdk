@@ -22,7 +22,8 @@ export class AuthClient {
             let account_info = JSON.parse(token) as AccountInfo;
             return account_info;
         } catch (error) {
-            throw new Error(error || 'Login failed');
+            const message = error instanceof Error ? error.message : String(error ?? 'Login failed');
+            throw new Error(message);
         }
     }
 
@@ -40,7 +41,8 @@ export class AuthClient {
             let sso_url = window.location.protocol + "//sys." + this.zone_hostname + "/login.html";
             //console.log("sso_url: ", sso_url);
             
-            const authUrl = `${sso_url}?client_id=${this.clientId}&redirect_uri=${encodeURIComponent(redirect_uri)}&response_type=token`;
+            const redirectTarget = redirect_uri ?? window.location.href;
+            const authUrl = `${sso_url}?client_id=${this.clientId}&redirect_uri=${encodeURIComponent(redirectTarget)}&response_type=token`;
             alert(authUrl);
             this.authWindow = window.open(authUrl, 'BuckyOS Login', `width=${width},height=${height},top=${top},left=${left}`);
 

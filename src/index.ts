@@ -51,7 +51,7 @@ async function tryGetZoneHostName(appid:string,host:string,default_protocol:stri
 
 
 
-async function initBuckyOS(appid:string,config:BuckyOSConfig|null=null) {
+async function initBuckyOS(appid:string,config:BuckyOSConfig|null=null): Promise<void> {
     if(_currentConfig) {
         console.warn("BuckyOS WebSDK is already initialized!");
     }
@@ -79,18 +79,20 @@ async function initBuckyOS(appid:string,config:BuckyOSConfig|null=null) {
 
 
 function getRuntimeType(): RuntimeType {
+    const runtimeProcess = (globalThis as { process?: { versions?: { node?: string; electron?: string } } }).process;
+
     // 检查是否在浏览器环境中
     if (typeof window !== 'undefined') {
         return RuntimeType.Browser;
     }
     
     // 检查是否在 Node.js 环境中
-    if (typeof process !== 'undefined' && process.versions && process.versions.node) {
+    if (runtimeProcess?.versions?.node) {
         return RuntimeType.NodeJS;
     }
 
     // 检查是否在electron (buckyos desktop runtime)环境中
-    if (typeof process !== 'undefined' && process.versions && process.versions.electron) {
+    if (runtimeProcess?.versions?.electron) {
         return RuntimeType.AppRuntime;
     }
 
@@ -256,5 +258,4 @@ export const buckyos = {
     getZoneServiceURL,
     getServiceRpcClient,
 }
-
 

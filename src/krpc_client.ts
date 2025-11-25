@@ -101,7 +101,8 @@ enum RPCProtocolType {
         if (error instanceof RPCError) {
           throw error;
         }
-        throw new RPCError(`RPC call failed: ${error.message}`);
+        const message = error instanceof Error ? error.message : String(error);
+        throw new RPCError(`RPC call failed: ${message}`);
       }
     }
   }
