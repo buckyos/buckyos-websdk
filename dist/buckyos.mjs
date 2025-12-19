@@ -903,16 +903,16 @@ async function initBuckyOS(appid, config = null) {
   }
 }
 function getRuntimeType() {
-  var _a, _b;
-  const runtimeProcess = globalThis.process;
+  var _a;
   if (typeof window !== "undefined") {
+    if (window.BuckyApi) {
+      return "AppRuntime";
+    }
     return "Browser";
   }
+  const runtimeProcess = globalThis.process;
   if ((_a = runtimeProcess == null ? void 0 : runtimeProcess.versions) == null ? void 0 : _a.node) {
     return "NodeJS";
-  }
-  if ((_b = runtimeProcess == null ? void 0 : runtimeProcess.versions) == null ? void 0 : _b.electron) {
-    return "AppRuntime";
   }
   return "Unknown";
 }
@@ -1023,6 +1023,24 @@ function getAppId() {
 function getBuckyOSConfig() {
   return _currentConfig;
 }
+async function getCurrentWalletUser() {
+  const result = await window.BuckyApi.getPublicKey();
+  if (result.code == 0) {
+    return result.data;
+  } else {
+    console.error("BuckyApi.getPublicKey failed: ", result.message);
+    return null;
+  }
+}
+async function walletSignWithActiveDid(message) {
+  const result = await window.BuckyApi.signWithActiveDid(message);
+  if (result.code == 0) {
+    return result.data.signatures;
+  } else {
+    console.error("BuckyApi.signWithActiveDid failed: ", result.message);
+    return null;
+  }
+}
 const buckyos = {
   kRPCClient,
   AuthClient,
@@ -1039,6 +1057,8 @@ const buckyos = {
   hashPassword,
   getAppSetting,
   setAppSetting,
+  getCurrentWalletUser,
+  walletSignWithActiveDid,
   //add_web3_bridge,        
   getZoneHostName,
   getZoneServiceURL,

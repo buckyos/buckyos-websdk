@@ -16,6 +16,7 @@ export interface BuckyOSConfig {
     runtimeType:RuntimeType;
 }
 
+
 export const WEB3_BRIDGE_HOST = "web3.buckyos.ai";
 
 export const BS_SERVICE_VERIFY_HUB = "verify-hub";
@@ -79,21 +80,18 @@ async function initBuckyOS(appid:string,config:BuckyOSConfig|null=null): Promise
 
 
 function getRuntimeType(): RuntimeType {
-    const runtimeProcess = (globalThis as { process?: { versions?: { node?: string; electron?: string } } }).process;
-
     // 检查是否在浏览器环境中
     if (typeof window !== 'undefined') {
+        if ((window as any).BuckyApi) {
+            return RuntimeType.AppRuntime;
+        }
         return RuntimeType.Browser;
     }
-    
+
+    const runtimeProcess = (globalThis as { process?: { versions?: { node?: string; electron?: string } } }).process;
     // 检查是否在 Node.js 环境中
     if (runtimeProcess?.versions?.node) {
         return RuntimeType.NodeJS;
-    }
-
-    // 检查是否在electron (buckyos desktop runtime)环境中
-    if (runtimeProcess?.versions?.electron) {
-        return RuntimeType.AppRuntime;
     }
 
     return RuntimeType.Unknown;
@@ -236,6 +234,26 @@ function getBuckyOSConfig() {
     return _currentConfig;
 }
 
+async function getCurrentWalletUser () : Promise<any> {
+    const result : any = await (window as any).BuckyApi.getPublicKey();
+    if (result.code == 0) {
+        return result.data;
+    } else {
+        console.error("BuckyApi.getPublicKey failed: ", result.message);
+        return null;
+    }
+}
+
+async function walletSignWithActiveDid(message:string[]) : Promise<string[] | null> {
+    const result : any= await (window as any).BuckyApi.signWithActiveDid(message);
+    if (result.code == 0) {
+        return result.data.signatures;
+    } else {
+        console.error("BuckyApi.signWithActiveDid failed: ", result.message);
+        return null;
+    }
+}
+
 export const buckyos = {
     kRPCClient,
     AuthClient,
@@ -252,7 +270,8 @@ export const buckyos = {
     hashPassword,
     getAppSetting,
     setAppSetting,
-    
+    getCurrentWalletUser,
+    walletSignWithActiveDid,
     //add_web3_bridge,        
     getZoneHostName,
     getZoneServiceURL,

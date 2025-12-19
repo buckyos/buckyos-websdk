@@ -99,3 +99,78 @@ authClient主要靠系统的内置verify_hub服务来完成功能，其基本逻
 ### 防御jwt的重放攻击
 
 因为会工作在http环境，因此会用明文发送jwt.
+
+## 构建与发布
+
+### 本地构建
+
+构建项目并生成类型定义文件：
+
+```bash
+# 使用 pnpm（推荐）
+pnpm run build:all
+
+# 或使用 npm
+npm run build:all
+```
+
+该命令会执行以下操作：
+1. 运行 `vite build` 构建项目，生成 `dist/buckyos.mjs`（ES 模块）和 `dist/buckyos.umd.js`（UMD 格式）
+2. 运行 `tsc --emitDeclarationOnly` 生成 TypeScript 类型定义文件 `dist/index.d.ts`
+
+构建产物位于 `dist/` 目录。
+
+### 发布到 GitHub
+
+#### 1. 更新版本号
+
+在 `package.json` 中更新版本号：
+
+```bash
+# 使用 npm version 自动更新版本号并创建 git tag
+npm version patch  # 1.0.0 -> 1.0.1
+npm version minor  # 1.0.0 -> 1.1.0
+npm version major  # 1.0.0 -> 2.0.0
+```
+
+#### 2. 构建项目
+
+确保构建产物是最新的：
+
+```bash
+pnpm run build:all
+```
+
+#### 3. 提交并推送
+
+```bash
+# 提交更改
+git add .
+git commit -m "chore: release v1.0.1"
+
+# 推送代码和标签到 GitHub
+git push
+git push --tags
+```
+
+#### 4. 创建 GitHub Release（可选）
+
+1. 访问 GitHub 仓库页面
+2. 点击 "Releases" -> "Create a new release"
+3. 选择刚才推送的 tag
+4. 填写 Release 标题和描述
+5. 上传构建产物（`dist/` 目录下的文件）作为附件（可选）
+
+### 发布到 npm（可选）
+
+如果要将包发布到 npm 仓库：
+
+```bash
+# 登录 npm（首次发布需要）
+npm login
+
+# 发布（会自动执行 prepublishOnly 钩子进行构建）
+npm publish
+```
+
+注意：`prepublishOnly` 钩子会在发布前自动执行 `pnpm run build:all`，确保发布的是最新构建产物。

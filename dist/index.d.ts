@@ -36,6 +36,8 @@ export declare const buckyos: {
     hashPassword: typeof hashPassword;
     getAppSetting: typeof getAppSetting;
     setAppSetting: typeof setAppSetting;
+    getCurrentWalletUser: typeof getCurrentWalletUser;
+    walletSignWithActiveDid: typeof walletSignWithActiveDid;
     getZoneHostName: typeof getZoneHostName;
     getZoneServiceURL: typeof getZoneServiceURL;
     getServiceRpcClient: typeof getServiceRpcClient;
@@ -57,6 +59,8 @@ declare function getAppId(): string | null;
 declare function getAppSetting(setting_name?: string | null): void;
 
 declare function getBuckyOSConfig(): BuckyOSConfig | null;
+
+declare function getCurrentWalletUser(): Promise<any>;
 
 declare function getRuntimeType(): RuntimeType;
 
@@ -96,6 +100,8 @@ export declare enum RuntimeType {
 }
 
 declare function setAppSetting(setting_name: string | null | undefined, setting_value: string): void;
+
+declare function walletSignWithActiveDid(message: string[]): Promise<string[] | null>;
 
 export declare const WEB3_BRIDGE_HOST = "web3.buckyos.ai";
 
