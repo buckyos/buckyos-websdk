@@ -235,11 +235,11 @@ function getBuckyOSConfig() {
 }
 
 async function getCurrentWalletUser () : Promise<any> {
-    const result : any = await (window as any).BuckyApi.getPublicKey();
+    const result : any = await (window as any).BuckyApi.getCurrentUser();
     if (result.code == 0) {
         return result.data;
     } else {
-        console.error("BuckyApi.getPublicKey failed: ", result.message);
+        console.error("BuckyApi.getCurrentUser failed: ", result.message);
         return null;
     }
 }

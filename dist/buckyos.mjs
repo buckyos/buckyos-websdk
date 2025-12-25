@@ -1024,11 +1024,11 @@ function getBuckyOSConfig() {
   return _currentConfig;
 }
 async function getCurrentWalletUser() {
-  const result = await window.BuckyApi.getPublicKey();
+  const result = await window.BuckyApi.getCurrentUser();
   if (result.code == 0) {
     return result.data;
   } else {
-    console.error("BuckyApi.getPublicKey failed: ", result.message);
+    console.error("BuckyApi.getCurrentUser failed: ", result.message);
     return null;
   }
 }
