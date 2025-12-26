@@ -1,6 +1,6 @@
 {
   "name": "buckyos",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "BuckyOS WebSDK for browser and Node.js environments",
   "main": "dist/buckyos.umd.js",
   "module": "dist/buckyos.mjs",

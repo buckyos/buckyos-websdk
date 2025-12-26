@@ -101,7 +101,7 @@ export declare enum RuntimeType {
 
 declare function setAppSetting(setting_name: string | null | undefined, setting_value: string): void;
 
-declare function walletSignWithActiveDid(message: string[]): Promise<string[] | null>;
+declare function walletSignWithActiveDid(payloads: Record<string, unknown>[]): Promise<string[] | null>;
 
 export declare const WEB3_BRIDGE_HOST = "web3.buckyos.ai";
 

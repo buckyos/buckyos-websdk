@@ -244,8 +244,8 @@ async function getCurrentWalletUser () : Promise<any> {
     }
 }
 
-async function walletSignWithActiveDid(message:string[]) : Promise<string[] | null> {
-    const result : any= await (window as any).BuckyApi.signWithActiveDid(message);
+async function walletSignWithActiveDid(payloads:Record<string, unknown>[]) : Promise<string[] | null> {
+    const result : any= await (window as any).BuckyApi. signJsonWithActiveDid (payloads);
     if (result.code == 0) {
         return result.data.signatures;
     } else {

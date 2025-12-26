@@ -30,7 +30,7 @@ declare function getServiceRpcClient(service_name: string): kRPCClient;
 declare function getAppId(): string | null;
 declare function getBuckyOSConfig(): BuckyOSConfig | null;
 declare function getCurrentWalletUser(): Promise<any>;
-declare function walletSignWithActiveDid(message: string[]): Promise<string[] | null>;
+declare function walletSignWithActiveDid(payloads: Record<string, unknown>[]): Promise<string[] | null>;
 export declare const buckyos: {
     kRPCClient: typeof kRPCClient;
     AuthClient: typeof AuthClient;

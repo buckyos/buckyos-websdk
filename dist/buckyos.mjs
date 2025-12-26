@@ -1032,8 +1032,8 @@ async function getCurrentWalletUser() {
     return null;
   }
 }
-async function walletSignWithActiveDid(message) {
-  const result = await window.BuckyApi.signWithActiveDid(message);
+async function walletSignWithActiveDid(payloads) {
+  const result = await window.BuckyApi.signJsonWithActiveDid(payloads);
   if (result.code == 0) {
     return result.data.signatures;
   } else {
