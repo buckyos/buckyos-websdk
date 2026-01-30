@@ -201,7 +201,7 @@ function getZoneHostName() :string|null {
 }
 
 function getZoneServiceURL(service_name:string) :string {
-    return "/kapi/" + service_name;
+    return "/kapi/" + service_name + "/";
 }
 
 function getServiceRpcClient(service_name:string) :kRPCClient {

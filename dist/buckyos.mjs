@@ -996,7 +996,7 @@ function getZoneHostName() {
   return _currentConfig.zoneHost;
 }
 function getZoneServiceURL(service_name) {
-  return "/kapi/" + service_name;
+  return "/kapi/" + service_name + "/";
 }
 function getServiceRpcClient(service_name) {
   if (_currentConfig == null) {
