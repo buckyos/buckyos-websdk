@@ -996,11 +996,7 @@ function getZoneHostName() {
   return _currentConfig.zoneHost;
 }
 function getZoneServiceURL(service_name) {
-  if (_currentConfig == null) {
-    console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
-    throw new Error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
-  }
-  return _currentConfig.defaultProtocol + _currentConfig.zoneHost + "/kapi/" + service_name;
+  return "/kapi/" + service_name;
 }
 function getServiceRpcClient(service_name) {
   if (_currentConfig == null) {
