@@ -4,10 +4,15 @@ import { hashPassword, saveLocalAccountInfo, getLocalAccountInfo, cleanLocalAcco
 jest.mock('../src/index', () => ({
     buckyos: {
         getAppId: () => 'test-app-id',
-        getServiceRpcClient: () => ({
+        getVerifyHubClient: () => ({
             setSeq: jest.fn(),
-            call: jest.fn()
-        })
+            loginByPassword: jest.fn(() => ({
+                user_name: 'testuser',
+                user_id: '123',
+                user_type: 'normal',
+                session_token: 'test-token',
+            })),
+        }),
     },
     BS_SERVICE_VERIFY_HUB: 'verify-hub'
 }));

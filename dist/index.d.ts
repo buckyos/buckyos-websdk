@@ -41,6 +41,7 @@ export declare const buckyos: {
     getZoneHostName: typeof getZoneHostName;
     getZoneServiceURL: typeof getZoneServiceURL;
     getServiceRpcClient: typeof getServiceRpcClient;
+    getVerifyHubClient: typeof getVerifyHubClient;
 };
 
 export declare interface BuckyOSConfig {
@@ -51,6 +52,8 @@ export declare interface BuckyOSConfig {
 }
 
 declare function doLogin(username: string, password: string): Promise<AccountInfo | null>;
+
+declare type Fetcher = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
 declare function getAccountInfo(): AccountInfo | null;
 
@@ -66,6 +69,8 @@ declare function getRuntimeType(): RuntimeType;
 
 declare function getServiceRpcClient(service_name: string): kRPCClient;
 
+declare function getVerifyHubClient(): VerifyHubClient;
+
 declare function getZoneHostName(): string | null;
 
 declare function getZoneServiceURL(service_name: string): string;
@@ -80,15 +85,51 @@ declare class kRPCClient {
     private seq;
     private sessionToken;
     private initToken;
-    constructor(url: string, token?: string | null, seq?: number | null);
-    call(method: string, params: any): Promise<any>;
+    private fetcher;
+    constructor(url: string, token?: string | null, seq?: number | null, fetcher?: Fetcher);
+    call<TResult, TParams>(method: string, params: TParams): Promise<TResult>;
     setSeq(seq: number): void;
+    resetSessionToken(): void;
+    setSessionToken(token: string | null): void;
+    getSessionToken(): string | null;
+    private buildRequest;
+    private parseSys;
     private _call;
+}
+
+declare interface LegacyLoginByPasswordResponse {
+    user_name: string;
+    user_id: string;
+    user_type: string;
+    session_token: string;
+    refresh_token?: string;
 }
 
 declare function login(auto_login?: boolean): Promise<AccountInfo | null>;
 
+declare interface LoginByJwtParams {
+    jwt: string;
+    login_params?: Record<string, unknown>;
+}
+
+declare interface LoginByPasswordParams {
+    username: string;
+    password: string;
+    appid: string;
+    source_url?: string;
+}
+
+declare interface LoginByPasswordResponse {
+    user_info: VerifyHubUserInfo;
+    session_token: string;
+    refresh_token: string;
+}
+
 declare function logout(clean_account_info?: boolean): void;
+
+declare interface RefreshTokenParams {
+    refresh_token: string;
+}
 
 declare function removeEvent(cookie_id: string): void;
 
@@ -100,6 +141,34 @@ export declare enum RuntimeType {
 }
 
 declare function setAppSetting(setting_name: string | null | undefined, setting_value: string): void;
+
+declare interface TokenPair {
+    session_token: string;
+    refresh_token: string;
+}
+
+export declare class VerifyHubClient {
+    private rpcClient;
+    constructor(rpcClient: kRPCClient);
+    setSeq(seq: number): void;
+    loginByJwt(params: LoginByJwtParams): Promise<TokenPair>;
+    loginByPassword(params: LoginByPasswordParams): Promise<LoginByPasswordResponse | LegacyLoginByPasswordResponse>;
+    refreshToken(params: RefreshTokenParams): Promise<TokenPair>;
+    verifyToken(params: VerifyTokenParams): Promise<boolean>;
+    static normalizeLoginResponse(response: LoginByPasswordResponse | LegacyLoginByPasswordResponse): LegacyLoginByPasswordResponse;
+}
+
+declare interface VerifyHubUserInfo {
+    show_name: string;
+    user_id: string;
+    user_type: string;
+    state?: string;
+}
+
+declare interface VerifyTokenParams {
+    session_token: string;
+    appid?: string;
+}
 
 declare function walletSignWithActiveDid(payloads: Record<string, unknown>[]): Promise<string[] | null>;
 

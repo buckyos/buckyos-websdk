@@ -1,35 +1,15 @@
-import { kRPCClient } from "./krpc_client";
-import { AuthClient } from "./auth_client";
-import { hashPassword,AccountInfo,doLogin,cleanLocalAccountInfo, getLocalAccountInfo,saveLocalAccountInfo} from "./account";
-
-export enum RuntimeType {
-    Browser = "Browser",
-    NodeJS = "NodeJS",
-    AppRuntime = "AppRuntime",
-    Unknown = "Unknown"
-}
-
-export interface BuckyOSConfig {
-    zoneHost:string;
-    appId:string;
-    defaultProtocol:string; //http:// or https://
-    runtimeType:RuntimeType;
-}
-
+import { kRPCClient } from './krpc_client'
+import { AuthClient } from './auth_client'
+import { hashPassword, AccountInfo, doLogin, cleanLocalAccountInfo, getLocalAccountInfo, saveLocalAccountInfo } from './account'
+import { BuckyOSRuntime, BuckyOSConfig, DEFAULT_CONFIG, RuntimeType } from './runtime'
+import { VerifyHubClient } from './verify-hub-client'
 
 export const WEB3_BRIDGE_HOST = "web3.buckyos.ai";
 
 export const BS_SERVICE_VERIFY_HUB = "verify-hub";
 
-var _currentConfig: BuckyOSConfig | null = null;
+var _currentRuntime: BuckyOSRuntime | null = null;
 var _currentAccountInfo: AccountInfo | null = null;
-
-const DEFAULT_CONFIG: BuckyOSConfig = {
-    zoneHost: "",
-    appId: "",
-    defaultProtocol: "http://",
-    runtimeType: RuntimeType.Unknown
-}
 
 async function tryGetZoneHostName(appid:string,host:string,default_protocol:string) :Promise<string> {
 
@@ -52,29 +32,31 @@ async function tryGetZoneHostName(appid:string,host:string,default_protocol:stri
 
 
 
-async function initBuckyOS(appid:string,config:BuckyOSConfig|null=null): Promise<void> {
-    if(_currentConfig) {
-        console.warn("BuckyOS WebSDK is already initialized!");
+async function initBuckyOS(appid: string, config: BuckyOSConfig | null = null): Promise<void> {
+    if (_currentRuntime) {
+        console.warn('BuckyOS WebSDK is already initialized!')
     }
 
-    if(config) {
-        _currentConfig = config;
-    } else {
-        config = DEFAULT_CONFIG;
-        config.appId = appid;
-        config.defaultProtocol = window.location.protocol + "//";
-
-        let zone_host_name = localStorage.getItem("zone_host_name");
-        if(zone_host_name) {
-            config.zoneHost = zone_host_name;
-        } else {
-            zone_host_name = await tryGetZoneHostName(appid,window.location.host,config.defaultProtocol);
-            localStorage.setItem("zone_host_name", zone_host_name);
-            config.zoneHost = zone_host_name;
-   
+    let finalConfig = config
+    if (!finalConfig) {
+        finalConfig = {
+            ...DEFAULT_CONFIG,
+            appId: appid,
+            runtimeType: getRuntimeType(),
+            defaultProtocol: window.location.protocol + '//',
         }
-        return await initBuckyOS(appid,config);
+
+        let zone_host_name = localStorage.getItem('zone_host_name')
+        if (zone_host_name) {
+            finalConfig.zoneHost = zone_host_name
+        } else {
+            zone_host_name = await tryGetZoneHostName(appid, window.location.host, finalConfig.defaultProtocol)
+            localStorage.setItem('zone_host_name', zone_host_name)
+            finalConfig.zoneHost = zone_host_name
+        }
     }
+
+    _currentRuntime = new BuckyOSRuntime(finalConfig)
 }
 
 
@@ -107,29 +89,24 @@ function removeEvent(cookie_id:string) {
 }
 
 //return null if not login
-function getAccountInfo() : AccountInfo|null {
+function getAccountInfo(): AccountInfo | null {
     //TODO: implement
     if(_currentAccountInfo) {
         return _currentAccountInfo;
-    }
-
-    if (_currentConfig == null) {
-        console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
-        return null;
     }
 
     return null;
 }
 
 
-async function login(auto_login:boolean=true) : Promise<AccountInfo|null> {
-    if(_currentConfig == null) {
-        console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
-        return null;
+async function login(auto_login: boolean = true): Promise<AccountInfo | null> {
+    if (_currentRuntime == null) {
+        console.error('BuckyOS WebSDK is not initialized,call initBuckyOS first')
+        return null
     }
     let appId = getAppId();
     if(appId == null) {
-        console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
+        console.error('BuckyOS WebSDK is not initialized,call initBuckyOS first')
         return null;
     }
 
@@ -141,19 +118,20 @@ async function login(auto_login:boolean=true) : Promise<AccountInfo|null> {
         } 
     }   
 
-    cleanLocalAccountInfo(appId);
+    cleanLocalAccountInfo(appId)
     //use auth_client to login
-    let zone_host_name = getZoneHostName();
+    let zone_host_name = getZoneHostName()
     if(zone_host_name == null) {
-        console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
-        return null;
+        console.error('BuckyOS WebSDK is not initialized,call initBuckyOS first')
+        return null
     }
     try {
         let auth_client = new AuthClient(zone_host_name,appId);
         let account_info = await auth_client.login();
         if (account_info) {
             saveLocalAccountInfo(appId,account_info);
-            _currentAccountInfo = account_info;   
+            _currentAccountInfo = account_info;  
+            _currentRuntime.setSessionToken(account_info.session_token)
         }
         return account_info;
     } catch (error) {
@@ -164,7 +142,7 @@ async function login(auto_login:boolean=true) : Promise<AccountInfo|null> {
     
 
 function logout(clean_account_info:boolean=true) {
-    if(_currentConfig == null) {
+    if(_currentRuntime == null) {
         console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
         return;
     }
@@ -182,6 +160,7 @@ function logout(clean_account_info:boolean=true) {
     if(clean_account_info) {
         cleanLocalAccountInfo(appId);
     }
+    _currentRuntime.setSessionToken(null);
 }
 
 function getAppSetting(setting_name:string|null=null) {
@@ -193,32 +172,34 @@ function setAppSetting(setting_name:string|null=null, setting_value:string) {
 }
 
 function getZoneHostName() :string|null {
-    if(_currentConfig == null) {
+    if(_currentRuntime == null) {
         console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
         return null;
     }
-    return _currentConfig.zoneHost;
+    return _currentRuntime.getZoneHostName();
 }
 
 function getZoneServiceURL(service_name:string) :string {
-    return "/kapi/" + service_name + "/";
+    if(_currentRuntime == null) {
+        throw new Error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
+    }
+    return _currentRuntime.getZoneServiceURL(service_name);
 }
 
 function getServiceRpcClient(service_name:string) :kRPCClient {
-    if(_currentConfig == null) {
+    if(_currentRuntime == null) {
         console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
         throw new Error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
     }
-    let session_token = null;
     if(_currentAccountInfo) {
-        session_token = _currentAccountInfo.session_token;
+        _currentRuntime.setSessionToken(_currentAccountInfo.session_token);
     }
-    return new kRPCClient(getZoneServiceURL(service_name),session_token);
+    return _currentRuntime.getServiceRpcClient(service_name);
 }
 
 function getAppId() {
-    if(_currentConfig) {
-        return _currentConfig.appId;
+    if(_currentRuntime) {
+        return _currentRuntime.getAppId();
     }
 
     console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
@@ -226,7 +207,15 @@ function getAppId() {
 }
 
 function getBuckyOSConfig() {
-    return _currentConfig;
+    return _currentRuntime?.getConfig() ?? null;
+}
+
+function getVerifyHubClient() : VerifyHubClient {
+    if(_currentRuntime == null) {
+        console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
+        throw new Error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
+    }
+    return _currentRuntime.getVerifyHubClient();
 }
 
 async function getCurrentWalletUser () : Promise<any> {
@@ -271,5 +260,9 @@ export const buckyos = {
     getZoneHostName,
     getZoneServiceURL,
     getServiceRpcClient,
+    getVerifyHubClient,
 }
 
+export type { BuckyOSConfig }
+export { RuntimeType }
+export { VerifyHubClient }

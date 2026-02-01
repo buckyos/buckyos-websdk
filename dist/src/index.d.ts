@@ -1,18 +1,8 @@
-import { kRPCClient } from "./krpc_client";
-import { AuthClient } from "./auth_client";
-import { hashPassword, AccountInfo, doLogin } from "./account";
-export declare enum RuntimeType {
-    Browser = "Browser",
-    NodeJS = "NodeJS",
-    AppRuntime = "AppRuntime",
-    Unknown = "Unknown"
-}
-export interface BuckyOSConfig {
-    zoneHost: string;
-    appId: string;
-    defaultProtocol: string;
-    runtimeType: RuntimeType;
-}
+import { kRPCClient } from './krpc_client';
+import { AuthClient } from './auth_client';
+import { hashPassword, AccountInfo, doLogin } from './account';
+import { BuckyOSConfig, RuntimeType } from './runtime';
+import { VerifyHubClient } from './verify-hub-client';
 export declare const WEB3_BRIDGE_HOST = "web3.buckyos.ai";
 export declare const BS_SERVICE_VERIFY_HUB = "verify-hub";
 declare function initBuckyOS(appid: string, config?: BuckyOSConfig | null): Promise<void>;
@@ -29,6 +19,7 @@ declare function getZoneServiceURL(service_name: string): string;
 declare function getServiceRpcClient(service_name: string): kRPCClient;
 declare function getAppId(): string | null;
 declare function getBuckyOSConfig(): BuckyOSConfig | null;
+declare function getVerifyHubClient(): VerifyHubClient;
 declare function getCurrentWalletUser(): Promise<any>;
 declare function walletSignWithActiveDid(payloads: Record<string, unknown>[]): Promise<string[] | null>;
 export declare const buckyos: {
@@ -52,6 +43,9 @@ export declare const buckyos: {
     getZoneHostName: typeof getZoneHostName;
     getZoneServiceURL: typeof getZoneServiceURL;
     getServiceRpcClient: typeof getServiceRpcClient;
+    getVerifyHubClient: typeof getVerifyHubClient;
 };
-export {};
+export type { BuckyOSConfig };
+export { RuntimeType };
+export { VerifyHubClient };
 //# sourceMappingURL=index.d.ts.map

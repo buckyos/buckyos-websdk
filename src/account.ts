@@ -1,5 +1,6 @@
 import jsSHA from 'jssha';
-import {buckyos,BS_SERVICE_VERIFY_HUB} from './index';
+import { buckyos } from './index'
+import { VerifyHubClient } from './verify-hub-client'
 
 export interface AccountInfo {
     user_name: string;
@@ -76,15 +77,22 @@ export async function doLogin(username:string, password:string) {
     localStorage.removeItem("account_info");
     
     try {
-        let rpc_client = buckyos.getServiceRpcClient(BS_SERVICE_VERIFY_HUB);
-        rpc_client.setSeq(login_nonce);
-        let account_info = await rpc_client.call("login", {
-            type: "password",
+        let verify_hub_client = buckyos.getVerifyHubClient();
+        verify_hub_client.setSeq(login_nonce);
+        let account_response = await verify_hub_client.loginByPassword({
             username: username,
             password: password_hash,
             appid: appId,
-            source_url:window.location.href
-        }) as AccountInfo;
+            source_url: window.location.href,
+        });
+
+        const normalized = VerifyHubClient.normalizeLoginResponse(account_response);
+        const account_info: AccountInfo = {
+            user_name: normalized.user_name,
+            user_id: normalized.user_id,
+            user_type: normalized.user_type,
+            session_token: normalized.session_token,
+        };
 
         saveLocalAccountInfo(appId, account_info);
         return account_info;
@@ -93,5 +101,3 @@ export async function doLogin(username:string, password:string) {
         throw error;
     }
 }
-
-

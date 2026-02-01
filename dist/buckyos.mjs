@@ -4,31 +4,75 @@ class RPCError extends Error {
     this.name = "RPCError";
   }
 }
+const hasWindowFetch = typeof window !== "undefined" && typeof window.fetch === "function";
+const hasGlobalFetch = typeof globalThis !== "undefined" && typeof globalThis.fetch === "function";
+const defaultFetcher = hasWindowFetch ? window.fetch.bind(window) : hasGlobalFetch ? globalThis.fetch.bind(globalThis) : async () => {
+  throw new RPCError("fetch is not available in this runtime");
+};
 class kRPCClient {
-  constructor(url, token = null, seq = null) {
+  constructor(url, token = null, seq = null, fetcher = defaultFetcher) {
     this.serverUrl = url;
     this.protocolType = "HttpPostJson";
-    this.seq = seq ? seq : Date.now();
+    this.seq = seq ?? Date.now();
     this.sessionToken = token || null;
     this.initToken = token || null;
+    this.fetcher = fetcher;
   }
-  // 公开的调用方法
   async call(method, params) {
     return this._call(method, params);
   }
   setSeq(seq) {
     this.seq = seq;
   }
+  resetSessionToken() {
+    this.sessionToken = this.initToken;
+  }
+  setSessionToken(token) {
+    this.sessionToken = token;
+  }
+  getSessionToken() {
+    return this.sessionToken;
+  }
+  buildRequest(method, params, seq) {
+    const sys = this.sessionToken ? [seq, this.sessionToken] : [seq];
+    return {
+      method,
+      params,
+      sys
+    };
+  }
+  parseSys(sys, currentSeq) {
+    if (sys === void 0 || sys === null) {
+      return null;
+    }
+    if (!Array.isArray(sys)) {
+      throw new RPCError("sys is not array");
+    }
+    if (sys.length < 1) {
+      throw new RPCError("sys is empty");
+    }
+    const responseSeq = sys[0];
+    if (typeof responseSeq !== "number") {
+      throw new RPCError("sys[0] is not number");
+    }
+    if (responseSeq !== currentSeq) {
+      throw new RPCError(`seq not match: ${responseSeq}!=${currentSeq}`);
+    }
+    if (sys.length >= 2) {
+      const token = sys[1];
+      if (typeof token !== "string") {
+        throw new RPCError("sys[1] is not string");
+      }
+      return token;
+    }
+    return null;
+  }
   async _call(method, params) {
     const currentSeq = this.seq;
     this.seq += 1;
-    const requestBody = {
-      method,
-      params,
-      sys: this.sessionToken ? [currentSeq, this.sessionToken] : [currentSeq]
-    };
+    const requestBody = this.buildRequest(method, params, currentSeq);
     try {
-      const response = await window.fetch(this.serverUrl, {
+      const response = await this.fetcher(this.serverUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
@@ -39,30 +83,15 @@ class kRPCClient {
         throw new RPCError(`RPC call error: ${response.status}`);
       }
       const rpcResponse = await response.json();
-      if (rpcResponse.sys) {
-        const sys = rpcResponse.sys;
-        if (!Array.isArray(sys)) {
-          throw new RPCError("sys is not array");
-        }
-        if (sys.length > 1) {
-          const responseSeq = sys[0];
-          if (typeof responseSeq !== "number") {
-            throw new RPCError("sys[0] is not number");
-          }
-          if (responseSeq !== currentSeq) {
-            throw new RPCError(`seq not match: ${responseSeq}!=${currentSeq}`);
-          }
-        }
-        if (sys.length > 2) {
-          const token = sys[1];
-          if (typeof token !== "string") {
-            throw new RPCError("sys[1] is not string");
-          }
-          this.sessionToken = token;
-        }
+      const updatedToken = this.parseSys(rpcResponse.sys, currentSeq);
+      if (updatedToken) {
+        this.sessionToken = updatedToken;
       }
-      if (rpcResponse.error) {
+      if ("error" in rpcResponse && rpcResponse.error) {
         throw new RPCError(`RPC call error: ${rpcResponse.error}`);
+      }
+      if (!("result" in rpcResponse) || rpcResponse.result === void 0) {
+        throw new RPCError("RPC response missing result");
       }
       return rpcResponse.result;
     } catch (error) {
@@ -776,6 +805,59 @@ class ht {
     return this.P.getHMAC(t2, n2);
   }
 }
+class VerifyHubClient {
+  constructor(rpcClient) {
+    this.rpcClient = rpcClient;
+  }
+  setSeq(seq) {
+    this.rpcClient.setSeq(seq);
+  }
+  async loginByJwt(params) {
+    this.rpcClient.resetSessionToken();
+    const payload = {
+      type: "jwt",
+      jwt: params.jwt
+    };
+    if (params.login_params) {
+      Object.assign(payload, params.login_params);
+    }
+    return this.rpcClient.call("login_by_jwt", payload);
+  }
+  async loginByPassword(params) {
+    this.rpcClient.resetSessionToken();
+    const payload = {
+      type: "password",
+      username: params.username,
+      password: params.password,
+      appid: params.appid
+    };
+    if (params.source_url) {
+      payload.source_url = params.source_url;
+    }
+    return this.rpcClient.call("login_by_password", payload);
+  }
+  async refreshToken(params) {
+    return this.rpcClient.call("refresh_token", params);
+  }
+  async verifyToken(params) {
+    return this.rpcClient.call("verify_token", params);
+  }
+  static normalizeLoginResponse(response) {
+    if ("user_info" in response) {
+      return {
+        user_name: response.user_info.show_name,
+        user_id: response.user_info.user_id,
+        user_type: response.user_info.user_type,
+        session_token: response.session_token,
+        refresh_token: response.refresh_token
+      };
+    }
+    if (!response.session_token) {
+      throw new RPCError("login_by_password response missing session_token");
+    }
+    return response;
+  }
+}
 function hashPassword(username, password, nonce = null) {
   const shaObj = new ht("SHA-256", "TEXT", { encoding: "UTF8" });
   shaObj.update(password + username + ".buckyos");
@@ -832,15 +914,21 @@ async function doLogin(username, password) {
   console.log("password_hash: ", password_hash);
   localStorage.removeItem("account_info");
   try {
-    let rpc_client = buckyos.getServiceRpcClient(BS_SERVICE_VERIFY_HUB);
-    rpc_client.setSeq(login_nonce);
-    let account_info = await rpc_client.call("login", {
-      type: "password",
+    let verify_hub_client = buckyos.getVerifyHubClient();
+    verify_hub_client.setSeq(login_nonce);
+    let account_response = await verify_hub_client.loginByPassword({
       username,
       password: password_hash,
       appid: appId,
       source_url: window.location.href
     });
+    const normalized = VerifyHubClient.normalizeLoginResponse(account_response);
+    const account_info = {
+      user_name: normalized.user_name,
+      user_id: normalized.user_id,
+      user_type: normalized.user_type,
+      session_token: normalized.session_token
+    };
     saveLocalAccountInfo(appId, account_info);
     return account_info;
   } catch (error) {
@@ -855,10 +943,6 @@ var RuntimeType = /* @__PURE__ */ ((RuntimeType2) => {
   RuntimeType2["Unknown"] = "Unknown";
   return RuntimeType2;
 })(RuntimeType || {});
-const WEB3_BRIDGE_HOST = "web3.buckyos.ai";
-const BS_SERVICE_VERIFY_HUB = "verify-hub";
-var _currentConfig = null;
-var _currentAccountInfo = null;
 const DEFAULT_CONFIG = {
   zoneHost: "",
   appId: "",
@@ -866,6 +950,51 @@ const DEFAULT_CONFIG = {
   runtimeType: "Unknown"
   /* Unknown */
 };
+class BuckyOSRuntime {
+  constructor(config) {
+    this.config = config;
+    this.sessionToken = null;
+    this.refreshToken = null;
+  }
+  setConfig(config) {
+    this.config = config;
+  }
+  getConfig() {
+    return this.config;
+  }
+  getAppId() {
+    return this.config.appId;
+  }
+  getZoneHostName() {
+    return this.config.zoneHost;
+  }
+  getZoneServiceURL(serviceName) {
+    return `/kapi/${serviceName}/`;
+  }
+  setSessionToken(token) {
+    this.sessionToken = token;
+  }
+  setRefreshToken(token) {
+    this.refreshToken = token;
+  }
+  getSessionToken() {
+    return this.sessionToken;
+  }
+  getRefreshToken() {
+    return this.refreshToken;
+  }
+  getServiceRpcClient(serviceName) {
+    return new kRPCClient(this.getZoneServiceURL(serviceName), this.sessionToken);
+  }
+  getVerifyHubClient() {
+    const rpcClient = this.getServiceRpcClient("verify-hub");
+    return new VerifyHubClient(rpcClient);
+  }
+}
+const WEB3_BRIDGE_HOST = "web3.buckyos.ai";
+const BS_SERVICE_VERIFY_HUB = "verify-hub";
+var _currentRuntime = null;
+var _currentAccountInfo = null;
 async function tryGetZoneHostName(appid, host, default_protocol) {
   let zone_doc_url = default_protocol + host + "/1.0/identifiers/self";
   let response = await fetch(zone_doc_url);
@@ -882,39 +1011,41 @@ async function tryGetZoneHostName(appid, host, default_protocol) {
   return host;
 }
 async function initBuckyOS(appid, config = null) {
-  if (_currentConfig) {
+  if (_currentRuntime) {
     console.warn("BuckyOS WebSDK is already initialized!");
   }
-  if (config) {
-    _currentConfig = config;
-  } else {
-    config = DEFAULT_CONFIG;
-    config.appId = appid;
-    config.defaultProtocol = window.location.protocol + "//";
+  let finalConfig = config;
+  if (!finalConfig) {
+    finalConfig = {
+      ...DEFAULT_CONFIG,
+      appId: appid,
+      runtimeType: getRuntimeType(),
+      defaultProtocol: window.location.protocol + "//"
+    };
     let zone_host_name = localStorage.getItem("zone_host_name");
     if (zone_host_name) {
-      config.zoneHost = zone_host_name;
+      finalConfig.zoneHost = zone_host_name;
     } else {
-      zone_host_name = await tryGetZoneHostName(appid, window.location.host, config.defaultProtocol);
+      zone_host_name = await tryGetZoneHostName(appid, window.location.host, finalConfig.defaultProtocol);
       localStorage.setItem("zone_host_name", zone_host_name);
-      config.zoneHost = zone_host_name;
+      finalConfig.zoneHost = zone_host_name;
     }
-    return await initBuckyOS(appid, config);
   }
+  _currentRuntime = new BuckyOSRuntime(finalConfig);
 }
 function getRuntimeType() {
   var _a;
   if (typeof window !== "undefined") {
     if (window.BuckyApi) {
-      return "AppRuntime";
+      return RuntimeType.AppRuntime;
     }
-    return "Browser";
+    return RuntimeType.Browser;
   }
   const runtimeProcess = globalThis.process;
   if ((_a = runtimeProcess == null ? void 0 : runtimeProcess.versions) == null ? void 0 : _a.node) {
-    return "NodeJS";
+    return RuntimeType.NodeJS;
   }
-  return "Unknown";
+  return RuntimeType.Unknown;
 }
 function attachEvent(event_name, callback) {
 }
@@ -924,14 +1055,10 @@ function getAccountInfo() {
   if (_currentAccountInfo) {
     return _currentAccountInfo;
   }
-  if (_currentConfig == null) {
-    console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
-    return null;
-  }
   return null;
 }
 async function login(auto_login = true) {
-  if (_currentConfig == null) {
+  if (_currentRuntime == null) {
     console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
     return null;
   }
@@ -959,6 +1086,7 @@ async function login(auto_login = true) {
     if (account_info) {
       saveLocalAccountInfo(appId, account_info);
       _currentAccountInfo = account_info;
+      _currentRuntime.setSessionToken(account_info.session_token);
     }
     return account_info;
   } catch (error) {
@@ -967,7 +1095,7 @@ async function login(auto_login = true) {
   }
 }
 function logout(clean_account_info = true) {
-  if (_currentConfig == null) {
+  if (_currentRuntime == null) {
     console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
     return;
   }
@@ -983,41 +1111,51 @@ function logout(clean_account_info = true) {
   if (clean_account_info) {
     cleanLocalAccountInfo(appId);
   }
+  _currentRuntime.setSessionToken(null);
 }
 function getAppSetting(setting_name = null) {
 }
 function setAppSetting(setting_name = null, setting_value) {
 }
 function getZoneHostName() {
-  if (_currentConfig == null) {
+  if (_currentRuntime == null) {
     console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
     return null;
   }
-  return _currentConfig.zoneHost;
+  return _currentRuntime.getZoneHostName();
 }
 function getZoneServiceURL(service_name) {
-  return "/kapi/" + service_name + "/";
+  if (_currentRuntime == null) {
+    throw new Error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
+  }
+  return _currentRuntime.getZoneServiceURL(service_name);
 }
 function getServiceRpcClient(service_name) {
-  if (_currentConfig == null) {
+  if (_currentRuntime == null) {
     console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
     throw new Error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
   }
-  let session_token = null;
   if (_currentAccountInfo) {
-    session_token = _currentAccountInfo.session_token;
+    _currentRuntime.setSessionToken(_currentAccountInfo.session_token);
   }
-  return new kRPCClient(getZoneServiceURL(service_name), session_token);
+  return _currentRuntime.getServiceRpcClient(service_name);
 }
 function getAppId() {
-  if (_currentConfig) {
-    return _currentConfig.appId;
+  if (_currentRuntime) {
+    return _currentRuntime.getAppId();
   }
   console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
   return null;
 }
 function getBuckyOSConfig() {
-  return _currentConfig;
+  return (_currentRuntime == null ? void 0 : _currentRuntime.getConfig()) ?? null;
+}
+function getVerifyHubClient() {
+  if (_currentRuntime == null) {
+    console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
+    throw new Error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
+  }
+  return _currentRuntime.getVerifyHubClient();
 }
 async function getCurrentWalletUser() {
   const result = await window.BuckyApi.getCurrentUser();
@@ -1058,11 +1196,13 @@ const buckyos = {
   //add_web3_bridge,        
   getZoneHostName,
   getZoneServiceURL,
-  getServiceRpcClient
+  getServiceRpcClient,
+  getVerifyHubClient
 };
 export {
   BS_SERVICE_VERIFY_HUB,
   RuntimeType,
+  VerifyHubClient,
   WEB3_BRIDGE_HOST,
   buckyos
 };
