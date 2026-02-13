@@ -1,5 +1,6 @@
 import { kRPCClient } from './krpc_client'
 import { VerifyHubClient } from './verify-hub-client'
+import { TaskManagerClient } from './task_mgr_client'
 
 export enum RuntimeType {
   Browser = 'Browser',
@@ -76,5 +77,10 @@ export class BuckyOSRuntime {
   getVerifyHubClient(): VerifyHubClient {
     const rpcClient = this.getServiceRpcClient('verify-hub')
     return new VerifyHubClient(rpcClient)
+  }
+
+  getTaskManagerClient(): TaskManagerClient {
+    const rpcClient = this.getServiceRpcClient('task-manager')
+    return new TaskManagerClient(rpcClient)
   }
 }

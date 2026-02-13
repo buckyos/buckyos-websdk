@@ -3,10 +3,12 @@ import { AuthClient } from './auth_client'
 import { hashPassword, AccountInfo, doLogin, cleanLocalAccountInfo, getLocalAccountInfo, saveLocalAccountInfo } from './account'
 import { BuckyOSRuntime, BuckyOSConfig, DEFAULT_CONFIG, RuntimeType } from './runtime'
 import { VerifyHubClient } from './verify-hub-client'
+import { TaskManagerClient } from './task_mgr_client'
 
 export const WEB3_BRIDGE_HOST = "web3.buckyos.ai";
 
 export const BS_SERVICE_VERIFY_HUB = "verify-hub";
+export const BS_SERVICE_TASK_MANAGER = "task-manager";
 
 var _currentRuntime: BuckyOSRuntime | null = null;
 var _currentAccountInfo: AccountInfo | null = null;
@@ -218,6 +220,14 @@ function getVerifyHubClient() : VerifyHubClient {
     return _currentRuntime.getVerifyHubClient();
 }
 
+function getTaskManagerClient() : TaskManagerClient {
+    if(_currentRuntime == null) {
+        console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
+        throw new Error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
+    }
+    return _currentRuntime.getTaskManagerClient();
+}
+
 async function getCurrentWalletUser () : Promise<any> {
     const result : any = await (window as any).BuckyApi.getCurrentUser();
     if (result.code == 0) {
@@ -261,8 +271,10 @@ export const buckyos = {
     getZoneServiceURL,
     getServiceRpcClient,
     getVerifyHubClient,
+    getTaskManagerClient,
 }
 
 export type { BuckyOSConfig }
 export { RuntimeType }
 export { VerifyHubClient }
+export { TaskManagerClient }
