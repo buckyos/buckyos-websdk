@@ -1,6 +1,7 @@
 import { kRPCClient } from './krpc_client'
 import { VerifyHubClient } from './verify-hub-client'
 import { TaskManagerClient } from './task_mgr_client'
+import { OpenDanClient } from './opendan_client'
 
 export enum RuntimeType {
   Browser = 'Browser',
@@ -82,5 +83,10 @@ export class BuckyOSRuntime {
   getTaskManagerClient(): TaskManagerClient {
     const rpcClient = this.getServiceRpcClient('task-manager')
     return new TaskManagerClient(rpcClient)
+  }
+
+  getOpenDanClient(): OpenDanClient {
+    const rpcClient = this.getServiceRpcClient('opendan')
+    return new OpenDanClient(rpcClient)
   }
 }

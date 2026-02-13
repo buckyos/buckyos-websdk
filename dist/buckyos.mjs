@@ -936,6 +936,316 @@ async function doLogin(username, password) {
     throw error;
   }
 }
+function parseTaskStatus(status) {
+  switch (status) {
+    case "Pending":
+      return "Pending";
+    case "Running":
+      return "Running";
+    case "Paused":
+      return "Paused";
+    case "Completed":
+      return "Completed";
+    case "Failed":
+      return "Failed";
+    case "Canceled":
+      return "Canceled";
+    case "WaitingForApproval":
+      return "WaitingForApproval";
+    default:
+      throw new RPCError(`Invalid task status: ${status}`);
+  }
+}
+function isTerminalTaskStatus(status) {
+  return status === "Completed" || status === "Failed" || status === "Canceled";
+}
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+function asRecord(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new RPCError("Invalid RPC response format");
+  }
+  return value;
+}
+function parseTask(value) {
+  const record = asRecord(value);
+  const id = record.id;
+  const status = record.status;
+  if (typeof id !== "number") {
+    throw new RPCError("Invalid task payload: missing id");
+  }
+  if (typeof status !== "string") {
+    throw new RPCError("Invalid task payload: missing status");
+  }
+  return {
+    ...record,
+    status: parseTaskStatus(status)
+  };
+}
+function parseTasks(value) {
+  if (!Array.isArray(value)) {
+    throw new RPCError("Invalid tasks payload: expected array");
+  }
+  return value.map((task) => parseTask(task));
+}
+class TaskManagerClient {
+  constructor(rpcClient) {
+    this.rpcClient = rpcClient;
+  }
+  setSeq(seq) {
+    this.rpcClient.setSeq(seq);
+  }
+  async createTask(params) {
+    const options = params.options ?? {};
+    const req = {
+      name: params.name,
+      task_type: params.taskType,
+      data: params.data,
+      permissions: options.permissions,
+      parent_id: options.parent_id,
+      priority: options.priority,
+      user_id: params.userId,
+      app_id: params.appId,
+      app_name: params.appId || void 0
+    };
+    const result = await this.rpcClient.call("create_task", req);
+    const parsed = asRecord(result);
+    if ("task" in parsed) {
+      return parseTask(parsed.task);
+    }
+    const taskId = parsed.task_id;
+    if (typeof taskId === "number") {
+      return this.getTask(taskId);
+    }
+    throw new RPCError("Expected CreateTaskResult response");
+  }
+  async getTask(id) {
+    const req = { id };
+    const result = await this.rpcClient.call("get_task", req);
+    const parsed = asRecord(result);
+    if ("task" in parsed) {
+      return parseTask(parsed.task);
+    }
+    return parseTask(result);
+  }
+  async waitForTaskEnd(id) {
+    return this.waitForTaskEndWithInterval(id, 500);
+  }
+  async waitForTaskEndWithInterval(id, pollIntervalMs) {
+    if (!Number.isFinite(pollIntervalMs) || pollIntervalMs <= 0) {
+      throw new RPCError("pollIntervalMs must be greater than 0");
+    }
+    while (true) {
+      const task = await this.getTask(id);
+      if (isTerminalTaskStatus(task.status)) {
+        return task.status;
+      }
+      await sleep(pollIntervalMs);
+    }
+  }
+  async listTasks(params = {}) {
+    const filter = params.filter ?? {};
+    const req = {
+      app_id: filter.app_id,
+      task_type: filter.task_type,
+      status: filter.status,
+      parent_id: filter.parent_id,
+      root_id: filter.root_id,
+      source_user_id: params.sourceUserId,
+      source_app_id: params.sourceAppId
+    };
+    const result = await this.rpcClient.call("list_tasks", req);
+    const parsed = asRecord(result);
+    if ("tasks" in parsed) {
+      return parseTasks(parsed.tasks);
+    }
+    throw new RPCError("Expected tasks in response");
+  }
+  async listTasksByTimeRange(params) {
+    const req = {
+      app_id: params.appId,
+      task_type: params.taskType,
+      source_user_id: params.sourceUserId,
+      source_app_id: params.sourceAppId,
+      start_time: params.startTime,
+      end_time: params.endTime
+    };
+    const result = await this.rpcClient.call("list_tasks_by_time_range", req);
+    const parsed = asRecord(result);
+    if ("tasks" in parsed) {
+      return parseTasks(parsed.tasks);
+    }
+    throw new RPCError("Expected tasks in response");
+  }
+  async updateTask(payload) {
+    const req = {
+      id: payload.id,
+      status: payload.status,
+      progress: payload.progress,
+      message: payload.message,
+      data: payload.data
+    };
+    await this.rpcClient.call("update_task", req);
+  }
+  async cancelTask(id, recursive = false) {
+    const req = { id, recursive };
+    await this.rpcClient.call("cancel_task", req);
+  }
+  async getSubtasks(parentId) {
+    const req = { parent_id: parentId };
+    const result = await this.rpcClient.call("get_subtasks", req);
+    const parsed = asRecord(result);
+    if ("tasks" in parsed) {
+      return parseTasks(parsed.tasks);
+    }
+    throw new RPCError("Expected tasks in response");
+  }
+  async updateTaskStatus(id, status) {
+    const req = { id, status };
+    await this.rpcClient.call("update_task_status", req);
+  }
+  async updateTaskProgress(id, completedItems, totalItems) {
+    const req = {
+      id,
+      completed_items: completedItems,
+      total_items: totalItems
+    };
+    await this.rpcClient.call("update_task_progress", req);
+  }
+  async updateTaskError(id, errorMessage) {
+    const req = { id, error_message: errorMessage };
+    await this.rpcClient.call("update_task_error", req);
+  }
+  async updateTaskData(id, data) {
+    const req = { id, data };
+    await this.rpcClient.call("update_task_data", req);
+  }
+  async deleteTask(id) {
+    const req = { id };
+    await this.rpcClient.call("delete_task", req);
+  }
+  async pauseTask(id) {
+    await this.updateTaskStatus(
+      id,
+      "Paused"
+      /* Paused */
+    );
+  }
+  async resumeTask(id) {
+    await this.updateTaskStatus(
+      id,
+      "Running"
+      /* Running */
+    );
+  }
+  async completeTask(id) {
+    await this.updateTaskStatus(
+      id,
+      "Completed"
+      /* Completed */
+    );
+  }
+  async markTaskAsWaitingForApproval(id) {
+    await this.updateTaskStatus(
+      id,
+      "WaitingForApproval"
+      /* WaitingForApproval */
+    );
+  }
+  async markTaskAsFailed(id, errorMessage) {
+    await this.updateTaskError(id, errorMessage);
+    await this.updateTaskStatus(
+      id,
+      "Failed"
+      /* Failed */
+    );
+  }
+  async pauseAllRunningTasks(options = {}) {
+    const runningTasks = await this.listTasks({
+      filter: {
+        status: "Running"
+        /* Running */
+      },
+      sourceUserId: options.sourceUserId,
+      sourceAppId: options.sourceAppId
+    });
+    for (const task of runningTasks) {
+      await this.pauseTask(task.id);
+    }
+  }
+  async resumeLastPausedTask(options = {}) {
+    const pausedTasks = await this.listTasks({
+      filter: {
+        status: "Paused"
+        /* Paused */
+      },
+      sourceUserId: options.sourceUserId,
+      sourceAppId: options.sourceAppId
+    });
+    const lastPausedTask = pausedTasks[pausedTasks.length - 1];
+    if (!lastPausedTask) {
+      throw new RPCError("No paused tasks found");
+    }
+    await this.resumeTask(lastPausedTask.id);
+  }
+}
+class OpenDanClient {
+  constructor(rpcClient) {
+    this.rpcClient = rpcClient;
+  }
+  setSeq(seq) {
+    this.rpcClient.setSeq(seq);
+  }
+  async listAgents(params = {}) {
+    const req = {
+      status: params.status,
+      include_sub_agents: params.includeSubAgents,
+      limit: params.limit,
+      cursor: params.cursor
+    };
+    return this.rpcClient.call("list_agents", req);
+  }
+  async getAgent(agentId) {
+    const req = { agent_id: agentId };
+    return this.rpcClient.call("get_agent", req);
+  }
+  async getWorkspace(agentId) {
+    const req = { agent_id: agentId };
+    return this.rpcClient.call("get_workspace", req);
+  }
+  async listWorkspaceWorklogs(params) {
+    const req = {
+      agent_id: params.agentId,
+      log_type: params.logType,
+      status: params.status,
+      step_id: params.stepId,
+      keyword: params.keyword,
+      limit: params.limit,
+      cursor: params.cursor
+    };
+    return this.rpcClient.call("list_workspace_worklogs", req);
+  }
+  async listWorkspaceTodos(params) {
+    const req = {
+      agent_id: params.agentId,
+      status: params.status,
+      include_closed: params.includeClosed,
+      limit: params.limit,
+      cursor: params.cursor
+    };
+    return this.rpcClient.call("list_workspace_todos", req);
+  }
+  async listWorkspaceSubAgents(params) {
+    const req = {
+      agent_id: params.agentId,
+      include_disabled: params.includeDisabled,
+      limit: params.limit,
+      cursor: params.cursor
+    };
+    return this.rpcClient.call("list_workspace_sub_agents", req);
+  }
+}
 var RuntimeType = /* @__PURE__ */ ((RuntimeType2) => {
   RuntimeType2["Browser"] = "Browser";
   RuntimeType2["NodeJS"] = "NodeJS";
@@ -990,9 +1300,19 @@ class BuckyOSRuntime {
     const rpcClient = this.getServiceRpcClient("verify-hub");
     return new VerifyHubClient(rpcClient);
   }
+  getTaskManagerClient() {
+    const rpcClient = this.getServiceRpcClient("task-manager");
+    return new TaskManagerClient(rpcClient);
+  }
+  getOpenDanClient() {
+    const rpcClient = this.getServiceRpcClient("opendan");
+    return new OpenDanClient(rpcClient);
+  }
 }
 const WEB3_BRIDGE_HOST = "web3.buckyos.ai";
 const BS_SERVICE_VERIFY_HUB = "verify-hub";
+const BS_SERVICE_TASK_MANAGER = "task-manager";
+const BS_SERVICE_OPENDAN = "opendan";
 var _currentRuntime = null;
 var _currentAccountInfo = null;
 async function tryGetZoneHostName(appid, host, default_protocol) {
@@ -1157,6 +1477,20 @@ function getVerifyHubClient() {
   }
   return _currentRuntime.getVerifyHubClient();
 }
+function getTaskManagerClient() {
+  if (_currentRuntime == null) {
+    console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
+    throw new Error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
+  }
+  return _currentRuntime.getTaskManagerClient();
+}
+function getOpenDanClient() {
+  if (_currentRuntime == null) {
+    console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
+    throw new Error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
+  }
+  return _currentRuntime.getOpenDanClient();
+}
 async function getCurrentWalletUser() {
   const result = await window.BuckyApi.getCurrentUser();
   if (result.code == 0) {
@@ -1197,11 +1531,17 @@ const buckyos = {
   getZoneHostName,
   getZoneServiceURL,
   getServiceRpcClient,
-  getVerifyHubClient
+  getVerifyHubClient,
+  getTaskManagerClient,
+  getOpenDanClient
 };
 export {
+  BS_SERVICE_OPENDAN,
+  BS_SERVICE_TASK_MANAGER,
   BS_SERVICE_VERIFY_HUB,
+  OpenDanClient,
   RuntimeType,
+  TaskManagerClient,
   VerifyHubClient,
   WEB3_BRIDGE_HOST,
   buckyos

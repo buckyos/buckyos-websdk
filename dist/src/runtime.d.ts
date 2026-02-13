@@ -1,5 +1,7 @@
 import { kRPCClient } from './krpc_client';
 import { VerifyHubClient } from './verify-hub-client';
+import { TaskManagerClient } from './task_mgr_client';
+import { OpenDanClient } from './opendan_client';
 export declare enum RuntimeType {
     Browser = "Browser",
     NodeJS = "NodeJS",
@@ -29,5 +31,7 @@ export declare class BuckyOSRuntime {
     getRefreshToken(): string | null;
     getServiceRpcClient(serviceName: string): kRPCClient;
     getVerifyHubClient(): VerifyHubClient;
+    getTaskManagerClient(): TaskManagerClient;
+    getOpenDanClient(): OpenDanClient;
 }
 //# sourceMappingURL=runtime.d.ts.map

@@ -18,6 +18,10 @@ declare class AuthClient {
     _openAuthWindow(redirect_uri?: string | null): Promise<string>;
 }
 
+export declare const BS_SERVICE_OPENDAN = "opendan";
+
+export declare const BS_SERVICE_TASK_MANAGER = "task-manager";
+
 export declare const BS_SERVICE_VERIFY_HUB = "verify-hub";
 
 export declare const buckyos: {
@@ -42,6 +46,8 @@ export declare const buckyos: {
     getZoneServiceURL: typeof getZoneServiceURL;
     getServiceRpcClient: typeof getServiceRpcClient;
     getVerifyHubClient: typeof getVerifyHubClient;
+    getTaskManagerClient: typeof getTaskManagerClient;
+    getOpenDanClient: typeof getOpenDanClient;
 };
 
 export declare interface BuckyOSConfig {
@@ -49,6 +55,21 @@ export declare interface BuckyOSConfig {
     appId: string;
     defaultProtocol: string;
     runtimeType: RuntimeType;
+}
+
+declare interface CreateTaskOptions {
+    permissions?: TaskPermissions;
+    parent_id?: number;
+    priority?: number;
+}
+
+declare interface CreateTaskParams {
+    name: string;
+    taskType: string;
+    data?: unknown;
+    userId: string;
+    appId: string;
+    options?: CreateTaskOptions;
 }
 
 declare function doLogin(username: string, password: string): Promise<AccountInfo | null>;
@@ -65,9 +86,13 @@ declare function getBuckyOSConfig(): BuckyOSConfig | null;
 
 declare function getCurrentWalletUser(): Promise<any>;
 
+declare function getOpenDanClient(): OpenDanClient;
+
 declare function getRuntimeType(): RuntimeType;
 
 declare function getServiceRpcClient(service_name: string): kRPCClient;
+
+declare function getTaskManagerClient(): TaskManagerClient;
 
 declare function getVerifyHubClient(): VerifyHubClient;
 
@@ -105,6 +130,53 @@ declare interface LegacyLoginByPasswordResponse {
     refresh_token?: string;
 }
 
+declare interface ListAgentsParams {
+    status?: string;
+    includeSubAgents?: boolean;
+    limit?: number;
+    cursor?: string;
+}
+
+declare interface ListTasksByTimeRangeParams {
+    appId?: string;
+    taskType?: string;
+    sourceUserId?: string;
+    sourceAppId?: string;
+    startTime: number;
+    endTime: number;
+}
+
+declare interface ListTasksParams {
+    filter?: TaskFilter;
+    sourceUserId?: string;
+    sourceAppId?: string;
+}
+
+declare interface ListWorkspaceSubAgentsParams {
+    agentId: string;
+    includeDisabled?: boolean;
+    limit?: number;
+    cursor?: string;
+}
+
+declare interface ListWorkspaceTodosParams {
+    agentId: string;
+    status?: string;
+    includeClosed?: boolean;
+    limit?: number;
+    cursor?: string;
+}
+
+declare interface ListWorkspaceWorklogsParams {
+    agentId: string;
+    logType?: string;
+    status?: string;
+    stepId?: string;
+    keyword?: string;
+    limit?: number;
+    cursor?: string;
+}
+
 declare function login(auto_login?: boolean): Promise<AccountInfo | null>;
 
 declare interface LoginByJwtParams {
@@ -127,6 +199,107 @@ declare interface LoginByPasswordResponse {
 
 declare function logout(clean_account_info?: boolean): void;
 
+declare interface OpenDanAgentInfo {
+    agent_id: string;
+    agent_name?: string;
+    agent_type?: string;
+    status?: string;
+    parent_agent_id?: string;
+    current_run_id?: string;
+    workspace_id?: string;
+    workspace_path?: string;
+    last_active_at?: string;
+    updated_at?: number;
+    extra?: unknown;
+}
+
+declare interface OpenDanAgentListResult {
+    items: OpenDanAgentInfo[];
+    next_cursor?: string;
+    total?: number;
+}
+
+export declare class OpenDanClient {
+    private rpcClient;
+    constructor(rpcClient: kRPCClient);
+    setSeq(seq: number): void;
+    listAgents(params?: ListAgentsParams): Promise<OpenDanAgentListResult>;
+    getAgent(agentId: string): Promise<OpenDanAgentInfo>;
+    getWorkspace(agentId: string): Promise<OpenDanWorkspaceInfo>;
+    listWorkspaceWorklogs(params: ListWorkspaceWorklogsParams): Promise<OpenDanWorkspaceWorklogsResult>;
+    listWorkspaceTodos(params: ListWorkspaceTodosParams): Promise<OpenDanWorkspaceTodosResult>;
+    listWorkspaceSubAgents(params: ListWorkspaceSubAgentsParams): Promise<OpenDanWorkspaceSubAgentsResult>;
+}
+
+declare interface OpenDanSubAgentInfo {
+    agent_id: string;
+    agent_name?: string;
+    status?: string;
+    current_run_id?: string;
+    last_active_at?: string;
+    workspace_id?: string;
+    workspace_path?: string;
+    extra?: unknown;
+}
+
+declare interface OpenDanTodoItem {
+    todo_id: string;
+    title: string;
+    status: string;
+    agent_id?: string;
+    description?: string;
+    created_at?: number;
+    completed_at?: number;
+    created_in_step_id?: string;
+    completed_in_step_id?: string;
+    extra?: unknown;
+}
+
+declare interface OpenDanWorklogItem {
+    log_id: string;
+    log_type: string;
+    status: string;
+    timestamp: number;
+    agent_id?: string;
+    related_agent_id?: string;
+    step_id?: string;
+    summary?: string;
+    payload?: unknown;
+}
+
+declare interface OpenDanWorkspaceInfo {
+    workspace_id: string;
+    agent_id: string;
+    workspace_path?: string;
+    todo_db_path?: string;
+    worklog_db_path?: string;
+    summary?: unknown;
+    extra?: unknown;
+}
+
+declare interface OpenDanWorkspaceSubAgentsResult {
+    items: OpenDanSubAgentInfo[];
+    next_cursor?: string;
+    total?: number;
+}
+
+declare interface OpenDanWorkspaceTodosResult {
+    items: OpenDanTodoItem[];
+    next_cursor?: string;
+    total?: number;
+}
+
+declare interface OpenDanWorkspaceWorklogsResult {
+    items: OpenDanWorklogItem[];
+    next_cursor?: string;
+    total?: number;
+}
+
+declare interface PauseResumeOptions {
+    sourceUserId?: string;
+    sourceAppId?: string;
+}
+
 declare interface RefreshTokenParams {
     refresh_token: string;
 }
@@ -141,6 +314,87 @@ export declare enum RuntimeType {
 }
 
 declare function setAppSetting(setting_name: string | null | undefined, setting_value: string): void;
+
+declare interface Task {
+    id: number;
+    user_id: string;
+    app_id: string;
+    parent_id: number | null;
+    root_id: number | null;
+    name: string;
+    task_type: string;
+    status: TaskStatus;
+    progress: number;
+    message: string | null;
+    data: unknown;
+    permissions: TaskPermissions;
+    created_at: number;
+    updated_at: number;
+}
+
+declare interface TaskFilter {
+    app_id?: string;
+    task_type?: string;
+    status?: TaskStatus;
+    parent_id?: number;
+    root_id?: number;
+}
+
+export declare class TaskManagerClient {
+    private rpcClient;
+    constructor(rpcClient: kRPCClient);
+    setSeq(seq: number): void;
+    createTask(params: CreateTaskParams): Promise<Task>;
+    getTask(id: number): Promise<Task>;
+    waitForTaskEnd(id: number): Promise<TaskStatus>;
+    waitForTaskEndWithInterval(id: number, pollIntervalMs: number): Promise<TaskStatus>;
+    listTasks(params?: ListTasksParams): Promise<Task[]>;
+    listTasksByTimeRange(params: ListTasksByTimeRangeParams): Promise<Task[]>;
+    updateTask(payload: TaskUpdatePayload): Promise<void>;
+    cancelTask(id: number, recursive?: boolean): Promise<void>;
+    getSubtasks(parentId: number): Promise<Task[]>;
+    updateTaskStatus(id: number, status: TaskStatus): Promise<void>;
+    updateTaskProgress(id: number, completedItems: number, totalItems: number): Promise<void>;
+    updateTaskError(id: number, errorMessage: string): Promise<void>;
+    updateTaskData(id: number, data: unknown): Promise<void>;
+    deleteTask(id: number): Promise<void>;
+    pauseTask(id: number): Promise<void>;
+    resumeTask(id: number): Promise<void>;
+    completeTask(id: number): Promise<void>;
+    markTaskAsWaitingForApproval(id: number): Promise<void>;
+    markTaskAsFailed(id: number, errorMessage: string): Promise<void>;
+    pauseAllRunningTasks(options?: PauseResumeOptions): Promise<void>;
+    resumeLastPausedTask(options?: PauseResumeOptions): Promise<void>;
+}
+
+declare interface TaskPermissions {
+    read: TaskScope;
+    write: TaskScope;
+}
+
+declare enum TaskScope {
+    Private = "Private",
+    User = "User",
+    System = "System"
+}
+
+declare enum TaskStatus {
+    Pending = "Pending",
+    Running = "Running",
+    Paused = "Paused",
+    Completed = "Completed",
+    Failed = "Failed",
+    Canceled = "Canceled",
+    WaitingForApproval = "WaitingForApproval"
+}
+
+declare interface TaskUpdatePayload {
+    id: number;
+    status?: TaskStatus;
+    progress?: number;
+    message?: string;
+    data?: unknown;
+}
 
 declare interface TokenPair {
     session_token: string;

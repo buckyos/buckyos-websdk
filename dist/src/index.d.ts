@@ -3,8 +3,12 @@ import { AuthClient } from './auth_client';
 import { hashPassword, AccountInfo, doLogin } from './account';
 import { BuckyOSConfig, RuntimeType } from './runtime';
 import { VerifyHubClient } from './verify-hub-client';
+import { TaskManagerClient } from './task_mgr_client';
+import { OpenDanClient } from './opendan_client';
 export declare const WEB3_BRIDGE_HOST = "web3.buckyos.ai";
 export declare const BS_SERVICE_VERIFY_HUB = "verify-hub";
+export declare const BS_SERVICE_TASK_MANAGER = "task-manager";
+export declare const BS_SERVICE_OPENDAN = "opendan";
 declare function initBuckyOS(appid: string, config?: BuckyOSConfig | null): Promise<void>;
 declare function getRuntimeType(): RuntimeType;
 declare function attachEvent(event_name: string, callback: Function): void;
@@ -20,6 +24,8 @@ declare function getServiceRpcClient(service_name: string): kRPCClient;
 declare function getAppId(): string | null;
 declare function getBuckyOSConfig(): BuckyOSConfig | null;
 declare function getVerifyHubClient(): VerifyHubClient;
+declare function getTaskManagerClient(): TaskManagerClient;
+declare function getOpenDanClient(): OpenDanClient;
 declare function getCurrentWalletUser(): Promise<any>;
 declare function walletSignWithActiveDid(payloads: Record<string, unknown>[]): Promise<string[] | null>;
 export declare const buckyos: {
@@ -44,8 +50,12 @@ export declare const buckyos: {
     getZoneServiceURL: typeof getZoneServiceURL;
     getServiceRpcClient: typeof getServiceRpcClient;
     getVerifyHubClient: typeof getVerifyHubClient;
+    getTaskManagerClient: typeof getTaskManagerClient;
+    getOpenDanClient: typeof getOpenDanClient;
 };
 export type { BuckyOSConfig };
 export { RuntimeType };
 export { VerifyHubClient };
+export { TaskManagerClient };
+export { OpenDanClient };
 //# sourceMappingURL=index.d.ts.map
