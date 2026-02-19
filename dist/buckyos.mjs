@@ -1210,13 +1210,17 @@ class OpenDanClient {
     const req = { agent_id: agentId };
     return this.rpcClient.call("get_agent", req);
   }
-  async getWorkspace(agentId) {
+  async getWorkshop(agentId) {
     const req = { agent_id: agentId };
-    return this.rpcClient.call("get_workspace", req);
+    return this.rpcClient.call("get_workshop", req);
   }
-  async listWorkspaceWorklogs(params) {
+  async getWorkspace(agentId) {
+    return this.getWorkshop(agentId);
+  }
+  async listWorkshopWorklogs(params) {
     const req = {
       agent_id: params.agentId,
+      owner_session_id: params.ownerSessionId,
       log_type: params.logType,
       status: params.status,
       step_id: params.stepId,
@@ -1224,26 +1228,57 @@ class OpenDanClient {
       limit: params.limit,
       cursor: params.cursor
     };
-    return this.rpcClient.call("list_workspace_worklogs", req);
+    return this.rpcClient.call("list_workshop_worklogs", req);
   }
-  async listWorkspaceTodos(params) {
+  async listWorkspaceWorklogs(params) {
+    return this.listWorkshopWorklogs(params);
+  }
+  async listWorkshopTodos(params) {
     const req = {
       agent_id: params.agentId,
+      owner_session_id: params.ownerSessionId,
       status: params.status,
       include_closed: params.includeClosed,
       limit: params.limit,
       cursor: params.cursor
     };
-    return this.rpcClient.call("list_workspace_todos", req);
+    return this.rpcClient.call("list_workshop_todos", req);
   }
-  async listWorkspaceSubAgents(params) {
+  async listWorkspaceTodos(params) {
+    return this.listWorkshopTodos(params);
+  }
+  async listWorkshopSubAgents(params) {
     const req = {
       agent_id: params.agentId,
       include_disabled: params.includeDisabled,
       limit: params.limit,
       cursor: params.cursor
     };
-    return this.rpcClient.call("list_workspace_sub_agents", req);
+    return this.rpcClient.call("list_workshop_sub_agents", req);
+  }
+  async listWorkspaceSubAgents(params) {
+    return this.listWorkshopSubAgents(params);
+  }
+  async listAgentSessions(params) {
+    const req = {
+      agent_id: params.agentId,
+      limit: params.limit,
+      cursor: params.cursor
+    };
+    return this.rpcClient.call("list_agent_sessions", req);
+  }
+  async getAgentSession(agentId, sessionId) {
+    const req = {
+      agent_id: agentId,
+      session_id: sessionId
+    };
+    return this.rpcClient.call("get_agent_session", req);
+  }
+  async getSessionRecord(sessionId) {
+    const req = {
+      session_id: sessionId
+    };
+    return this.rpcClient.call("get_session_record", req);
   }
 }
 var RuntimeType = /* @__PURE__ */ ((RuntimeType2) => {

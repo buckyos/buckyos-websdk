@@ -130,6 +130,12 @@ declare interface LegacyLoginByPasswordResponse {
     refresh_token?: string;
 }
 
+declare interface ListAgentSessionsParams {
+    agentId: string;
+    limit?: number;
+    cursor?: string;
+}
+
 declare interface ListAgentsParams {
     status?: string;
     includeSubAgents?: boolean;
@@ -152,6 +158,33 @@ declare interface ListTasksParams {
     sourceAppId?: string;
 }
 
+declare interface ListWorkshopSubAgentsParams {
+    agentId: string;
+    includeDisabled?: boolean;
+    limit?: number;
+    cursor?: string;
+}
+
+declare interface ListWorkshopTodosParams {
+    agentId: string;
+    ownerSessionId: string;
+    status?: string;
+    includeClosed?: boolean;
+    limit?: number;
+    cursor?: string;
+}
+
+declare interface ListWorkshopWorklogsParams {
+    agentId: string;
+    ownerSessionId: string;
+    logType?: string;
+    status?: string;
+    stepId?: string;
+    keyword?: string;
+    limit?: number;
+    cursor?: string;
+}
+
 declare interface ListWorkspaceSubAgentsParams {
     agentId: string;
     includeDisabled?: boolean;
@@ -161,6 +194,7 @@ declare interface ListWorkspaceSubAgentsParams {
 
 declare interface ListWorkspaceTodosParams {
     agentId: string;
+    ownerSessionId: string;
     status?: string;
     includeClosed?: boolean;
     limit?: number;
@@ -169,6 +203,7 @@ declare interface ListWorkspaceTodosParams {
 
 declare interface ListWorkspaceWorklogsParams {
     agentId: string;
+    ownerSessionId: string;
     logType?: string;
     status?: string;
     stepId?: string;
@@ -219,16 +254,50 @@ declare interface OpenDanAgentListResult {
     total?: number;
 }
 
+declare interface OpenDanAgentSessionListResult {
+    items: string[];
+    next_cursor?: string;
+    total?: number;
+}
+
+declare interface OpenDanAgentSessionRecord {
+    session_id: string;
+    owner_agent: string;
+    title: string;
+    summary: string;
+    status: string;
+    created_at_ms: number;
+    updated_at_ms: number;
+    last_activity_ms: number;
+    links: OpenDanSessionLink[];
+    tags: string[];
+    meta: unknown;
+}
+
 export declare class OpenDanClient {
     private rpcClient;
     constructor(rpcClient: kRPCClient);
     setSeq(seq: number): void;
     listAgents(params?: ListAgentsParams): Promise<OpenDanAgentListResult>;
     getAgent(agentId: string): Promise<OpenDanAgentInfo>;
+    getWorkshop(agentId: string): Promise<OpenDanWorkspaceInfo>;
     getWorkspace(agentId: string): Promise<OpenDanWorkspaceInfo>;
+    listWorkshopWorklogs(params: ListWorkshopWorklogsParams): Promise<OpenDanWorkspaceWorklogsResult>;
     listWorkspaceWorklogs(params: ListWorkspaceWorklogsParams): Promise<OpenDanWorkspaceWorklogsResult>;
+    listWorkshopTodos(params: ListWorkshopTodosParams): Promise<OpenDanWorkspaceTodosResult>;
     listWorkspaceTodos(params: ListWorkspaceTodosParams): Promise<OpenDanWorkspaceTodosResult>;
+    listWorkshopSubAgents(params: ListWorkshopSubAgentsParams): Promise<OpenDanWorkspaceSubAgentsResult>;
     listWorkspaceSubAgents(params: ListWorkspaceSubAgentsParams): Promise<OpenDanWorkspaceSubAgentsResult>;
+    listAgentSessions(params: ListAgentSessionsParams): Promise<OpenDanAgentSessionListResult>;
+    getAgentSession(agentId: string, sessionId: string): Promise<OpenDanAgentSessionRecord>;
+    getSessionRecord(sessionId: string): Promise<OpenDanAgentSessionRecord>;
+}
+
+declare interface OpenDanSessionLink {
+    relation: string;
+    session_id: string;
+    agent_did?: string;
+    note?: string;
 }
 
 declare interface OpenDanSubAgentInfo {

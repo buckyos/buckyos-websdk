@@ -75,6 +75,30 @@ export interface OpenDanWorkspaceSubAgentsResult {
     next_cursor?: string;
     total?: number;
 }
+export interface OpenDanSessionLink {
+    relation: string;
+    session_id: string;
+    agent_did?: string;
+    note?: string;
+}
+export interface OpenDanAgentSessionRecord {
+    session_id: string;
+    owner_agent: string;
+    title: string;
+    summary: string;
+    status: string;
+    created_at_ms: number;
+    updated_at_ms: number;
+    last_activity_ms: number;
+    links: OpenDanSessionLink[];
+    tags: string[];
+    meta: unknown;
+}
+export interface OpenDanAgentSessionListResult {
+    items: string[];
+    next_cursor?: string;
+    total?: number;
+}
 export interface ListAgentsParams {
     status?: string;
     includeSubAgents?: boolean;
@@ -83,6 +107,17 @@ export interface ListAgentsParams {
 }
 export interface ListWorkspaceWorklogsParams {
     agentId: string;
+    ownerSessionId: string;
+    logType?: string;
+    status?: string;
+    stepId?: string;
+    keyword?: string;
+    limit?: number;
+    cursor?: string;
+}
+export interface ListWorkshopWorklogsParams {
+    agentId: string;
+    ownerSessionId: string;
     logType?: string;
     status?: string;
     stepId?: string;
@@ -92,6 +127,15 @@ export interface ListWorkspaceWorklogsParams {
 }
 export interface ListWorkspaceTodosParams {
     agentId: string;
+    ownerSessionId: string;
+    status?: string;
+    includeClosed?: boolean;
+    limit?: number;
+    cursor?: string;
+}
+export interface ListWorkshopTodosParams {
+    agentId: string;
+    ownerSessionId: string;
     status?: string;
     includeClosed?: boolean;
     limit?: number;
@@ -103,15 +147,33 @@ export interface ListWorkspaceSubAgentsParams {
     limit?: number;
     cursor?: string;
 }
+export interface ListWorkshopSubAgentsParams {
+    agentId: string;
+    includeDisabled?: boolean;
+    limit?: number;
+    cursor?: string;
+}
+export interface ListAgentSessionsParams {
+    agentId: string;
+    limit?: number;
+    cursor?: string;
+}
 export declare class OpenDanClient {
     private rpcClient;
     constructor(rpcClient: kRPCClient);
     setSeq(seq: number): void;
     listAgents(params?: ListAgentsParams): Promise<OpenDanAgentListResult>;
     getAgent(agentId: string): Promise<OpenDanAgentInfo>;
+    getWorkshop(agentId: string): Promise<OpenDanWorkspaceInfo>;
     getWorkspace(agentId: string): Promise<OpenDanWorkspaceInfo>;
+    listWorkshopWorklogs(params: ListWorkshopWorklogsParams): Promise<OpenDanWorkspaceWorklogsResult>;
     listWorkspaceWorklogs(params: ListWorkspaceWorklogsParams): Promise<OpenDanWorkspaceWorklogsResult>;
+    listWorkshopTodos(params: ListWorkshopTodosParams): Promise<OpenDanWorkspaceTodosResult>;
     listWorkspaceTodos(params: ListWorkspaceTodosParams): Promise<OpenDanWorkspaceTodosResult>;
+    listWorkshopSubAgents(params: ListWorkshopSubAgentsParams): Promise<OpenDanWorkspaceSubAgentsResult>;
     listWorkspaceSubAgents(params: ListWorkspaceSubAgentsParams): Promise<OpenDanWorkspaceSubAgentsResult>;
+    listAgentSessions(params: ListAgentSessionsParams): Promise<OpenDanAgentSessionListResult>;
+    getAgentSession(agentId: string, sessionId: string): Promise<OpenDanAgentSessionRecord>;
+    getSessionRecord(sessionId: string): Promise<OpenDanAgentSessionRecord>;
 }
 //# sourceMappingURL=opendan_client.d.ts.map

@@ -86,6 +86,33 @@ export interface OpenDanWorkspaceSubAgentsResult {
   total?: number
 }
 
+export interface OpenDanSessionLink {
+  relation: string
+  session_id: string
+  agent_did?: string
+  note?: string
+}
+
+export interface OpenDanAgentSessionRecord {
+  session_id: string
+  owner_agent: string
+  title: string
+  summary: string
+  status: string
+  created_at_ms: number
+  updated_at_ms: number
+  last_activity_ms: number
+  links: OpenDanSessionLink[]
+  tags: string[]
+  meta: unknown
+}
+
+export interface OpenDanAgentSessionListResult {
+  items: string[]
+  next_cursor?: string
+  total?: number
+}
+
 export interface ListAgentsParams {
   status?: string
   includeSubAgents?: boolean
@@ -95,6 +122,18 @@ export interface ListAgentsParams {
 
 export interface ListWorkspaceWorklogsParams {
   agentId: string
+  ownerSessionId: string
+  logType?: string
+  status?: string
+  stepId?: string
+  keyword?: string
+  limit?: number
+  cursor?: string
+}
+
+export interface ListWorkshopWorklogsParams {
+  agentId: string
+  ownerSessionId: string
   logType?: string
   status?: string
   stepId?: string
@@ -105,6 +144,16 @@ export interface ListWorkspaceWorklogsParams {
 
 export interface ListWorkspaceTodosParams {
   agentId: string
+  ownerSessionId: string
+  status?: string
+  includeClosed?: boolean
+  limit?: number
+  cursor?: string
+}
+
+export interface ListWorkshopTodosParams {
+  agentId: string
+  ownerSessionId: string
   status?: string
   includeClosed?: boolean
   limit?: number
@@ -114,6 +163,19 @@ export interface ListWorkspaceTodosParams {
 export interface ListWorkspaceSubAgentsParams {
   agentId: string
   includeDisabled?: boolean
+  limit?: number
+  cursor?: string
+}
+
+export interface ListWorkshopSubAgentsParams {
+  agentId: string
+  includeDisabled?: boolean
+  limit?: number
+  cursor?: string
+}
+
+export interface ListAgentSessionsParams {
+  agentId: string
   limit?: number
   cursor?: string
 }
@@ -129,12 +191,13 @@ interface OpenDanGetAgentReq {
   agent_id: string
 }
 
-interface OpenDanGetWorkspaceReq {
+interface OpenDanGetWorkshopReq {
   agent_id: string
 }
 
-interface OpenDanListWorkspaceWorklogsReq {
+interface OpenDanListWorkshopWorklogsReq {
   agent_id: string
+  owner_session_id: string
   log_type?: string
   status?: string
   step_id?: string
@@ -143,19 +206,35 @@ interface OpenDanListWorkspaceWorklogsReq {
   cursor?: string
 }
 
-interface OpenDanListWorkspaceTodosReq {
+interface OpenDanListWorkshopTodosReq {
   agent_id: string
+  owner_session_id: string
   status?: string
   include_closed?: boolean
   limit?: number
   cursor?: string
 }
 
-interface OpenDanListWorkspaceSubAgentsReq {
+interface OpenDanListWorkshopSubAgentsReq {
   agent_id: string
   include_disabled?: boolean
   limit?: number
   cursor?: string
+}
+
+interface OpenDanListAgentSessionsReq {
+  agent_id: string
+  limit?: number
+  cursor?: string
+}
+
+interface OpenDanGetAgentSessionReq {
+  agent_id: string
+  session_id: string
+}
+
+interface OpenDanGetSessionRecordReq {
+  session_id: string
 }
 
 export class OpenDanClient {
@@ -184,14 +263,19 @@ export class OpenDanClient {
     return this.rpcClient.call<OpenDanAgentInfo, OpenDanGetAgentReq>('get_agent', req)
   }
 
-  async getWorkspace(agentId: string): Promise<OpenDanWorkspaceInfo> {
-    const req: OpenDanGetWorkspaceReq = { agent_id: agentId }
-    return this.rpcClient.call<OpenDanWorkspaceInfo, OpenDanGetWorkspaceReq>('get_workspace', req)
+  async getWorkshop(agentId: string): Promise<OpenDanWorkspaceInfo> {
+    const req: OpenDanGetWorkshopReq = { agent_id: agentId }
+    return this.rpcClient.call<OpenDanWorkspaceInfo, OpenDanGetWorkshopReq>('get_workshop', req)
   }
 
-  async listWorkspaceWorklogs(params: ListWorkspaceWorklogsParams): Promise<OpenDanWorkspaceWorklogsResult> {
-    const req: OpenDanListWorkspaceWorklogsReq = {
+  async getWorkspace(agentId: string): Promise<OpenDanWorkspaceInfo> {
+    return this.getWorkshop(agentId)
+  }
+
+  async listWorkshopWorklogs(params: ListWorkshopWorklogsParams): Promise<OpenDanWorkspaceWorklogsResult> {
+    const req: OpenDanListWorkshopWorklogsReq = {
       agent_id: params.agentId,
+      owner_session_id: params.ownerSessionId,
       log_type: params.logType,
       status: params.status,
       step_id: params.stepId,
@@ -199,28 +283,64 @@ export class OpenDanClient {
       limit: params.limit,
       cursor: params.cursor,
     }
-    return this.rpcClient.call<OpenDanWorkspaceWorklogsResult, OpenDanListWorkspaceWorklogsReq>('list_workspace_worklogs', req)
+    return this.rpcClient.call<OpenDanWorkspaceWorklogsResult, OpenDanListWorkshopWorklogsReq>('list_workshop_worklogs', req)
   }
 
-  async listWorkspaceTodos(params: ListWorkspaceTodosParams): Promise<OpenDanWorkspaceTodosResult> {
-    const req: OpenDanListWorkspaceTodosReq = {
+  async listWorkspaceWorklogs(params: ListWorkspaceWorklogsParams): Promise<OpenDanWorkspaceWorklogsResult> {
+    return this.listWorkshopWorklogs(params)
+  }
+
+  async listWorkshopTodos(params: ListWorkshopTodosParams): Promise<OpenDanWorkspaceTodosResult> {
+    const req: OpenDanListWorkshopTodosReq = {
       agent_id: params.agentId,
+      owner_session_id: params.ownerSessionId,
       status: params.status,
       include_closed: params.includeClosed,
       limit: params.limit,
       cursor: params.cursor,
     }
-    return this.rpcClient.call<OpenDanWorkspaceTodosResult, OpenDanListWorkspaceTodosReq>('list_workspace_todos', req)
+    return this.rpcClient.call<OpenDanWorkspaceTodosResult, OpenDanListWorkshopTodosReq>('list_workshop_todos', req)
   }
 
-  async listWorkspaceSubAgents(params: ListWorkspaceSubAgentsParams): Promise<OpenDanWorkspaceSubAgentsResult> {
-    const req: OpenDanListWorkspaceSubAgentsReq = {
+  async listWorkspaceTodos(params: ListWorkspaceTodosParams): Promise<OpenDanWorkspaceTodosResult> {
+    return this.listWorkshopTodos(params)
+  }
+
+  async listWorkshopSubAgents(params: ListWorkshopSubAgentsParams): Promise<OpenDanWorkspaceSubAgentsResult> {
+    const req: OpenDanListWorkshopSubAgentsReq = {
       agent_id: params.agentId,
       include_disabled: params.includeDisabled,
       limit: params.limit,
       cursor: params.cursor,
     }
-    return this.rpcClient.call<OpenDanWorkspaceSubAgentsResult, OpenDanListWorkspaceSubAgentsReq>('list_workspace_sub_agents', req)
+    return this.rpcClient.call<OpenDanWorkspaceSubAgentsResult, OpenDanListWorkshopSubAgentsReq>('list_workshop_sub_agents', req)
+  }
+
+  async listWorkspaceSubAgents(params: ListWorkspaceSubAgentsParams): Promise<OpenDanWorkspaceSubAgentsResult> {
+    return this.listWorkshopSubAgents(params)
+  }
+
+  async listAgentSessions(params: ListAgentSessionsParams): Promise<OpenDanAgentSessionListResult> {
+    const req: OpenDanListAgentSessionsReq = {
+      agent_id: params.agentId,
+      limit: params.limit,
+      cursor: params.cursor,
+    }
+    return this.rpcClient.call<OpenDanAgentSessionListResult, OpenDanListAgentSessionsReq>('list_agent_sessions', req)
+  }
+
+  async getAgentSession(agentId: string, sessionId: string): Promise<OpenDanAgentSessionRecord> {
+    const req: OpenDanGetAgentSessionReq = {
+      agent_id: agentId,
+      session_id: sessionId,
+    }
+    return this.rpcClient.call<OpenDanAgentSessionRecord, OpenDanGetAgentSessionReq>('get_agent_session', req)
+  }
+
+  async getSessionRecord(sessionId: string): Promise<OpenDanAgentSessionRecord> {
+    const req: OpenDanGetSessionRecordReq = {
+      session_id: sessionId,
+    }
+    return this.rpcClient.call<OpenDanAgentSessionRecord, OpenDanGetSessionRecordReq>('get_session_record', req)
   }
 }
-
