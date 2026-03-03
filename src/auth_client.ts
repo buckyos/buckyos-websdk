@@ -38,7 +38,7 @@ export class AuthClient {
             const height = 600;
             const left = (window.screen.width / 2) - (width / 2);
             const top = (window.screen.height / 2) - (height / 2);
-            let sso_url = window.location.protocol + "//sys." + this.zone_hostname + "/login.html";
+            let sso_url = window.location.protocol + "//sys." + this.zone_hostname + "/sso/login";
             //console.log("sso_url: ", sso_url);
             
             const redirectTarget = redirect_uri ?? window.location.href;
