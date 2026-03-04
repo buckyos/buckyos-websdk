@@ -1,1 +1,0 @@
-//# sourceMappingURL=namelib.d.ts.map

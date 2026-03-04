@@ -127,7 +127,7 @@ class AuthClient {
       const height = 600;
       const left = window.screen.width / 2 - width / 2;
       const top = window.screen.height / 2 - height / 2;
-      let sso_url = window.location.protocol + "//sys." + this.zone_hostname + "/login.html";
+      let sso_url = window.location.protocol + "//sys." + this.zone_hostname + "/sso/login";
       const redirectTarget = redirect_uri ?? window.location.href;
       const authUrl = `${sso_url}?client_id=${this.clientId}&redirect_uri=${encodeURIComponent(redirectTarget)}&response_type=token`;
       alert(authUrl);
@@ -858,6 +858,37 @@ class VerifyHubClient {
     return response;
   }
 }
+const LEGACY_ACCOUNT_STORAGE_KEY = "buckyos.account_info";
+function getAccountStorageKey(appId) {
+  return `buckyos.account_info.${appId}`;
+}
+function parseAccountInfo(raw) {
+  if (raw == null) {
+    return null;
+  }
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+function parseTokenAppId(sessionToken) {
+  const parts = sessionToken.split(".");
+  if (parts.length < 2) {
+    return null;
+  }
+  try {
+    const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const padded = base64 + "=".repeat((4 - base64.length % 4) % 4);
+    const payload = JSON.parse(atob(padded));
+    if (typeof payload.appid === "string" && payload.appid.trim().length > 0) {
+      return payload.appid;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
 function hashPassword(username, password, nonce = null) {
   const shaObj = new ht("SHA-256", "TEXT", { encoding: "UTF8" });
   shaObj.update(password + username + ".buckyos");
@@ -872,7 +903,11 @@ function hashPassword(username, password, nonce = null) {
   return result;
 }
 function cleanLocalAccountInfo(appId) {
-  localStorage.removeItem("buckyos.account_info");
+  localStorage.removeItem(getAccountStorageKey(appId));
+  const legacy = parseAccountInfo(localStorage.getItem(LEGACY_ACCOUNT_STORAGE_KEY));
+  if ((legacy == null ? void 0 : legacy.session_token) && parseTokenAppId(legacy.session_token) === appId) {
+    localStorage.removeItem(LEGACY_ACCOUNT_STORAGE_KEY);
+  }
   let cookie_options = {
     path: "/",
     expires: /* @__PURE__ */ new Date(0),
@@ -886,7 +921,7 @@ function saveLocalAccountInfo(appId, account_info) {
     console.error("session_token is null,can't save account info");
     return;
   }
-  localStorage.setItem("buckyos.account_info", JSON.stringify(account_info));
+  localStorage.setItem(getAccountStorageKey(appId), JSON.stringify(account_info));
   let cookie_options = {
     path: "/",
     expires: new Date(Date.now() + 1e3 * 60 * 60 * 24 * 30),
@@ -897,11 +932,16 @@ function saveLocalAccountInfo(appId, account_info) {
   document.cookie = `${appId}_token=${account_info.session_token}; ${Object.entries(cookie_options).map(([key, value]) => `${key}=${value}`).join("; ")}`;
 }
 function getLocalAccountInfo(appId) {
-  let account_info = localStorage.getItem("buckyos.account_info");
-  if (account_info == null) {
-    return null;
+  const scoped = parseAccountInfo(localStorage.getItem(getAccountStorageKey(appId)));
+  if (scoped != null) {
+    return scoped;
   }
-  return JSON.parse(account_info);
+  const legacy = parseAccountInfo(localStorage.getItem(LEGACY_ACCOUNT_STORAGE_KEY));
+  if ((legacy == null ? void 0 : legacy.session_token) && parseTokenAppId(legacy.session_token) === appId) {
+    localStorage.setItem(getAccountStorageKey(appId), JSON.stringify(legacy));
+    return legacy;
+  }
+  return null;
 }
 async function doLogin(username, password) {
   let appId = buckyos.getAppId();
@@ -912,7 +952,7 @@ async function doLogin(username, password) {
   let login_nonce = Date.now();
   let password_hash = hashPassword(username, password, login_nonce);
   console.log("password_hash: ", password_hash);
-  localStorage.removeItem("account_info");
+  localStorage.removeItem(getAccountStorageKey(appId));
   try {
     let verify_hub_client = buckyos.getVerifyHubClient();
     verify_hub_client.setSeq(login_nonce);
@@ -927,7 +967,8 @@ async function doLogin(username, password) {
       user_name: normalized.user_name,
       user_id: normalized.user_id,
       user_type: normalized.user_type,
-      session_token: normalized.session_token
+      session_token: normalized.session_token,
+      refresh_token: normalized.refresh_token
     };
     saveLocalAccountInfo(appId, account_info);
     return account_info;
@@ -1423,7 +1464,7 @@ async function login(auto_login = true) {
     return null;
   }
   if (auto_login) {
-    let account_info = getLocalAccountInfo();
+    let account_info = getLocalAccountInfo(appId);
     if (account_info) {
       _currentAccountInfo = account_info;
       return _currentAccountInfo;

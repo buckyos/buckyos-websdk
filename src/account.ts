@@ -7,6 +7,45 @@ export interface AccountInfo {
     user_id: string;
     user_type: string;
     session_token: string;
+    refresh_token?: string;
+}
+
+const LEGACY_ACCOUNT_STORAGE_KEY = "buckyos.account_info";
+
+function getAccountStorageKey(appId:string):string {
+    return `buckyos.account_info.${appId}`;
+}
+
+function parseAccountInfo(raw:string|null):AccountInfo|null {
+    if(raw == null) {
+        return null;
+    }
+
+    try {
+        return JSON.parse(raw) as AccountInfo;
+    } catch {
+        return null;
+    }
+}
+
+function parseTokenAppId(sessionToken:string):string|null {
+    const parts = sessionToken.split('.');
+    if(parts.length < 2) {
+        return null;
+    }
+
+    try {
+        const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+        const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4);
+        const payload = JSON.parse(atob(padded)) as { appid?: unknown };
+        if(typeof payload.appid === 'string' && payload.appid.trim().length > 0) {
+            return payload.appid;
+        }
+    } catch {
+        return null;
+    }
+
+    return null;
 }
   
 // 定义自定义事件
@@ -27,7 +66,11 @@ export function hashPassword(username:string,password:string,nonce:number|null=n
 }
 
 export function cleanLocalAccountInfo(appId:string) {
-    localStorage.removeItem("buckyos.account_info");
+    localStorage.removeItem(getAccountStorageKey(appId));
+    const legacy = parseAccountInfo(localStorage.getItem(LEGACY_ACCOUNT_STORAGE_KEY));
+    if(legacy?.session_token && parseTokenAppId(legacy.session_token) === appId) {
+        localStorage.removeItem(LEGACY_ACCOUNT_STORAGE_KEY);
+    }
     //删除cookie
     let cookie_options = {
         path: "/",
@@ -45,7 +88,7 @@ export function saveLocalAccountInfo(appId:string, account_info:AccountInfo) {
         return;
     }
 
-    localStorage.setItem("buckyos.account_info", JSON.stringify(account_info));
+    localStorage.setItem(getAccountStorageKey(appId), JSON.stringify(account_info));
     //session token用cookie存储
     let cookie_options = {
         path: "/",
@@ -57,11 +100,18 @@ export function saveLocalAccountInfo(appId:string, account_info:AccountInfo) {
 }
 
 export function getLocalAccountInfo(appId:string):AccountInfo|null {
-    let account_info = localStorage.getItem("buckyos.account_info");
-    if(account_info == null) {
-        return null;
+    const scoped = parseAccountInfo(localStorage.getItem(getAccountStorageKey(appId)));
+    if(scoped != null) {
+        return scoped;
     }
-    return JSON.parse(account_info) as AccountInfo;
+
+    const legacy = parseAccountInfo(localStorage.getItem(LEGACY_ACCOUNT_STORAGE_KEY));
+    if(legacy?.session_token && parseTokenAppId(legacy.session_token) === appId) {
+        localStorage.setItem(getAccountStorageKey(appId), JSON.stringify(legacy));
+        return legacy;
+    }
+
+    return null;
 }
 
 export async function doLogin(username:string, password:string) {
@@ -74,7 +124,7 @@ export async function doLogin(username:string, password:string) {
     let login_nonce = Date.now();
     let password_hash = hashPassword(username,password,login_nonce);
     console.log("password_hash: ", password_hash);
-    localStorage.removeItem("account_info");
+    localStorage.removeItem(getAccountStorageKey(appId));
     
     try {
         let verify_hub_client = buckyos.getVerifyHubClient();
@@ -92,6 +142,7 @@ export async function doLogin(username:string, password:string) {
             user_id: normalized.user_id,
             user_type: normalized.user_type,
             session_token: normalized.session_token,
+            refresh_token: normalized.refresh_token,
         };
 
         saveLocalAccountInfo(appId, account_info);

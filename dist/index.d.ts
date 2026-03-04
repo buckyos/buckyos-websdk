@@ -3,6 +3,7 @@ declare interface AccountInfo {
     user_id: string;
     user_type: string;
     session_token: string;
+    refresh_token?: string;
 }
 
 declare function attachEvent(event_name: string, callback: Function): void;
