@@ -1,6 +1,4 @@
 import jsSHA from 'jssha';
-import { buckyos } from './index'
-import { VerifyHubClient } from './verify-hub-client'
 
 export interface AccountInfo {
     user_name: string;
@@ -112,43 +110,4 @@ export function getLocalAccountInfo(appId:string):AccountInfo|null {
     }
 
     return null;
-}
-
-export async function doLogin(username:string, password:string) {
-    let appId = buckyos.getAppId();
-    if(appId == null) {
-        console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
-        return null;
-    }
-
-    let login_nonce = Date.now();
-    let password_hash = hashPassword(username,password,login_nonce);
-    console.log("password_hash: ", password_hash);
-    localStorage.removeItem(getAccountStorageKey(appId));
-    
-    try {
-        let verify_hub_client = buckyos.getVerifyHubClient();
-        verify_hub_client.setSeq(login_nonce);
-        let account_response = await verify_hub_client.loginByPassword({
-            username: username,
-            password: password_hash,
-            appid: appId,
-            source_url: window.location.href,
-        });
-
-        const normalized = VerifyHubClient.normalizeLoginResponse(account_response);
-        const account_info: AccountInfo = {
-            user_name: normalized.user_name,
-            user_id: normalized.user_id,
-            user_type: normalized.user_type,
-            session_token: normalized.session_token,
-            refresh_token: normalized.refresh_token,
-        };
-
-        saveLocalAccountInfo(appId, account_info);
-        return account_info;
-    } catch (error) {
-        console.error("login failed: ", error);
-        throw error;
-    }
 }

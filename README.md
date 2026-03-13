@@ -115,10 +115,34 @@ npm run build:all
 ```
 
 该命令会执行以下操作：
-1. 运行 `vite build` 构建项目，生成 `dist/buckyos.mjs`（ES 模块）和 `dist/buckyos.umd.js`（UMD 格式）
-2. 运行 `tsc --emitDeclarationOnly` 生成 TypeScript 类型定义文件 `dist/index.d.ts`
+1. 运行 `vite build` 构建项目，生成 `dist/index.*`、`dist/browser.*`、`dist/node.*`
+2. 运行 `tsc -p tsconfig.build.json` 生成对应的 TypeScript 类型定义文件
 
 构建产物位于 `dist/` 目录。
+
+### AppClient Demo
+
+仓库里带了一个最小可运行的 AppClient 示例：[examples/app_client_demo.ts](/Users/liuzhicong/project/buckyos-websdk/examples/app_client_demo.ts)。
+
+它会：
+1. 使用本机私钥目录初始化 `AppClient`
+2. 向真实运行中的 `system_config` 读取 `boot/config`
+3. 打印当前 `session_token` 的 claims 和 `boot/config` 的顶层 key
+
+运行方式：
+
+```bash
+pnpm run demo:app-client
+```
+
+可选环境变量：
+
+```bash
+BUCKYOS_TEST_APP_ID=buckycli
+BUCKYOS_SYSTEM_CONFIG_URL=http://127.0.0.1:3200/kapi/system_config
+```
+
+如果你是在已发布的 SDK 包里使用，同样的示例代码应从 `buckyos/node` 导入，而不是仓库内的相对路径。
 
 ### 发布到 GitHub
 

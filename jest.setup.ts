@@ -21,12 +21,15 @@ class LocalStorageMock {
     }
 }
 
-Object.defineProperty(window, 'localStorage', {
-    value: new LocalStorageMock()
-});
+if (typeof window !== 'undefined') {
+    Object.defineProperty(window, 'localStorage', {
+        value: new LocalStorageMock()
+    });
+}
 
-// 模拟 document.cookie
-Object.defineProperty(document, 'cookie', {
-    writable: true,
-    value: ''
-}); 
+if (typeof document !== 'undefined') {
+    Object.defineProperty(document, 'cookie', {
+        writable: true,
+        value: ''
+    });
+}

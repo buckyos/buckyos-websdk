@@ -1,7 +1,7 @@
 import { createSDKModule } from './sdk_core'
 import { hashPassword } from './account'
 
-const sdkModule = createSDKModule('universal')
+const sdkModule = createSDKModule('node')
 
 export const buckyos = sdkModule.buckyos
 export const initBuckyOS = sdkModule.initBuckyOS

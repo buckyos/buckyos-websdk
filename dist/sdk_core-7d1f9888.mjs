@@ -805,59 +805,6 @@ class ht {
     return this.P.getHMAC(t2, n2);
   }
 }
-class VerifyHubClient {
-  constructor(rpcClient) {
-    this.rpcClient = rpcClient;
-  }
-  setSeq(seq) {
-    this.rpcClient.setSeq(seq);
-  }
-  async loginByJwt(params) {
-    this.rpcClient.resetSessionToken();
-    const payload = {
-      type: "jwt",
-      jwt: params.jwt
-    };
-    if (params.login_params) {
-      Object.assign(payload, params.login_params);
-    }
-    return this.rpcClient.call("login_by_jwt", payload);
-  }
-  async loginByPassword(params) {
-    this.rpcClient.resetSessionToken();
-    const payload = {
-      type: "password",
-      username: params.username,
-      password: params.password,
-      appid: params.appid
-    };
-    if (params.source_url) {
-      payload.source_url = params.source_url;
-    }
-    return this.rpcClient.call("login_by_password", payload);
-  }
-  async refreshToken(params) {
-    return this.rpcClient.call("refresh_token", params);
-  }
-  async verifyToken(params) {
-    return this.rpcClient.call("verify_token", params);
-  }
-  static normalizeLoginResponse(response) {
-    if ("user_info" in response) {
-      return {
-        user_name: response.user_info.show_name,
-        user_id: response.user_info.user_id,
-        user_type: response.user_info.user_type,
-        session_token: response.session_token,
-        refresh_token: response.refresh_token
-      };
-    }
-    if (!response.session_token) {
-      throw new RPCError("login_by_password response missing session_token");
-    }
-    return response;
-  }
-}
 const LEGACY_ACCOUNT_STORAGE_KEY = "buckyos.account_info";
 function getAccountStorageKey(appId) {
   return `buckyos.account_info.${appId}`;
@@ -943,38 +890,57 @@ function getLocalAccountInfo(appId) {
   }
   return null;
 }
-async function doLogin(username, password) {
-  let appId = buckyos.getAppId();
-  if (appId == null) {
-    console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
-    return null;
+class VerifyHubClient {
+  constructor(rpcClient) {
+    this.rpcClient = rpcClient;
   }
-  let login_nonce = Date.now();
-  let password_hash = hashPassword(username, password, login_nonce);
-  console.log("password_hash: ", password_hash);
-  localStorage.removeItem(getAccountStorageKey(appId));
-  try {
-    let verify_hub_client = buckyos.getVerifyHubClient();
-    verify_hub_client.setSeq(login_nonce);
-    let account_response = await verify_hub_client.loginByPassword({
-      username,
-      password: password_hash,
-      appid: appId,
-      source_url: window.location.href
-    });
-    const normalized = VerifyHubClient.normalizeLoginResponse(account_response);
-    const account_info = {
-      user_name: normalized.user_name,
-      user_id: normalized.user_id,
-      user_type: normalized.user_type,
-      session_token: normalized.session_token,
-      refresh_token: normalized.refresh_token
+  setSeq(seq) {
+    this.rpcClient.setSeq(seq);
+  }
+  async loginByJwt(params) {
+    this.rpcClient.resetSessionToken();
+    const payload = {
+      type: "jwt",
+      jwt: params.jwt
     };
-    saveLocalAccountInfo(appId, account_info);
-    return account_info;
-  } catch (error) {
-    console.error("login failed: ", error);
-    throw error;
+    if (params.login_params) {
+      Object.assign(payload, params.login_params);
+    }
+    return this.rpcClient.call("login_by_jwt", payload);
+  }
+  async loginByPassword(params) {
+    this.rpcClient.resetSessionToken();
+    const payload = {
+      type: "password",
+      username: params.username,
+      password: params.password,
+      appid: params.appid
+    };
+    if (params.source_url) {
+      payload.source_url = params.source_url;
+    }
+    return this.rpcClient.call("login_by_password", payload);
+  }
+  async refreshToken(params) {
+    return this.rpcClient.call("refresh_token", params);
+  }
+  async verifyToken(params) {
+    return this.rpcClient.call("verify_token", params);
+  }
+  static normalizeLoginResponse(response) {
+    if ("user_info" in response) {
+      return {
+        user_name: response.user_info.show_name,
+        user_id: response.user_info.user_id,
+        user_type: response.user_info.user_type,
+        session_token: response.session_token,
+        refresh_token: response.refresh_token
+      };
+    }
+    if (!response.session_token) {
+      throw new RPCError("login_by_password response missing session_token");
+    }
+    return response;
   }
 }
 function parseTaskStatus(status) {
@@ -1322,10 +1288,35 @@ class OpenDanClient {
     return this.rpcClient.call("get_session_record", req);
   }
 }
+class SystemConfigClient {
+  constructor(serviceUrl, sessionToken = null) {
+    this.rpcClient = new kRPCClient(serviceUrl, sessionToken);
+  }
+  async get(key) {
+    const result = await this.rpcClient.call("sys_config_get", { key });
+    if (typeof result !== "string") {
+      throw new Error(`system_config key not found: ${key}`);
+    }
+    return {
+      value: result,
+      version: Date.now(),
+      is_changed: true
+    };
+  }
+  async set(key, value) {
+    await this.rpcClient.call("sys_config_set", { key, value });
+    return 0;
+  }
+}
+const DEFAULT_NODE_GATEWAY_PORT = 3180;
+const DEFAULT_SESSION_TOKEN_TTL_SECONDS = 15 * 60;
+const DEFAULT_RENEW_INTERVAL_MS = 5e3;
 var RuntimeType = /* @__PURE__ */ ((RuntimeType2) => {
   RuntimeType2["Browser"] = "Browser";
   RuntimeType2["NodeJS"] = "NodeJS";
   RuntimeType2["AppRuntime"] = "AppRuntime";
+  RuntimeType2["AppClient"] = "AppClient";
+  RuntimeType2["AppService"] = "AppService";
   RuntimeType2["Unknown"] = "Unknown";
   return RuntimeType2;
 })(RuntimeType || {});
@@ -1333,35 +1324,203 @@ const DEFAULT_CONFIG = {
   zoneHost: "",
   appId: "",
   defaultProtocol: "http://",
-  runtimeType: "Unknown"
-  /* Unknown */
+  runtimeType: "Unknown",
+  ownerUserId: null,
+  rootDir: "",
+  sessionToken: null,
+  refreshToken: null,
+  privateKeySearchPaths: [],
+  systemConfigServiceUrl: "",
+  verifyHubServiceUrl: "",
+  nodeGatewayPort: DEFAULT_NODE_GATEWAY_PORT,
+  autoRenew: true,
+  renewIntervalMs: DEFAULT_RENEW_INTERVAL_MS
 };
+function getProcessEnv() {
+  const runtimeProcess = globalThis.process;
+  return (runtimeProcess == null ? void 0 : runtimeProcess.env) ?? {};
+}
+function hasNodeRuntime() {
+  var _a;
+  const runtimeProcess = globalThis.process;
+  return Boolean((_a = runtimeProcess == null ? void 0 : runtimeProcess.versions) == null ? void 0 : _a.node);
+}
+function ensureBuffer() {
+  const bufferCtor = globalThis.Buffer;
+  if (!bufferCtor || typeof bufferCtor !== "function") {
+    throw new Error("Buffer is not available in this runtime");
+  }
+  return bufferCtor;
+}
+function base64UrlEncode(value) {
+  const BufferCtor = ensureBuffer();
+  const base64 = typeof value === "string" ? BufferCtor.from(value, "utf8").toString("base64") : BufferCtor.from(value).toString("base64");
+  return base64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+function base64UrlDecode(value) {
+  const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = normalized + "=".repeat((4 - normalized.length % 4) % 4);
+  if (typeof atob === "function") {
+    return atob(padded);
+  }
+  const BufferCtor = ensureBuffer();
+  return BufferCtor.from(padded, "base64").toString("utf8");
+}
+function parseSessionTokenClaims(token) {
+  if (!token) {
+    return null;
+  }
+  const parts = token.split(".");
+  if (parts.length < 2) {
+    return null;
+  }
+  try {
+    return JSON.parse(base64UrlDecode(parts[1]));
+  } catch {
+    return null;
+  }
+}
+function trimToNull$1(value) {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+function normalizeServicePath(serviceName) {
+  if (serviceName === "system-config") {
+    return "system_config";
+  }
+  return serviceName;
+}
+function getFullAppId(appId, ownerUserId) {
+  return `${ownerUserId}-${appId}`;
+}
+function getAppHostPrefix(appId, ownerUserId) {
+  if (!ownerUserId) {
+    return appId;
+  }
+  return `${appId}-${ownerUserId}`;
+}
+function getSessionTokenEnvKey(appFullId, isAppService) {
+  const normalized = appFullId.toUpperCase().replace(/-/g, "_");
+  return isAppService ? `${normalized}_TOKEN` : `${normalized}_SESSION_TOKEN`;
+}
+function parseAppIdentityFromInstanceConfig(appInstanceConfig) {
+  var _a, _b, _c;
+  try {
+    const parsed = JSON.parse(appInstanceConfig);
+    const appId = typeof ((_b = (_a = parsed.app_spec) == null ? void 0 : _a.app_doc) == null ? void 0 : _b.name) === "string" ? parsed.app_spec.app_doc.name.trim() : "";
+    const ownerUserId = typeof ((_c = parsed.app_spec) == null ? void 0 : _c.user_id) === "string" ? parsed.app_spec.user_id.trim() : "";
+    if (!appId || !ownerUserId) {
+      return null;
+    }
+    return { appId, ownerUserId };
+  } catch {
+    return null;
+  }
+}
+async function importNodeModule(moduleName) {
+  if (hasNodeRuntime() && typeof require === "function") {
+    return require(moduleName);
+  }
+  const dynamicImport = Function("name", "return import(name)");
+  return dynamicImport(moduleName);
+}
 class BuckyOSRuntime {
   constructor(config) {
-    this.config = config;
-    this.sessionToken = null;
-    this.refreshToken = null;
+    this.config = {
+      ...DEFAULT_CONFIG,
+      ...config,
+      appId: config.appId,
+      zoneHost: config.zoneHost ?? "",
+      defaultProtocol: config.defaultProtocol ?? DEFAULT_CONFIG.defaultProtocol
+    };
+    this.sessionToken = trimToNull$1(config.sessionToken);
+    this.refreshToken = trimToNull$1(config.refreshToken);
+    this.renewTimer = null;
+    this.initialized = false;
+  }
+  async initialize() {
+    if (this.initialized) {
+      return;
+    }
+    this.resolveNodeIdentityFromEnv();
+    await this.resolveZoneHostFromLocalConfig();
+    if (!this.sessionToken) {
+      if (this.config.runtimeType === "AppClient") {
+        this.sessionToken = await this.createAppClientSessionToken();
+      } else if (this.config.runtimeType === "AppService") {
+        this.sessionToken = this.loadAppServiceSessionTokenFromEnv();
+      }
+    }
+    this.validateSessionToken();
+    this.startAutoRenewIfNeeded();
+    this.initialized = true;
   }
   setConfig(config) {
-    this.config = config;
+    this.config = {
+      ...DEFAULT_CONFIG,
+      ...config,
+      appId: config.appId
+    };
   }
   getConfig() {
-    return this.config;
+    return { ...this.config };
   }
   getAppId() {
     return this.config.appId;
+  }
+  getOwnerUserId() {
+    return trimToNull$1(this.config.ownerUserId);
+  }
+  getFullAppId() {
+    const ownerUserId = this.getOwnerUserId();
+    if (!ownerUserId) {
+      return this.config.appId;
+    }
+    return getFullAppId(this.config.appId, ownerUserId);
   }
   getZoneHostName() {
     return this.config.zoneHost;
   }
   getZoneServiceURL(serviceName) {
-    return `/kapi/${serviceName}/`;
+    const servicePath = normalizeServicePath(serviceName);
+    if (this.config.runtimeType === "AppService") {
+      const port = this.config.nodeGatewayPort ?? DEFAULT_NODE_GATEWAY_PORT;
+      return `http://127.0.0.1:${port}/kapi/${servicePath}`;
+    }
+    if (this.config.runtimeType === "AppClient") {
+      if (!this.config.zoneHost) {
+        throw new Error("zoneHost is required in AppClient mode");
+      }
+      const appHostPrefix = getAppHostPrefix(this.config.appId, this.getOwnerUserId());
+      return `${this.config.defaultProtocol}${appHostPrefix}.${this.config.zoneHost}/kapi/${servicePath}`;
+    }
+    return `/kapi/${servicePath}/`;
+  }
+  getSystemConfigServiceURL() {
+    const configuredUrl = trimToNull$1(this.config.systemConfigServiceUrl);
+    if (configuredUrl) {
+      return configuredUrl;
+    }
+    if (this.config.runtimeType === "AppService") {
+      const port = this.config.nodeGatewayPort ?? DEFAULT_NODE_GATEWAY_PORT;
+      return `http://127.0.0.1:${port}/kapi/system_config`;
+    }
+    if (this.config.runtimeType === "AppClient") {
+      if (!this.config.zoneHost) {
+        throw new Error("zoneHost is required in AppClient mode");
+      }
+      return `${this.config.defaultProtocol}${this.config.zoneHost}/kapi/system_config`;
+    }
+    return "/kapi/system_config";
   }
   setSessionToken(token) {
-    this.sessionToken = token;
+    this.sessionToken = trimToNull$1(token);
   }
   setRefreshToken(token) {
-    this.refreshToken = token;
+    this.refreshToken = trimToNull$1(token);
   }
   getSessionToken() {
     return this.sessionToken;
@@ -1369,11 +1528,26 @@ class BuckyOSRuntime {
   getRefreshToken() {
     return this.refreshToken;
   }
+  clearAuthState() {
+    this.sessionToken = null;
+    this.refreshToken = null;
+    this.stopAutoRenew();
+  }
+  stopAutoRenew() {
+    if (this.renewTimer) {
+      clearInterval(this.renewTimer);
+      this.renewTimer = null;
+    }
+  }
   getServiceRpcClient(serviceName) {
     return new kRPCClient(this.getZoneServiceURL(serviceName), this.sessionToken);
   }
+  getSystemConfigClient() {
+    return new SystemConfigClient(this.getSystemConfigServiceURL(), this.sessionToken);
+  }
   getVerifyHubClient() {
-    const rpcClient = this.getServiceRpcClient("verify-hub");
+    const configuredUrl = trimToNull$1(this.config.verifyHubServiceUrl);
+    const rpcClient = new kRPCClient(configuredUrl ?? this.getZoneServiceURL("verify-hub"), this.sessionToken);
     return new VerifyHubClient(rpcClient);
   }
   getTaskManagerClient() {
@@ -1384,242 +1558,712 @@ class BuckyOSRuntime {
     const rpcClient = this.getServiceRpcClient("opendan");
     return new OpenDanClient(rpcClient);
   }
+  async renewTokenFromVerifyHub() {
+    if (this.config.runtimeType !== "AppService") {
+      return;
+    }
+    const sessionToken = this.sessionToken;
+    if (!sessionToken) {
+      return;
+    }
+    const claims = parseSessionTokenClaims(sessionToken);
+    if (!claims || !this.needsRenew(claims)) {
+      return;
+    }
+    const verifyHubClient = this.getVerifyHubClient();
+    const tokenPair = claims.iss === "verify-hub" && this.refreshToken ? await verifyHubClient.refreshToken({ refresh_token: this.refreshToken }) : await verifyHubClient.loginByJwt({ jwt: sessionToken });
+    this.sessionToken = trimToNull$1(tokenPair.session_token);
+    this.refreshToken = trimToNull$1(tokenPair.refresh_token);
+    this.validateSessionToken();
+  }
+  resolveNodeIdentityFromEnv() {
+    if (!hasNodeRuntime()) {
+      return;
+    }
+    if (this.config.runtimeType !== "AppService") {
+      return;
+    }
+    const env = getProcessEnv();
+    const appInstanceConfig = trimToNull$1(env.app_instance_config);
+    if (!appInstanceConfig) {
+      return;
+    }
+    const identity = parseAppIdentityFromInstanceConfig(appInstanceConfig);
+    if (!identity) {
+      return;
+    }
+    if (!this.config.appId) {
+      this.config.appId = identity.appId;
+    }
+    if (!trimToNull$1(this.config.ownerUserId)) {
+      this.config.ownerUserId = identity.ownerUserId;
+    }
+  }
+  async resolveZoneHostFromLocalConfig() {
+    if (!hasNodeRuntime()) {
+      return;
+    }
+    if (trimToNull$1(this.config.zoneHost)) {
+      return;
+    }
+    const roots = await this.getPrivateKeySearchRoots();
+    const zoneHost = await this.tryResolveZoneHostFromSearchRoots(roots);
+    if (zoneHost) {
+      this.config.zoneHost = zoneHost;
+    }
+  }
+  validateSessionToken() {
+    if (!this.sessionToken) {
+      return;
+    }
+    const claims = parseSessionTokenClaims(this.sessionToken);
+    const tokenAppId = typeof (claims == null ? void 0 : claims.appid) === "string" ? claims.appid : typeof (claims == null ? void 0 : claims.aud) === "string" ? claims.aud : null;
+    if (tokenAppId && tokenAppId !== this.config.appId) {
+      throw new Error(`session token appid mismatch: ${tokenAppId} != ${this.config.appId}`);
+    }
+  }
+  needsRenew(claims) {
+    if (claims.iss && claims.iss !== "verify-hub") {
+      return true;
+    }
+    if (typeof claims.exp !== "number") {
+      return false;
+    }
+    const now = Math.floor(Date.now() / 1e3);
+    return now >= claims.exp - 30;
+  }
+  startAutoRenewIfNeeded() {
+    if (this.config.runtimeType !== "AppService" || this.config.autoRenew === false) {
+      return;
+    }
+    if (this.renewTimer) {
+      return;
+    }
+    const interval = this.config.renewIntervalMs ?? DEFAULT_RENEW_INTERVAL_MS;
+    const tick = async () => {
+      try {
+        await this.renewTokenFromVerifyHub();
+      } catch (error) {
+        console.warn("BuckyOS token renew failed:", error);
+      }
+    };
+    void tick();
+    this.renewTimer = setInterval(() => {
+      void tick();
+    }, interval);
+  }
+  loadAppServiceSessionTokenFromEnv() {
+    const env = getProcessEnv();
+    const ownerUserId = this.getOwnerUserId();
+    const sessionTokenKeys = [];
+    if (ownerUserId) {
+      sessionTokenKeys.push(getSessionTokenEnvKey(getFullAppId(this.config.appId, ownerUserId), true));
+    }
+    sessionTokenKeys.push(getSessionTokenEnvKey(this.config.appId, true));
+    const uniqueKeys = Array.from(new Set(sessionTokenKeys));
+    for (const key of uniqueKeys) {
+      const token = trimToNull$1(env[key]);
+      if (token) {
+        return token;
+      }
+    }
+    throw new Error(`failed to load app-service session token, tried keys: ${uniqueKeys.join(", ")}`);
+  }
+  async createAppClientSessionToken() {
+    if (!hasNodeRuntime()) {
+      throw new Error("AppClient mode requires Node.js");
+    }
+    const material = await this.loadLocalSigningMaterial();
+    const now = Math.floor(Date.now() / 1e3);
+    const claims = {
+      token_type: "Normal",
+      appid: this.config.appId,
+      jti: String(now),
+      session: now,
+      sub: material.subject,
+      userid: material.subject,
+      iss: material.issuer,
+      exp: now + DEFAULT_SESSION_TOKEN_TTL_SECONDS,
+      extra: {}
+    };
+    return this.signJwtWithEd25519({
+      alg: "EdDSA",
+      kid: material.issuer
+    }, claims, material.keyPem);
+  }
+  async loadLocalSigningMaterial() {
+    const fs = await importNodeModule("node:fs/promises");
+    const path = await importNodeModule("node:path");
+    const env = getProcessEnv();
+    const roots = await this.getPrivateKeySearchRoots();
+    for (const root of roots) {
+      const userKeyPath = root.endsWith(".pem") ? root : path.join(root, "user_private_key.pem");
+      try {
+        const keyPem = (await fs.readFile(userKeyPath, "utf8")).trim();
+        if (keyPem) {
+          return {
+            keyPem,
+            issuer: "root",
+            subject: "root",
+            sourcePath: userKeyPath
+          };
+        }
+      } catch {
+      }
+    }
+    const deviceName = trimToNull$1(env.BUCKYOS_DEVICE_NAME) ?? await this.tryResolveDeviceNameFromSearchRoots(roots);
+    if (!deviceName) {
+      throw new Error("failed to find user_private_key.pem and no device name is available for node_private_key.pem fallback");
+    }
+    for (const root of roots) {
+      const deviceKeyPath = root.endsWith(".pem") ? root : path.join(root, "node_private_key.pem");
+      try {
+        const keyPem = (await fs.readFile(deviceKeyPath, "utf8")).trim();
+        if (keyPem) {
+          return {
+            keyPem,
+            issuer: deviceName,
+            subject: deviceName,
+            sourcePath: deviceKeyPath
+          };
+        }
+      } catch {
+      }
+    }
+    throw new Error(`failed to find private key in AppClient search roots: ${roots.join(", ")}`);
+  }
+  async getPrivateKeySearchRoots() {
+    var _a;
+    const env = getProcessEnv();
+    const path = await importNodeModule("node:path");
+    const os = await importNodeModule("node:os");
+    const roots = [];
+    for (const item of this.config.privateKeySearchPaths ?? []) {
+      const trimmed = trimToNull$1(item);
+      if (trimmed) {
+        roots.push(trimmed);
+      }
+    }
+    const explicitClientDir = trimToNull$1(env.BUCKYOS_APP_CLIENT_DIR);
+    if (explicitClientDir) {
+      roots.push(explicitClientDir);
+    }
+    const homeDir = trimToNull$1(env.HOME) ?? trimToNull$1(env.USERPROFILE) ?? trimToNull$1((_a = os.homedir) == null ? void 0 : _a.call(os));
+    if (homeDir) {
+      roots.push(path.join(homeDir, ".buckyos"));
+      roots.push(path.join(homeDir, ".buckycli"));
+    }
+    const rootDir = trimToNull$1(this.config.rootDir) ?? trimToNull$1(env.BUCKYOS_ROOT) ?? "/opt/buckyos";
+    roots.push(rootDir);
+    roots.push(path.join(rootDir, "etc"));
+    return Array.from(new Set(roots));
+  }
+  async tryResolveDeviceNameFromSearchRoots(roots) {
+    const fs = await importNodeModule("node:fs/promises");
+    const path = await importNodeModule("node:path");
+    const env = getProcessEnv();
+    const fromEnv = trimToNull$1(env.BUCKYOS_THIS_DEVICE_NAME);
+    if (fromEnv) {
+      return fromEnv;
+    }
+    for (const key of ["BUCKYOS_THIS_DEVICE", "BUCKYOS_THIS_DEVICE_INFO"]) {
+      const raw = trimToNull$1(env[key]);
+      if (!raw) {
+        continue;
+      }
+      try {
+        const parsed = JSON.parse(raw);
+        if (typeof parsed.name === "string" && parsed.name.trim().length > 0) {
+          return parsed.name.trim();
+        }
+      } catch {
+      }
+    }
+    for (const root of roots) {
+      const nodeIdentityPath = path.join(root, "node_identity.json");
+      try {
+        const raw = await fs.readFile(nodeIdentityPath, "utf8");
+        const parsed = JSON.parse(raw);
+        if (typeof parsed.device_doc_jwt !== "string") {
+          continue;
+        }
+        const claims = parseSessionTokenClaims(parsed.device_doc_jwt);
+        if (typeof (claims == null ? void 0 : claims.name) === "string" && claims.name.trim().length > 0) {
+          return claims.name.trim();
+        }
+        if (typeof (claims == null ? void 0 : claims.sub) === "string" && claims.sub.trim().length > 0) {
+          return claims.sub.trim();
+        }
+      } catch {
+      }
+    }
+    return null;
+  }
+  async tryResolveZoneHostFromSearchRoots(roots) {
+    const fs = await importNodeModule("node:fs/promises");
+    const path = await importNodeModule("node:path");
+    const env = getProcessEnv();
+    const fromEnv = trimToNull$1(env.BUCKYOS_ZONE_HOST);
+    if (fromEnv) {
+      return fromEnv;
+    }
+    for (const root of roots) {
+      const nodeIdentityPath = path.join(root, "node_identity.json");
+      try {
+        const raw = await fs.readFile(nodeIdentityPath, "utf8");
+        const parsed = JSON.parse(raw);
+        if (typeof parsed.zone_name === "string" && parsed.zone_name.trim().length > 0) {
+          return parsed.zone_name.trim();
+        }
+        if (typeof parsed.zone_did !== "string") {
+          continue;
+        }
+        if (parsed.zone_did.startsWith("did:web:")) {
+          return parsed.zone_did.slice("did:web:".length).replace(/:/g, ".");
+        }
+        if (parsed.zone_did.startsWith("did:bns:")) {
+          return parsed.zone_did.slice("did:bns:".length);
+        }
+      } catch {
+      }
+    }
+    return null;
+  }
+  async signJwtWithEd25519(header, payload, privateKeyPem) {
+    const crypto = await importNodeModule("node:crypto");
+    const BufferCtor = ensureBuffer();
+    const signingInput = `${base64UrlEncode(JSON.stringify(header))}.${base64UrlEncode(JSON.stringify(payload))}`;
+    const signature = crypto.sign(
+      null,
+      BufferCtor.from(signingInput, "utf8"),
+      crypto.createPrivateKey({
+        key: privateKeyPem,
+        format: "pem"
+      })
+    );
+    return `${signingInput}.${base64UrlEncode(signature)}`;
+  }
 }
 const WEB3_BRIDGE_HOST = "web3.buckyos.ai";
 const BS_SERVICE_VERIFY_HUB = "verify-hub";
 const BS_SERVICE_TASK_MANAGER = "task-manager";
 const BS_SERVICE_OPENDAN = "opendan";
-var _currentRuntime = null;
-var _currentAccountInfo = null;
-async function tryGetZoneHostName(appid, host, default_protocol) {
-  let zone_doc_url = default_protocol + host + "/1.0/identifiers/self";
-  let response = await fetch(zone_doc_url);
-  if (response.status == 200) {
-    return host;
-  } else {
-    let up_host = host.split(".").slice(1).join(".");
-    zone_doc_url = default_protocol + up_host + "/1.0/identifiers/self";
-    response = await fetch(zone_doc_url);
-    if (response.status == 200) {
-      return up_host;
+function isBrowserRuntime() {
+  return typeof window !== "undefined";
+}
+function getNodeEnv() {
+  const runtimeProcess = globalThis.process;
+  return (runtimeProcess == null ? void 0 : runtimeProcess.env) ?? {};
+}
+function trimToNull(value) {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+function isBrowserStorageAvailable() {
+  return typeof localStorage !== "undefined";
+}
+function inferNodeRuntimeType() {
+  const env = getNodeEnv();
+  if (trimToNull(env.app_instance_config)) {
+    return RuntimeType.AppService;
+  }
+  return RuntimeType.AppClient;
+}
+class BuckyOSSDK {
+  constructor(target) {
+    this.currentRuntime = null;
+    this.currentAccountInfo = null;
+    this.target = target;
+  }
+  async initBuckyOS(appid, config = null) {
+    var _a;
+    const finalConfig = this.buildRuntimeConfig(appid, config);
+    if (this.target !== "node" && isBrowserRuntime() && !config) {
+      let zoneHostName = localStorage.getItem("zone_host_name");
+      if (zoneHostName) {
+        finalConfig.zoneHost = zoneHostName;
+      } else {
+        zoneHostName = await this.tryGetZoneHostName(appid, window.location.host, finalConfig.defaultProtocol);
+        localStorage.setItem("zone_host_name", zoneHostName);
+        finalConfig.zoneHost = zoneHostName;
+      }
+    }
+    (_a = this.currentRuntime) == null ? void 0 : _a.stopAutoRenew();
+    this.currentRuntime = new BuckyOSRuntime(finalConfig);
+    await this.currentRuntime.initialize();
+    this.syncCurrentAccountInfoFromRuntime();
+  }
+  getBuckyOSConfig() {
+    var _a;
+    return ((_a = this.currentRuntime) == null ? void 0 : _a.getConfig()) ?? null;
+  }
+  getRuntimeType() {
+    if (this.currentRuntime) {
+      return this.currentRuntime.getConfig().runtimeType;
+    }
+    return this.detectEnvironmentRuntimeType();
+  }
+  getAppId() {
+    if (this.currentRuntime) {
+      return this.currentRuntime.getAppId();
+    }
+    console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
+    return null;
+  }
+  attachEvent(eventName, callback) {
+  }
+  removeEvent(cookieId) {
+  }
+  getAccountInfo() {
+    this.syncCurrentAccountInfoFromRuntime();
+    return this.currentAccountInfo;
+  }
+  async doLogin(username, password) {
+    var _a, _b;
+    const appId = this.getAppId();
+    if (appId == null) {
+      console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
+      return null;
+    }
+    const loginNonce = Date.now();
+    const passwordHash = hashPassword(username, password, loginNonce);
+    if (isBrowserStorageAvailable()) {
+      localStorage.removeItem(`buckyos.account_info.${appId}`);
+    }
+    try {
+      const verifyHubClient = this.getVerifyHubClient();
+      verifyHubClient.setSeq(loginNonce);
+      const accountResponse = await verifyHubClient.loginByPassword({
+        username,
+        password: passwordHash,
+        appid: appId,
+        source_url: typeof window !== "undefined" ? window.location.href : void 0
+      });
+      const normalized = VerifyHubClient.normalizeLoginResponse(accountResponse);
+      const accountInfo = {
+        user_name: normalized.user_name,
+        user_id: normalized.user_id,
+        user_type: normalized.user_type,
+        session_token: normalized.session_token,
+        refresh_token: normalized.refresh_token
+      };
+      if (isBrowserStorageAvailable()) {
+        saveLocalAccountInfo(appId, accountInfo);
+      }
+      this.currentAccountInfo = accountInfo;
+      (_a = this.currentRuntime) == null ? void 0 : _a.setSessionToken(accountInfo.session_token);
+      (_b = this.currentRuntime) == null ? void 0 : _b.setRefreshToken(accountInfo.refresh_token ?? null);
+      return accountInfo;
+    } catch (error) {
+      console.error("login failed: ", error);
+      throw error;
     }
   }
-  return host;
-}
-async function initBuckyOS(appid, config = null) {
-  if (_currentRuntime) {
-    console.warn("BuckyOS WebSDK is already initialized!");
+  async login(autoLogin = true) {
+    if (this.currentRuntime == null) {
+      console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
+      return null;
+    }
+    const runtimeType = this.currentRuntime.getConfig().runtimeType;
+    if (runtimeType === RuntimeType.AppClient || runtimeType === RuntimeType.AppService) {
+      await this.currentRuntime.initialize();
+      this.syncCurrentAccountInfoFromRuntime();
+      return this.currentAccountInfo;
+    }
+    const appId = this.getAppId();
+    if (appId == null) {
+      console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
+      return null;
+    }
+    if (autoLogin && isBrowserStorageAvailable()) {
+      const accountInfo = getLocalAccountInfo(appId);
+      if (accountInfo) {
+        this.currentAccountInfo = accountInfo;
+        this.currentRuntime.setSessionToken(accountInfo.session_token);
+        this.currentRuntime.setRefreshToken(accountInfo.refresh_token ?? null);
+        return this.currentAccountInfo;
+      }
+    }
+    if (isBrowserStorageAvailable()) {
+      cleanLocalAccountInfo(appId);
+    }
+    const zoneHostName = this.getZoneHostName();
+    if (zoneHostName == null) {
+      console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
+      return null;
+    }
+    try {
+      const authClient = new AuthClient(zoneHostName, appId);
+      const accountInfo = await authClient.login();
+      if (accountInfo) {
+        if (isBrowserStorageAvailable()) {
+          saveLocalAccountInfo(appId, accountInfo);
+        }
+        this.currentAccountInfo = accountInfo;
+        this.currentRuntime.setSessionToken(accountInfo.session_token);
+        this.currentRuntime.setRefreshToken(accountInfo.refresh_token ?? null);
+      }
+      return accountInfo;
+    } catch (error) {
+      console.error("login failed: ", error);
+      throw error;
+    }
   }
-  let finalConfig = config;
-  if (!finalConfig) {
-    finalConfig = {
+  logout(cleanAccountInfo = true) {
+    if (this.currentRuntime == null) {
+      console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
+      return;
+    }
+    const appId = this.getAppId();
+    if (appId == null) {
+      console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
+      return;
+    }
+    if (cleanAccountInfo && isBrowserStorageAvailable()) {
+      cleanLocalAccountInfo(appId);
+    }
+    this.currentAccountInfo = null;
+    this.currentRuntime.clearAuthState();
+  }
+  getAppSetting(settingName = null) {
+  }
+  setAppSetting(settingName = null, settingValue) {
+  }
+  getCurrentWalletUser() {
+    if (typeof window === "undefined") {
+      throw new Error("BuckyApi is only available in browser runtime");
+    }
+    return (async () => {
+      const result = await window.BuckyApi.getCurrentUser();
+      if (result.code === 0) {
+        return result.data;
+      }
+      console.error("BuckyApi.getCurrentUser failed: ", result.message);
+      return null;
+    })();
+  }
+  walletSignWithActiveDid(payloads) {
+    if (typeof window === "undefined") {
+      throw new Error("BuckyApi is only available in browser runtime");
+    }
+    return (async () => {
+      const result = await window.BuckyApi.signJsonWithActiveDid(payloads);
+      if (result.code === 0) {
+        return result.data.signatures;
+      }
+      console.error("BuckyApi.signWithActiveDid failed: ", result.message);
+      return null;
+    })();
+  }
+  getZoneHostName() {
+    if (this.currentRuntime == null) {
+      console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
+      return null;
+    }
+    return this.currentRuntime.getZoneHostName();
+  }
+  getZoneServiceURL(serviceName) {
+    if (this.currentRuntime == null) {
+      throw new Error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
+    }
+    return this.currentRuntime.getZoneServiceURL(serviceName);
+  }
+  getServiceRpcClient(serviceName) {
+    if (this.currentRuntime == null) {
+      console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
+      throw new Error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
+    }
+    this.syncCurrentAccountInfoFromRuntime();
+    return this.currentRuntime.getServiceRpcClient(serviceName);
+  }
+  getVerifyHubClient() {
+    if (this.currentRuntime == null) {
+      console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
+      throw new Error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
+    }
+    return this.currentRuntime.getVerifyHubClient();
+  }
+  getSystemConfigClient() {
+    if (this.currentRuntime == null) {
+      console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
+      throw new Error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
+    }
+    return this.currentRuntime.getSystemConfigClient();
+  }
+  getTaskManagerClient() {
+    if (this.currentRuntime == null) {
+      console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
+      throw new Error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
+    }
+    return this.currentRuntime.getTaskManagerClient();
+  }
+  getOpenDanClient() {
+    if (this.currentRuntime == null) {
+      console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
+      throw new Error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
+    }
+    return this.currentRuntime.getOpenDanClient();
+  }
+  buildRuntimeConfig(appid, config) {
+    if (config) {
+      let runtimeType = config.runtimeType;
+      if (runtimeType === RuntimeType.NodeJS && this.target !== "browser") {
+        runtimeType = inferNodeRuntimeType();
+      }
+      return {
+        ...DEFAULT_CONFIG,
+        ...config,
+        appId: config.appId || appid,
+        runtimeType
+      };
+    }
+    if (this.target === "browser") {
+      return {
+        ...DEFAULT_CONFIG,
+        appId: appid,
+        runtimeType: this.detectEnvironmentRuntimeType(),
+        defaultProtocol: typeof window !== "undefined" ? window.location.protocol + "//" : "http://"
+      };
+    }
+    if (this.target === "node") {
+      return {
+        ...DEFAULT_CONFIG,
+        appId: appid,
+        runtimeType: inferNodeRuntimeType(),
+        defaultProtocol: "https://",
+        zoneHost: trimToNull(getNodeEnv().BUCKYOS_ZONE_HOST) ?? ""
+      };
+    }
+    if (isBrowserRuntime()) {
+      return {
+        ...DEFAULT_CONFIG,
+        appId: appid,
+        runtimeType: this.detectEnvironmentRuntimeType(),
+        defaultProtocol: window.location.protocol + "//"
+      };
+    }
+    return {
       ...DEFAULT_CONFIG,
       appId: appid,
-      runtimeType: getRuntimeType(),
-      defaultProtocol: window.location.protocol + "//"
+      runtimeType: inferNodeRuntimeType(),
+      defaultProtocol: "https://",
+      zoneHost: trimToNull(getNodeEnv().BUCKYOS_ZONE_HOST) ?? ""
     };
-    let zone_host_name = localStorage.getItem("zone_host_name");
-    if (zone_host_name) {
-      finalConfig.zoneHost = zone_host_name;
-    } else {
-      zone_host_name = await tryGetZoneHostName(appid, window.location.host, finalConfig.defaultProtocol);
-      localStorage.setItem("zone_host_name", zone_host_name);
-      finalConfig.zoneHost = zone_host_name;
+  }
+  async tryGetZoneHostName(appid, host, defaultProtocol) {
+    let zoneDocUrl = defaultProtocol + host + "/1.0/identifiers/self";
+    let response = await fetch(zoneDocUrl);
+    if (response.status === 200) {
+      return host;
     }
-  }
-  _currentRuntime = new BuckyOSRuntime(finalConfig);
-}
-function getRuntimeType() {
-  var _a;
-  if (typeof window !== "undefined") {
-    if (window.BuckyApi) {
-      return RuntimeType.AppRuntime;
+    const upHost = host.split(".").slice(1).join(".");
+    if (!upHost) {
+      return host;
     }
-    return RuntimeType.Browser;
-  }
-  const runtimeProcess = globalThis.process;
-  if ((_a = runtimeProcess == null ? void 0 : runtimeProcess.versions) == null ? void 0 : _a.node) {
-    return RuntimeType.NodeJS;
-  }
-  return RuntimeType.Unknown;
-}
-function attachEvent(event_name, callback) {
-}
-function removeEvent(cookie_id) {
-}
-function getAccountInfo() {
-  if (_currentAccountInfo) {
-    return _currentAccountInfo;
-  }
-  return null;
-}
-async function login(auto_login = true) {
-  if (_currentRuntime == null) {
-    console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
-    return null;
-  }
-  let appId = getAppId();
-  if (appId == null) {
-    console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
-    return null;
-  }
-  if (auto_login) {
-    let account_info = getLocalAccountInfo(appId);
-    if (account_info) {
-      _currentAccountInfo = account_info;
-      return _currentAccountInfo;
+    zoneDocUrl = defaultProtocol + upHost + "/1.0/identifiers/self";
+    response = await fetch(zoneDocUrl);
+    if (response.status === 200) {
+      return upHost;
     }
+    return host;
   }
-  cleanLocalAccountInfo(appId);
-  let zone_host_name = getZoneHostName();
-  if (zone_host_name == null) {
-    console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
-    return null;
-  }
-  try {
-    let auth_client = new AuthClient(zone_host_name, appId);
-    let account_info = await auth_client.login();
-    if (account_info) {
-      saveLocalAccountInfo(appId, account_info);
-      _currentAccountInfo = account_info;
-      _currentRuntime.setSessionToken(account_info.session_token);
+  syncCurrentAccountInfoFromRuntime() {
+    if (this.currentRuntime == null) {
+      return;
     }
-    return account_info;
-  } catch (error) {
-    console.error("login failed: ", error);
-    throw error;
+    const sessionToken = this.currentRuntime.getSessionToken();
+    if (!sessionToken) {
+      return;
+    }
+    const claims = parseSessionTokenClaims(sessionToken);
+    const userId = typeof (claims == null ? void 0 : claims.sub) === "string" ? claims.sub : typeof (claims == null ? void 0 : claims.userid) === "string" ? claims.userid : this.currentRuntime.getOwnerUserId() ?? "root";
+    this.currentAccountInfo = {
+      user_name: userId,
+      user_id: userId,
+      user_type: this.currentRuntime.getConfig().runtimeType === RuntimeType.AppService ? "service" : "root",
+      session_token: sessionToken,
+      refresh_token: this.currentRuntime.getRefreshToken() ?? void 0
+    };
+  }
+  detectEnvironmentRuntimeType() {
+    var _a, _b;
+    if (this.target === "browser") {
+      if (typeof window !== "undefined" && window.BuckyApi) {
+        return RuntimeType.AppRuntime;
+      }
+      return typeof window !== "undefined" ? RuntimeType.Browser : RuntimeType.Unknown;
+    }
+    if (this.target === "node") {
+      const runtimeProcess2 = globalThis.process;
+      if ((_a = runtimeProcess2 == null ? void 0 : runtimeProcess2.versions) == null ? void 0 : _a.node) {
+        return inferNodeRuntimeType();
+      }
+      return RuntimeType.Unknown;
+    }
+    if (typeof window !== "undefined") {
+      if (window.BuckyApi) {
+        return RuntimeType.AppRuntime;
+      }
+      return RuntimeType.Browser;
+    }
+    const runtimeProcess = globalThis.process;
+    if ((_b = runtimeProcess == null ? void 0 : runtimeProcess.versions) == null ? void 0 : _b.node) {
+      return RuntimeType.NodeJS;
+    }
+    return RuntimeType.Unknown;
   }
 }
-function logout(clean_account_info = true) {
-  if (_currentRuntime == null) {
-    console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
-    return;
-  }
-  let appId = getAppId();
-  if (appId == null) {
-    console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
-    return;
-  }
-  if (_currentAccountInfo == null) {
-    console.error("BuckyOS WebSDK is not login,call login first");
-    return;
-  }
-  if (clean_account_info) {
-    cleanLocalAccountInfo(appId);
-  }
-  _currentRuntime.setSessionToken(null);
+function createSDKModule(target) {
+  const sdk = new BuckyOSSDK(target);
+  const api = {
+    initBuckyOS: sdk.initBuckyOS.bind(sdk),
+    getBuckyOSConfig: sdk.getBuckyOSConfig.bind(sdk),
+    getRuntimeType: sdk.getRuntimeType.bind(sdk),
+    getAppId: sdk.getAppId.bind(sdk),
+    attachEvent: sdk.attachEvent.bind(sdk),
+    removeEvent: sdk.removeEvent.bind(sdk),
+    getAccountInfo: sdk.getAccountInfo.bind(sdk),
+    doLogin: sdk.doLogin.bind(sdk),
+    login: sdk.login.bind(sdk),
+    logout: sdk.logout.bind(sdk),
+    getAppSetting: sdk.getAppSetting.bind(sdk),
+    setAppSetting: sdk.setAppSetting.bind(sdk),
+    getCurrentWalletUser: sdk.getCurrentWalletUser.bind(sdk),
+    walletSignWithActiveDid: sdk.walletSignWithActiveDid.bind(sdk),
+    getZoneHostName: sdk.getZoneHostName.bind(sdk),
+    getZoneServiceURL: sdk.getZoneServiceURL.bind(sdk),
+    getServiceRpcClient: sdk.getServiceRpcClient.bind(sdk),
+    getVerifyHubClient: sdk.getVerifyHubClient.bind(sdk),
+    getSystemConfigClient: sdk.getSystemConfigClient.bind(sdk),
+    getTaskManagerClient: sdk.getTaskManagerClient.bind(sdk),
+    getOpenDanClient: sdk.getOpenDanClient.bind(sdk)
+  };
+  return {
+    ...api,
+    buckyos: {
+      kRPCClient,
+      AuthClient,
+      ...api,
+      hashPassword
+    }
+  };
 }
-function getAppSetting(setting_name = null) {
-}
-function setAppSetting(setting_name = null, setting_value) {
-}
-function getZoneHostName() {
-  if (_currentRuntime == null) {
-    console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
-    return null;
-  }
-  return _currentRuntime.getZoneHostName();
-}
-function getZoneServiceURL(service_name) {
-  if (_currentRuntime == null) {
-    throw new Error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
-  }
-  return _currentRuntime.getZoneServiceURL(service_name);
-}
-function getServiceRpcClient(service_name) {
-  if (_currentRuntime == null) {
-    console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
-    throw new Error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
-  }
-  if (_currentAccountInfo) {
-    _currentRuntime.setSessionToken(_currentAccountInfo.session_token);
-  }
-  return _currentRuntime.getServiceRpcClient(service_name);
-}
-function getAppId() {
-  if (_currentRuntime) {
-    return _currentRuntime.getAppId();
-  }
-  console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
-  return null;
-}
-function getBuckyOSConfig() {
-  return (_currentRuntime == null ? void 0 : _currentRuntime.getConfig()) ?? null;
-}
-function getVerifyHubClient() {
-  if (_currentRuntime == null) {
-    console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
-    throw new Error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
-  }
-  return _currentRuntime.getVerifyHubClient();
-}
-function getTaskManagerClient() {
-  if (_currentRuntime == null) {
-    console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
-    throw new Error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
-  }
-  return _currentRuntime.getTaskManagerClient();
-}
-function getOpenDanClient() {
-  if (_currentRuntime == null) {
-    console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
-    throw new Error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
-  }
-  return _currentRuntime.getOpenDanClient();
-}
-async function getCurrentWalletUser() {
-  const result = await window.BuckyApi.getCurrentUser();
-  if (result.code == 0) {
-    return result.data;
-  } else {
-    console.error("BuckyApi.getCurrentUser failed: ", result.message);
-    return null;
-  }
-}
-async function walletSignWithActiveDid(payloads) {
-  const result = await window.BuckyApi.signJsonWithActiveDid(payloads);
-  if (result.code == 0) {
-    return result.data.signatures;
-  } else {
-    console.error("BuckyApi.signWithActiveDid failed: ", result.message);
-    return null;
-  }
-}
-const buckyos = {
-  kRPCClient,
-  AuthClient,
-  initBuckyOS,
-  getBuckyOSConfig,
-  getRuntimeType,
-  getAppId,
-  attachEvent,
-  removeEvent,
-  getAccountInfo,
-  doLogin,
-  login,
-  logout,
-  hashPassword,
-  getAppSetting,
-  setAppSetting,
-  getCurrentWalletUser,
-  walletSignWithActiveDid,
-  //add_web3_bridge,        
-  getZoneHostName,
-  getZoneServiceURL,
-  getServiceRpcClient,
-  getVerifyHubClient,
-  getTaskManagerClient,
-  getOpenDanClient
-};
 export {
-  BS_SERVICE_OPENDAN,
-  BS_SERVICE_TASK_MANAGER,
-  BS_SERVICE_VERIFY_HUB,
-  OpenDanClient,
-  RuntimeType,
-  TaskManagerClient,
-  VerifyHubClient,
-  WEB3_BRIDGE_HOST,
-  buckyos
+  BS_SERVICE_VERIFY_HUB as B,
+  OpenDanClient as O,
+  RuntimeType as R,
+  SystemConfigClient as S,
+  TaskManagerClient as T,
+  VerifyHubClient as V,
+  WEB3_BRIDGE_HOST as W,
+  BS_SERVICE_TASK_MANAGER as a,
+  BS_SERVICE_OPENDAN as b,
+  createSDKModule as c,
+  BuckyOSSDK as d,
+  hashPassword as h,
+  parseSessionTokenClaims as p
 };
-//# sourceMappingURL=buckyos.mjs.map
+//# sourceMappingURL=sdk_core-7d1f9888.mjs.map

@@ -1,22 +1,19 @@
 import { defineConfig } from "vite";
 import { resolve } from "path";
-import dts from 'vite-plugin-dts';
 
 export default defineConfig({
   build: {
     minify: 'terser',
     sourcemap: true,
     lib: {
-      entry: resolve(__dirname,"src/index.ts"),  // 配置入口文件路径
+      entry: {
+        index: resolve(__dirname, "src/index.ts"),
+        browser: resolve(__dirname, "src/browser.ts"),
+        node: resolve(__dirname, "src/node.ts"),
+      },
       name: "buckyos",
-      fileName: "buckyos",
-      formats: ["es", "umd"], // 打包生成的格式
+      fileName: (format, entryName) => `${entryName}.${format === 'es' ? 'mjs' : 'cjs'}`,
+      formats: ["es", "cjs"],
     },
   },
-  plugins: [
-    dts({
-      insertTypesEntry: true, // 自动生成 types 入口
-      rollupTypes: true       // 关键：强力合并成一个 .d.ts 文件
-    })
-  ]
 });

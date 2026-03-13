@@ -48,4 +48,4 @@ export declare const getTaskManagerClient: () => import("./task_mgr_client").Tas
 export declare const getOpenDanClient: () => import("./opendan_client").OpenDanClient;
 export { hashPassword };
 export * from './sdk_core';
-//# sourceMappingURL=index.d.ts.map
+//# sourceMappingURL=node.d.ts.map
