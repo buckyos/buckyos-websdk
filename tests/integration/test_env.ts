@@ -30,7 +30,13 @@ export async function installInsecureNodeFetchIfNeeded(zoneHost: string) {
   const https = await import('node:https')
 
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    const url = new URL(typeof input === 'string' || input instanceof URL ? input.toString() : String(input))
+    const inputValue = typeof input === 'string' || input instanceof URL ? input.toString() : String(input)
+    const baseUrl = inputValue.startsWith('/')
+      ? `https://${zoneHost}/`
+      : typeof window !== 'undefined' && window.location?.href
+        ? window.location.href
+        : `https://${zoneHost}/`
+    const url = new URL(inputValue, baseUrl)
     const requestImpl = url.protocol === 'https:' ? https.request : http.request
     const body = typeof init?.body === 'string'
       ? init.body
@@ -95,6 +101,10 @@ export function getServiceUrl(
   serviceName: string,
   ownerUserId?: string | null,
 ): string {
+  const ignoredAppId = appId
+  const ignoredOwnerUserId = ownerUserId
+  void ignoredAppId
+  void ignoredOwnerUserId
   const servicePath = serviceName === 'system-config' ? 'system_config' : serviceName
-  return `https://${getAppHostPrefix(appId, ownerUserId)}.${zoneHost}/kapi/${servicePath}/`
+  return `https://${zoneHost}/kapi/${servicePath}/`
 }

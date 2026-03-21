@@ -18,16 +18,21 @@
 
 ## 1. 实际可用的服务 URL
 
-在当前单点环境里，`kapi` 实际要走 app host prefix，而不是直接打 `https://test.buckyos.io/kapi/...`。
+当前单点环境已经修复了 gateway 路由，`kapi` 可以直接走 `https://test.buckyos.io/kapi/...`。
 
-- `verify-hub`: `https://buckycli.test.buckyos.io/kapi/verify-hub/`
-- `system_config`: `https://buckycli.test.buckyos.io/kapi/system_config/`
-- `task-manager`: `https://buckycli.test.buckyos.io/kapi/task-manager/`
+- `verify-hub`: `https://test.buckyos.io/kapi/verify-hub/`
+- `system_config`: `https://test.buckyos.io/kapi/system_config/`
+- `task-manager`: `https://test.buckyos.io/kapi/task-manager/`
 
 注意:
 
-- `https://test.buckyos.io/kapi/verify-hub` 当前返回的是静态页面，不是 RPC 入口
-- `https://test.buckyos.io/kapi/system_config` 当前返回 `405`
+- 2026-03-21 已实测:
+  - `POST https://test.buckyos.io/kapi/verify-hub/` 可直接登录
+  - `POST https://test.buckyos.io/kapi/system_config/` 可直接返回 RPC 结果
+  - `POST https://test.buckyos.io/kapi/task-manager/` 可直接返回 RPC 结果
+- 当前 WebSDK 的 `AppClient.getZoneServiceURL(service)` 仍然会为一般业务 service 生成 app host prefix 形式的 URL
+  - 例如 `task-manager` 仍可能走 `https://{app-host-prefix}.test.buckyos.io/kapi/task-manager`
+  - 但对单点环境测试来说，base host 入口现在也已经可用
 - Node 环境直连 HTTPS 时会遇到测试证书链校验问题
   - 最简单的处理方式是设置 `NODE_TLS_REJECT_UNAUTHORIZED=0`
   - 测试里现在也提供了自定义 insecure fetch helper
@@ -56,7 +61,12 @@
 - `runtimeType=RuntimeType.Browser`
 - `zoneHost=test.buckyos.io`
 - `defaultProtocol=https://`
-- `verifyHubServiceUrl=https://buckycli.test.buckyos.io/kapi/verify-hub/`
+- 浏览器侧优先直接使用当前 Host 的相对路径:
+  - `/kapi/verify-hub/`
+  - `/kapi/system_config/`
+  - `/kapi/task-manager/`
+
+不建议在 Web runtime 里默认写死跨域绝对 URL。只有在 Node/jsdom 集成测试或特殊调试场景下，才显式覆盖 `verifyHubServiceUrl`。
 
 ### 对应测试
 

@@ -15,7 +15,6 @@ describeIntegration('Web runtime integration', () => {
   const zoneHost = getEnv('BUCKYOS_TEST_ZONE_HOST', 'test.buckyos.io') as string
   const username = getEnv('BUCKYOS_TEST_USERNAME', 'devtest') as string
   const password = getEnv('BUCKYOS_TEST_PASSWORD', 'bucky2025') as string
-  const verifyHubServiceUrl = getEnv('BUCKYOS_TEST_VERIFY_HUB_URL', getServiceUrl(appId, zoneHost, 'verify-hub')) as string
 
   beforeAll(() => {
     configureInsecureTlsIfNeeded(zoneHost)
@@ -38,7 +37,6 @@ describeIntegration('Web runtime integration', () => {
       runtimeType: RuntimeType.Browser,
       zoneHost,
       defaultProtocol: 'https://',
-      verifyHubServiceUrl,
       autoRenew: false,
     })
 
