@@ -33,7 +33,7 @@ export interface Task {
   user_id: string
   app_id: string
   parent_id: number | null
-  root_id: number | null
+  root_id: string
   name: string
   task_type: string
   status: TaskStatus
@@ -48,6 +48,7 @@ export interface Task {
 export interface CreateTaskOptions {
   permissions?: TaskPermissions
   parent_id?: number
+  root_id?: string
   priority?: number
 }
 
@@ -56,7 +57,7 @@ export interface TaskFilter {
   task_type?: string
   status?: TaskStatus
   parent_id?: number
-  root_id?: number
+  root_id?: string
 }
 
 export interface TaskUpdatePayload {
@@ -115,6 +116,20 @@ interface TaskManagerCreateTaskReq {
   data?: unknown
   permissions?: TaskPermissions
   parent_id?: number
+  root_id?: string
+  priority?: number
+  user_id: string
+  app_id: string
+  app_name?: string
+}
+
+interface TaskManagerCreateDownloadTaskReq {
+  download_url: string
+  objid?: string
+  download_options?: unknown
+  parent_id?: number
+  permissions?: TaskPermissions
+  root_id?: string
   priority?: number
   user_id: string
   app_id: string
@@ -130,7 +145,7 @@ interface TaskManagerListTasksReq {
   task_type?: string
   status?: TaskStatus
   parent_id?: number
-  root_id?: number
+  root_id?: string
   source_user_id?: string
   source_app_id?: string
 }
@@ -248,6 +263,19 @@ function parseTasks(value: unknown): Task[] {
   return value.map((task) => parseTask(task))
 }
 
+function parseTaskListResult(value: unknown): Task[] {
+  if (Array.isArray(value)) {
+    return parseTasks(value)
+  }
+
+  const parsed = asRecord(value)
+  if ('tasks' in parsed) {
+    return parseTasks(parsed.tasks)
+  }
+
+  throw new RPCError('Expected tasks in response')
+}
+
 export class TaskManagerClient {
   private rpcClient: kRPCClient
 
@@ -267,6 +295,7 @@ export class TaskManagerClient {
       data: params.data,
       permissions: options.permissions,
       parent_id: options.parent_id,
+      root_id: options.root_id,
       priority: options.priority,
       user_id: params.userId,
       app_id: params.appId,
@@ -332,13 +361,7 @@ export class TaskManagerClient {
     }
 
     const result = await this.rpcClient.call<unknown, TaskManagerListTasksReq>('list_tasks', req)
-    const parsed = asRecord(result)
-
-    if ('tasks' in parsed) {
-      return parseTasks(parsed.tasks)
-    }
-
-    throw new RPCError('Expected tasks in response')
+    return parseTaskListResult(result)
   }
 
   async listTasksByTimeRange(params: ListTasksByTimeRangeParams): Promise<Task[]> {
@@ -352,13 +375,7 @@ export class TaskManagerClient {
     }
 
     const result = await this.rpcClient.call<unknown, TaskManagerListTasksByTimeRangeReq>('list_tasks_by_time_range', req)
-    const parsed = asRecord(result)
-
-    if ('tasks' in parsed) {
-      return parseTasks(parsed.tasks)
-    }
-
-    throw new RPCError('Expected tasks in response')
+    return parseTaskListResult(result)
   }
 
   async updateTask(payload: TaskUpdatePayload): Promise<void> {
@@ -381,13 +398,7 @@ export class TaskManagerClient {
   async getSubtasks(parentId: number): Promise<Task[]> {
     const req: TaskManagerGetSubtasksReq = { parent_id: parentId }
     const result = await this.rpcClient.call<unknown, TaskManagerGetSubtasksReq>('get_subtasks', req)
-    const parsed = asRecord(result)
-
-    if ('tasks' in parsed) {
-      return parseTasks(parsed.tasks)
-    }
-
-    throw new RPCError('Expected tasks in response')
+    return parseTaskListResult(result)
   }
 
   async updateTaskStatus(id: number, status: TaskStatus): Promise<void> {
@@ -417,6 +428,36 @@ export class TaskManagerClient {
   async deleteTask(id: number): Promise<void> {
     const req: TaskManagerDeleteTaskReq = { id }
     await this.rpcClient.call<unknown, TaskManagerDeleteTaskReq>('delete_task', req)
+  }
+
+  async createDownloadTask(
+    downloadUrl: string,
+    userId: string,
+    appId: string,
+    options: CreateTaskOptions = {},
+    objid?: string,
+    downloadOptions?: unknown,
+  ): Promise<number> {
+    const req: TaskManagerCreateDownloadTaskReq = {
+      download_url: downloadUrl,
+      objid,
+      download_options: downloadOptions,
+      parent_id: options.parent_id,
+      permissions: options.permissions,
+      root_id: options.root_id,
+      priority: options.priority,
+      user_id: userId,
+      app_id: appId,
+      app_name: appId || undefined,
+    }
+
+    const result = await this.rpcClient.call<unknown, TaskManagerCreateDownloadTaskReq>('create_download_task', req)
+    const parsed = asRecord(result)
+    const taskId = parsed.task_id
+    if (typeof taskId !== 'number') {
+      throw new RPCError('Expected CreateDownloadTaskResult response')
+    }
+    return taskId
   }
 
   async pauseTask(id: number): Promise<void> {

@@ -24,7 +24,7 @@ export interface Task {
     user_id: string;
     app_id: string;
     parent_id: number | null;
-    root_id: number | null;
+    root_id: string;
     name: string;
     task_type: string;
     status: TaskStatus;
@@ -38,6 +38,7 @@ export interface Task {
 export interface CreateTaskOptions {
     permissions?: TaskPermissions;
     parent_id?: number;
+    root_id?: string;
     priority?: number;
 }
 export interface TaskFilter {
@@ -45,7 +46,7 @@ export interface TaskFilter {
     task_type?: string;
     status?: TaskStatus;
     parent_id?: number;
-    root_id?: number;
+    root_id?: string;
 }
 export interface TaskUpdatePayload {
     id: number;
@@ -109,6 +110,7 @@ export declare class TaskManagerClient {
     updateTaskError(id: number, errorMessage: string): Promise<void>;
     updateTaskData(id: number, data: unknown): Promise<void>;
     deleteTask(id: number): Promise<void>;
+    createDownloadTask(downloadUrl: string, userId: string, appId: string, options?: CreateTaskOptions, objid?: string, downloadOptions?: unknown): Promise<number>;
     pauseTask(id: number): Promise<void>;
     resumeTask(id: number): Promise<void>;
     completeTask(id: number): Promise<void>;

@@ -996,6 +996,16 @@ function parseTasks(value) {
   }
   return value.map((task) => parseTask(task));
 }
+function parseTaskListResult(value) {
+  if (Array.isArray(value)) {
+    return parseTasks(value);
+  }
+  const parsed = asRecord(value);
+  if ("tasks" in parsed) {
+    return parseTasks(parsed.tasks);
+  }
+  throw new RPCError("Expected tasks in response");
+}
 class TaskManagerClient {
   constructor(rpcClient) {
     this.rpcClient = rpcClient;
@@ -1011,6 +1021,7 @@ class TaskManagerClient {
       data: params.data,
       permissions: options.permissions,
       parent_id: options.parent_id,
+      root_id: options.root_id,
       priority: options.priority,
       user_id: params.userId,
       app_id: params.appId,
@@ -1063,11 +1074,7 @@ class TaskManagerClient {
       source_app_id: params.sourceAppId
     };
     const result = await this.rpcClient.call("list_tasks", req);
-    const parsed = asRecord(result);
-    if ("tasks" in parsed) {
-      return parseTasks(parsed.tasks);
-    }
-    throw new RPCError("Expected tasks in response");
+    return parseTaskListResult(result);
   }
   async listTasksByTimeRange(params) {
     const req = {
@@ -1079,11 +1086,7 @@ class TaskManagerClient {
       end_time: params.endTime
     };
     const result = await this.rpcClient.call("list_tasks_by_time_range", req);
-    const parsed = asRecord(result);
-    if ("tasks" in parsed) {
-      return parseTasks(parsed.tasks);
-    }
-    throw new RPCError("Expected tasks in response");
+    return parseTaskListResult(result);
   }
   async updateTask(payload) {
     const req = {
@@ -1102,11 +1105,7 @@ class TaskManagerClient {
   async getSubtasks(parentId) {
     const req = { parent_id: parentId };
     const result = await this.rpcClient.call("get_subtasks", req);
-    const parsed = asRecord(result);
-    if ("tasks" in parsed) {
-      return parseTasks(parsed.tasks);
-    }
-    throw new RPCError("Expected tasks in response");
+    return parseTaskListResult(result);
   }
   async updateTaskStatus(id, status) {
     const req = { id, status };
@@ -1131,6 +1130,27 @@ class TaskManagerClient {
   async deleteTask(id) {
     const req = { id };
     await this.rpcClient.call("delete_task", req);
+  }
+  async createDownloadTask(downloadUrl, userId, appId, options = {}, objid, downloadOptions) {
+    const req = {
+      download_url: downloadUrl,
+      objid,
+      download_options: downloadOptions,
+      parent_id: options.parent_id,
+      permissions: options.permissions,
+      root_id: options.root_id,
+      priority: options.priority,
+      user_id: userId,
+      app_id: appId,
+      app_name: appId || void 0
+    };
+    const result = await this.rpcClient.call("create_download_task", req);
+    const parsed = asRecord(result);
+    const taskId = parsed.task_id;
+    if (typeof taskId !== "number") {
+      throw new RPCError("Expected CreateDownloadTaskResult response");
+    }
+    return taskId;
   }
   async pauseTask(id) {
     await this.updateTaskStatus(
@@ -1287,30 +1307,148 @@ class OpenDanClient {
     };
     return this.rpcClient.call("get_session_record", req);
   }
+  async pauseSession(sessionId) {
+    const req = {
+      session_id: sessionId
+    };
+    return this.rpcClient.call("pause_session", req);
+  }
+  async resumeSession(sessionId) {
+    const req = {
+      session_id: sessionId
+    };
+    return this.rpcClient.call("resume_session", req);
+  }
 }
-class SystemConfigClient {
+const CONFIG_CACHE_TIME_SECONDS = 10;
+const CACHE_KEY_PREFIXES = ["services/", "system/rbac/"];
+const _SystemConfigClient = class _SystemConfigClient2 {
   constructor(serviceUrl, sessionToken = null) {
     this.rpcClient = new kRPCClient(serviceUrl, sessionToken);
   }
+  needCache(key) {
+    return CACHE_KEY_PREFIXES.some((prefix) => key.startsWith(prefix));
+  }
+  getUnixTimestamp() {
+    return Math.floor(Date.now() / 1e3);
+  }
+  getConfigCache(key) {
+    const cached = _SystemConfigClient2.configCache.get(key);
+    if (!cached) {
+      return null;
+    }
+    if (cached.cachedAt + CONFIG_CACHE_TIME_SECONDS < this.getUnixTimestamp()) {
+      _SystemConfigClient2.configCache.delete(key);
+      return null;
+    }
+    return cached;
+  }
+  setConfigCache(key, value, version) {
+    if (!this.needCache(key)) {
+      return true;
+    }
+    const previous = _SystemConfigClient2.configCache.get(key);
+    _SystemConfigClient2.configCache.set(key, {
+      value,
+      version,
+      cachedAt: this.getUnixTimestamp()
+    });
+    if (!previous) {
+      return true;
+    }
+    return previous.value !== value || previous.version !== version;
+  }
+  removeConfigCache(key) {
+    _SystemConfigClient2.configCache.delete(key);
+  }
   async get(key) {
+    const cachedValue = this.getConfigCache(key);
+    if (cachedValue != null) {
+      return {
+        value: cachedValue.value,
+        version: cachedValue.version,
+        is_changed: false
+      };
+    }
     const result = await this.rpcClient.call("sys_config_get", { key });
-    if (typeof result !== "string") {
+    if (result == null) {
       throw new Error(`system_config key not found: ${key}`);
     }
+    if (typeof result.value !== "string" || typeof result.version !== "number") {
+      throw new Error(`invalid sys_config_get response for key: ${key}`);
+    }
+    const isChanged = this.setConfigCache(key, result.value, result.version);
     return {
-      value: result,
-      version: Date.now(),
-      is_changed: true
+      value: result.value,
+      version: result.version,
+      is_changed: isChanged
     };
   }
   async set(key, value) {
+    if (!key || !value) {
+      throw new Error("key or value is empty");
+    }
+    if (key.includes(":")) {
+      throw new Error("key can not contain ':'");
+    }
     await this.rpcClient.call("sys_config_set", { key, value });
+    this.removeConfigCache(key);
     return 0;
   }
-}
+  async setByJsonPath(key, jsonPath, value) {
+    await this.rpcClient.call(
+      "sys_config_set_by_json_path",
+      { key, json_path: jsonPath, value }
+    );
+    this.removeConfigCache(key);
+    return 0;
+  }
+  async create(key, value) {
+    await this.rpcClient.call("sys_config_create", { key, value });
+    this.removeConfigCache(key);
+    return 0;
+  }
+  async delete(key) {
+    await this.rpcClient.call("sys_config_delete", { key });
+    this.removeConfigCache(key);
+    return 0;
+  }
+  async append(key, value) {
+    await this.rpcClient.call("sys_config_append", {
+      key,
+      append_value: value
+    });
+    this.removeConfigCache(key);
+    return 0;
+  }
+  async list(key) {
+    return this.rpcClient.call("sys_config_list", { key });
+  }
+  async execTx(actions, mainKey) {
+    const params = { actions };
+    if (mainKey) {
+      params.main_key = `${mainKey[0]}:${mainKey[1]}`;
+    }
+    await this.rpcClient.call("sys_config_exec_tx", params);
+    for (const key of Object.keys(actions)) {
+      this.removeConfigCache(key);
+    }
+    return 0;
+  }
+  async dumpConfigsForScheduler() {
+    return this.rpcClient.call("dump_configs_for_scheduler", {});
+  }
+  async refreshTrustKeys() {
+    await this.rpcClient.call("sys_refresh_trust_keys", {});
+  }
+};
+_SystemConfigClient.configCache = /* @__PURE__ */ new Map();
+let SystemConfigClient = _SystemConfigClient;
 const DEFAULT_NODE_GATEWAY_PORT = 3180;
 const DEFAULT_SESSION_TOKEN_TTL_SECONDS = 15 * 60;
 const DEFAULT_RENEW_INTERVAL_MS = 5e3;
+const BUCKYOS_HOST_GATEWAY_ENV = "BUCKYOS_HOST_GATEWAY";
+const DEFAULT_DOCKER_HOST_GATEWAY = "host.docker.internal";
 var RuntimeType = /* @__PURE__ */ ((RuntimeType2) => {
   RuntimeType2["Browser"] = "Browser";
   RuntimeType2["NodeJS"] = "NodeJS";
@@ -1455,8 +1593,14 @@ class BuckyOSRuntime {
       }
     }
     this.validateSessionToken();
-    this.startAutoRenewIfNeeded();
     this.initialized = true;
+  }
+  async login() {
+    await this.initialize();
+    if (this.config.runtimeType === "AppClient" || this.config.runtimeType === "AppService") {
+      await this.renewTokenFromVerifyHub();
+    }
+    this.startAutoRenewIfNeeded();
   }
   setConfig(config) {
     this.config = {
@@ -1488,7 +1632,7 @@ class BuckyOSRuntime {
     const servicePath = normalizeServicePath(serviceName);
     if (this.config.runtimeType === "AppService") {
       const port = this.config.nodeGatewayPort ?? DEFAULT_NODE_GATEWAY_PORT;
-      return `http://127.0.0.1:${port}/kapi/${servicePath}`;
+      return `http://${this.resolveLocalServiceHost()}:${port}/kapi/${servicePath}`;
     }
     if (this.config.runtimeType === "AppClient") {
       if (!this.config.zoneHost) {
@@ -1506,7 +1650,7 @@ class BuckyOSRuntime {
     }
     if (this.config.runtimeType === "AppService") {
       const port = this.config.nodeGatewayPort ?? DEFAULT_NODE_GATEWAY_PORT;
-      return `http://127.0.0.1:${port}/kapi/system_config`;
+      return `http://${this.resolveLocalServiceHost()}:${port}/kapi/system_config`;
     }
     if (this.config.runtimeType === "AppClient") {
       if (!this.config.zoneHost) {
@@ -1558,8 +1702,23 @@ class BuckyOSRuntime {
     const rpcClient = this.getServiceRpcClient("opendan");
     return new OpenDanClient(rpcClient);
   }
+  async getMySettings() {
+    const settingsPath = this.getMySettingsPath();
+    const settingsValue = await this.getSystemConfigClient().get(settingsPath);
+    return JSON.parse(settingsValue.value);
+  }
+  async updateMySettings(jsonPath, settings) {
+    const settingsPath = this.getMySettingsPath();
+    const settingsValue = JSON.stringify(settings);
+    await this.getSystemConfigClient().setByJsonPath(settingsPath, jsonPath, settingsValue);
+  }
+  async updateAllMySettings(settings) {
+    const settingsPath = this.getMySettingsPath();
+    const settingsValue = JSON.stringify(settings);
+    await this.getSystemConfigClient().set(settingsPath, settingsValue);
+  }
   async renewTokenFromVerifyHub() {
-    if (this.config.runtimeType !== "AppService") {
+    if (this.config.runtimeType !== "AppService" && this.config.runtimeType !== "AppClient") {
       return;
     }
     const sessionToken = this.sessionToken;
@@ -1570,8 +1729,17 @@ class BuckyOSRuntime {
     if (!claims || !this.needsRenew(claims)) {
       return;
     }
+    if (this.config.runtimeType === "AppClient" && !trimToNull$1(this.config.zoneHost) && !trimToNull$1(this.config.verifyHubServiceUrl)) {
+      return;
+    }
     const verifyHubClient = this.getVerifyHubClient();
-    const tokenPair = claims.iss === "verify-hub" && this.refreshToken ? await verifyHubClient.refreshToken({ refresh_token: this.refreshToken }) : await verifyHubClient.loginByJwt({ jwt: sessionToken });
+    const fallbackJwt = async () => {
+      if (this.config.runtimeType !== "AppClient") {
+        return sessionToken;
+      }
+      return this.createAppClientSessionToken();
+    };
+    const tokenPair = claims.iss === "verify-hub" ? this.refreshToken ? await verifyHubClient.refreshToken({ refresh_token: this.refreshToken }) : await verifyHubClient.loginByJwt({ jwt: await fallbackJwt() }) : await verifyHubClient.loginByJwt({ jwt: sessionToken });
     this.sessionToken = trimToNull$1(tokenPair.session_token);
     this.refreshToken = trimToNull$1(tokenPair.refresh_token);
     this.validateSessionToken();
@@ -1633,7 +1801,7 @@ class BuckyOSRuntime {
     return now >= claims.exp - 30;
   }
   startAutoRenewIfNeeded() {
-    if (this.config.runtimeType !== "AppService" || this.config.autoRenew === false) {
+    if (this.config.runtimeType !== "AppService" && this.config.runtimeType !== "AppClient" || this.config.autoRenew === false) {
       return;
     }
     if (this.renewTimer) {
@@ -1827,7 +1995,46 @@ class BuckyOSRuntime {
       } catch {
       }
     }
+    for (const root of roots) {
+      const userConfigPath = path.join(root, "user_config.json");
+      try {
+        const raw = await fs.readFile(userConfigPath, "utf8");
+        const parsed = JSON.parse(raw);
+        const zoneDid = typeof parsed.default_zone_did === "string" ? parsed.default_zone_did.trim() : "";
+        if (!zoneDid) {
+          continue;
+        }
+        if (zoneDid.startsWith("did:web:")) {
+          return zoneDid.slice("did:web:".length).replace(/:/g, ".");
+        }
+        if (zoneDid.startsWith("did:bns:")) {
+          return zoneDid.slice("did:bns:".length);
+        }
+      } catch {
+      }
+    }
     return null;
+  }
+  getMySettingsPath() {
+    switch (this.config.runtimeType) {
+      case "AppClient":
+        throw new Error("AppClient not support getMySettingsPath");
+      case "AppService": {
+        const ownerUserId = this.getOwnerUserId();
+        if (!ownerUserId) {
+          throw new Error("ownerUserId is required for AppService settings");
+        }
+        return `users/${ownerUserId}/apps/${this.config.appId}/settings`;
+      }
+      default:
+        return `services/${this.config.appId}/settings`;
+    }
+  }
+  resolveLocalServiceHost() {
+    if (this.config.runtimeType === "AppService") {
+      return trimToNull$1(getProcessEnv()[BUCKYOS_HOST_GATEWAY_ENV]) ?? DEFAULT_DOCKER_HOST_GATEWAY;
+    }
+    return "127.0.0.1";
   }
   async signJwtWithEd25519(header, payload, privateKeyPem) {
     const crypto = await importNodeModule("node:crypto");
@@ -1864,6 +2071,53 @@ function trimToNull(value) {
 }
 function isBrowserStorageAvailable() {
   return typeof localStorage !== "undefined";
+}
+function getSettingsPathSegments(settingName) {
+  if (!settingName) {
+    return [];
+  }
+  return settingName.split(/[./]/).map((segment) => segment.trim()).filter((segment) => segment.length > 0);
+}
+function getSettingValue(settings, settingName) {
+  const segments = getSettingsPathSegments(settingName);
+  if (segments.length === 0) {
+    return settings;
+  }
+  let current = settings;
+  for (const segment of segments) {
+    if (!current || typeof current !== "object" || Array.isArray(current) || !(segment in current)) {
+      return void 0;
+    }
+    current = current[segment];
+  }
+  return current;
+}
+function setSettingValue(settings, settingName, value) {
+  const segments = getSettingsPathSegments(settingName);
+  if (segments.length === 0) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      throw new Error("settingValue must be a JSON object when settingName is null");
+    }
+    return value;
+  }
+  const nextSettings = Array.isArray(settings) ? {} : { ...settings };
+  let current = nextSettings;
+  for (let index = 0; index < segments.length - 1; index += 1) {
+    const segment = segments[index];
+    const previous = current[segment];
+    const next = previous && typeof previous === "object" && !Array.isArray(previous) ? { ...previous } : {};
+    current[segment] = next;
+    current = next;
+  }
+  current[segments[segments.length - 1]] = value;
+  return nextSettings;
+}
+function parseSettingValue(settingValue) {
+  try {
+    return JSON.parse(settingValue);
+  } catch {
+    return settingValue;
+  }
 }
 function inferNodeRuntimeType() {
   const env = getNodeEnv();
@@ -1969,7 +2223,7 @@ class BuckyOSSDK {
     }
     const runtimeType = this.currentRuntime.getConfig().runtimeType;
     if (runtimeType === RuntimeType.AppClient || runtimeType === RuntimeType.AppService) {
-      await this.currentRuntime.initialize();
+      await this.currentRuntime.login();
       this.syncCurrentAccountInfoFromRuntime();
       return this.currentAccountInfo;
     }
@@ -2028,9 +2282,24 @@ class BuckyOSSDK {
     this.currentAccountInfo = null;
     this.currentRuntime.clearAuthState();
   }
-  getAppSetting(settingName = null) {
+  async getAppSetting(settingName = null) {
+    if (this.currentRuntime == null) {
+      throw new Error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
+    }
+    const settings = await this.currentRuntime.getMySettings();
+    return getSettingValue(settings, settingName);
   }
-  setAppSetting(settingName = null, settingValue) {
+  async setAppSetting(settingName = null, settingValue) {
+    if (this.currentRuntime == null) {
+      throw new Error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
+    }
+    const currentSettings = await this.currentRuntime.getMySettings();
+    const nextSettings = setSettingValue(
+      currentSettings && typeof currentSettings === "object" && !Array.isArray(currentSettings) ? { ...currentSettings } : {},
+      settingName,
+      parseSettingValue(settingValue)
+    );
+    await this.currentRuntime.updateAllMySettings(nextSettings);
   }
   getCurrentWalletUser() {
     if (typeof window === "undefined") {
@@ -2266,4 +2535,4 @@ export {
   hashPassword as h,
   parseSessionTokenClaims as p
 };
-//# sourceMappingURL=sdk_core-7d1f9888.mjs.map
+//# sourceMappingURL=sdk_core-a81d8cd4.mjs.map

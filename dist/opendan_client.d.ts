@@ -175,5 +175,7 @@ export declare class OpenDanClient {
     listAgentSessions(params: ListAgentSessionsParams): Promise<OpenDanAgentSessionListResult>;
     getAgentSession(agentId: string, sessionId: string): Promise<OpenDanAgentSessionRecord>;
     getSessionRecord(sessionId: string): Promise<OpenDanAgentSessionRecord>;
+    pauseSession(sessionId: string): Promise<OpenDanAgentSessionRecord>;
+    resumeSession(sessionId: string): Promise<OpenDanAgentSessionRecord>;
 }
 //# sourceMappingURL=opendan_client.d.ts.map

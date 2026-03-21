@@ -49,6 +49,7 @@ export declare class BuckyOSRuntime {
     private initialized;
     constructor(config: BuckyOSConfig);
     initialize(): Promise<void>;
+    login(): Promise<void>;
     setConfig(config: BuckyOSConfig): void;
     getConfig(): BuckyOSConfig;
     getAppId(): string;
@@ -68,6 +69,9 @@ export declare class BuckyOSRuntime {
     getVerifyHubClient(): VerifyHubClient;
     getTaskManagerClient(): TaskManagerClient;
     getOpenDanClient(): OpenDanClient;
+    getMySettings(): Promise<unknown>;
+    updateMySettings(jsonPath: string, settings: unknown): Promise<void>;
+    updateAllMySettings(settings: unknown): Promise<void>;
     renewTokenFromVerifyHub(): Promise<void>;
     private resolveNodeIdentityFromEnv;
     private resolveZoneHostFromLocalConfig;
@@ -80,6 +84,8 @@ export declare class BuckyOSRuntime {
     private getPrivateKeySearchRoots;
     private tryResolveDeviceNameFromSearchRoots;
     private tryResolveZoneHostFromSearchRoots;
+    private getMySettingsPath;
+    private resolveLocalServiceHost;
     private signJwtWithEd25519;
 }
 //# sourceMappingURL=runtime.d.ts.map

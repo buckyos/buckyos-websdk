@@ -26,8 +26,8 @@ export declare class BuckyOSSDK {
     doLogin(username: string, password: string): Promise<AccountInfo | null>;
     login(autoLogin?: boolean): Promise<AccountInfo | null>;
     logout(cleanAccountInfo?: boolean): void;
-    getAppSetting(settingName?: string | null): void;
-    setAppSetting(settingName: string | null | undefined, settingValue: string): void;
+    getAppSetting(settingName?: string | null): Promise<unknown>;
+    setAppSetting(settingName: string | null | undefined, settingValue: string): Promise<void>;
     getCurrentWalletUser(): Promise<any>;
     walletSignWithActiveDid(payloads: Record<string, unknown>[]): Promise<string[] | null>;
     getZoneHostName(): string | null;
@@ -55,8 +55,8 @@ export declare function createSDKModule(target: SDKTarget): {
         doLogin: (username: string, password: string) => Promise<AccountInfo | null>;
         login: (autoLogin?: boolean) => Promise<AccountInfo | null>;
         logout: (cleanAccountInfo?: boolean) => void;
-        getAppSetting: (settingName?: string | null) => void;
-        setAppSetting: (settingName: string | null | undefined, settingValue: string) => void;
+        getAppSetting: (settingName?: string | null) => Promise<unknown>;
+        setAppSetting: (settingName: string | null | undefined, settingValue: string) => Promise<void>;
         getCurrentWalletUser: () => Promise<any>;
         walletSignWithActiveDid: (payloads: Record<string, unknown>[]) => Promise<string[] | null>;
         getZoneHostName: () => string | null;
@@ -79,8 +79,8 @@ export declare function createSDKModule(target: SDKTarget): {
     doLogin: (username: string, password: string) => Promise<AccountInfo | null>;
     login: (autoLogin?: boolean) => Promise<AccountInfo | null>;
     logout: (cleanAccountInfo?: boolean) => void;
-    getAppSetting: (settingName?: string | null) => void;
-    setAppSetting: (settingName: string | null | undefined, settingValue: string) => void;
+    getAppSetting: (settingName?: string | null) => Promise<unknown>;
+    setAppSetting: (settingName: string | null | undefined, settingValue: string) => Promise<void>;
     getCurrentWalletUser: () => Promise<any>;
     walletSignWithActiveDid: (payloads: Record<string, unknown>[]) => Promise<string[] | null>;
     getZoneHostName: () => string | null;

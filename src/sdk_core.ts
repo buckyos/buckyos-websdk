@@ -48,6 +48,66 @@ function isBrowserStorageAvailable(): boolean {
   return typeof localStorage !== 'undefined'
 }
 
+function getSettingsPathSegments(settingName: string | null | undefined): string[] {
+  if (!settingName) {
+    return []
+  }
+
+  return settingName
+    .split(/[./]/)
+    .map((segment) => segment.trim())
+    .filter((segment) => segment.length > 0)
+}
+
+function getSettingValue(settings: unknown, settingName: string | null | undefined): unknown {
+  const segments = getSettingsPathSegments(settingName)
+  if (segments.length === 0) {
+    return settings
+  }
+
+  let current: unknown = settings
+  for (const segment of segments) {
+    if (!current || typeof current !== 'object' || Array.isArray(current) || !(segment in current)) {
+      return undefined
+    }
+    current = (current as Record<string, unknown>)[segment]
+  }
+  return current
+}
+
+function setSettingValue(settings: Record<string, unknown>, settingName: string | null | undefined, value: unknown): Record<string, unknown> {
+  const segments = getSettingsPathSegments(settingName)
+  if (segments.length === 0) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      throw new Error('settingValue must be a JSON object when settingName is null')
+    }
+    return value as Record<string, unknown>
+  }
+
+  const nextSettings = Array.isArray(settings) ? {} : { ...settings }
+  let current: Record<string, unknown> = nextSettings
+  for (let index = 0; index < segments.length - 1; index += 1) {
+    const segment = segments[index]
+    const previous = current[segment]
+    const next = previous && typeof previous === 'object' && !Array.isArray(previous)
+      ? { ...(previous as Record<string, unknown>) }
+      : {}
+    current[segment] = next
+    current = next
+  }
+
+  current[segments[segments.length - 1]] = value
+  return nextSettings
+}
+
+function parseSettingValue(settingValue: string): unknown {
+  try {
+    return JSON.parse(settingValue) as unknown
+  } catch {
+    return settingValue
+  }
+}
+
 function inferNodeRuntimeType(): RuntimeType {
   const env = getNodeEnv()
   if (trimToNull(env.app_instance_config)) {
@@ -175,7 +235,7 @@ export class BuckyOSSDK {
 
     const runtimeType = this.currentRuntime.getConfig().runtimeType
     if (runtimeType === RuntimeType.AppClient || runtimeType === RuntimeType.AppService) {
-      await this.currentRuntime.initialize()
+      await this.currentRuntime.login()
       this.syncCurrentAccountInfoFromRuntime()
       return this.currentAccountInfo
     }
@@ -244,16 +304,29 @@ export class BuckyOSSDK {
     this.currentRuntime.clearAuthState()
   }
 
-  getAppSetting(settingName: string | null = null) {
-    const ignoredSettingName = settingName
-    void ignoredSettingName
+  async getAppSetting(settingName: string | null = null): Promise<unknown> {
+    if (this.currentRuntime == null) {
+      throw new Error('BuckyOS WebSDK is not initialized,call initBuckyOS first')
+    }
+
+    const settings = await this.currentRuntime.getMySettings()
+    return getSettingValue(settings, settingName)
   }
 
-  setAppSetting(settingName: string | null = null, settingValue: string) {
-    const ignoredSettingName = settingName
-    const ignoredSettingValue = settingValue
-    void ignoredSettingName
-    void ignoredSettingValue
+  async setAppSetting(settingName: string | null = null, settingValue: string): Promise<void> {
+    if (this.currentRuntime == null) {
+      throw new Error('BuckyOS WebSDK is not initialized,call initBuckyOS first')
+    }
+
+    const currentSettings = await this.currentRuntime.getMySettings()
+    const nextSettings = setSettingValue(
+      currentSettings && typeof currentSettings === 'object' && !Array.isArray(currentSettings)
+        ? { ...(currentSettings as Record<string, unknown>) }
+        : {},
+      settingName,
+      parseSettingValue(settingValue),
+    )
+    await this.currentRuntime.updateAllMySettings(nextSettings)
   }
 
   getCurrentWalletUser(): Promise<any> {

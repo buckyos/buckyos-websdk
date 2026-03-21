@@ -9,6 +9,8 @@ declare const require: undefined | ((name: string) => any)
 const DEFAULT_NODE_GATEWAY_PORT = 3180
 const DEFAULT_SESSION_TOKEN_TTL_SECONDS = 15 * 60
 const DEFAULT_RENEW_INTERVAL_MS = 5_000
+const BUCKYOS_HOST_GATEWAY_ENV = 'BUCKYOS_HOST_GATEWAY'
+const DEFAULT_DOCKER_HOST_GATEWAY = 'host.docker.internal'
 
 export enum RuntimeType {
   Browser = 'Browser',
@@ -234,8 +236,17 @@ export class BuckyOSRuntime {
     }
 
     this.validateSessionToken()
-    this.startAutoRenewIfNeeded()
     this.initialized = true
+  }
+
+  async login(): Promise<void> {
+    await this.initialize()
+
+    if (this.config.runtimeType === RuntimeType.AppClient || this.config.runtimeType === RuntimeType.AppService) {
+      await this.renewTokenFromVerifyHub()
+    }
+
+    this.startAutoRenewIfNeeded()
   }
 
   setConfig(config: BuckyOSConfig) {
@@ -275,7 +286,7 @@ export class BuckyOSRuntime {
 
     if (this.config.runtimeType === RuntimeType.AppService) {
       const port = this.config.nodeGatewayPort ?? DEFAULT_NODE_GATEWAY_PORT
-      return `http://127.0.0.1:${port}/kapi/${servicePath}`
+      return `http://${this.resolveLocalServiceHost()}:${port}/kapi/${servicePath}`
     }
 
     if (this.config.runtimeType === RuntimeType.AppClient) {
@@ -297,7 +308,7 @@ export class BuckyOSRuntime {
 
     if (this.config.runtimeType === RuntimeType.AppService) {
       const port = this.config.nodeGatewayPort ?? DEFAULT_NODE_GATEWAY_PORT
-      return `http://127.0.0.1:${port}/kapi/system_config`
+      return `http://${this.resolveLocalServiceHost()}:${port}/kapi/system_config`
     }
 
     if (this.config.runtimeType === RuntimeType.AppClient) {
@@ -363,8 +374,26 @@ export class BuckyOSRuntime {
     return new OpenDanClient(rpcClient)
   }
 
+  async getMySettings(): Promise<unknown> {
+    const settingsPath = this.getMySettingsPath()
+    const settingsValue = await this.getSystemConfigClient().get(settingsPath)
+    return JSON.parse(settingsValue.value) as unknown
+  }
+
+  async updateMySettings(jsonPath: string, settings: unknown): Promise<void> {
+    const settingsPath = this.getMySettingsPath()
+    const settingsValue = JSON.stringify(settings)
+    await this.getSystemConfigClient().setByJsonPath(settingsPath, jsonPath, settingsValue)
+  }
+
+  async updateAllMySettings(settings: unknown): Promise<void> {
+    const settingsPath = this.getMySettingsPath()
+    const settingsValue = JSON.stringify(settings)
+    await this.getSystemConfigClient().set(settingsPath, settingsValue)
+  }
+
   async renewTokenFromVerifyHub(): Promise<void> {
-    if (this.config.runtimeType !== RuntimeType.AppService) {
+    if (this.config.runtimeType !== RuntimeType.AppService && this.config.runtimeType !== RuntimeType.AppClient) {
       return
     }
 
@@ -378,9 +407,26 @@ export class BuckyOSRuntime {
       return
     }
 
+    if (
+      this.config.runtimeType === RuntimeType.AppClient
+      && !trimToNull(this.config.zoneHost)
+      && !trimToNull(this.config.verifyHubServiceUrl)
+    ) {
+      return
+    }
+
     const verifyHubClient = this.getVerifyHubClient()
-    const tokenPair = claims.iss === 'verify-hub' && this.refreshToken
-      ? await verifyHubClient.refreshToken({ refresh_token: this.refreshToken })
+    const fallbackJwt = async (): Promise<string> => {
+      if (this.config.runtimeType !== RuntimeType.AppClient) {
+        return sessionToken
+      }
+      return this.createAppClientSessionToken()
+    }
+
+    const tokenPair = claims.iss === 'verify-hub'
+      ? this.refreshToken
+        ? await verifyHubClient.refreshToken({ refresh_token: this.refreshToken })
+        : await verifyHubClient.loginByJwt({ jwt: await fallbackJwt() })
       : await verifyHubClient.loginByJwt({ jwt: sessionToken })
 
     this.sessionToken = trimToNull(tokenPair.session_token)
@@ -463,7 +509,10 @@ export class BuckyOSRuntime {
   }
 
   private startAutoRenewIfNeeded() {
-    if (this.config.runtimeType !== RuntimeType.AppService || this.config.autoRenew === false) {
+    if (
+      (this.config.runtimeType !== RuntimeType.AppService && this.config.runtimeType !== RuntimeType.AppClient)
+      || this.config.autoRenew === false
+    ) {
       return
     }
 
@@ -695,7 +744,50 @@ export class BuckyOSRuntime {
       }
     }
 
+    for (const root of roots) {
+      const userConfigPath = path.join(root, 'user_config.json')
+      try {
+        const raw = await fs.readFile(userConfigPath, 'utf8')
+        const parsed = JSON.parse(raw) as { default_zone_did?: unknown }
+        const zoneDid = typeof parsed.default_zone_did === 'string' ? parsed.default_zone_did.trim() : ''
+        if (!zoneDid) {
+          continue
+        }
+        if (zoneDid.startsWith('did:web:')) {
+          return zoneDid.slice('did:web:'.length).replace(/:/g, '.')
+        }
+        if (zoneDid.startsWith('did:bns:')) {
+          return zoneDid.slice('did:bns:'.length)
+        }
+      } catch {
+        // Ignore missing user config files.
+      }
+    }
+
     return null
+  }
+
+  private getMySettingsPath(): string {
+    switch (this.config.runtimeType) {
+      case RuntimeType.AppClient:
+        throw new Error('AppClient not support getMySettingsPath')
+      case RuntimeType.AppService: {
+        const ownerUserId = this.getOwnerUserId()
+        if (!ownerUserId) {
+          throw new Error('ownerUserId is required for AppService settings')
+        }
+        return `users/${ownerUserId}/apps/${this.config.appId}/settings`
+      }
+      default:
+        return `services/${this.config.appId}/settings`
+    }
+  }
+
+  private resolveLocalServiceHost(): string {
+    if (this.config.runtimeType === RuntimeType.AppService) {
+      return trimToNull(getProcessEnv()[BUCKYOS_HOST_GATEWAY_ENV]) ?? DEFAULT_DOCKER_HOST_GATEWAY
+    }
+    return '127.0.0.1'
   }
 
   private async signJwtWithEd25519(header: Record<string, unknown>, payload: Record<string, unknown>, privateKeyPem: string): Promise<string> {

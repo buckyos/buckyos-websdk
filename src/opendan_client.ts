@@ -237,6 +237,10 @@ interface OpenDanGetSessionRecordReq {
   session_id: string
 }
 
+interface OpenDanUpdateSessionStatusReq {
+  session_id: string
+}
+
 export class OpenDanClient {
   private rpcClient: kRPCClient
 
@@ -342,5 +346,19 @@ export class OpenDanClient {
       session_id: sessionId,
     }
     return this.rpcClient.call<OpenDanAgentSessionRecord, OpenDanGetSessionRecordReq>('get_session_record', req)
+  }
+
+  async pauseSession(sessionId: string): Promise<OpenDanAgentSessionRecord> {
+    const req: OpenDanUpdateSessionStatusReq = {
+      session_id: sessionId,
+    }
+    return this.rpcClient.call<OpenDanAgentSessionRecord, OpenDanUpdateSessionStatusReq>('pause_session', req)
+  }
+
+  async resumeSession(sessionId: string): Promise<OpenDanAgentSessionRecord> {
+    const req: OpenDanUpdateSessionStatusReq = {
+      session_id: sessionId,
+    }
+    return this.rpcClient.call<OpenDanAgentSessionRecord, OpenDanUpdateSessionStatusReq>('resume_session', req)
   }
 }
