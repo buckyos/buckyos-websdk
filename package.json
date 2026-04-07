@@ -48,6 +48,8 @@
     "test": "jest",
     "test:browser": "jest --runInBand tests/browser",
     "test:browser:integration": "BUCKYOS_RUN_INTEGRATION_TESTS=1 jest --runInBand tests/browser",
+    "test:browser:real:prepare": "node scripts/prepare_real_browser_test.mjs",
+    "test:browser:real": "pnpm run build && pnpm run test:browser:real:prepare && npx playwright test tests/browser/real-browser/playwright.spec.js --reporter=line",
     "test:app-client": "jest --runInBand tests/app-client",
     "test:app-client:integration": "BUCKYOS_RUN_INTEGRATION_TESTS=1 jest --runInBand tests/app-client",
     "test:app-service": "jest --runInBand tests/app-service",
