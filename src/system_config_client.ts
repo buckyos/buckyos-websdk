@@ -1,4 +1,4 @@
-import { kRPCClient } from './krpc_client'
+import { kRPCClient, KRPCClientOptions } from './krpc_client'
 
 export interface SystemConfigValue {
   value: string
@@ -29,8 +29,8 @@ export class SystemConfigClient {
   private static readonly configCache = new Map<string, ConfigCacheEntry>()
   private rpcClient: kRPCClient
 
-  constructor(serviceUrl: string, sessionToken: string | null = null) {
-    this.rpcClient = new kRPCClient(serviceUrl, sessionToken)
+  constructor(serviceUrl: string, sessionToken: string | null = null, options: KRPCClientOptions = {}) {
+    this.rpcClient = new kRPCClient(serviceUrl, sessionToken, null, options)
   }
 
   private needCache(key: string): boolean {

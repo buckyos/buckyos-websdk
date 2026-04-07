@@ -1,3 +1,4 @@
+import { KRPCClientOptions } from './krpc_client';
 export interface SystemConfigValue {
     value: string;
     version: number;
@@ -15,7 +16,7 @@ export type SystemConfigTxAction = {
 export declare class SystemConfigClient {
     private static readonly configCache;
     private rpcClient;
-    constructor(serviceUrl: string, sessionToken?: string | null);
+    constructor(serviceUrl: string, sessionToken?: string | null, options?: KRPCClientOptions);
     private needCache;
     private getUnixTimestamp;
     private getConfigCache;

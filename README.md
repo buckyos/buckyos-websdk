@@ -37,7 +37,7 @@ cyfs-gateway对于需要http验证的请求，如果没有buckyos_token字段，
 await buckyos.loginByBrowserSSO();
 // 当前窗口会跳转到 sys.$zoneid/sso/login
 // SSO 成功并跳回当前页后，再读取当前账号状态
-let user_info = buckyos.getAccountInfo();
+let user_info = await buckyos.getAccountInfo();
 let bucky_token = user_info?.session_token;
 let user_id = user_info?.user_id;
 let rpc_client = new buckyos.kRPCClient(feedlist_api_url,bucky_token);

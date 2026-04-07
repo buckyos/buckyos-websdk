@@ -3,6 +3,7 @@ import { VerifyHubClient } from './verify-hub-client'
 import { TaskManagerClient } from './task_mgr_client'
 import { OpenDanClient } from './opendan_client'
 import { SystemConfigClient } from './system_config_client'
+import { BrowserUserInfo, getBrowserUserInfo, saveBrowserUserInfo } from './account'
 
 declare const require: undefined | ((name: string) => any)
 
@@ -11,6 +12,12 @@ const DEFAULT_SESSION_TOKEN_TTL_SECONDS = 15 * 60
 const DEFAULT_RENEW_INTERVAL_MS = 5_000
 const BUCKYOS_HOST_GATEWAY_ENV = 'BUCKYOS_HOST_GATEWAY'
 const DEFAULT_DOCKER_HOST_GATEWAY = 'host.docker.internal'
+
+interface BrowserSSORefreshResponse {
+  access_token?: unknown
+  session_token?: unknown
+  user_info?: unknown
+}
 
 export enum RuntimeType {
   Browser = 'Browser',
@@ -83,6 +90,14 @@ function getProcessEnv(): Record<string, string | undefined> {
 function hasNodeRuntime(): boolean {
   const runtimeProcess = (globalThis as { process?: { versions?: { node?: string } } }).process
   return Boolean(runtimeProcess?.versions?.node)
+}
+
+function hasBrowserStorage(): boolean {
+  return typeof localStorage !== 'undefined'
+}
+
+function hasFetchRuntime(): boolean {
+  return typeof fetch === 'function'
 }
 
 function ensureBuffer(): {
@@ -502,11 +517,17 @@ export class BuckyOSRuntime {
   }
 
   getServiceRpcClient(serviceName: string): kRPCClient {
-    return new kRPCClient(this.getZoneServiceURL(serviceName), this.sessionToken)
+    return new kRPCClient(this.getZoneServiceURL(serviceName), this.sessionToken, null, {
+      sessionTokenProvider: this.ensureSessionTokenReady.bind(this),
+      onSessionTokenChanged: this.setSessionToken.bind(this),
+    })
   }
 
   getSystemConfigClient(): SystemConfigClient {
-    return new SystemConfigClient(this.getSystemConfigServiceURL(), this.sessionToken)
+    return new SystemConfigClient(this.getSystemConfigServiceURL(), this.sessionToken, {
+      sessionTokenProvider: this.ensureSessionTokenReady.bind(this),
+      onSessionTokenChanged: this.setSessionToken.bind(this),
+    })
   }
 
   getVerifyHubClient(): VerifyHubClient {
@@ -574,6 +595,17 @@ export class BuckyOSRuntime {
     this.sessionToken = trimToNull(tokenPair.session_token)
     this.refreshToken = trimToNull(tokenPair.refresh_token)
     this.validateSessionToken()
+  }
+
+  async ensureSessionTokenReady(): Promise<string | null> {
+    if (this.config.runtimeType === RuntimeType.Browser) {
+      return this.ensureBrowserSessionToken()
+    }
+
+    if (this.profile.supportsManagedSessionRenewal()) {
+      await this.renewTokenFromVerifyHub()
+    }
+    return this.sessionToken
   }
 
   ensureAppServiceSessionToken() {
@@ -646,6 +678,103 @@ export class BuckyOSRuntime {
 
     if (tokenAppId && tokenAppId !== this.config.appId) {
       throw new Error(`session token appid mismatch: ${tokenAppId} != ${this.config.appId}`)
+    }
+  }
+
+  private async ensureBrowserSessionToken(): Promise<string | null> {
+    const claims = parseSessionTokenClaims(this.sessionToken)
+    if (this.sessionToken && claims && !this.needsRenew(claims)) {
+      return this.sessionToken
+    }
+
+    return this.refreshBrowserSessionToken()
+  }
+
+  private normalizeBrowserUserInfo(raw: unknown): BrowserUserInfo | null {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+      return null
+    }
+
+    const parsed = raw as {
+      show_name?: unknown
+      user_name?: unknown
+      user_id?: unknown
+      user_type?: unknown
+    }
+    const userId = typeof parsed.user_id === 'string' ? parsed.user_id.trim() : ''
+    const userType = typeof parsed.user_type === 'string' ? parsed.user_type.trim() : ''
+    const userName = typeof parsed.user_name === 'string'
+      ? parsed.user_name.trim()
+      : typeof parsed.show_name === 'string'
+        ? parsed.show_name.trim()
+        : ''
+
+    if (!userId || !userType) {
+      return null
+    }
+
+    return {
+      user_name: userName || userId,
+      user_id: userId,
+      user_type: userType,
+    }
+  }
+
+  async refreshBrowserSession(): Promise<BrowserUserInfo | null> {
+    const sessionToken = await this.refreshBrowserSessionToken()
+    if (!sessionToken) {
+      return null
+    }
+
+    return hasBrowserStorage()
+      ? getBrowserUserInfo()
+      : null
+  }
+
+  private async refreshBrowserSessionToken(): Promise<string | null> {
+    if (!hasFetchRuntime()) {
+      return this.sessionToken
+    }
+
+    const cachedUserInfo = hasBrowserStorage()
+      ? getBrowserUserInfo()
+      : null
+
+    try {
+      const response = await fetch('/sso_refresh', {
+        method: 'POST',
+        credentials: 'include',
+        cache: 'no-store',
+      })
+
+      if (!response.ok) {
+        this.sessionToken = null
+        return null
+      }
+
+      const payload = await response.json() as BrowserSSORefreshResponse
+      const sessionToken = trimToNull(
+        typeof payload.access_token === 'string'
+          ? payload.access_token
+          : typeof payload.session_token === 'string'
+            ? payload.session_token
+            : null,
+      )
+      const userInfo = this.normalizeBrowserUserInfo(payload.user_info) ?? cachedUserInfo
+      if (!sessionToken || !userInfo) {
+        this.sessionToken = null
+        return null
+      }
+
+      this.sessionToken = sessionToken
+      this.refreshToken = null
+      saveBrowserUserInfo(userInfo)
+      this.validateSessionToken()
+      return this.sessionToken
+    } catch (error) {
+      console.warn('BuckyOS browser sso_refresh failed:', error)
+      this.sessionToken = null
+      return null
     }
   }
 

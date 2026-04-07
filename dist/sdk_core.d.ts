@@ -22,7 +22,7 @@ export declare class BuckyOSSDK {
     getAppId(): string | null;
     attachEvent(eventName: string, callback: Function): void;
     removeEvent(cookieId: string): void;
-    getAccountInfo(): AccountInfo | null;
+    getAccountInfo(): Promise<AccountInfo | null>;
     loginByPassword(username: string, password: string): Promise<AccountInfo | null>;
     loginByRuntimeSession(): Promise<AccountInfo | null>;
     loginByBrowserSSO(autoLogin?: boolean): Promise<void>;
@@ -54,7 +54,7 @@ export declare function createSDKModule(target: SDKTarget): {
         getAppId: () => string | null;
         attachEvent: (eventName: string, callback: Function) => void;
         removeEvent: (cookieId: string) => void;
-        getAccountInfo: () => AccountInfo | null;
+        getAccountInfo: () => Promise<AccountInfo | null>;
         loginByPassword: (username: string, password: string) => Promise<AccountInfo | null>;
         loginByBrowserSSO: (autoLogin?: boolean) => Promise<void>;
         loginByRuntimeSession: () => Promise<AccountInfo | null>;
@@ -80,7 +80,7 @@ export declare function createSDKModule(target: SDKTarget): {
     getAppId: () => string | null;
     attachEvent: (eventName: string, callback: Function) => void;
     removeEvent: (cookieId: string) => void;
-    getAccountInfo: () => AccountInfo | null;
+    getAccountInfo: () => Promise<AccountInfo | null>;
     loginByPassword: (username: string, password: string) => Promise<AccountInfo | null>;
     loginByBrowserSSO: (autoLogin?: boolean) => Promise<void>;
     loginByRuntimeSession: () => Promise<AccountInfo | null>;

@@ -7,7 +7,7 @@ export declare const buckyos: {
     getAppId: () => string | null;
     attachEvent: (eventName: string, callback: Function) => void;
     removeEvent: (cookieId: string) => void;
-    getAccountInfo: () => import("./account").AccountInfo | null;
+    getAccountInfo: () => Promise<import("./account").AccountInfo | null>;
     loginByPassword: (username: string, password: string) => Promise<import("./account").AccountInfo | null>;
     loginByBrowserSSO: (autoLogin?: boolean) => Promise<void>;
     loginByRuntimeSession: () => Promise<import("./account").AccountInfo | null>;
@@ -33,7 +33,7 @@ export declare const getRuntimeType: () => import("./runtime").RuntimeType;
 export declare const getAppId: () => string | null;
 export declare const attachEvent: (eventName: string, callback: Function) => void;
 export declare const removeEvent: (cookieId: string) => void;
-export declare const getAccountInfo: () => import("./account").AccountInfo | null;
+export declare const getAccountInfo: () => Promise<import("./account").AccountInfo | null>;
 export declare const loginByPassword: (username: string, password: string) => Promise<import("./account").AccountInfo | null>;
 export declare const loginByBrowserSSO: (autoLogin?: boolean) => Promise<void>;
 export declare const loginByRuntimeSession: () => Promise<import("./account").AccountInfo | null>;

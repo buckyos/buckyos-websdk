@@ -1,4 +1,4 @@
-import { saveLocalAccountInfo } from '../../src/account'
+import { saveBrowserUserInfo, saveLocalAccountInfo } from '../../src/account'
 import { BuckyOSSDK, RuntimeType } from '../../src/sdk_core'
 
 describe('BuckyOSSDK settings helpers', () => {
@@ -16,6 +16,7 @@ describe('BuckyOSSDK settings helpers', () => {
       getAppId: jest.fn().mockReturnValue('app-a'),
       getSessionToken: jest.fn().mockReturnValue(null),
       getRefreshToken: jest.fn().mockReturnValue(null),
+      refreshBrowserSession: jest.fn().mockResolvedValue(null),
       getOwnerUserId: jest.fn().mockReturnValue(null),
       setSessionToken: jest.fn(),
       setRefreshToken: jest.fn(),
@@ -116,6 +117,47 @@ describe('BuckyOSSDK settings helpers', () => {
     expect(runtime.setRefreshToken).toHaveBeenCalledWith('refresh-token')
   })
 
+  it('browser getAccountInfo returns cached user_info even when runtime session token is empty', async () => {
+    const sdk = new BuckyOSSDK('browser')
+    const runtime = createRuntime({})
+    ;(sdk as unknown as { currentRuntime: unknown }).currentRuntime = runtime
+    saveBrowserUserInfo({
+      user_name: 'devtest',
+      user_id: 'devtest',
+      user_type: 'user',
+    })
+
+    await expect(sdk.getAccountInfo()).resolves.toEqual({
+      user_name: 'devtest',
+      user_id: 'devtest',
+      user_type: 'user',
+      session_token: '',
+      refresh_token: undefined,
+    })
+    expect(runtime.refreshBrowserSession).not.toHaveBeenCalled()
+  })
+
+  it('browser getAccountInfo refreshes once when no cached user_info exist', async () => {
+    const sdk = new BuckyOSSDK('browser')
+    const runtime = createRuntime({})
+    runtime.getSessionToken.mockReturnValue('sso-session-token')
+    runtime.refreshBrowserSession.mockResolvedValue({
+      user_name: 'devtest',
+      user_id: 'devtest',
+      user_type: 'user',
+    })
+    ;(sdk as unknown as { currentRuntime: unknown }).currentRuntime = runtime
+
+    await expect(sdk.getAccountInfo()).resolves.toEqual({
+      user_name: 'devtest',
+      user_id: 'devtest',
+      user_type: 'user',
+      session_token: 'sso-session-token',
+      refresh_token: undefined,
+    })
+    expect(runtime.refreshBrowserSession).toHaveBeenCalledTimes(1)
+  })
+
   it('loginByPassword performs explicit password login', async () => {
     const sdk = new BuckyOSSDK('browser')
     const expected = {
@@ -154,10 +196,16 @@ describe('BuckyOSSDK settings helpers', () => {
       user_type: 'user',
       session_token: 'session-token',
     })
+    saveBrowserUserInfo({
+      user_name: 'devtest',
+      user_id: 'devtest',
+      user_type: 'user',
+    })
 
     sdk.logout(true)
 
     expect(window.localStorage.getItem('buckyos.account_info.app-a')).toBeNull()
+    expect(window.localStorage.getItem('user_info')).toBeNull()
     expect(runtime.clearAuthState).toHaveBeenCalled()
   })
 })

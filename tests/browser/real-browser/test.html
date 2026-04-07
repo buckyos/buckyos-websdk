@@ -102,7 +102,7 @@
       }
 
       async function run() {
-        const appId = 'buckycli';
+        const appId = 'systest';
         const summary = {
           origin: window.location.origin,
           href: window.location.href,
@@ -137,7 +137,7 @@
             verifyHubUrl: buckyos.getZoneServiceURL('verify-hub'),
             loginButtonEnabled: !loginButton.disabled,
             ssoLoginUrl,
-            currentAccountInfo: buckyos.getAccountInfo(),
+            currentAccountInfo: await buckyos.getAccountInfo(),
             cookie: document.cookie,
           };
 

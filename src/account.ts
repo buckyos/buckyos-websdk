@@ -9,6 +9,13 @@ export interface AccountInfo {
 }
 
 const LEGACY_ACCOUNT_STORAGE_KEY = "buckyos.account_info";
+const BROWSER_USER_INFO_STORAGE_KEY = "user_info";
+
+export interface BrowserUserInfo {
+    user_name: string;
+    user_id: string;
+    user_type: string;
+}
 
 function getAccountStorageKey(appId:string):string {
     return `buckyos.account_info.${appId}`;
@@ -21,6 +28,40 @@ function parseAccountInfo(raw:string|null):AccountInfo|null {
 
     try {
         return JSON.parse(raw) as AccountInfo;
+    } catch {
+        return null;
+    }
+}
+
+function parseBrowserUserInfo(raw:string|null):BrowserUserInfo|null {
+    if(raw == null) {
+        return null;
+    }
+
+    try {
+        const parsed = JSON.parse(raw) as {
+            show_name?: unknown;
+            user_name?: unknown;
+            user_id?: unknown;
+            user_type?: unknown;
+        };
+        const userId = typeof parsed.user_id === 'string' ? parsed.user_id.trim() : '';
+        const userType = typeof parsed.user_type === 'string' ? parsed.user_type.trim() : '';
+        const userNameCandidate = typeof parsed.user_name === 'string'
+            ? parsed.user_name.trim()
+            : typeof parsed.show_name === 'string'
+                ? parsed.show_name.trim()
+                : '';
+
+        if(!userId || !userType) {
+            return null;
+        }
+
+        return {
+            user_name: userNameCandidate || userId,
+            user_id: userId,
+            user_type: userType,
+        };
     } catch {
         return null;
     }
@@ -65,6 +106,7 @@ export function hashPassword(username:string,password:string,nonce:number|null=n
 
 export function cleanLocalAccountInfo(appId:string) {
     localStorage.removeItem(getAccountStorageKey(appId));
+    localStorage.removeItem(BROWSER_USER_INFO_STORAGE_KEY);
     const legacy = parseAccountInfo(localStorage.getItem(LEGACY_ACCOUNT_STORAGE_KEY));
     if(legacy?.session_token && parseTokenAppId(legacy.session_token) === appId) {
         localStorage.removeItem(LEGACY_ACCOUNT_STORAGE_KEY);
@@ -95,6 +137,14 @@ export function saveLocalAccountInfo(appId:string, account_info:AccountInfo) {
         sameSite: "Lax"
     };
     document.cookie = `${appId}_token=${account_info.session_token}; ${Object.entries(cookie_options).map(([key, value]) => `${key}=${value}`).join('; ')}`;
+}
+
+export function saveBrowserUserInfo(userInfo:BrowserUserInfo) {
+    localStorage.setItem(BROWSER_USER_INFO_STORAGE_KEY, JSON.stringify(userInfo));
+}
+
+export function getBrowserUserInfo():BrowserUserInfo|null {
+    return parseBrowserUserInfo(localStorage.getItem(BROWSER_USER_INFO_STORAGE_KEY));
 }
 
 export function getLocalAccountInfo(appId:string):AccountInfo|null {

@@ -22,6 +22,13 @@ declare class RPCError extends Error {
     constructor(message: string);
 }
 type Fetcher = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+type SessionTokenProvider = () => Promise<string | null | undefined> | string | null | undefined;
+type SessionTokenListener = (token: string | null) => void;
+interface KRPCClientOptions {
+    fetcher?: Fetcher;
+    sessionTokenProvider?: SessionTokenProvider;
+    onSessionTokenChanged?: SessionTokenListener;
+}
 declare class kRPCClient {
     private serverUrl;
     private protocolType;
@@ -29,7 +36,9 @@ declare class kRPCClient {
     private sessionToken;
     private initToken;
     private fetcher;
-    constructor(url: string, token?: string | null, seq?: number | null, fetcher?: Fetcher);
+    private sessionTokenProvider;
+    private onSessionTokenChanged;
+    constructor(url: string, token?: string | null, seq?: number | null, options?: KRPCClientOptions);
     call<TResult, TParams>(method: string, params: TParams): Promise<TResult>;
     setSeq(seq: number): void;
     resetSessionToken(): void;
@@ -40,5 +49,5 @@ declare class kRPCClient {
     private _call;
 }
 export { kRPCClient, RPCProtocolType, RPCError };
-export type { KRPCRequest, KRPCResponse, KRPCSys };
+export type { KRPCRequest, KRPCResponse, KRPCSys, KRPCClientOptions };
 //# sourceMappingURL=krpc_client.d.ts.map

@@ -1,7 +1,9 @@
 import {
   cleanLocalAccountInfo,
+  getBrowserUserInfo,
   getLocalAccountInfo,
   hashPassword,
+  saveBrowserUserInfo,
   saveLocalAccountInfo,
 } from '../../src/account'
 
@@ -90,5 +92,31 @@ describe('account helpers', () => {
     expect(getLocalAccountInfo('app-a')).toBeNull()
     expect(window.localStorage.getItem('buckyos.account_info')).toBeNull()
     expect(document.cookie).toContain('app-a_token=')
+  })
+
+  it('stores browser user_info separately from tokens', () => {
+    saveBrowserUserInfo({
+      user_name: 'devtest',
+      user_id: 'devtest',
+      user_type: 'user',
+    })
+
+    expect(getBrowserUserInfo()).toEqual({
+      user_name: 'devtest',
+      user_id: 'devtest',
+      user_type: 'user',
+    })
+  })
+
+  it('cleanLocalAccountInfo also removes browser user_info cache', () => {
+    saveBrowserUserInfo({
+      user_name: 'devtest',
+      user_id: 'devtest',
+      user_type: 'user',
+    })
+
+    cleanLocalAccountInfo('app-a')
+
+    expect(getBrowserUserInfo()).toBeNull()
   })
 })

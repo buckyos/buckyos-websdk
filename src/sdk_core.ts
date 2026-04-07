@@ -4,7 +4,9 @@ import {
   hashPassword,
   AccountInfo,
   cleanLocalAccountInfo,
+  getBrowserUserInfo,
   getLocalAccountInfo,
+  saveBrowserUserInfo,
   saveLocalAccountInfo,
 } from './account'
 import {
@@ -177,8 +179,43 @@ export class BuckyOSSDK {
     void ignoredCookieId
   }
 
-  getAccountInfo(): AccountInfo | null {
+  async getAccountInfo(): Promise<AccountInfo | null> {
+    if (this.currentRuntime == null) {
+      console.error('BuckyOS WebSDK is not initialized,call initBuckyOS first')
+      return null
+    }
+
     this.syncCurrentAccountInfoFromRuntime()
+    if (this.currentRuntime.getConfig().runtimeType !== RuntimeType.Browser) {
+      return this.currentAccountInfo
+    }
+
+    const cachedUserInfo = isBrowserStorageAvailable()
+      ? getBrowserUserInfo()
+      : null
+    if (cachedUserInfo) {
+      this.currentAccountInfo = {
+        user_name: cachedUserInfo.user_name,
+        user_id: cachedUserInfo.user_id,
+        user_type: cachedUserInfo.user_type,
+        session_token: this.currentRuntime.getSessionToken() ?? '',
+        refresh_token: undefined,
+      }
+      return this.currentAccountInfo
+    }
+
+    const refreshedUserInfo = await this.currentRuntime.refreshBrowserSession()
+    if (!refreshedUserInfo) {
+      return null
+    }
+
+    this.currentAccountInfo = {
+      user_name: refreshedUserInfo.user_name,
+      user_id: refreshedUserInfo.user_id,
+      user_type: refreshedUserInfo.user_type,
+      session_token: this.currentRuntime.getSessionToken() ?? '',
+      refresh_token: undefined,
+    }
     return this.currentAccountInfo
   }
 
@@ -217,6 +254,11 @@ export class BuckyOSSDK {
 
       if (isBrowserStorageAvailable()) {
         saveLocalAccountInfo(appId, accountInfo)
+        saveBrowserUserInfo({
+          user_name: accountInfo.user_name,
+          user_id: accountInfo.user_id,
+          user_type: accountInfo.user_type,
+        })
       }
       this.currentAccountInfo = accountInfo
       this.currentRuntime?.setSessionToken(accountInfo.session_token)

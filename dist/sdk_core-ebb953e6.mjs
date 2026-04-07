@@ -4,19 +4,25 @@ class RPCError extends Error {
     this.name = "RPCError";
   }
 }
-const hasWindowFetch = typeof window !== "undefined" && typeof window.fetch === "function";
-const hasGlobalFetch = typeof globalThis !== "undefined" && typeof globalThis.fetch === "function";
-const defaultFetcher = hasWindowFetch ? window.fetch.bind(window) : hasGlobalFetch ? globalThis.fetch.bind(globalThis) : async () => {
+const defaultFetcher = async (input, init) => {
+  if (typeof window !== "undefined" && typeof window.fetch === "function") {
+    return window.fetch(input, init);
+  }
+  if (typeof globalThis !== "undefined" && typeof globalThis.fetch === "function") {
+    return globalThis.fetch(input, init);
+  }
   throw new RPCError("fetch is not available in this runtime");
 };
 class kRPCClient {
-  constructor(url, token = null, seq = null, fetcher = defaultFetcher) {
+  constructor(url, token = null, seq = null, options = {}) {
     this.serverUrl = url;
     this.protocolType = "HttpPostJson";
     this.seq = seq ?? Date.now();
     this.sessionToken = token || null;
     this.initToken = token || null;
-    this.fetcher = fetcher;
+    this.fetcher = options.fetcher ?? defaultFetcher;
+    this.sessionTokenProvider = options.sessionTokenProvider ?? null;
+    this.onSessionTokenChanged = options.onSessionTokenChanged ?? null;
   }
   async call(method, params) {
     return this._call(method, params);
@@ -68,6 +74,12 @@ class kRPCClient {
     return null;
   }
   async _call(method, params) {
+    if (this.sessionTokenProvider) {
+      const preparedToken = await this.sessionTokenProvider();
+      if (preparedToken !== void 0) {
+        this.sessionToken = preparedToken || null;
+      }
+    }
     const currentSeq = this.seq;
     this.seq += 1;
     const requestBody = this.buildRequest(method, params, currentSeq);
@@ -86,6 +98,9 @@ class kRPCClient {
       const updatedToken = this.parseSys(rpcResponse.sys, currentSeq);
       if (updatedToken) {
         this.sessionToken = updatedToken;
+        if (this.onSessionTokenChanged) {
+          this.onSessionTokenChanged(updatedToken);
+        }
       }
       if ("error" in rpcResponse && rpcResponse.error) {
         throw new RPCError(`RPC call error: ${rpcResponse.error}`);
@@ -120,8 +135,8 @@ class AuthClient {
   buildLoginURL(redirectUri = null) {
     ensureSSOEnvironment();
     const redirectTarget = redirectUri ?? window.location.href;
-    const ssoURL = `${window.location.protocol}//sys.${this.zoneHostname}/sso/login`;
-    return `${ssoURL}?client_id=${this.clientId}&redirect_uri=${encodeURIComponent(redirectTarget)}&response_type=token`;
+    const ssoURL = `${window.location.protocol}//sys.${this.zoneHostname}/login`;
+    return `${ssoURL}?client_id=${this.clientId}&redirect_url=${encodeURIComponent(redirectTarget)}`;
   }
   async login(redirectUri = null) {
     const authURL = this.buildLoginURL(redirectUri);
@@ -784,6 +799,7 @@ class ht {
   }
 }
 const LEGACY_ACCOUNT_STORAGE_KEY = "buckyos.account_info";
+const BROWSER_USER_INFO_STORAGE_KEY = "user_info";
 function getAccountStorageKey(appId) {
   return `buckyos.account_info.${appId}`;
 }
@@ -793,6 +809,27 @@ function parseAccountInfo(raw) {
   }
   try {
     return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+function parseBrowserUserInfo(raw) {
+  if (raw == null) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    const userId = typeof parsed.user_id === "string" ? parsed.user_id.trim() : "";
+    const userType = typeof parsed.user_type === "string" ? parsed.user_type.trim() : "";
+    const userNameCandidate = typeof parsed.user_name === "string" ? parsed.user_name.trim() : typeof parsed.show_name === "string" ? parsed.show_name.trim() : "";
+    if (!userId || !userType) {
+      return null;
+    }
+    return {
+      user_name: userNameCandidate || userId,
+      user_id: userId,
+      user_type: userType
+    };
   } catch {
     return null;
   }
@@ -829,6 +866,7 @@ function hashPassword(username, password, nonce = null) {
 }
 function cleanLocalAccountInfo(appId) {
   localStorage.removeItem(getAccountStorageKey(appId));
+  localStorage.removeItem(BROWSER_USER_INFO_STORAGE_KEY);
   const legacy = parseAccountInfo(localStorage.getItem(LEGACY_ACCOUNT_STORAGE_KEY));
   if ((legacy == null ? void 0 : legacy.session_token) && parseTokenAppId(legacy.session_token) === appId) {
     localStorage.removeItem(LEGACY_ACCOUNT_STORAGE_KEY);
@@ -855,6 +893,12 @@ function saveLocalAccountInfo(appId, account_info) {
     sameSite: "Lax"
   };
   document.cookie = `${appId}_token=${account_info.session_token}; ${Object.entries(cookie_options).map(([key, value]) => `${key}=${value}`).join("; ")}`;
+}
+function saveBrowserUserInfo(userInfo) {
+  localStorage.setItem(BROWSER_USER_INFO_STORAGE_KEY, JSON.stringify(userInfo));
+}
+function getBrowserUserInfo() {
+  return parseBrowserUserInfo(localStorage.getItem(BROWSER_USER_INFO_STORAGE_KEY));
 }
 function getLocalAccountInfo(appId) {
   const scoped = parseAccountInfo(localStorage.getItem(getAccountStorageKey(appId)));
@@ -1301,8 +1345,8 @@ class OpenDanClient {
 const CONFIG_CACHE_TIME_SECONDS = 10;
 const CACHE_KEY_PREFIXES = ["services/", "system/rbac/"];
 const _SystemConfigClient = class _SystemConfigClient2 {
-  constructor(serviceUrl, sessionToken = null) {
-    this.rpcClient = new kRPCClient(serviceUrl, sessionToken);
+  constructor(serviceUrl, sessionToken = null, options = {}) {
+    this.rpcClient = new kRPCClient(serviceUrl, sessionToken, null, options);
   }
   needCache(key) {
     return CACHE_KEY_PREFIXES.some((prefix) => key.startsWith(prefix));
@@ -1460,6 +1504,12 @@ function hasNodeRuntime() {
   var _a;
   const runtimeProcess = globalThis.process;
   return Boolean((_a = runtimeProcess == null ? void 0 : runtimeProcess.versions) == null ? void 0 : _a.node);
+}
+function hasBrowserStorage() {
+  return typeof localStorage !== "undefined";
+}
+function hasFetchRuntime() {
+  return typeof fetch === "function";
 }
 function ensureBuffer() {
   const bufferCtor = globalThis.Buffer;
@@ -1772,10 +1822,16 @@ class BuckyOSRuntime {
     }
   }
   getServiceRpcClient(serviceName) {
-    return new kRPCClient(this.getZoneServiceURL(serviceName), this.sessionToken);
+    return new kRPCClient(this.getZoneServiceURL(serviceName), this.sessionToken, null, {
+      sessionTokenProvider: this.ensureSessionTokenReady.bind(this),
+      onSessionTokenChanged: this.setSessionToken.bind(this)
+    });
   }
   getSystemConfigClient() {
-    return new SystemConfigClient(this.getSystemConfigServiceURL(), this.sessionToken);
+    return new SystemConfigClient(this.getSystemConfigServiceURL(), this.sessionToken, {
+      sessionTokenProvider: this.ensureSessionTokenReady.bind(this),
+      onSessionTokenChanged: this.setSessionToken.bind(this)
+    });
   }
   getVerifyHubClient() {
     const configuredUrl = this.getConfiguredVerifyHubServiceUrl();
@@ -1827,6 +1883,15 @@ class BuckyOSRuntime {
     this.sessionToken = trimToNull$1(tokenPair.session_token);
     this.refreshToken = trimToNull$1(tokenPair.refresh_token);
     this.validateSessionToken();
+  }
+  async ensureSessionTokenReady() {
+    if (this.config.runtimeType === "Browser") {
+      return this.ensureBrowserSessionToken();
+    }
+    if (this.profile.supportsManagedSessionRenewal()) {
+      await this.renewTokenFromVerifyHub();
+    }
+    return this.sessionToken;
   }
   ensureAppServiceSessionToken() {
     if (!this.sessionToken) {
@@ -1882,6 +1947,72 @@ class BuckyOSRuntime {
     const tokenAppId = typeof (claims == null ? void 0 : claims.appid) === "string" ? claims.appid : typeof (claims == null ? void 0 : claims.aud) === "string" ? claims.aud : null;
     if (tokenAppId && tokenAppId !== this.config.appId) {
       throw new Error(`session token appid mismatch: ${tokenAppId} != ${this.config.appId}`);
+    }
+  }
+  async ensureBrowserSessionToken() {
+    const claims = parseSessionTokenClaims(this.sessionToken);
+    if (this.sessionToken && claims && !this.needsRenew(claims)) {
+      return this.sessionToken;
+    }
+    return this.refreshBrowserSessionToken();
+  }
+  normalizeBrowserUserInfo(raw) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+      return null;
+    }
+    const parsed = raw;
+    const userId = typeof parsed.user_id === "string" ? parsed.user_id.trim() : "";
+    const userType = typeof parsed.user_type === "string" ? parsed.user_type.trim() : "";
+    const userName = typeof parsed.user_name === "string" ? parsed.user_name.trim() : typeof parsed.show_name === "string" ? parsed.show_name.trim() : "";
+    if (!userId || !userType) {
+      return null;
+    }
+    return {
+      user_name: userName || userId,
+      user_id: userId,
+      user_type: userType
+    };
+  }
+  async refreshBrowserSession() {
+    const sessionToken = await this.refreshBrowserSessionToken();
+    if (!sessionToken) {
+      return null;
+    }
+    return hasBrowserStorage() ? getBrowserUserInfo() : null;
+  }
+  async refreshBrowserSessionToken() {
+    if (!hasFetchRuntime()) {
+      return this.sessionToken;
+    }
+    const cachedUserInfo = hasBrowserStorage() ? getBrowserUserInfo() : null;
+    try {
+      const response = await fetch("/sso_refresh", {
+        method: "POST",
+        credentials: "include",
+        cache: "no-store"
+      });
+      if (!response.ok) {
+        this.sessionToken = null;
+        return null;
+      }
+      const payload = await response.json();
+      const sessionToken = trimToNull$1(
+        typeof payload.access_token === "string" ? payload.access_token : typeof payload.session_token === "string" ? payload.session_token : null
+      );
+      const userInfo = this.normalizeBrowserUserInfo(payload.user_info) ?? cachedUserInfo;
+      if (!sessionToken || !userInfo) {
+        this.sessionToken = null;
+        return null;
+      }
+      this.sessionToken = sessionToken;
+      this.refreshToken = null;
+      saveBrowserUserInfo(userInfo);
+      this.validateSessionToken();
+      return this.sessionToken;
+    } catch (error) {
+      console.warn("BuckyOS browser sso_refresh failed:", error);
+      this.sessionToken = null;
+      return null;
     }
   }
   needsRenew(claims) {
@@ -2253,8 +2384,37 @@ class BuckyOSSDK {
   }
   removeEvent(cookieId) {
   }
-  getAccountInfo() {
+  async getAccountInfo() {
+    if (this.currentRuntime == null) {
+      console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
+      return null;
+    }
     this.syncCurrentAccountInfoFromRuntime();
+    if (this.currentRuntime.getConfig().runtimeType !== RuntimeType.Browser) {
+      return this.currentAccountInfo;
+    }
+    const cachedUserInfo = isBrowserStorageAvailable() ? getBrowserUserInfo() : null;
+    if (cachedUserInfo) {
+      this.currentAccountInfo = {
+        user_name: cachedUserInfo.user_name,
+        user_id: cachedUserInfo.user_id,
+        user_type: cachedUserInfo.user_type,
+        session_token: this.currentRuntime.getSessionToken() ?? "",
+        refresh_token: void 0
+      };
+      return this.currentAccountInfo;
+    }
+    const refreshedUserInfo = await this.currentRuntime.refreshBrowserSession();
+    if (!refreshedUserInfo) {
+      return null;
+    }
+    this.currentAccountInfo = {
+      user_name: refreshedUserInfo.user_name,
+      user_id: refreshedUserInfo.user_id,
+      user_type: refreshedUserInfo.user_type,
+      session_token: this.currentRuntime.getSessionToken() ?? "",
+      refresh_token: void 0
+    };
     return this.currentAccountInfo;
   }
   async loginByPassword(username, password) {
@@ -2288,6 +2448,11 @@ class BuckyOSSDK {
       };
       if (isBrowserStorageAvailable()) {
         saveLocalAccountInfo(appId, accountInfo);
+        saveBrowserUserInfo({
+          user_name: accountInfo.user_name,
+          user_id: accountInfo.user_id,
+          user_type: accountInfo.user_type
+        });
       }
       this.currentAccountInfo = accountInfo;
       (_a = this.currentRuntime) == null ? void 0 : _a.setSessionToken(accountInfo.session_token);
@@ -2629,4 +2794,4 @@ export {
   hashPassword as h,
   parseSessionTokenClaims as p
 };
-//# sourceMappingURL=sdk_core-b6e22b5f.mjs.map
+//# sourceMappingURL=sdk_core-ebb953e6.mjs.map

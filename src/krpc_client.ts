@@ -32,17 +32,26 @@ class RPCError extends Error {
 }
 
 type Fetcher = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
+type SessionTokenProvider = () => Promise<string | null | undefined> | string | null | undefined
+type SessionTokenListener = (token: string | null) => void
 
-const hasWindowFetch = typeof window !== 'undefined' && typeof window.fetch === 'function'
-const hasGlobalFetch = typeof globalThis !== 'undefined' && typeof globalThis.fetch === 'function'
+interface KRPCClientOptions {
+  fetcher?: Fetcher
+  sessionTokenProvider?: SessionTokenProvider
+  onSessionTokenChanged?: SessionTokenListener
+}
 
-const defaultFetcher: Fetcher = hasWindowFetch
-  ? window.fetch.bind(window)
-  : hasGlobalFetch
-    ? globalThis.fetch.bind(globalThis)
-    : async () => {
-        throw new RPCError('fetch is not available in this runtime')
-      }
+const defaultFetcher: Fetcher = async (input, init) => {
+  if (typeof window !== 'undefined' && typeof window.fetch === 'function') {
+    return window.fetch(input, init)
+  }
+
+  if (typeof globalThis !== 'undefined' && typeof globalThis.fetch === 'function') {
+    return globalThis.fetch(input, init)
+  }
+
+  throw new RPCError('fetch is not available in this runtime')
+}
 
 class kRPCClient {
   private serverUrl: string
@@ -51,14 +60,18 @@ class kRPCClient {
   private sessionToken: string | null
   private initToken: string | null
   private fetcher: Fetcher
+  private sessionTokenProvider: SessionTokenProvider | null
+  private onSessionTokenChanged: SessionTokenListener | null
 
-  constructor(url: string, token: string | null = null, seq: number | null = null, fetcher: Fetcher = defaultFetcher) {
+  constructor(url: string, token: string | null = null, seq: number | null = null, options: KRPCClientOptions = {}) {
     this.serverUrl = url
     this.protocolType = RPCProtocolType.HttpPostJson
     this.seq = seq ?? Date.now()
     this.sessionToken = token || null
     this.initToken = token || null
-    this.fetcher = fetcher
+    this.fetcher = options.fetcher ?? defaultFetcher
+    this.sessionTokenProvider = options.sessionTokenProvider ?? null
+    this.onSessionTokenChanged = options.onSessionTokenChanged ?? null
   }
 
   async call<TResult, TParams>(method: string, params: TParams): Promise<TResult> {
@@ -123,6 +136,13 @@ class kRPCClient {
   }
 
   private async _call<TResult, TParams>(method: string, params: TParams): Promise<TResult> {
+    if (this.sessionTokenProvider) {
+      const preparedToken = await this.sessionTokenProvider()
+      if (preparedToken !== undefined) {
+        this.sessionToken = preparedToken || null
+      }
+    }
+
     const currentSeq = this.seq
     this.seq += 1
     const requestBody = this.buildRequest(method, params, currentSeq)
@@ -145,6 +165,9 @@ class kRPCClient {
       const updatedToken = this.parseSys(rpcResponse.sys, currentSeq)
       if (updatedToken) {
         this.sessionToken = updatedToken
+        if (this.onSessionTokenChanged) {
+          this.onSessionTokenChanged(updatedToken)
+        }
       }
 
       if ('error' in rpcResponse && rpcResponse.error) {
@@ -167,4 +190,4 @@ class kRPCClient {
 }
 
 export { kRPCClient, RPCProtocolType, RPCError }
-export type { KRPCRequest, KRPCResponse, KRPCSys }
+export type { KRPCRequest, KRPCResponse, KRPCSys, KRPCClientOptions }

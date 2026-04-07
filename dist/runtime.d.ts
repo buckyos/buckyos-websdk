@@ -3,6 +3,7 @@ import { VerifyHubClient } from './verify-hub-client';
 import { TaskManagerClient } from './task_mgr_client';
 import { OpenDanClient } from './opendan_client';
 import { SystemConfigClient } from './system_config_client';
+import { BrowserUserInfo } from './account';
 export declare enum RuntimeType {
     Browser = "Browser",
     NodeJS = "NodeJS",
@@ -77,11 +78,16 @@ export declare class BuckyOSRuntime {
     updateMySettings(jsonPath: string, settings: unknown): Promise<void>;
     updateAllMySettings(settings: unknown): Promise<void>;
     renewTokenFromVerifyHub(): Promise<void>;
+    ensureSessionTokenReady(): Promise<string | null>;
     ensureAppServiceSessionToken(): void;
     ensureAppClientSessionToken(): Promise<void>;
     resolveNodeIdentityFromEnv(): void;
     resolveZoneHostFromLocalConfig(): Promise<void>;
     private validateSessionToken;
+    private ensureBrowserSessionToken;
+    private normalizeBrowserUserInfo;
+    refreshBrowserSession(): Promise<BrowserUserInfo | null>;
+    private refreshBrowserSessionToken;
     private needsRenew;
     startAutoRenewIfNeeded(): void;
     private loadAppServiceSessionTokenFromEnv;

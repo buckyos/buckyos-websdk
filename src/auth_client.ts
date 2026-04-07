@@ -27,8 +27,8 @@ export class AuthClient {
     ensureSSOEnvironment()
 
     const redirectTarget = redirectUri ?? window.location.href
-    const ssoURL = `${window.location.protocol}//sys.${this.zoneHostname}/sso/login`
-    return `${ssoURL}?client_id=${this.clientId}&redirect_uri=${encodeURIComponent(redirectTarget)}&response_type=token`
+    const ssoURL = `${window.location.protocol}//sys.${this.zoneHostname}/login`
+    return `${ssoURL}?client_id=${this.clientId}&redirect_url=${encodeURIComponent(redirectTarget)}`
   }
 
   async login(redirectUri: string | null = null): Promise<void> {
