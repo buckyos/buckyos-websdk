@@ -13,6 +13,7 @@ const appId = getEnv('BUCKYOS_TEST_APP_ID')
 const ownerUserId = getEnv('BUCKYOS_TEST_OWNER_USER_ID')
 const appServiceToken = getEnv('BUCKYOS_TEST_APP_SERVICE_TOKEN')
 const appInstanceConfig = getEnv('BUCKYOS_TEST_APP_INSTANCE_CONFIG')
+const hostGateway = getEnv('BUCKYOS_TEST_HOST_GATEWAY', getEnv('BUCKYOS_HOST_GATEWAY', 'host.docker.internal'))
 const canRunAppServiceIntegration = shouldRunIntegrationTests()
   && Boolean(appId && ownerUserId && appServiceToken)
 
@@ -29,7 +30,7 @@ describeAppService('AppService runtime integration', () => {
       },
     })
 
-    process.env.BUCKYOS_HOST_GATEWAY = 'host.docker.internal'
+    process.env.BUCKYOS_HOST_GATEWAY = hostGateway as string
     process.env[getRustStyleAppServiceTokenEnvKey(appId as string, ownerUserId as string)] = appServiceToken as string
   })
 
