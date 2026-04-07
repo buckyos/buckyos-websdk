@@ -1,5 +1,5 @@
-import { c as createSDKModule } from "./sdk_core-a81d8cd4.mjs";
-import { b, a, B, d, O, R, S, T, V, W, h, p } from "./sdk_core-a81d8cd4.mjs";
+import { c as createSDKModule } from "./sdk_core-b6e22b5f.mjs";
+import { b, a, B, d, O, R, S, T, V, W, h, p } from "./sdk_core-b6e22b5f.mjs";
 const sdkModule = createSDKModule("browser");
 const buckyos = sdkModule.buckyos;
 const initBuckyOS = sdkModule.initBuckyOS;
@@ -9,7 +9,9 @@ const getAppId = sdkModule.getAppId;
 const attachEvent = sdkModule.attachEvent;
 const removeEvent = sdkModule.removeEvent;
 const getAccountInfo = sdkModule.getAccountInfo;
-const doLogin = sdkModule.doLogin;
+const loginByPassword = sdkModule.loginByPassword;
+const loginByBrowserSSO = sdkModule.loginByBrowserSSO;
+const loginByRuntimeSession = sdkModule.loginByRuntimeSession;
 const login = sdkModule.login;
 const logout = sdkModule.logout;
 const getAppSetting = sdkModule.getAppSetting;
@@ -37,7 +39,6 @@ export {
   attachEvent,
   buckyos,
   createSDKModule,
-  doLogin,
   getAccountInfo,
   getAppId,
   getAppSetting,
@@ -54,6 +55,9 @@ export {
   h as hashPassword,
   initBuckyOS,
   login,
+  loginByBrowserSSO,
+  loginByPassword,
+  loginByRuntimeSession,
   logout,
   p as parseSessionTokenClaims,
   removeEvent,

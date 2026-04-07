@@ -198,12 +198,192 @@ async function importNodeModule(moduleName: string): Promise<any> {
   return dynamicImport(moduleName) as Promise<any>
 }
 
+interface RuntimeProfile {
+  initialize(runtime: BuckyOSRuntime): Promise<void>
+  login(runtime: BuckyOSRuntime): Promise<void>
+  getZoneServiceURL(runtime: BuckyOSRuntime, servicePath: string): string
+  getSystemConfigServiceURL(runtime: BuckyOSRuntime): string
+  getMySettingsPath(runtime: BuckyOSRuntime): string
+  supportsManagedSessionRenewal(): boolean
+  shouldSkipVerifyHubRenewal(runtime: BuckyOSRuntime): boolean
+  getVerifyHubLoginJwt(runtime: BuckyOSRuntime, sessionToken: string): Promise<string>
+}
+
+abstract class BaseRuntimeProfile implements RuntimeProfile {
+  async initialize(runtime: BuckyOSRuntime): Promise<void> {
+    runtime.resolveNodeIdentityFromEnv()
+    await runtime.resolveZoneHostFromLocalConfig()
+  }
+
+  async login(runtime: BuckyOSRuntime): Promise<void> {
+    await runtime.initialize()
+    runtime.startAutoRenewIfNeeded()
+  }
+
+  supportsManagedSessionRenewal(): boolean {
+    return false
+  }
+
+  shouldSkipVerifyHubRenewal(_runtime: BuckyOSRuntime): boolean {
+    return false
+  }
+
+  async getVerifyHubLoginJwt(_runtime: BuckyOSRuntime, sessionToken: string): Promise<string> {
+    return sessionToken
+  }
+
+  abstract getZoneServiceURL(runtime: BuckyOSRuntime, servicePath: string): string
+
+  abstract getSystemConfigServiceURL(runtime: BuckyOSRuntime): string
+
+  abstract getMySettingsPath(runtime: BuckyOSRuntime): string
+}
+
+class BrowserRuntimeProfile extends BaseRuntimeProfile {
+  getRelativeZoneServiceURL(servicePath: string): string {
+    return `/kapi/${servicePath}/`
+  }
+
+  getRelativeSystemConfigServiceURL(): string {
+    return '/kapi/system_config'
+  }
+
+  getServiceSettingsPath(runtime: BuckyOSRuntime): string {
+    return `services/${runtime.getAppId()}/settings`
+  }
+
+  getZoneServiceURL(_runtime: BuckyOSRuntime, servicePath: string): string {
+    return this.getRelativeZoneServiceURL(servicePath)
+  }
+
+  getSystemConfigServiceURL(_runtime: BuckyOSRuntime): string {
+    return this.getRelativeSystemConfigServiceURL()
+  }
+
+  getMySettingsPath(runtime: BuckyOSRuntime): string {
+    return this.getServiceSettingsPath(runtime)
+  }
+}
+
+class AppRuntimeProfile extends BrowserRuntimeProfile {}
+
+abstract class ManagedSessionRuntimeProfile extends BaseRuntimeProfile {
+  async login(runtime: BuckyOSRuntime): Promise<void> {
+    await runtime.initialize()
+    await runtime.renewTokenFromVerifyHub()
+    runtime.startAutoRenewIfNeeded()
+  }
+
+  supportsManagedSessionRenewal(): boolean {
+    return true
+  }
+}
+
+class AppClientRuntimeProfile extends ManagedSessionRuntimeProfile {
+  async initialize(runtime: BuckyOSRuntime): Promise<void> {
+    await super.initialize(runtime)
+    await runtime.ensureAppClientSessionToken()
+  }
+
+  getScopedAppZoneServiceURL(runtime: BuckyOSRuntime, servicePath: string): string {
+    const zoneHost = trimToNull(runtime.getZoneHostName())
+    if (!zoneHost) {
+      throw new Error('zoneHost is required in AppClient mode')
+    }
+    const appHostPrefix = getAppHostPrefix(runtime.getAppId(), runtime.getOwnerUserId())
+    return `${runtime.getDefaultProtocol()}${appHostPrefix}.${zoneHost}/kapi/${servicePath}`
+  }
+
+  getZoneSystemConfigURL(runtime: BuckyOSRuntime): string {
+    const zoneHost = trimToNull(runtime.getZoneHostName())
+    if (!zoneHost) {
+      throw new Error('zoneHost is required in AppClient mode')
+    }
+    return `${runtime.getDefaultProtocol()}${zoneHost}/kapi/system_config`
+  }
+
+  getZoneServiceURL(runtime: BuckyOSRuntime, servicePath: string): string {
+    return this.getScopedAppZoneServiceURL(runtime, servicePath)
+  }
+
+  getSystemConfigServiceURL(runtime: BuckyOSRuntime): string {
+    return this.getZoneSystemConfigURL(runtime)
+  }
+
+  getMySettingsPath(): string {
+    throw new Error('AppClient not support getMySettingsPath')
+  }
+
+  shouldSkipVerifyHubRenewal(runtime: BuckyOSRuntime): boolean {
+    return !trimToNull(runtime.getZoneHostName()) && !runtime.getConfiguredVerifyHubServiceUrl()
+  }
+
+  async getVerifyHubLoginJwt(runtime: BuckyOSRuntime, _sessionToken: string): Promise<string> {
+    return runtime.createAppClientSessionToken()
+  }
+}
+
+class AppServiceRuntimeProfile extends ManagedSessionRuntimeProfile {
+  async initialize(runtime: BuckyOSRuntime): Promise<void> {
+    await super.initialize(runtime)
+    runtime.ensureAppServiceSessionToken()
+  }
+
+  getNodeGatewayServiceURL(runtime: BuckyOSRuntime, servicePath: string): string {
+    const port = runtime.getNodeGatewayPort()
+    return `http://${runtime.resolveAppServiceGatewayHost()}:${port}/kapi/${servicePath}`
+  }
+
+  getNodeGatewaySystemConfigURL(runtime: BuckyOSRuntime): string {
+    const port = runtime.getNodeGatewayPort()
+    return `http://${runtime.resolveAppServiceGatewayHost()}:${port}/kapi/system_config`
+  }
+
+  getUserAppSettingsPath(runtime: BuckyOSRuntime): string {
+    const ownerUserId = runtime.getOwnerUserId()
+    if (!ownerUserId) {
+      throw new Error('ownerUserId is required for AppService settings')
+    }
+    return `users/${ownerUserId}/apps/${runtime.getAppId()}/settings`
+  }
+
+  getZoneServiceURL(runtime: BuckyOSRuntime, servicePath: string): string {
+    return this.getNodeGatewayServiceURL(runtime, servicePath)
+  }
+
+  getSystemConfigServiceURL(runtime: BuckyOSRuntime): string {
+    return this.getNodeGatewaySystemConfigURL(runtime)
+  }
+
+  getMySettingsPath(runtime: BuckyOSRuntime): string {
+    return this.getUserAppSettingsPath(runtime)
+  }
+}
+
+function createRuntimeProfile(runtimeType: RuntimeType): RuntimeProfile {
+  switch (runtimeType) {
+    case RuntimeType.AppClient:
+      return new AppClientRuntimeProfile()
+    case RuntimeType.AppService:
+      return new AppServiceRuntimeProfile()
+    case RuntimeType.AppRuntime:
+      return new AppRuntimeProfile()
+    case RuntimeType.Browser:
+    case RuntimeType.NodeJS:
+    case RuntimeType.Unknown:
+    default:
+      return new BrowserRuntimeProfile()
+  }
+}
+
 export class BuckyOSRuntime {
   private config: BuckyOSConfig
   private sessionToken: string | null
+  //在browser runtime里，总是取不到的
   private refreshToken: string | null
   private renewTimer: ReturnType<typeof setInterval> | null
   private initialized: boolean
+  private profile: RuntimeProfile
 
   constructor(config: BuckyOSConfig) {
     this.config = {
@@ -217,6 +397,7 @@ export class BuckyOSRuntime {
     this.refreshToken = trimToNull(config.refreshToken)
     this.renewTimer = null
     this.initialized = false
+    this.profile = createRuntimeProfile(this.config.runtimeType)
   }
 
   async initialize(): Promise<void> {
@@ -224,29 +405,13 @@ export class BuckyOSRuntime {
       return
     }
 
-    this.resolveNodeIdentityFromEnv()
-    await this.resolveZoneHostFromLocalConfig()
-
-    if (!this.sessionToken) {
-      if (this.config.runtimeType === RuntimeType.AppClient) {
-        this.sessionToken = await this.createAppClientSessionToken()
-      } else if (this.config.runtimeType === RuntimeType.AppService) {
-        this.sessionToken = this.loadAppServiceSessionTokenFromEnv()
-      }
-    }
-
+    await this.profile.initialize(this)
     this.validateSessionToken()
     this.initialized = true
   }
 
   async login(): Promise<void> {
-    await this.initialize()
-
-    if (this.config.runtimeType === RuntimeType.AppClient || this.config.runtimeType === RuntimeType.AppService) {
-      await this.renewTokenFromVerifyHub()
-    }
-
-    this.startAutoRenewIfNeeded()
+    await this.profile.login(this)
   }
 
   setConfig(config: BuckyOSConfig) {
@@ -255,6 +420,7 @@ export class BuckyOSRuntime {
       ...config,
       appId: config.appId,
     }
+    this.profile = createRuntimeProfile(this.config.runtimeType)
   }
 
   getConfig(): BuckyOSConfig {
@@ -281,44 +447,29 @@ export class BuckyOSRuntime {
     return this.config.zoneHost
   }
 
+  getDefaultProtocol(): string {
+    return this.config.defaultProtocol
+  }
+
+  getNodeGatewayPort(): number {
+    return this.config.nodeGatewayPort ?? DEFAULT_NODE_GATEWAY_PORT
+  }
+
+  getConfiguredVerifyHubServiceUrl(): string | null {
+    return trimToNull(this.config.verifyHubServiceUrl)
+  }
+
   getZoneServiceURL(serviceName: string): string {
     const servicePath = normalizeServicePath(serviceName)
-
-    if (this.config.runtimeType === RuntimeType.AppService) {
-      const port = this.config.nodeGatewayPort ?? DEFAULT_NODE_GATEWAY_PORT
-      return `http://${this.resolveLocalServiceHost()}:${port}/kapi/${servicePath}`
-    }
-
-    if (this.config.runtimeType === RuntimeType.AppClient) {
-      if (!this.config.zoneHost) {
-        throw new Error('zoneHost is required in AppClient mode')
-      }
-      const appHostPrefix = getAppHostPrefix(this.config.appId, this.getOwnerUserId())
-      return `${this.config.defaultProtocol}${appHostPrefix}.${this.config.zoneHost}/kapi/${servicePath}`
-    }
-
-    return `/kapi/${servicePath}/`
+    return this.profile.getZoneServiceURL(this, servicePath)
   }
 
   getSystemConfigServiceURL(): string {
-    const configuredUrl = trimToNull(this.config.systemConfigServiceUrl)
+    const configuredUrl = this.getConfiguredSystemConfigServiceUrl()
     if (configuredUrl) {
       return configuredUrl
     }
-
-    if (this.config.runtimeType === RuntimeType.AppService) {
-      const port = this.config.nodeGatewayPort ?? DEFAULT_NODE_GATEWAY_PORT
-      return `http://${this.resolveLocalServiceHost()}:${port}/kapi/system_config`
-    }
-
-    if (this.config.runtimeType === RuntimeType.AppClient) {
-      if (!this.config.zoneHost) {
-        throw new Error('zoneHost is required in AppClient mode')
-      }
-      return `${this.config.defaultProtocol}${this.config.zoneHost}/kapi/system_config`
-    }
-
-    return '/kapi/system_config'
+    return this.profile.getSystemConfigServiceURL(this)
   }
 
   setSessionToken(token: string | null) {
@@ -359,7 +510,7 @@ export class BuckyOSRuntime {
   }
 
   getVerifyHubClient(): VerifyHubClient {
-    const configuredUrl = trimToNull(this.config.verifyHubServiceUrl)
+    const configuredUrl = this.getConfiguredVerifyHubServiceUrl()
     const rpcClient = new kRPCClient(configuredUrl ?? this.getZoneServiceURL('verify-hub'), this.sessionToken)
     return new VerifyHubClient(rpcClient)
   }
@@ -393,7 +544,7 @@ export class BuckyOSRuntime {
   }
 
   async renewTokenFromVerifyHub(): Promise<void> {
-    if (this.config.runtimeType !== RuntimeType.AppService && this.config.runtimeType !== RuntimeType.AppClient) {
+    if (!this.profile.supportsManagedSessionRenewal()) {
       return
     }
 
@@ -407,26 +558,17 @@ export class BuckyOSRuntime {
       return
     }
 
-    if (
-      this.config.runtimeType === RuntimeType.AppClient
-      && !trimToNull(this.config.zoneHost)
-      && !trimToNull(this.config.verifyHubServiceUrl)
-    ) {
+    if (this.profile.shouldSkipVerifyHubRenewal(this)) {
       return
     }
 
     const verifyHubClient = this.getVerifyHubClient()
-    const fallbackJwt = async (): Promise<string> => {
-      if (this.config.runtimeType !== RuntimeType.AppClient) {
-        return sessionToken
-      }
-      return this.createAppClientSessionToken()
-    }
-
     const tokenPair = claims.iss === 'verify-hub'
       ? this.refreshToken
         ? await verifyHubClient.refreshToken({ refresh_token: this.refreshToken })
-        : await verifyHubClient.loginByJwt({ jwt: await fallbackJwt() })
+        : await verifyHubClient.loginByJwt({
+          jwt: await this.profile.getVerifyHubLoginJwt(this, sessionToken),
+        })
       : await verifyHubClient.loginByJwt({ jwt: sessionToken })
 
     this.sessionToken = trimToNull(tokenPair.session_token)
@@ -434,7 +576,19 @@ export class BuckyOSRuntime {
     this.validateSessionToken()
   }
 
-  private resolveNodeIdentityFromEnv() {
+  ensureAppServiceSessionToken() {
+    if (!this.sessionToken) {
+      this.sessionToken = this.loadAppServiceSessionTokenFromEnv()
+    }
+  }
+
+  async ensureAppClientSessionToken(): Promise<void> {
+    if (!this.sessionToken) {
+      this.sessionToken = await this.createAppClientSessionToken()
+    }
+  }
+
+  resolveNodeIdentityFromEnv() {
     if (!hasNodeRuntime()) {
       return
     }
@@ -462,7 +616,7 @@ export class BuckyOSRuntime {
     }
   }
 
-  private async resolveZoneHostFromLocalConfig(): Promise<void> {
+  async resolveZoneHostFromLocalConfig(): Promise<void> {
     if (!hasNodeRuntime()) {
       return
     }
@@ -508,11 +662,8 @@ export class BuckyOSRuntime {
     return now >= claims.exp - 30
   }
 
-  private startAutoRenewIfNeeded() {
-    if (
-      (this.config.runtimeType !== RuntimeType.AppService && this.config.runtimeType !== RuntimeType.AppClient)
-      || this.config.autoRenew === false
-    ) {
+  startAutoRenewIfNeeded() {
+    if (!this.profile.supportsManagedSessionRenewal() || this.config.autoRenew === false) {
       return
     }
 
@@ -556,7 +707,7 @@ export class BuckyOSRuntime {
     throw new Error(`failed to load app-service session token, tried keys: ${uniqueKeys.join(', ')}`)
   }
 
-  private async createAppClientSessionToken(): Promise<string> {
+  async createAppClientSessionToken(): Promise<string> {
     if (!hasNodeRuntime()) {
       throw new Error('AppClient mode requires Node.js')
     }
@@ -768,26 +919,15 @@ export class BuckyOSRuntime {
   }
 
   private getMySettingsPath(): string {
-    switch (this.config.runtimeType) {
-      case RuntimeType.AppClient:
-        throw new Error('AppClient not support getMySettingsPath')
-      case RuntimeType.AppService: {
-        const ownerUserId = this.getOwnerUserId()
-        if (!ownerUserId) {
-          throw new Error('ownerUserId is required for AppService settings')
-        }
-        return `users/${ownerUserId}/apps/${this.config.appId}/settings`
-      }
-      default:
-        return `services/${this.config.appId}/settings`
-    }
+    return this.profile.getMySettingsPath(this)
   }
 
-  private resolveLocalServiceHost(): string {
-    if (this.config.runtimeType === RuntimeType.AppService) {
-      return trimToNull(getProcessEnv()[BUCKYOS_HOST_GATEWAY_ENV]) ?? DEFAULT_DOCKER_HOST_GATEWAY
-    }
-    return '127.0.0.1'
+  private getConfiguredSystemConfigServiceUrl(): string | null {
+    return trimToNull(this.config.systemConfigServiceUrl)
+  }
+
+  resolveAppServiceGatewayHost(): string {
+    return trimToNull(getProcessEnv()[BUCKYOS_HOST_GATEWAY_ENV]) ?? DEFAULT_DOCKER_HOST_GATEWAY
   }
 
   private async signJwtWithEd25519(header: Record<string, unknown>, payload: Record<string, unknown>, privateKeyPem: string): Promise<string> {

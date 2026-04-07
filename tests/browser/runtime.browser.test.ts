@@ -1,4 +1,4 @@
-import { createSDKModule, RuntimeType } from '../src/sdk_core'
+import { createSDKModule, RuntimeType } from '../../src/sdk_core'
 
 describe('browser runtime behavior', () => {
   const originalBuckyApi = (window as unknown as { BuckyApi?: unknown }).BuckyApi

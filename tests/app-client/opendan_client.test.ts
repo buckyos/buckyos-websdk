@@ -1,5 +1,5 @@
-import { kRPCClient } from '../src/krpc_client'
-import { OpenDanClient } from '../src/opendan_client'
+import { kRPCClient } from '../../src/krpc_client'
+import { OpenDanClient } from '../../src/opendan_client'
 
 function makeResponse(body: unknown, seq: number) {
   return {

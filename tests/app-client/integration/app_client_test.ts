@@ -7,7 +7,7 @@ import {
   installInsecureNodeFetchIfNeeded,
   shouldRunIntegrationTests,
   shouldRunOptionalIntegration,
-} from './test_env'
+} from '../../helpers/test_env'
 
 jest.setTimeout(30000)
 
@@ -42,15 +42,15 @@ describeIntegration('AppClient runtime integration', () => {
   })
 
   afterEach(async () => {
-    const { buckyos } = await import('../../src/index')
+    const { buckyos } = await import('../../../src/index')
     if (buckyos.getBuckyOSConfig()) {
       buckyos.logout(false)
     }
   })
 
   it('logs in with local signing material and reads system_config', async () => {
-    const { buckyos, RuntimeType } = await import('../../src/index')
-    const { parseSessionTokenClaims } = await import('../../src/runtime')
+    const { buckyos, RuntimeType } = await import('../../../src/index')
+    const { parseSessionTokenClaims } = await import('../../../src/runtime')
 
     await buckyos.initBuckyOS(appId, {
       appId,
@@ -80,7 +80,7 @@ describeIntegration('AppClient runtime integration', () => {
   })
 
   it('writes and reads back a namespaced system_config key', async () => {
-    const { buckyos, RuntimeType } = await import('../../src/index')
+    const { buckyos, RuntimeType } = await import('../../../src/index')
 
     await buckyos.initBuckyOS(appId, {
       appId,
@@ -104,7 +104,7 @@ describeIntegration('AppClient runtime integration', () => {
   })
 
   it('creates, updates, queries, and deletes a namespaced task', async () => {
-    const { buckyos, RuntimeType } = await import('../../src/index')
+    const { buckyos, RuntimeType } = await import('../../../src/index')
 
     await buckyos.initBuckyOS(appId, {
       appId,
@@ -164,7 +164,7 @@ describeOptionalOpenDan('OpenDan integration', () => {
   })
 
   it('lists agents when OpenDan is enabled in the shared environment', async () => {
-    const { buckyos, RuntimeType } = await import('../../src/index')
+    const { buckyos, RuntimeType } = await import('../../../src/index')
 
     await buckyos.initBuckyOS(appId, {
       appId,

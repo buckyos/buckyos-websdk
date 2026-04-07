@@ -103,51 +103,29 @@ class kRPCClient {
     }
   }
 }
+function ensureSSOEnvironment() {
+  if (typeof window === "undefined" || typeof window.location === "undefined") {
+    throw new Error("AuthClient can only be created in browser SSO environments");
+  }
+}
 class AuthClient {
-  constructor(zone_base_url, appId) {
-    this.zone_hostname = zone_base_url;
+  constructor(zoneBaseUrl, appId, options = {}) {
+    ensureSSOEnvironment();
+    this.zoneHostname = zoneBaseUrl;
     this.clientId = appId;
-    this.authWindow = null;
-  }
-  async login(redirect_uri = null) {
-    try {
-      const token = await this._openAuthWindow(redirect_uri);
-      let account_info = JSON.parse(token);
-      return account_info;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error ?? "Login failed");
-      throw new Error(message);
-    }
-  }
-  async request(action, params) {
-  }
-  async _openAuthWindow(redirect_uri = null) {
-    return new Promise((resolve, reject) => {
-      const width = 500;
-      const height = 600;
-      const left = window.screen.width / 2 - width / 2;
-      const top = window.screen.height / 2 - height / 2;
-      let sso_url = window.location.protocol + "//sys." + this.zone_hostname + "/sso/login";
-      const redirectTarget = redirect_uri ?? window.location.href;
-      const authUrl = `${sso_url}?client_id=${this.clientId}&redirect_uri=${encodeURIComponent(redirectTarget)}&response_type=token`;
-      alert(authUrl);
-      this.authWindow = window.open(authUrl, "BuckyOS Login", `width=${width},height=${height},top=${top},left=${left}`);
-      window.addEventListener("message", (event) => {
-        console.log("message event", event);
-        if (event.origin !== new URL(sso_url).origin) {
-          return;
-        }
-        const { token, error } = event.data;
-        if (token) {
-          resolve(token);
-        } else {
-          reject(error || "BuckyOSLogin failed");
-        }
-        if (this.authWindow) {
-          this.authWindow.close();
-        }
-      }, false);
+    this.navigate = options.navigate ?? ((url) => {
+      window.location.assign(url);
     });
+  }
+  buildLoginURL(redirectUri = null) {
+    ensureSSOEnvironment();
+    const redirectTarget = redirectUri ?? window.location.href;
+    const ssoURL = `${window.location.protocol}//sys.${this.zoneHostname}/sso/login`;
+    return `${ssoURL}?client_id=${this.clientId}&redirect_uri=${encodeURIComponent(redirectTarget)}&response_type=token`;
+  }
+  async login(redirectUri = null) {
+    const authURL = this.buildLoginURL(redirectUri);
+    this.navigate(authURL);
   }
 }
 const t = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/", n = "ARRAYBUFFER not supported by this environment", e = "UINT8ARRAY not supported by this environment";
@@ -1565,6 +1543,138 @@ async function importNodeModule(moduleName) {
   const dynamicImport = Function("name", "return import(name)");
   return dynamicImport(moduleName);
 }
+class BaseRuntimeProfile {
+  async initialize(runtime) {
+    runtime.resolveNodeIdentityFromEnv();
+    await runtime.resolveZoneHostFromLocalConfig();
+  }
+  async login(runtime) {
+    await runtime.initialize();
+    runtime.startAutoRenewIfNeeded();
+  }
+  supportsManagedSessionRenewal() {
+    return false;
+  }
+  shouldSkipVerifyHubRenewal(_runtime) {
+    return false;
+  }
+  async getVerifyHubLoginJwt(_runtime, sessionToken) {
+    return sessionToken;
+  }
+}
+class BrowserRuntimeProfile extends BaseRuntimeProfile {
+  getRelativeZoneServiceURL(servicePath) {
+    return `/kapi/${servicePath}/`;
+  }
+  getRelativeSystemConfigServiceURL() {
+    return "/kapi/system_config";
+  }
+  getServiceSettingsPath(runtime) {
+    return `services/${runtime.getAppId()}/settings`;
+  }
+  getZoneServiceURL(_runtime, servicePath) {
+    return this.getRelativeZoneServiceURL(servicePath);
+  }
+  getSystemConfigServiceURL(_runtime) {
+    return this.getRelativeSystemConfigServiceURL();
+  }
+  getMySettingsPath(runtime) {
+    return this.getServiceSettingsPath(runtime);
+  }
+}
+class AppRuntimeProfile extends BrowserRuntimeProfile {
+}
+class ManagedSessionRuntimeProfile extends BaseRuntimeProfile {
+  async login(runtime) {
+    await runtime.initialize();
+    await runtime.renewTokenFromVerifyHub();
+    runtime.startAutoRenewIfNeeded();
+  }
+  supportsManagedSessionRenewal() {
+    return true;
+  }
+}
+class AppClientRuntimeProfile extends ManagedSessionRuntimeProfile {
+  async initialize(runtime) {
+    await super.initialize(runtime);
+    await runtime.ensureAppClientSessionToken();
+  }
+  getScopedAppZoneServiceURL(runtime, servicePath) {
+    const zoneHost = trimToNull$1(runtime.getZoneHostName());
+    if (!zoneHost) {
+      throw new Error("zoneHost is required in AppClient mode");
+    }
+    const appHostPrefix = getAppHostPrefix(runtime.getAppId(), runtime.getOwnerUserId());
+    return `${runtime.getDefaultProtocol()}${appHostPrefix}.${zoneHost}/kapi/${servicePath}`;
+  }
+  getZoneSystemConfigURL(runtime) {
+    const zoneHost = trimToNull$1(runtime.getZoneHostName());
+    if (!zoneHost) {
+      throw new Error("zoneHost is required in AppClient mode");
+    }
+    return `${runtime.getDefaultProtocol()}${zoneHost}/kapi/system_config`;
+  }
+  getZoneServiceURL(runtime, servicePath) {
+    return this.getScopedAppZoneServiceURL(runtime, servicePath);
+  }
+  getSystemConfigServiceURL(runtime) {
+    return this.getZoneSystemConfigURL(runtime);
+  }
+  getMySettingsPath() {
+    throw new Error("AppClient not support getMySettingsPath");
+  }
+  shouldSkipVerifyHubRenewal(runtime) {
+    return !trimToNull$1(runtime.getZoneHostName()) && !runtime.getConfiguredVerifyHubServiceUrl();
+  }
+  async getVerifyHubLoginJwt(runtime, _sessionToken) {
+    return runtime.createAppClientSessionToken();
+  }
+}
+class AppServiceRuntimeProfile extends ManagedSessionRuntimeProfile {
+  async initialize(runtime) {
+    await super.initialize(runtime);
+    runtime.ensureAppServiceSessionToken();
+  }
+  getNodeGatewayServiceURL(runtime, servicePath) {
+    const port = runtime.getNodeGatewayPort();
+    return `http://${runtime.resolveAppServiceGatewayHost()}:${port}/kapi/${servicePath}`;
+  }
+  getNodeGatewaySystemConfigURL(runtime) {
+    const port = runtime.getNodeGatewayPort();
+    return `http://${runtime.resolveAppServiceGatewayHost()}:${port}/kapi/system_config`;
+  }
+  getUserAppSettingsPath(runtime) {
+    const ownerUserId = runtime.getOwnerUserId();
+    if (!ownerUserId) {
+      throw new Error("ownerUserId is required for AppService settings");
+    }
+    return `users/${ownerUserId}/apps/${runtime.getAppId()}/settings`;
+  }
+  getZoneServiceURL(runtime, servicePath) {
+    return this.getNodeGatewayServiceURL(runtime, servicePath);
+  }
+  getSystemConfigServiceURL(runtime) {
+    return this.getNodeGatewaySystemConfigURL(runtime);
+  }
+  getMySettingsPath(runtime) {
+    return this.getUserAppSettingsPath(runtime);
+  }
+}
+function createRuntimeProfile(runtimeType) {
+  switch (runtimeType) {
+    case "AppClient":
+      return new AppClientRuntimeProfile();
+    case "AppService":
+      return new AppServiceRuntimeProfile();
+    case "AppRuntime":
+      return new AppRuntimeProfile();
+    case "Browser":
+    case "NodeJS":
+    case "Unknown":
+    default:
+      return new BrowserRuntimeProfile();
+  }
+}
 class BuckyOSRuntime {
   constructor(config) {
     this.config = {
@@ -1578,29 +1688,18 @@ class BuckyOSRuntime {
     this.refreshToken = trimToNull$1(config.refreshToken);
     this.renewTimer = null;
     this.initialized = false;
+    this.profile = createRuntimeProfile(this.config.runtimeType);
   }
   async initialize() {
     if (this.initialized) {
       return;
     }
-    this.resolveNodeIdentityFromEnv();
-    await this.resolveZoneHostFromLocalConfig();
-    if (!this.sessionToken) {
-      if (this.config.runtimeType === "AppClient") {
-        this.sessionToken = await this.createAppClientSessionToken();
-      } else if (this.config.runtimeType === "AppService") {
-        this.sessionToken = this.loadAppServiceSessionTokenFromEnv();
-      }
-    }
+    await this.profile.initialize(this);
     this.validateSessionToken();
     this.initialized = true;
   }
   async login() {
-    await this.initialize();
-    if (this.config.runtimeType === "AppClient" || this.config.runtimeType === "AppService") {
-      await this.renewTokenFromVerifyHub();
-    }
-    this.startAutoRenewIfNeeded();
+    await this.profile.login(this);
   }
   setConfig(config) {
     this.config = {
@@ -1608,6 +1707,7 @@ class BuckyOSRuntime {
       ...config,
       appId: config.appId
     };
+    this.profile = createRuntimeProfile(this.config.runtimeType);
   }
   getConfig() {
     return { ...this.config };
@@ -1628,37 +1728,25 @@ class BuckyOSRuntime {
   getZoneHostName() {
     return this.config.zoneHost;
   }
+  getDefaultProtocol() {
+    return this.config.defaultProtocol;
+  }
+  getNodeGatewayPort() {
+    return this.config.nodeGatewayPort ?? DEFAULT_NODE_GATEWAY_PORT;
+  }
+  getConfiguredVerifyHubServiceUrl() {
+    return trimToNull$1(this.config.verifyHubServiceUrl);
+  }
   getZoneServiceURL(serviceName) {
     const servicePath = normalizeServicePath(serviceName);
-    if (this.config.runtimeType === "AppService") {
-      const port = this.config.nodeGatewayPort ?? DEFAULT_NODE_GATEWAY_PORT;
-      return `http://${this.resolveLocalServiceHost()}:${port}/kapi/${servicePath}`;
-    }
-    if (this.config.runtimeType === "AppClient") {
-      if (!this.config.zoneHost) {
-        throw new Error("zoneHost is required in AppClient mode");
-      }
-      const appHostPrefix = getAppHostPrefix(this.config.appId, this.getOwnerUserId());
-      return `${this.config.defaultProtocol}${appHostPrefix}.${this.config.zoneHost}/kapi/${servicePath}`;
-    }
-    return `/kapi/${servicePath}/`;
+    return this.profile.getZoneServiceURL(this, servicePath);
   }
   getSystemConfigServiceURL() {
-    const configuredUrl = trimToNull$1(this.config.systemConfigServiceUrl);
+    const configuredUrl = this.getConfiguredSystemConfigServiceUrl();
     if (configuredUrl) {
       return configuredUrl;
     }
-    if (this.config.runtimeType === "AppService") {
-      const port = this.config.nodeGatewayPort ?? DEFAULT_NODE_GATEWAY_PORT;
-      return `http://${this.resolveLocalServiceHost()}:${port}/kapi/system_config`;
-    }
-    if (this.config.runtimeType === "AppClient") {
-      if (!this.config.zoneHost) {
-        throw new Error("zoneHost is required in AppClient mode");
-      }
-      return `${this.config.defaultProtocol}${this.config.zoneHost}/kapi/system_config`;
-    }
-    return "/kapi/system_config";
+    return this.profile.getSystemConfigServiceURL(this);
   }
   setSessionToken(token) {
     this.sessionToken = trimToNull$1(token);
@@ -1690,7 +1778,7 @@ class BuckyOSRuntime {
     return new SystemConfigClient(this.getSystemConfigServiceURL(), this.sessionToken);
   }
   getVerifyHubClient() {
-    const configuredUrl = trimToNull$1(this.config.verifyHubServiceUrl);
+    const configuredUrl = this.getConfiguredVerifyHubServiceUrl();
     const rpcClient = new kRPCClient(configuredUrl ?? this.getZoneServiceURL("verify-hub"), this.sessionToken);
     return new VerifyHubClient(rpcClient);
   }
@@ -1718,7 +1806,7 @@ class BuckyOSRuntime {
     await this.getSystemConfigClient().set(settingsPath, settingsValue);
   }
   async renewTokenFromVerifyHub() {
-    if (this.config.runtimeType !== "AppService" && this.config.runtimeType !== "AppClient") {
+    if (!this.profile.supportsManagedSessionRenewal()) {
       return;
     }
     const sessionToken = this.sessionToken;
@@ -1729,20 +1817,26 @@ class BuckyOSRuntime {
     if (!claims || !this.needsRenew(claims)) {
       return;
     }
-    if (this.config.runtimeType === "AppClient" && !trimToNull$1(this.config.zoneHost) && !trimToNull$1(this.config.verifyHubServiceUrl)) {
+    if (this.profile.shouldSkipVerifyHubRenewal(this)) {
       return;
     }
     const verifyHubClient = this.getVerifyHubClient();
-    const fallbackJwt = async () => {
-      if (this.config.runtimeType !== "AppClient") {
-        return sessionToken;
-      }
-      return this.createAppClientSessionToken();
-    };
-    const tokenPair = claims.iss === "verify-hub" ? this.refreshToken ? await verifyHubClient.refreshToken({ refresh_token: this.refreshToken }) : await verifyHubClient.loginByJwt({ jwt: await fallbackJwt() }) : await verifyHubClient.loginByJwt({ jwt: sessionToken });
+    const tokenPair = claims.iss === "verify-hub" ? this.refreshToken ? await verifyHubClient.refreshToken({ refresh_token: this.refreshToken }) : await verifyHubClient.loginByJwt({
+      jwt: await this.profile.getVerifyHubLoginJwt(this, sessionToken)
+    }) : await verifyHubClient.loginByJwt({ jwt: sessionToken });
     this.sessionToken = trimToNull$1(tokenPair.session_token);
     this.refreshToken = trimToNull$1(tokenPair.refresh_token);
     this.validateSessionToken();
+  }
+  ensureAppServiceSessionToken() {
+    if (!this.sessionToken) {
+      this.sessionToken = this.loadAppServiceSessionTokenFromEnv();
+    }
+  }
+  async ensureAppClientSessionToken() {
+    if (!this.sessionToken) {
+      this.sessionToken = await this.createAppClientSessionToken();
+    }
   }
   resolveNodeIdentityFromEnv() {
     if (!hasNodeRuntime()) {
@@ -1801,7 +1895,7 @@ class BuckyOSRuntime {
     return now >= claims.exp - 30;
   }
   startAutoRenewIfNeeded() {
-    if (this.config.runtimeType !== "AppService" && this.config.runtimeType !== "AppClient" || this.config.autoRenew === false) {
+    if (!this.profile.supportsManagedSessionRenewal() || this.config.autoRenew === false) {
       return;
     }
     if (this.renewTimer) {
@@ -2016,25 +2110,13 @@ class BuckyOSRuntime {
     return null;
   }
   getMySettingsPath() {
-    switch (this.config.runtimeType) {
-      case "AppClient":
-        throw new Error("AppClient not support getMySettingsPath");
-      case "AppService": {
-        const ownerUserId = this.getOwnerUserId();
-        if (!ownerUserId) {
-          throw new Error("ownerUserId is required for AppService settings");
-        }
-        return `users/${ownerUserId}/apps/${this.config.appId}/settings`;
-      }
-      default:
-        return `services/${this.config.appId}/settings`;
-    }
+    return this.profile.getMySettingsPath(this);
   }
-  resolveLocalServiceHost() {
-    if (this.config.runtimeType === "AppService") {
-      return trimToNull$1(getProcessEnv()[BUCKYOS_HOST_GATEWAY_ENV]) ?? DEFAULT_DOCKER_HOST_GATEWAY;
-    }
-    return "127.0.0.1";
+  getConfiguredSystemConfigServiceUrl() {
+    return trimToNull$1(this.config.systemConfigServiceUrl);
+  }
+  resolveAppServiceGatewayHost() {
+    return trimToNull$1(getProcessEnv()[BUCKYOS_HOST_GATEWAY_ENV]) ?? DEFAULT_DOCKER_HOST_GATEWAY;
   }
   async signJwtWithEd25519(header, payload, privateKeyPem) {
     const crypto = await importNodeModule("node:crypto");
@@ -2175,7 +2257,7 @@ class BuckyOSSDK {
     this.syncCurrentAccountInfoFromRuntime();
     return this.currentAccountInfo;
   }
-  async doLogin(username, password) {
+  async loginByPassword(username, password) {
     var _a, _b;
     const appId = this.getAppId();
     if (appId == null) {
@@ -2216,29 +2298,34 @@ class BuckyOSSDK {
       throw error;
     }
   }
-  async login(autoLogin = true) {
-    if (this.currentRuntime == null) {
+  async loginByRuntimeSession() {
+    const runtime = this.currentRuntime;
+    if (runtime == null) {
       console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
       return null;
     }
-    const runtimeType = this.currentRuntime.getConfig().runtimeType;
-    if (runtimeType === RuntimeType.AppClient || runtimeType === RuntimeType.AppService) {
-      await this.currentRuntime.login();
-      this.syncCurrentAccountInfoFromRuntime();
-      return this.currentAccountInfo;
+    await runtime.login();
+    this.syncCurrentAccountInfoFromRuntime();
+    return this.currentAccountInfo;
+  }
+  async loginByBrowserSSO(autoLogin = true) {
+    const runtime = this.currentRuntime;
+    if (runtime == null) {
+      console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
+      return;
     }
     const appId = this.getAppId();
     if (appId == null) {
       console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
-      return null;
+      return;
     }
     if (autoLogin && isBrowserStorageAvailable()) {
       const accountInfo = getLocalAccountInfo(appId);
       if (accountInfo) {
         this.currentAccountInfo = accountInfo;
-        this.currentRuntime.setSessionToken(accountInfo.session_token);
-        this.currentRuntime.setRefreshToken(accountInfo.refresh_token ?? null);
-        return this.currentAccountInfo;
+        runtime.setSessionToken(accountInfo.session_token);
+        runtime.setRefreshToken(accountInfo.refresh_token ?? null);
+        return;
       }
     }
     if (isBrowserStorageAvailable()) {
@@ -2247,24 +2334,22 @@ class BuckyOSSDK {
     const zoneHostName = this.getZoneHostName();
     if (zoneHostName == null) {
       console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
-      return null;
+      return;
     }
     try {
       const authClient = new AuthClient(zoneHostName, appId);
-      const accountInfo = await authClient.login();
-      if (accountInfo) {
-        if (isBrowserStorageAvailable()) {
-          saveLocalAccountInfo(appId, accountInfo);
-        }
-        this.currentAccountInfo = accountInfo;
-        this.currentRuntime.setSessionToken(accountInfo.session_token);
-        this.currentRuntime.setRefreshToken(accountInfo.refresh_token ?? null);
-      }
-      return accountInfo;
+      await authClient.login();
     } catch (error) {
       console.error("login failed: ", error);
       throw error;
     }
+  }
+  async login(autoLogin = true) {
+    if (this.usesRuntimeManagedSession()) {
+      return this.loginByRuntimeSession();
+    }
+    await this.loginByBrowserSSO(autoLogin);
+    return this.currentAccountInfo;
   }
   logout(cleanAccountInfo = true) {
     if (this.currentRuntime == null) {
@@ -2457,6 +2542,13 @@ class BuckyOSSDK {
       refresh_token: this.currentRuntime.getRefreshToken() ?? void 0
     };
   }
+  usesRuntimeManagedSession() {
+    if (this.currentRuntime == null) {
+      return false;
+    }
+    const runtimeType = this.currentRuntime.getConfig().runtimeType;
+    return runtimeType === RuntimeType.AppClient || runtimeType === RuntimeType.AppService;
+  }
   detectEnvironmentRuntimeType() {
     var _a, _b;
     if (this.target === "browser") {
@@ -2495,7 +2587,9 @@ function createSDKModule(target) {
     attachEvent: sdk.attachEvent.bind(sdk),
     removeEvent: sdk.removeEvent.bind(sdk),
     getAccountInfo: sdk.getAccountInfo.bind(sdk),
-    doLogin: sdk.doLogin.bind(sdk),
+    loginByPassword: sdk.loginByPassword.bind(sdk),
+    loginByBrowserSSO: sdk.loginByBrowserSSO.bind(sdk),
+    loginByRuntimeSession: sdk.loginByRuntimeSession.bind(sdk),
     login: sdk.login.bind(sdk),
     logout: sdk.logout.bind(sdk),
     getAppSetting: sdk.getAppSetting.bind(sdk),
@@ -2535,4 +2629,4 @@ export {
   hashPassword as h,
   parseSessionTokenClaims as p
 };
-//# sourceMappingURL=sdk_core-a81d8cd4.mjs.map
+//# sourceMappingURL=sdk_core-b6e22b5f.mjs.map

@@ -1,5 +1,5 @@
-import { kRPCClient } from '../src/krpc_client'
-import { VerifyHubClient } from '../src/verify-hub-client'
+import { kRPCClient } from '../../src/krpc_client'
+import { VerifyHubClient } from '../../src/verify-hub-client'
 
 function makeResponse(body: unknown) {
   return {

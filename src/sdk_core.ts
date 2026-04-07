@@ -182,7 +182,8 @@ export class BuckyOSSDK {
     return this.currentAccountInfo
   }
 
-  async doLogin(username: string, password: string): Promise<AccountInfo | null> {
+  async loginByPassword(username: string, password: string): Promise<AccountInfo | null> {
+    // Explicit password login against verify-hub.
     const appId = this.getAppId()
     if (appId == null) {
       console.error('BuckyOS WebSDK is not initialized,call initBuckyOS first')
@@ -227,32 +228,38 @@ export class BuckyOSSDK {
     }
   }
 
-  async login(autoLogin: boolean = true): Promise<AccountInfo | null> {
-    if (this.currentRuntime == null) {
+  async loginByRuntimeSession(): Promise<AccountInfo | null> {
+    const runtime = this.currentRuntime
+    if (runtime == null) {
       console.error('BuckyOS WebSDK is not initialized,call initBuckyOS first')
       return null
     }
 
-    const runtimeType = this.currentRuntime.getConfig().runtimeType
-    if (runtimeType === RuntimeType.AppClient || runtimeType === RuntimeType.AppService) {
-      await this.currentRuntime.login()
-      this.syncCurrentAccountInfoFromRuntime()
-      return this.currentAccountInfo
+    await runtime.login()
+    this.syncCurrentAccountInfoFromRuntime()
+    return this.currentAccountInfo
+  }
+
+  async loginByBrowserSSO(autoLogin: boolean = true): Promise<void> {
+    const runtime = this.currentRuntime
+    if (runtime == null) {
+      console.error('BuckyOS WebSDK is not initialized,call initBuckyOS first')
+      return
     }
 
     const appId = this.getAppId()
     if (appId == null) {
       console.error('BuckyOS WebSDK is not initialized,call initBuckyOS first')
-      return null
+      return
     }
 
     if (autoLogin && isBrowserStorageAvailable()) {
       const accountInfo = getLocalAccountInfo(appId)
       if (accountInfo) {
         this.currentAccountInfo = accountInfo
-        this.currentRuntime.setSessionToken(accountInfo.session_token)
-        this.currentRuntime.setRefreshToken(accountInfo.refresh_token ?? null)
-        return this.currentAccountInfo
+        runtime.setSessionToken(accountInfo.session_token)
+        runtime.setRefreshToken(accountInfo.refresh_token ?? null)
+        return
       }
     }
 
@@ -263,25 +270,25 @@ export class BuckyOSSDK {
     const zoneHostName = this.getZoneHostName()
     if (zoneHostName == null) {
       console.error('BuckyOS WebSDK is not initialized,call initBuckyOS first')
-      return null
+      return
     }
 
     try {
       const authClient = new AuthClient(zoneHostName, appId)
-      const accountInfo = await authClient.login()
-      if (accountInfo) {
-        if (isBrowserStorageAvailable()) {
-          saveLocalAccountInfo(appId, accountInfo)
-        }
-        this.currentAccountInfo = accountInfo
-        this.currentRuntime.setSessionToken(accountInfo.session_token)
-        this.currentRuntime.setRefreshToken(accountInfo.refresh_token ?? null)
-      }
-      return accountInfo
+      await authClient.login()
     } catch (error) {
       console.error('login failed: ', error)
       throw error
     }
+  }
+
+  async login(autoLogin: boolean = true): Promise<AccountInfo | null> {
+    if (this.usesRuntimeManagedSession()) {
+      return this.loginByRuntimeSession()
+    }
+
+    await this.loginByBrowserSSO(autoLogin)
+    return this.currentAccountInfo
   }
 
   logout(cleanAccountInfo: boolean = true) {
@@ -520,6 +527,15 @@ export class BuckyOSSDK {
     }
   }
 
+  private usesRuntimeManagedSession(): boolean {
+    if (this.currentRuntime == null) {
+      return false
+    }
+
+    const runtimeType = this.currentRuntime.getConfig().runtimeType
+    return runtimeType === RuntimeType.AppClient || runtimeType === RuntimeType.AppService
+  }
+
   private detectEnvironmentRuntimeType(): RuntimeType {
     if (this.target === 'browser') {
       if (typeof window !== 'undefined' && (window as unknown as { BuckyApi?: unknown }).BuckyApi) {
@@ -563,7 +579,9 @@ export function createSDKModule(target: SDKTarget) {
     attachEvent: sdk.attachEvent.bind(sdk),
     removeEvent: sdk.removeEvent.bind(sdk),
     getAccountInfo: sdk.getAccountInfo.bind(sdk),
-    doLogin: sdk.doLogin.bind(sdk),
+    loginByPassword: sdk.loginByPassword.bind(sdk),
+    loginByBrowserSSO: sdk.loginByBrowserSSO.bind(sdk),
+    loginByRuntimeSession: sdk.loginByRuntimeSession.bind(sdk),
     login: sdk.login.bind(sdk),
     logout: sdk.logout.bind(sdk),
     getAppSetting: sdk.getAppSetting.bind(sdk),

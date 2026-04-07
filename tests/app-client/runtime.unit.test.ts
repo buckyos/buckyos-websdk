@@ -5,7 +5,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { BuckyOSRuntime, parseSessionTokenClaims, RuntimeType } from '../src/runtime'
+import { BuckyOSRuntime, parseSessionTokenClaims, RuntimeType } from '../../src/runtime'
 
 function makeJwt(payload: Record<string, unknown>): string {
   const encode = (value: Record<string, unknown>) => Buffer.from(JSON.stringify(value))

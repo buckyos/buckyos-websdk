@@ -1,11 +1,11 @@
 /** @jest-environment node */
 
-import { buckyos, RuntimeType } from '../../src/index'
+import { buckyos, RuntimeType } from '../../../src/index'
 import {
   getEnv,
   getRustStyleAppServiceTokenEnvKey,
   shouldRunIntegrationTests,
-} from './test_env'
+} from '../../helpers/test_env'
 
 jest.setTimeout(30000)
 

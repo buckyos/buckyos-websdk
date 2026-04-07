@@ -34,9 +34,12 @@ cyfs-gateway对于需要http验证的请求，如果没有buckyos_token字段，
 
 ```javascript
 // at feedlist.excample.com
-let bucky_token,user_info = await buckyos.authClient.login();
-document.cookie = "buckyos_token="+bucky_token+"; Domain=.; Path=/";
-let user_id = user_info.userid;
+await buckyos.loginByBrowserSSO();
+// 当前窗口会跳转到 sys.$zoneid/sso/login
+// SSO 成功并跳回当前页后，再读取当前账号状态
+let user_info = buckyos.getAccountInfo();
+let bucky_token = user_info?.session_token;
+let user_id = user_info?.user_id;
 let rpc_client = new buckyos.kRPCClient(feedlist_api_url,bucky_token);
 let user_feeds = rpc_client.get_user_feeds(user_id);
 ```
@@ -78,8 +81,8 @@ on_request(request,response){
 
 authClient主要靠系统的内置verify_hub服务来完成功能，其基本逻辑是
 
-1. 在弹出窗口中，加载标准的,auth.$zoneid 页面，该页面会根据login时的参数调整一些行为
-2. 用户在弹窗窗口中操作,并得到token，有2种方法
+1. 在当前窗口直接跳转到标准的 `sys.$zoneid/sso/login` 页面，该页面会根据 login 时的参数调整一些行为
+2. 用户在跳转后的页面中完成登录，有2种方法
     a. 使用用户名密码向verify_hub发起请求，verify_hub会根据其掌握的账号信息返回必要的jwt验证信息
     b. 要求用户输入一个加密后的私钥，当用户输入正确的解密密码后，可以用该私钥来构造jwt
        

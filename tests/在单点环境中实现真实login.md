@@ -49,12 +49,12 @@
 对于 Web runtime 的真实密码登录测试，应使用:
 
 - `buckyos.initBuckyOS(... RuntimeType.Browser ...)`
-- 然后调用 `buckyos.doLogin(username, password)`
+- 然后调用 `buckyos.loginByPassword(username, password)`
 
 不要把 Browser 下的 `buckyos.login()` 当成密码登录:
 
-- `doLogin()` 走的是 `verify-hub.login_by_password`
-- `login()` 在 Browser runtime 下走的是 `AuthClient` 的 SSO / popup 路径
+- `loginByPassword()` 走的是 `verify-hub.login_by_password`
+- `login()` 在 Browser runtime 下走的是 `AuthClient` 的 SSO 当前窗口跳转路径
 
 ### 建议的测试配置
 
@@ -70,7 +70,7 @@
 
 ### 对应测试
 
-- `tests/integration/web_runtime_test.ts`
+- `tests/browser/integration/web_runtime_test.ts`
 
 ## 3. AppClient runtime
 
@@ -160,11 +160,11 @@ MC4CAQAwBQYDK2VwBCIEIMDp9endjUnT2o4ImedpgvhVFyZEunZqG+ca0mka8oRp
 
 - 用 AppClient 路径登录时，最后拿到的会是 app 级 token
 - 当前测试里观察到的 `accountInfo.user_id` 是 `root`
-- 如果你要验证“用户名密码是否正确”和“用户身份是否是 devtest”，应该用 Web runtime 的 `doLogin()` 路径
+- 如果你要验证“用户名密码是否正确”和“用户身份是否是 devtest”，应该用 Web runtime 的 `loginByPassword()` 路径
 
 ### 对应测试
 
-- `tests/integration/app_client_test.ts`
+- `tests/app-client/integration/app_client_test.ts`
 
 ## 4. AppService runtime
 
@@ -220,23 +220,30 @@ Rust `app_loader` 生成 AppService session token 时，claim 大意如下:
 
 ### 对应测试
 
-- `tests/runtime.appservice.test.ts`
-- `tests/integration/app_service_test.ts`
+- `tests/app-service/runtime.appservice.test.ts`
+- `tests/app-service/integration/app_service_test.ts`
 
 ## 5. 当前测试文件和 runtime type 的对应关系
 
 - Web runtime:
-  - `tests/runtime.browser.test.ts`
-  - `tests/integration/web_runtime_test.ts`
+  - `tests/browser/account.test.ts`
+  - `tests/browser/auth_client.test.ts`
+  - `tests/browser/auth_client.node.test.ts`
+  - `tests/browser/runtime.browser.test.ts`
+  - `tests/browser/sdk_settings.test.ts`
+  - `tests/browser/integration/web_runtime_test.ts`
 - AppClient runtime:
-  - `tests/runtime.unit.test.ts`
-  - `tests/integration/app_client_test.ts`
+  - `tests/app-client/krpc_client.test.ts`
+  - `tests/app-client/opendan_client.test.ts`
+  - `tests/app-client/runtime.unit.test.ts`
+  - `tests/app-client/system_config_client.test.ts`
+  - `tests/app-client/task_mgr_client.test.ts`
+  - `tests/app-client/verify_hub_client.test.ts`
+  - `tests/app-client/integration/verify_hub_test.ts`
+  - `tests/app-client/integration/app_client_test.ts`
 - AppService runtime:
-  - `tests/runtime.appservice.test.ts`
-  - `tests/integration/app_service_test.ts`
-- VerifyHub client 合约:
-  - `tests/verify_hub_client.test.ts`
-  - `tests/integration/verify_hub_test.ts`
+  - `tests/app-service/runtime.appservice.test.ts`
+  - `tests/app-service/integration/app_service_test.ts`
 
 ## 6. 推荐的最小执行方式
 
@@ -255,11 +262,11 @@ BUCKYOS_RUN_INTEGRATION_TESTS=1 pnpm exec jest --runInBand
 只验证 Web runtime 真实密码登录:
 
 ```bash
-BUCKYOS_RUN_INTEGRATION_TESTS=1 pnpm exec jest --runInBand tests/integration/web_runtime_test.ts
+BUCKYOS_RUN_INTEGRATION_TESTS=1 pnpm exec jest --runInBand tests/browser/integration/web_runtime_test.ts
 ```
 
 只验证 AppClient:
 
 ```bash
-BUCKYOS_RUN_INTEGRATION_TESTS=1 pnpm exec jest --runInBand tests/integration/app_client_test.ts
+BUCKYOS_RUN_INTEGRATION_TESTS=1 pnpm exec jest --runInBand tests/app-client/integration/app_client_test.ts
 ```

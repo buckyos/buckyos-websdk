@@ -1,4 +1,4 @@
-import { SystemConfigClient } from '../src/system_config_client'
+import { SystemConfigClient } from '../../src/system_config_client'
 
 describe('SystemConfigClient', () => {
   beforeEach(() => {

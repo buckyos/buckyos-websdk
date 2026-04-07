@@ -1,6 +1,6 @@
 /** @jest-environment node */
 
-import { BuckyOSRuntime, RuntimeType } from '../src/runtime'
+import { BuckyOSRuntime, RuntimeType } from '../../src/runtime'
 
 function makeJwt(payload: Record<string, unknown>): string {
   const encode = (value: Record<string, unknown>) => Buffer.from(JSON.stringify(value))

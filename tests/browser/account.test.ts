@@ -3,7 +3,7 @@ import {
   getLocalAccountInfo,
   hashPassword,
   saveLocalAccountInfo,
-} from '../src/account'
+} from '../../src/account'
 
 function makeJwt(payload: Record<string, unknown>): string {
   const encode = (value: Record<string, unknown>) => Buffer.from(JSON.stringify(value))

@@ -98,7 +98,9 @@ Targets:
 - task status parsing
 
 Expected location:
-- `tests/*.test.ts`
+- `tests/browser/*.test.ts`
+- `tests/app-client/*.test.ts`
+- `tests/app-service/*.test.ts`
 
 ### Layer 2: Mocked Integration Tests
 
@@ -113,8 +115,9 @@ Targets:
 - AppService URL resolution with `BUCKYOS_HOST_GATEWAY`
 
 Expected location:
-- `tests/*_client.test.ts`
-- `tests/runtime*.test.ts`
+- `tests/browser/*.test.ts`
+- `tests/app-client/*.test.ts`
+- `tests/app-service/*.test.ts`
 
 ### Layer 3: Environment-backed Integration Tests
 
@@ -129,7 +132,9 @@ Targets:
 - settings read/write round trip
 
 Expected location:
-- `tests/integration/*.test.ts` or current `tests/*_test.ts`
+- `tests/browser/integration/*`
+- `tests/app-client/integration/*`
+- `tests/app-service/integration/*`
 
 ## Test Matrix
 
@@ -357,15 +362,20 @@ Minimum pass criteria before release:
 
 ## Proposed File Layout
 
-- `tests/runtime.unit.test.ts`
-- `tests/runtime.appservice.test.ts`
-- `tests/system_config_client.test.ts`
-- `tests/task_mgr_client.test.ts`
-- `tests/opendan_client.test.ts`
-- `tests/verify_hub_client.test.ts`
-- `tests/integration/web_login_test.ts`
-- `tests/integration/app_client_test.ts`
-- `tests/integration/app_service_test.ts`
+- `tests/browser/account.test.ts`
+- `tests/browser/auth_client.test.ts`
+- `tests/browser/runtime.browser.test.ts`
+- `tests/browser/sdk_settings.test.ts`
+- `tests/browser/integration/web_runtime_test.ts`
+- `tests/app-client/runtime.unit.test.ts`
+- `tests/app-client/system_config_client.test.ts`
+- `tests/app-client/task_mgr_client.test.ts`
+- `tests/app-client/opendan_client.test.ts`
+- `tests/app-client/verify_hub_client.test.ts`
+- `tests/app-client/integration/verify_hub_test.ts`
+- `tests/app-client/integration/app_client_test.ts`
+- `tests/app-service/runtime.appservice.test.ts`
+- `tests/app-service/integration/app_service_test.ts`
 
 ## Current Priority Order
 

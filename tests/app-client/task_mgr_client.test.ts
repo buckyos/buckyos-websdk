@@ -1,5 +1,5 @@
-import { kRPCClient } from '../src/krpc_client'
-import { TaskManagerClient, TaskStatus } from '../src/task_mgr_client'
+import { kRPCClient } from '../../src/krpc_client'
+import { TaskManagerClient, TaskStatus } from '../../src/task_mgr_client'
 
 function makeResponse(body: unknown, seq: number = 1) {
   return {

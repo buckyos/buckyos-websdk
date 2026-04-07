@@ -1,72 +1,38 @@
-import { AccountInfo } from "./account";
+interface AuthClientOptions {
+  navigate?: (url: string) => void
+}
 
+function ensureSSOEnvironment() {
+  if (typeof window === 'undefined' || typeof window.location === 'undefined') {
+    throw new Error('AuthClient can only be created in browser SSO environments')
+  }
+}
 
 export class AuthClient {
-    zone_hostname:string;
-    clientId:string;
-    cookieOptions:any;
-    authWindow:Window | null;
+  zoneHostname: string
+  clientId: string
+  private readonly navigate: (url: string) => void
 
+  constructor(zoneBaseUrl: string, appId: string, options: AuthClientOptions = {}) {
+    ensureSSOEnvironment()
 
-    constructor(zone_base_url:string, appId:string) {
-        this.zone_hostname = zone_base_url;
-        this.clientId = appId;
-        this.authWindow = null;
+    this.zoneHostname = zoneBaseUrl
+    this.clientId = appId
+    this.navigate = options.navigate ?? ((url: string) => {
+      window.location.assign(url)
+    })
+  }
 
-    }
+  buildLoginURL(redirectUri: string | null = null): string {
+    ensureSSOEnvironment()
 
+    const redirectTarget = redirectUri ?? window.location.href
+    const ssoURL = `${window.location.protocol}//sys.${this.zoneHostname}/sso/login`
+    return `${ssoURL}?client_id=${this.clientId}&redirect_uri=${encodeURIComponent(redirectTarget)}&response_type=token`
+  }
 
-    async login(redirect_uri:string|null=null) : Promise<AccountInfo|null> {
-        try {
-            const token = await this._openAuthWindow(redirect_uri);
-            let account_info = JSON.parse(token) as AccountInfo;
-            return account_info;
-        } catch (error) {
-            const message = error instanceof Error ? error.message : String(error ?? 'Login failed');
-            throw new Error(message);
-        }
-    }
-
-    async request(action:string,params:any){
-        //let token = await this.login();
-        //return token;
-    }
-
-    async _openAuthWindow(redirect_uri:string|null=null) : Promise<string> {
-        return new Promise((resolve, reject) => {
-            const width = 500;
-            const height = 600;
-            const left = (window.screen.width / 2) - (width / 2);
-            const top = (window.screen.height / 2) - (height / 2);
-            let sso_url = window.location.protocol + "//sys." + this.zone_hostname + "/sso/login";
-            //console.log("sso_url: ", sso_url);
-            
-            const redirectTarget = redirect_uri ?? window.location.href;
-            const authUrl = `${sso_url}?client_id=${this.clientId}&redirect_uri=${encodeURIComponent(redirectTarget)}&response_type=token`;
-            alert(authUrl);
-            this.authWindow = window.open(authUrl, 'BuckyOS Login', `width=${width},height=${height},top=${top},left=${left}`);
-
-            //TODO: how to get this message?
-            window.addEventListener('message', (event) => {
-                console.log("message event",event);
-                if (event.origin !== new URL(sso_url).origin) {
-                    return;
-                }
-
-                const { token, error } = event.data;
-
-                if (token) {
-                    
-                    resolve(token);
-                } else {
-                    reject(error || 'BuckyOSLogin failed');
-                }
-
-                if (this.authWindow) {
-                    this.authWindow.close();
-                }
-            }, false);
-        });
-    }
-
+  async login(redirectUri: string | null = null): Promise<void> {
+    const authURL = this.buildLoginURL(redirectUri)
+    this.navigate(authURL)
+  }
 }

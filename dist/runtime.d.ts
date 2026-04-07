@@ -47,6 +47,7 @@ export declare class BuckyOSRuntime {
     private refreshToken;
     private renewTimer;
     private initialized;
+    private profile;
     constructor(config: BuckyOSConfig);
     initialize(): Promise<void>;
     login(): Promise<void>;
@@ -56,6 +57,9 @@ export declare class BuckyOSRuntime {
     getOwnerUserId(): string | null;
     getFullAppId(): string;
     getZoneHostName(): string;
+    getDefaultProtocol(): string;
+    getNodeGatewayPort(): number;
+    getConfiguredVerifyHubServiceUrl(): string | null;
     getZoneServiceURL(serviceName: string): string;
     getSystemConfigServiceURL(): string;
     setSessionToken(token: string | null): void;
@@ -73,19 +77,22 @@ export declare class BuckyOSRuntime {
     updateMySettings(jsonPath: string, settings: unknown): Promise<void>;
     updateAllMySettings(settings: unknown): Promise<void>;
     renewTokenFromVerifyHub(): Promise<void>;
-    private resolveNodeIdentityFromEnv;
-    private resolveZoneHostFromLocalConfig;
+    ensureAppServiceSessionToken(): void;
+    ensureAppClientSessionToken(): Promise<void>;
+    resolveNodeIdentityFromEnv(): void;
+    resolveZoneHostFromLocalConfig(): Promise<void>;
     private validateSessionToken;
     private needsRenew;
-    private startAutoRenewIfNeeded;
+    startAutoRenewIfNeeded(): void;
     private loadAppServiceSessionTokenFromEnv;
-    private createAppClientSessionToken;
+    createAppClientSessionToken(): Promise<string>;
     private loadLocalSigningMaterial;
     private getPrivateKeySearchRoots;
     private tryResolveDeviceNameFromSearchRoots;
     private tryResolveZoneHostFromSearchRoots;
     private getMySettingsPath;
-    private resolveLocalServiceHost;
+    private getConfiguredSystemConfigServiceUrl;
+    resolveAppServiceGatewayHost(): string;
     private signJwtWithEd25519;
 }
 //# sourceMappingURL=runtime.d.ts.map

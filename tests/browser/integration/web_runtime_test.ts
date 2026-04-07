@@ -4,7 +4,7 @@ import {
   getServiceUrl,
   installInsecureNodeFetchIfNeeded,
   shouldRunIntegrationTests,
-} from './test_env'
+} from '../../helpers/test_env'
 
 jest.setTimeout(30000)
 
@@ -30,7 +30,7 @@ describeIntegration('Web runtime integration', () => {
   })
 
   it('initializes browser runtime and logs in via password', async () => {
-    const { buckyos, RuntimeType } = await import('../../src/index')
+    const { buckyos, RuntimeType } = await import('../../../src/index')
 
     await buckyos.initBuckyOS(appId, {
       appId,
@@ -40,7 +40,7 @@ describeIntegration('Web runtime integration', () => {
       autoRenew: false,
     })
 
-    const accountInfo = await buckyos.doLogin(username, password)
+    const accountInfo = await buckyos.loginByPassword(username, password)
     const stored = window.localStorage.getItem(`buckyos.account_info.${appId}`)
 
     expect(accountInfo?.user_id).toBeTruthy()

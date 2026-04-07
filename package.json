@@ -46,6 +46,12 @@
     "dev": "vite",
     "demo:app-client": "pnpm exec ts-node examples/app_client_demo.ts",
     "test": "jest",
+    "test:browser": "jest --runInBand tests/browser",
+    "test:browser:integration": "BUCKYOS_RUN_INTEGRATION_TESTS=1 jest --runInBand tests/browser",
+    "test:app-client": "jest --runInBand tests/app-client",
+    "test:app-client:integration": "BUCKYOS_RUN_INTEGRATION_TESTS=1 jest --runInBand tests/app-client",
+    "test:app-service": "jest --runInBand tests/app-service",
+    "test:app-service:integration": "BUCKYOS_RUN_INTEGRATION_TESTS=1 jest --runInBand tests/app-service",
     "prepublishOnly": "pnpm run build:all"
   },
   "devDependencies": {

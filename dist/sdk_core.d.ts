@@ -23,7 +23,9 @@ export declare class BuckyOSSDK {
     attachEvent(eventName: string, callback: Function): void;
     removeEvent(cookieId: string): void;
     getAccountInfo(): AccountInfo | null;
-    doLogin(username: string, password: string): Promise<AccountInfo | null>;
+    loginByPassword(username: string, password: string): Promise<AccountInfo | null>;
+    loginByRuntimeSession(): Promise<AccountInfo | null>;
+    loginByBrowserSSO(autoLogin?: boolean): Promise<void>;
     login(autoLogin?: boolean): Promise<AccountInfo | null>;
     logout(cleanAccountInfo?: boolean): void;
     getAppSetting(settingName?: string | null): Promise<unknown>;
@@ -40,6 +42,7 @@ export declare class BuckyOSSDK {
     private buildRuntimeConfig;
     private tryGetZoneHostName;
     private syncCurrentAccountInfoFromRuntime;
+    private usesRuntimeManagedSession;
     private detectEnvironmentRuntimeType;
 }
 export declare function createSDKModule(target: SDKTarget): {
@@ -52,7 +55,9 @@ export declare function createSDKModule(target: SDKTarget): {
         attachEvent: (eventName: string, callback: Function) => void;
         removeEvent: (cookieId: string) => void;
         getAccountInfo: () => AccountInfo | null;
-        doLogin: (username: string, password: string) => Promise<AccountInfo | null>;
+        loginByPassword: (username: string, password: string) => Promise<AccountInfo | null>;
+        loginByBrowserSSO: (autoLogin?: boolean) => Promise<void>;
+        loginByRuntimeSession: () => Promise<AccountInfo | null>;
         login: (autoLogin?: boolean) => Promise<AccountInfo | null>;
         logout: (cleanAccountInfo?: boolean) => void;
         getAppSetting: (settingName?: string | null) => Promise<unknown>;
@@ -76,7 +81,9 @@ export declare function createSDKModule(target: SDKTarget): {
     attachEvent: (eventName: string, callback: Function) => void;
     removeEvent: (cookieId: string) => void;
     getAccountInfo: () => AccountInfo | null;
-    doLogin: (username: string, password: string) => Promise<AccountInfo | null>;
+    loginByPassword: (username: string, password: string) => Promise<AccountInfo | null>;
+    loginByBrowserSSO: (autoLogin?: boolean) => Promise<void>;
+    loginByRuntimeSession: () => Promise<AccountInfo | null>;
     login: (autoLogin?: boolean) => Promise<AccountInfo | null>;
     logout: (cleanAccountInfo?: boolean) => void;
     getAppSetting: (settingName?: string | null) => Promise<unknown>;

@@ -6,7 +6,7 @@ import {
   getServiceUrl,
   installInsecureNodeFetchIfNeeded,
   shouldRunIntegrationTests,
-} from './test_env'
+} from '../../helpers/test_env'
 
 jest.setTimeout(30000)
 
@@ -28,10 +28,10 @@ describeIntegration('VerifyHub integration', () => {
   })
 
   it('logs in with the shared test account and verifies the returned token', async () => {
-    const { hashPassword } = await import('../../src/account')
-    const { kRPCClient } = await import('../../src/krpc_client')
-    const { parseSessionTokenClaims } = await import('../../src/runtime')
-    const { VerifyHubClient } = await import('../../src/verify-hub-client')
+    const { hashPassword } = await import('../../../src/account')
+    const { kRPCClient } = await import('../../../src/krpc_client')
+    const { parseSessionTokenClaims } = await import('../../../src/runtime')
+    const { VerifyHubClient } = await import('../../../src/verify-hub-client')
     const nonce = Date.now()
     const client = new VerifyHubClient(new kRPCClient(verifyHubServiceUrl, null, nonce))
     const response = await client.loginByPassword({
@@ -61,9 +61,9 @@ describeIntegration('VerifyHub integration', () => {
   })
 
   it('refreshes the session token when a refresh token is available', async () => {
-    const { hashPassword } = await import('../../src/account')
-    const { kRPCClient } = await import('../../src/krpc_client')
-    const { VerifyHubClient } = await import('../../src/verify-hub-client')
+    const { hashPassword } = await import('../../../src/account')
+    const { kRPCClient } = await import('../../../src/krpc_client')
+    const { VerifyHubClient } = await import('../../../src/verify-hub-client')
     const nonce = Date.now()
     const client = new VerifyHubClient(new kRPCClient(verifyHubServiceUrl, null, nonce))
     const response = VerifyHubClient.normalizeLoginResponse(await client.loginByPassword({
