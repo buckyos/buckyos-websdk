@@ -1,13 +1,33 @@
 # BuckyOS Web(TypeScript) SDK
 
+## BuckyOS SDK的通用流程
+```
+Step1. Init
+Step2. Login 获得访问服务所需要的身份信息
+Step3. GetServiceClient($serviceName) 根本上是根据ServiceName和当前Runtime信息，得到最佳的EndPoint
+Step4. client.foo() 大部分情况下，是发起 http post调用
+```
+
+- Event支持
+runtime的简单事件是回调类型的
+sub_event(eventid,callback)
+
+buckyos本身的事件，走的是一致性抽象
+
+eventReader = runtime.create_event_reader(event_id_list)
+eventReader.read().await
+... call xxxClient.get_data()
+
+
+## 3种Runtime的主要区别
+
 虽然都是TypeScript,但是我们支持3种Runtime
 - node : 用来开发app_service, 能力最全面，对标Rust里的AppService / AppClient. 能力一致，系统给的权限不同
 - browser : 用来开发webui client, 能力最弱， Rust里没有
 - app_runtime : 用来开发运行在BuckyOS App Web容器里的webui client,能力比browser要强。Rust里没有
 
-## 主要区别
 
-最大的区别在于，运行环境所在的机器上，是否存在cyfs-gatweay. 只要有cyfs-gateway, 就意味着app能通过下面可信链路访问
+**最大的区别在于，运行环境所在的机器上，是否存在cyfs-gatweay.** 只要有cyfs-gateway, 就意味着app能通过下面可信链路访问
 ```
 sdk --local_http--> cyfs-gateway --rtcp-->service
 ```
@@ -50,7 +70,7 @@ sdk --local_http--> cyfs-gateway --rtcp-->service
 
 - `AuthClient` 只应该在浏览器 SSO 环境里创建
 - 它的职责是构造 SSO 登录跳转 URL，并触发当前窗口跳转
-- 不应该再承担弹窗通信或跨窗口 `postMessage` 回传 token 的逻辑
+- 不再担弹窗通信或跨窗口 `postMessage` 回传 token 的逻辑
 
 ## 访问系统服务的方法
 

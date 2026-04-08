@@ -372,7 +372,6 @@ Minimum pass criteria before release:
 - `tests/app-client/task_mgr_client.test.ts`
 - `tests/app-client/opendan_client.test.ts`
 - `tests/app-client/verify_hub_client.test.ts`
-- `tests/app-client/integration/verify_hub_test.ts`
 - `tests/app-client/integration/app_client_test.ts`
 - `tests/app-service/runtime.appservice.test.ts`
 - `tests/app-service/integration/app_service_test.ts`

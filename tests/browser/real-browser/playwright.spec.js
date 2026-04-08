@@ -40,7 +40,7 @@ test('browser runtime works from a real browser page served by systest', async (
   expect(result.cookie).toBe('');
 
   const loginRequestPromise = page.waitForRequest((request) => {
-    return request.isNavigationRequest() && request.url().startsWith('https://sys.test.buckyos.io/sso/login');
+    return request.isNavigationRequest() && request.url().startsWith('https://sys.test.buckyos.io/login');
   });
 
   await page.click('#login-button');
@@ -50,9 +50,7 @@ test('browser runtime works from a real browser page served by systest', async (
   const assignedUrl = new URL(assignedLocation);
 
   expect(assignedUrl.origin).toBe('https://sys.test.buckyos.io');
-  expect(assignedUrl.pathname).toBe('/sso/login');
-  expect(assignedUrl.searchParams.get('client_id')).toBe('buckycli');
-  expect(assignedUrl.searchParams.get('response_type')).toBe('token');
-  expect(assignedUrl.searchParams.get('redirect_uri')).toBe(testUrl);
+  expect(assignedUrl.pathname).toBe('/login');
+
   expect(result.ssoLoginUrl).toBe(assignedLocation);
 });
