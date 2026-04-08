@@ -1,5 +1,5 @@
-import { c as createSDKModule } from "./sdk_core-ebb953e6.mjs";
-import { b, a, B, d, O, R, S, T, V, W, h, p } from "./sdk_core-ebb953e6.mjs";
+import { c as createSDKModule } from "./sdk_core-6fa9d27e.mjs";
+import { a, B, b, R, S, T, V, W, h, p } from "./sdk_core-6fa9d27e.mjs";
 const sdkModule = createSDKModule("universal");
 const buckyos = sdkModule.buckyos;
 const initBuckyOS = sdkModule.initBuckyOS;
@@ -24,13 +24,10 @@ const getServiceRpcClient = sdkModule.getServiceRpcClient;
 const getVerifyHubClient = sdkModule.getVerifyHubClient;
 const getSystemConfigClient = sdkModule.getSystemConfigClient;
 const getTaskManagerClient = sdkModule.getTaskManagerClient;
-const getOpenDanClient = sdkModule.getOpenDanClient;
 export {
-  b as BS_SERVICE_OPENDAN,
   a as BS_SERVICE_TASK_MANAGER,
   B as BS_SERVICE_VERIFY_HUB,
-  d as BuckyOSSDK,
-  O as OpenDanClient,
+  b as BuckyOSSDK,
   R as RuntimeType,
   S as SystemConfigClient,
   T as TaskManagerClient,
@@ -44,7 +41,6 @@ export {
   getAppSetting,
   getBuckyOSConfig,
   getCurrentWalletUser,
-  getOpenDanClient,
   getRuntimeType,
   getServiceRpcClient,
   getSystemConfigClient,

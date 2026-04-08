@@ -4,12 +4,10 @@ import { hashPassword, AccountInfo } from './account';
 import { BuckyOSConfig, RuntimeType, parseSessionTokenClaims } from './runtime';
 import { VerifyHubClient } from './verify-hub-client';
 import { TaskManagerClient } from './task_mgr_client';
-import { OpenDanClient } from './opendan_client';
 import { SystemConfigClient } from './system_config_client';
 export declare const WEB3_BRIDGE_HOST = "web3.buckyos.ai";
 export declare const BS_SERVICE_VERIFY_HUB = "verify-hub";
 export declare const BS_SERVICE_TASK_MANAGER = "task-manager";
-export declare const BS_SERVICE_OPENDAN = "opendan";
 export type SDKTarget = 'universal' | 'browser' | 'node';
 export declare class BuckyOSSDK {
     private currentRuntime;
@@ -38,7 +36,6 @@ export declare class BuckyOSSDK {
     getVerifyHubClient(): VerifyHubClient;
     getSystemConfigClient(): SystemConfigClient;
     getTaskManagerClient(): TaskManagerClient;
-    getOpenDanClient(): OpenDanClient;
     private buildRuntimeConfig;
     private tryGetZoneHostName;
     private syncCurrentAccountInfoFromRuntime;
@@ -70,7 +67,6 @@ export declare function createSDKModule(target: SDKTarget): {
         getVerifyHubClient: () => VerifyHubClient;
         getSystemConfigClient: () => SystemConfigClient;
         getTaskManagerClient: () => TaskManagerClient;
-        getOpenDanClient: () => OpenDanClient;
         kRPCClient: typeof kRPCClient;
         AuthClient: typeof AuthClient;
     };
@@ -96,7 +92,6 @@ export declare function createSDKModule(target: SDKTarget): {
     getVerifyHubClient: () => VerifyHubClient;
     getSystemConfigClient: () => SystemConfigClient;
     getTaskManagerClient: () => TaskManagerClient;
-    getOpenDanClient: () => OpenDanClient;
 };
 export type { BuckyOSConfig };
 export { RuntimeType };
@@ -104,5 +99,4 @@ export { parseSessionTokenClaims };
 export { VerifyHubClient };
 export { SystemConfigClient };
 export { TaskManagerClient };
-export { OpenDanClient };
 //# sourceMappingURL=sdk_core.d.ts.map

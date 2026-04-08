@@ -1239,109 +1239,6 @@ class TaskManagerClient {
     await this.resumeTask(lastPausedTask.id);
   }
 }
-class OpenDanClient {
-  constructor(rpcClient) {
-    this.rpcClient = rpcClient;
-  }
-  setSeq(seq) {
-    this.rpcClient.setSeq(seq);
-  }
-  async listAgents(params = {}) {
-    const req = {
-      status: params.status,
-      include_sub_agents: params.includeSubAgents,
-      limit: params.limit,
-      cursor: params.cursor
-    };
-    return this.rpcClient.call("list_agents", req);
-  }
-  async getAgent(agentId) {
-    const req = { agent_id: agentId };
-    return this.rpcClient.call("get_agent", req);
-  }
-  async getWorkshop(agentId) {
-    const req = { agent_id: agentId };
-    return this.rpcClient.call("get_workshop", req);
-  }
-  async getWorkspace(agentId) {
-    return this.getWorkshop(agentId);
-  }
-  async listWorkshopWorklogs(params) {
-    const req = {
-      agent_id: params.agentId,
-      owner_session_id: params.ownerSessionId,
-      log_type: params.logType,
-      status: params.status,
-      step_id: params.stepId,
-      keyword: params.keyword,
-      limit: params.limit,
-      cursor: params.cursor
-    };
-    return this.rpcClient.call("list_workshop_worklogs", req);
-  }
-  async listWorkspaceWorklogs(params) {
-    return this.listWorkshopWorklogs(params);
-  }
-  async listWorkshopTodos(params) {
-    const req = {
-      agent_id: params.agentId,
-      owner_session_id: params.ownerSessionId,
-      status: params.status,
-      include_closed: params.includeClosed,
-      limit: params.limit,
-      cursor: params.cursor
-    };
-    return this.rpcClient.call("list_workshop_todos", req);
-  }
-  async listWorkspaceTodos(params) {
-    return this.listWorkshopTodos(params);
-  }
-  async listWorkshopSubAgents(params) {
-    const req = {
-      agent_id: params.agentId,
-      include_disabled: params.includeDisabled,
-      limit: params.limit,
-      cursor: params.cursor
-    };
-    return this.rpcClient.call("list_workshop_sub_agents", req);
-  }
-  async listWorkspaceSubAgents(params) {
-    return this.listWorkshopSubAgents(params);
-  }
-  async listAgentSessions(params) {
-    const req = {
-      agent_id: params.agentId,
-      limit: params.limit,
-      cursor: params.cursor
-    };
-    return this.rpcClient.call("list_agent_sessions", req);
-  }
-  async getAgentSession(agentId, sessionId) {
-    const req = {
-      agent_id: agentId,
-      session_id: sessionId
-    };
-    return this.rpcClient.call("get_agent_session", req);
-  }
-  async getSessionRecord(sessionId) {
-    const req = {
-      session_id: sessionId
-    };
-    return this.rpcClient.call("get_session_record", req);
-  }
-  async pauseSession(sessionId) {
-    const req = {
-      session_id: sessionId
-    };
-    return this.rpcClient.call("pause_session", req);
-  }
-  async resumeSession(sessionId) {
-    const req = {
-      session_id: sessionId
-    };
-    return this.rpcClient.call("resume_session", req);
-  }
-}
 const CONFIG_CACHE_TIME_SECONDS = 10;
 const CACHE_KEY_PREFIXES = ["services/", "system/rbac/"];
 const _SystemConfigClient = class _SystemConfigClient2 {
@@ -1842,10 +1739,6 @@ class BuckyOSRuntime {
     const rpcClient = this.getServiceRpcClient("task-manager");
     return new TaskManagerClient(rpcClient);
   }
-  getOpenDanClient() {
-    const rpcClient = this.getServiceRpcClient("opendan");
-    return new OpenDanClient(rpcClient);
-  }
   async getMySettings() {
     const settingsPath = this.getMySettingsPath();
     const settingsValue = await this.getSystemConfigClient().get(settingsPath);
@@ -2267,7 +2160,6 @@ class BuckyOSRuntime {
 const WEB3_BRIDGE_HOST = "web3.buckyos.ai";
 const BS_SERVICE_VERIFY_HUB = "verify-hub";
 const BS_SERVICE_TASK_MANAGER = "task-manager";
-const BS_SERVICE_OPENDAN = "opendan";
 function isBrowserRuntime() {
   return typeof window !== "undefined";
 }
@@ -2619,13 +2511,6 @@ class BuckyOSSDK {
     }
     return this.currentRuntime.getTaskManagerClient();
   }
-  getOpenDanClient() {
-    if (this.currentRuntime == null) {
-      console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
-      throw new Error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
-    }
-    return this.currentRuntime.getOpenDanClient();
-  }
   buildRuntimeConfig(appid, config) {
     if (config) {
       let runtimeType = config.runtimeType;
@@ -2766,8 +2651,7 @@ function createSDKModule(target) {
     getServiceRpcClient: sdk.getServiceRpcClient.bind(sdk),
     getVerifyHubClient: sdk.getVerifyHubClient.bind(sdk),
     getSystemConfigClient: sdk.getSystemConfigClient.bind(sdk),
-    getTaskManagerClient: sdk.getTaskManagerClient.bind(sdk),
-    getOpenDanClient: sdk.getOpenDanClient.bind(sdk)
+    getTaskManagerClient: sdk.getTaskManagerClient.bind(sdk)
   };
   return {
     ...api,
@@ -2781,17 +2665,15 @@ function createSDKModule(target) {
 }
 export {
   BS_SERVICE_VERIFY_HUB as B,
-  OpenDanClient as O,
   RuntimeType as R,
   SystemConfigClient as S,
   TaskManagerClient as T,
   VerifyHubClient as V,
   WEB3_BRIDGE_HOST as W,
   BS_SERVICE_TASK_MANAGER as a,
-  BS_SERVICE_OPENDAN as b,
+  BuckyOSSDK as b,
   createSDKModule as c,
-  BuckyOSSDK as d,
   hashPassword as h,
   parseSessionTokenClaims as p
 };
-//# sourceMappingURL=sdk_core-ebb953e6.mjs.map
+//# sourceMappingURL=sdk_core-6fa9d27e.mjs.map

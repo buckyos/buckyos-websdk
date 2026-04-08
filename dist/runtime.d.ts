@@ -1,7 +1,6 @@
 import { kRPCClient } from './krpc_client';
 import { VerifyHubClient } from './verify-hub-client';
 import { TaskManagerClient } from './task_mgr_client';
-import { OpenDanClient } from './opendan_client';
 import { SystemConfigClient } from './system_config_client';
 import { BrowserUserInfo } from './account';
 export declare enum RuntimeType {
@@ -73,7 +72,6 @@ export declare class BuckyOSRuntime {
     getSystemConfigClient(): SystemConfigClient;
     getVerifyHubClient(): VerifyHubClient;
     getTaskManagerClient(): TaskManagerClient;
-    getOpenDanClient(): OpenDanClient;
     getMySettings(): Promise<unknown>;
     updateMySettings(jsonPath: string, settings: unknown): Promise<void>;
     updateAllMySettings(settings: unknown): Promise<void>;

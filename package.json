@@ -55,6 +55,7 @@
     "test:app-client:integration": "BUCKYOS_RUN_INTEGRATION_TESTS=1 jest --runInBand tests/app-client",
     "test:app-service": "jest --runInBand tests/app-service",
     "test:app-service:integration": "BUCKYOS_RUN_INTEGRATION_TESTS=1 jest --runInBand tests/app-service",
+    "test:all": "bash ./run_all_test.sh",
     "prepublishOnly": "pnpm run build:all"
   },
   "devDependencies": {
