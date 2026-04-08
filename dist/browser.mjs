@@ -1,5 +1,6 @@
-import { c as createSDKModule } from "./sdk_core-23b426e3.mjs";
-import { A, a, B, b, d, M, e, R, S, T, V, W, h, p } from "./sdk_core-23b426e3.mjs";
+import { c as createSDKModule } from "./sdk_core-4704b88c.mjs";
+import { A, a, B, b, d, M, e, R, S, T, V, W, h, p } from "./sdk_core-4704b88c.mjs";
+import { n } from "./ndn_types-93a8c3f2.mjs";
 const sdkModule = createSDKModule("browser");
 const buckyos = sdkModule.buckyos;
 const initBuckyOS = sdkModule.initBuckyOS;
@@ -59,6 +60,7 @@ export {
   loginByPassword,
   loginByRuntimeSession,
   logout,
+  n as ndn,
   p as parseSessionTokenClaims,
   removeEvent,
   setAppSetting,

@@ -33,3 +33,4 @@ export const getRepoClient = sdkModule.getRepoClient
 
 export { hashPassword }
 export * from './sdk_core'
+export * as ndn from './ndn_types'

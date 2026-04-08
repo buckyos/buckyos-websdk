@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import { copyFile, mkdir, readFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -5,13 +6,14 @@ import { fileURLToPath } from 'node:url';
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, '..', '..');
 const distDir = join(repoRoot, 'dist');
-const htmlSource = join(repoRoot, 'tests', 'browser', 'real-browser', 'test.html');
+const distTestsDir = join(repoRoot, 'dist-tests');
+const realBrowserDir = join(repoRoot, 'tests', 'browser', 'real-browser');
 const buckyosRoot = process.env.BUCKYOS_ROOT?.trim() || '/opt/buckyos';
 const systestDistDir = join(buckyosRoot, 'bin', 'buckyos_systest', 'dist');
 
 const importPattern = /from\s+['"](\.\/[^'"]+\.(?:mjs|js))['"]/g;
 
-async function copyRuntimeBundle(entryFile) {
+async function copyRuntimeBundle(sourceDir, entryFile) {
   const pending = [entryFile];
   const visited = new Set();
 
@@ -22,7 +24,7 @@ async function copyRuntimeBundle(entryFile) {
     }
 
     visited.add(relativePath);
-    const sourcePath = join(distDir, relativePath);
+    const sourcePath = join(sourceDir, relativePath);
     const targetPath = join(systestDistDir, relativePath);
     const sourceText = await readFile(sourcePath, 'utf8');
 
@@ -39,16 +41,50 @@ async function copyRuntimeBundle(entryFile) {
   return [...visited].sort();
 }
 
+function runViteBuild(configPath) {
+  const result = spawnSync(
+    'npx',
+    ['vite', 'build', '--config', configPath],
+    { cwd: repoRoot, stdio: 'inherit' },
+  );
+  if (result.status !== 0) {
+    throw new Error(`vite build (${configPath}) failed with status ${result.status}`);
+  }
+}
+
 async function main() {
   await mkdir(systestDistDir, { recursive: true });
-  await copyFile(htmlSource, join(systestDistDir, 'test.html'));
-  const copiedBundleFiles = await copyRuntimeBundle('browser.mjs');
+
+  // 1) Existing main browser SDK page (test.html + dist/browser.mjs).
+  await copyFile(
+    join(realBrowserDir, 'test.html'),
+    join(systestDistDir, 'test.html'),
+  );
+  const copiedBundleFiles = await copyRuntimeBundle(distDir, 'browser.mjs');
+
+  // 2) New ndn_types browser test page. The runner is bundled separately
+  // (`vite.test-browser.config.ts`) so it can transitively pull in the
+  // ndn_types module + jssha + the shared cases without polluting dist/.
+  runViteBuild(join(repoRoot, 'vite.test-browser.config.ts'));
+
+  await copyFile(
+    join(realBrowserDir, 'ndn_types.html'),
+    join(systestDistDir, 'ndn_types.html'),
+  );
+  const copiedNdnTypesBundleFiles = await copyRuntimeBundle(
+    distTestsDir,
+    'ndn_types_runner.mjs',
+  );
 
   console.log(JSON.stringify({
     buckyosRoot,
     systestDistDir,
     copiedBundleFiles,
-    htmlTarget: join(systestDistDir, 'test.html'),
+    copiedNdnTypesBundleFiles,
+    htmlTargets: [
+      join(systestDistDir, 'test.html'),
+      join(systestDistDir, 'ndn_types.html'),
+    ],
   }, null, 2));
 }
 

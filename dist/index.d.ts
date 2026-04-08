@@ -58,4 +58,5 @@ export declare const getMsgCenterClient: () => import("./msg_center_client").Msg
 export declare const getRepoClient: () => import("./repo_client").RepoClient;
 export { hashPassword };
 export * from './sdk_core';
+export * as ndn from './ndn_types';
 //# sourceMappingURL=index.d.ts.map

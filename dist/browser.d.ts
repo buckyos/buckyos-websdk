@@ -54,4 +54,5 @@ export declare const getSystemConfigClient: () => import("./system_config_client
 export declare const getTaskManagerClient: () => import("./task_mgr_client").TaskManagerClient;
 export { hashPassword };
 export * from './sdk_core';
+export * as ndn from './ndn_types';
 //# sourceMappingURL=browser.d.ts.map

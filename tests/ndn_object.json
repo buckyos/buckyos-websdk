@@ -1,0 +1,139 @@
+[
+    {
+      "objid": "cyfile:7d28f1f3c4f9405ea9812bd6db6d7d25986c8c678fc12f1de4cd6222852700ed",
+      "objjson": {
+        "author": "alice",
+        "content": "mix256:80c00940db74383f24e9a59c3eaf03f301a24e8c21252055cc118a662405fe3bf175d5",
+        "create_time": 1700000000,
+        "last_update_time": 1700000120,
+        "mime": "text/plain",
+        "name": "hello.txt",
+        "size": 12
+      }
+    },
+    {
+      "objid": "cypath:a24ecb3ebd0e12b3e87d78ae33cf0e5aa7c8764e475531a74b963f11eef12ee6",
+      "objjson": {
+        "exp": 1700086600,
+        "path": "/repo/apps/demo",
+        "target": "cyfile:1234567890abcdef",
+        "uptime": 1700000200
+      }
+    },
+    {
+      "objid": "cyinc:8b3dcc5e386d81cf636dcaff5ebb9a470aa332fd21dfb2c1669e3c2279e58299",
+      "objjson": {
+        "collection": [
+          "docs",
+          "featured"
+        ],
+        "content_id": "cyfile:1234567890abcdef",
+        "content_obj": {
+          "content": "mix256:80c00940db74383f24e9a59c3eaf03f301a24e8c21252055cc118a662405fe3bf175d5",
+          "name": "hello.txt",
+          "size": 12
+        },
+        "curator": "did:web:curator.example.com",
+        "editor": [
+          "did:web:editor.example.com"
+        ],
+        "exp": 1703110300,
+        "iat": 1700000300,
+        "meta": {
+          "comment": "stable",
+          "score": 9.6
+        },
+        "rank": 88,
+        "review_url": "https://curator.example.com/review/hello.txt"
+      }
+    },
+    {
+      "objid": "cyrel:c79bd4eee65382062625c86ad5c9845882743dc5fe125a74798b40167cae0461",
+      "objjson": {
+        "exp": 1700086800,
+        "iat": 1700000400,
+        "note": "excerpt",
+        "range": {
+          "end": 12,
+          "start": 0
+        },
+        "relation": "part_of",
+        "source": "cyfile:1234567890abcdef",
+        "target": "sha256:1122334455667788"
+      }
+    },
+    {
+      "objid": "cyact:3dcf493420e0d82f36e9c3ea4484c3cc29b5001694354d05b03199f14d88dcef",
+      "objjson": {
+        "action": "viewed",
+        "base_on": "cyact:cccccccccccccccc",
+        "details": {
+          "device": "desktop",
+          "source": "unit-test"
+        },
+        "exp": 1700086900,
+        "iat": 1700000500,
+        "subject": "cyfile:aaaaaaaaaaaaaaaa",
+        "target": "cymsg:bbbbbbbbbbbbbbbb"
+      }
+    },
+    {
+      "objid": "cymsg:179fa355bad0e0a154f3654b61fe4187d78561fea73bd83f79dff81d0f7a1676",
+      "objjson": {
+        "content": {
+          "content": "{\"status\":\"ok\"}",
+          "format": "application/json",
+          "machine": {
+            "data": {
+              "level": 3,
+              "urgent": true
+            },
+            "intent": "sync"
+          },
+          "refs": [
+            {
+              "label": "attachment",
+              "role": "input",
+              "target": {
+                "obj_id": "cyfile:1234567890abcdef",
+                "type": "data_obj",
+                "uri_hint": "cyfs://hello.txt"
+              }
+            }
+          ],
+          "title": "Hello"
+        },
+        "created_at_ms": 1700000000000,
+        "expires_at_ms": 1700086400000,
+        "from": "did:web:alice.example.com",
+        "kind": "chat",
+        "lang": "zh-CN",
+        "nonce": 7,
+        "priority": 1,
+        "proof": "proof-001",
+        "thread": {
+          "correlation_id": "corr-001",
+          "reply_to": "cymsg:010203040506",
+          "topic": "release",
+          "tunnel_id": "tnl-001"
+        },
+        "to": [
+          "did:web:bob.example.com",
+          "did:web:carol.example.com"
+        ],
+        "workspace": "did:web:workspace.example.com"
+      }
+    },
+    {
+      "objid": "cymsgr:7b7e89c2c51b2000a10e8fcdbf8accd779d8995c25c1b4e1ba052cb5d9fd8814",
+      "objjson": {
+        "at_ms": 1700000100000,
+        "group_id": "did:web:group.example.com",
+        "iss": "did:web:inbox.example.com",
+        "msg_id": "cymsg:010203040506",
+        "reader": "did:web:bob.example.com",
+        "reason": "delivered",
+        "status": "accepted"
+      }
+    }
+  ]
