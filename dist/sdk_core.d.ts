@@ -11,6 +11,10 @@ export declare const BS_SERVICE_VERIFY_HUB = "verify-hub";
 export declare const BS_SERVICE_TASK_MANAGER = "task-manager";
 export declare const BS_SERVICE_OPENDAN = "opendan";
 export type SDKTarget = 'universal' | 'browser' | 'node';
+export interface WalletSignWithActiveDidResult {
+    signatures: (string | null)[];
+    pwd_hash: string | null;
+}
 export declare class BuckyOSSDK {
     private currentRuntime;
     private currentAccountInfo;
@@ -29,7 +33,7 @@ export declare class BuckyOSSDK {
     getAppSetting(settingName?: string | null): Promise<unknown>;
     setAppSetting(settingName: string | null | undefined, settingValue: string): Promise<void>;
     getCurrentWalletUser(): Promise<any>;
-    walletSignWithActiveDid(payloads: Record<string, unknown>[]): Promise<string[] | null>;
+    walletSignWithActiveDid(payloads: Record<string, unknown>[]): Promise<WalletSignWithActiveDidResult | null>;
     getZoneHostName(): string | null;
     getZoneServiceURL(serviceName: string): string;
     getServiceRpcClient(serviceName: string): kRPCClient;
@@ -58,7 +62,7 @@ export declare function createSDKModule(target: SDKTarget): {
         getAppSetting: (settingName?: string | null) => Promise<unknown>;
         setAppSetting: (settingName: string | null | undefined, settingValue: string) => Promise<void>;
         getCurrentWalletUser: () => Promise<any>;
-        walletSignWithActiveDid: (payloads: Record<string, unknown>[]) => Promise<string[] | null>;
+        walletSignWithActiveDid: (payloads: Record<string, unknown>[]) => Promise<WalletSignWithActiveDidResult | null>;
         getZoneHostName: () => string | null;
         getZoneServiceURL: (serviceName: string) => string;
         getServiceRpcClient: (serviceName: string) => kRPCClient;
@@ -82,7 +86,7 @@ export declare function createSDKModule(target: SDKTarget): {
     getAppSetting: (settingName?: string | null) => Promise<unknown>;
     setAppSetting: (settingName: string | null | undefined, settingValue: string) => Promise<void>;
     getCurrentWalletUser: () => Promise<any>;
-    walletSignWithActiveDid: (payloads: Record<string, unknown>[]) => Promise<string[] | null>;
+    walletSignWithActiveDid: (payloads: Record<string, unknown>[]) => Promise<WalletSignWithActiveDidResult | null>;
     getZoneHostName: () => string | null;
     getZoneServiceURL: (serviceName: string) => string;
     getServiceRpcClient: (serviceName: string) => kRPCClient;
