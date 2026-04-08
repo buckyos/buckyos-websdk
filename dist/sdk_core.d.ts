@@ -27,8 +27,8 @@ export declare class BuckyOSSDK {
     getAccountInfo(): Promise<AccountInfo | null>;
     loginByPassword(username: string, password: string): Promise<AccountInfo | null>;
     loginByRuntimeSession(): Promise<AccountInfo | null>;
-    loginByBrowserSSO(autoLogin?: boolean): Promise<void>;
-    login(autoLogin?: boolean): Promise<AccountInfo | null>;
+    loginByBrowserSSO(): Promise<void>;
+    login(): Promise<AccountInfo | null>;
     logout(cleanAccountInfo?: boolean): void;
     getAppSetting(settingName?: string | null): Promise<unknown>;
     setAppSetting(settingName: string | null | undefined, settingValue: string): Promise<void>;
@@ -61,9 +61,9 @@ export declare function createSDKModule(target: SDKTarget): {
         removeEvent: (cookieId: string) => void;
         getAccountInfo: () => Promise<AccountInfo | null>;
         loginByPassword: (username: string, password: string) => Promise<AccountInfo | null>;
-        loginByBrowserSSO: (autoLogin?: boolean) => Promise<void>;
+        loginByBrowserSSO: () => Promise<void>;
         loginByRuntimeSession: () => Promise<AccountInfo | null>;
-        login: (autoLogin?: boolean) => Promise<AccountInfo | null>;
+        login: () => Promise<AccountInfo | null>;
         logout: (cleanAccountInfo?: boolean) => void;
         getAppSetting: (settingName?: string | null) => Promise<unknown>;
         setAppSetting: (settingName: string | null | undefined, settingValue: string) => Promise<void>;
@@ -90,9 +90,9 @@ export declare function createSDKModule(target: SDKTarget): {
     removeEvent: (cookieId: string) => void;
     getAccountInfo: () => Promise<AccountInfo | null>;
     loginByPassword: (username: string, password: string) => Promise<AccountInfo | null>;
-    loginByBrowserSSO: (autoLogin?: boolean) => Promise<void>;
+    loginByBrowserSSO: () => Promise<void>;
     loginByRuntimeSession: () => Promise<AccountInfo | null>;
-    login: (autoLogin?: boolean) => Promise<AccountInfo | null>;
+    login: () => Promise<AccountInfo | null>;
     logout: (cleanAccountInfo?: boolean) => void;
     getAppSetting: (settingName?: string | null) => Promise<unknown>;
     setAppSetting: (settingName: string | null | undefined, settingValue: string) => Promise<void>;

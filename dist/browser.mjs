@@ -1,5 +1,5 @@
-import { c as createSDKModule } from "./sdk_core-a352f12d.mjs";
-import { A, a, B, b, d, M, e, R, S, T, V, W, h, p } from "./sdk_core-a352f12d.mjs";
+import { c as createSDKModule } from "./sdk_core-29d96307.mjs";
+import { A, a, B, b, d, M, e, R, S, T, V, W, h, p } from "./sdk_core-29d96307.mjs";
 const sdkModule = createSDKModule("browser");
 const buckyos = sdkModule.buckyos;
 const initBuckyOS = sdkModule.initBuckyOS;

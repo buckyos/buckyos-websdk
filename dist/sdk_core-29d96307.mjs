@@ -900,18 +900,6 @@ function saveBrowserUserInfo(userInfo) {
 function getBrowserUserInfo() {
   return parseBrowserUserInfo(localStorage.getItem(BROWSER_USER_INFO_STORAGE_KEY));
 }
-function getLocalAccountInfo(appId) {
-  const scoped = parseAccountInfo(localStorage.getItem(getAccountStorageKey(appId)));
-  if (scoped != null) {
-    return scoped;
-  }
-  const legacy = parseAccountInfo(localStorage.getItem(LEGACY_ACCOUNT_STORAGE_KEY));
-  if ((legacy == null ? void 0 : legacy.session_token) && parseTokenAppId(legacy.session_token) === appId) {
-    localStorage.setItem(getAccountStorageKey(appId), JSON.stringify(legacy));
-    return legacy;
-  }
-  return null;
-}
 class VerifyHubClient {
   constructor(rpcClient) {
     this.rpcClient = rpcClient;
@@ -2964,7 +2952,7 @@ class BuckyOSSDK {
     this.syncCurrentAccountInfoFromRuntime();
     return this.currentAccountInfo;
   }
-  async loginByBrowserSSO(autoLogin = true) {
+  async loginByBrowserSSO() {
     const runtime = this.currentRuntime;
     if (runtime == null) {
       console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
@@ -2974,15 +2962,6 @@ class BuckyOSSDK {
     if (appId == null) {
       console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
       return;
-    }
-    if (autoLogin && isBrowserStorageAvailable()) {
-      const accountInfo = getLocalAccountInfo(appId);
-      if (accountInfo) {
-        this.currentAccountInfo = accountInfo;
-        runtime.setSessionToken(accountInfo.session_token);
-        runtime.setRefreshToken(accountInfo.refresh_token ?? null);
-        return;
-      }
     }
     if (isBrowserStorageAvailable()) {
       cleanLocalAccountInfo(appId);
@@ -3000,11 +2979,11 @@ class BuckyOSSDK {
       throw error;
     }
   }
-  async login(autoLogin = true) {
+  async login() {
     if (this.usesRuntimeManagedSession()) {
       return this.loginByRuntimeSession();
     }
-    await this.loginByBrowserSSO(autoLogin);
+    await this.loginByBrowserSSO();
     return this.currentAccountInfo;
   }
   logout(cleanAccountInfo = true) {
@@ -3307,4 +3286,4 @@ export {
   hashPassword as h,
   parseSessionTokenClaims as p
 };
-//# sourceMappingURL=sdk_core-a352f12d.mjs.map
+//# sourceMappingURL=sdk_core-29d96307.mjs.map

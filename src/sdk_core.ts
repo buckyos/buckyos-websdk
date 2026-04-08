@@ -5,7 +5,6 @@ import {
   AccountInfo,
   cleanLocalAccountInfo,
   getBrowserUserInfo,
-  getLocalAccountInfo,
   saveBrowserUserInfo,
   saveLocalAccountInfo,
 } from './account'
@@ -284,7 +283,7 @@ export class BuckyOSSDK {
     return this.currentAccountInfo
   }
 
-  async loginByBrowserSSO(autoLogin: boolean = true): Promise<void> {
+  async loginByBrowserSSO(): Promise<void> {
     const runtime = this.currentRuntime
     if (runtime == null) {
       console.error('BuckyOS WebSDK is not initialized,call initBuckyOS first')
@@ -295,16 +294,6 @@ export class BuckyOSSDK {
     if (appId == null) {
       console.error('BuckyOS WebSDK is not initialized,call initBuckyOS first')
       return
-    }
-
-    if (autoLogin && isBrowserStorageAvailable()) {
-      const accountInfo = getLocalAccountInfo(appId)
-      if (accountInfo) {
-        this.currentAccountInfo = accountInfo
-        runtime.setSessionToken(accountInfo.session_token)
-        runtime.setRefreshToken(accountInfo.refresh_token ?? null)
-        return
-      }
     }
 
     if (isBrowserStorageAvailable()) {
@@ -326,12 +315,12 @@ export class BuckyOSSDK {
     }
   }
 
-  async login(autoLogin: boolean = true): Promise<AccountInfo | null> {
+  async login(): Promise<AccountInfo | null> {
     if (this.usesRuntimeManagedSession()) {
       return this.loginByRuntimeSession()
     }
 
-    await this.loginByBrowserSSO(autoLogin)
+    await this.loginByBrowserSSO()
     return this.currentAccountInfo
   }
 
