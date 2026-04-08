@@ -18,14 +18,12 @@ import {
 } from './runtime'
 import { VerifyHubClient } from './verify-hub-client'
 import { TaskManagerClient } from './task_mgr_client'
-import { OpenDanClient } from './opendan_client'
 import { SystemConfigClient } from './system_config_client'
 
 export const WEB3_BRIDGE_HOST = 'web3.buckyos.ai'
 
 export const BS_SERVICE_VERIFY_HUB = 'verify-hub'
 export const BS_SERVICE_TASK_MANAGER = 'task-manager'
-export const BS_SERVICE_OPENDAN = 'opendan'
 
 export type SDKTarget = 'universal' | 'browser' | 'node'
 
@@ -459,14 +457,6 @@ export class BuckyOSSDK {
     return this.currentRuntime.getTaskManagerClient()
   }
 
-  getOpenDanClient(): OpenDanClient {
-    if (this.currentRuntime == null) {
-      console.error('BuckyOS WebSDK is not initialized,call initBuckyOS first')
-      throw new Error('BuckyOS WebSDK is not initialized,call initBuckyOS first')
-    }
-    return this.currentRuntime.getOpenDanClient()
-  }
-
   private buildRuntimeConfig(appid: string, config: BuckyOSConfig | null): BuckyOSConfig {
     if (config) {
       let runtimeType = config.runtimeType
@@ -636,7 +626,6 @@ export function createSDKModule(target: SDKTarget) {
     getVerifyHubClient: sdk.getVerifyHubClient.bind(sdk),
     getSystemConfigClient: sdk.getSystemConfigClient.bind(sdk),
     getTaskManagerClient: sdk.getTaskManagerClient.bind(sdk),
-    getOpenDanClient: sdk.getOpenDanClient.bind(sdk),
   }
 
   return {
@@ -656,4 +645,3 @@ export { parseSessionTokenClaims }
 export { VerifyHubClient }
 export { SystemConfigClient }
 export { TaskManagerClient }
-export { OpenDanClient }

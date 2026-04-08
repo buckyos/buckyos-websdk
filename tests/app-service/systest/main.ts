@@ -207,7 +207,6 @@ Deno.serve({
         serviceUrls: {
           verifyHub: sdk.buckyos.getZoneServiceURL("verify-hub"),
           taskManager: sdk.buckyos.getZoneServiceURL("task-manager"),
-          opendan: sdk.buckyos.getZoneServiceURL("opendan"),
           systemConfig: sdk.buckyos.getZoneServiceURL("system-config"),
         },
         accountInfo: accountInfo

@@ -16,15 +16,12 @@ import {
   getServiceUrl,
   installInsecureNodeFetchIfNeeded,
   shouldRunIntegrationTests,
-  shouldRunOptionalIntegration,
 } from '../../helpers/test_env'
 import { defineSharedServiceClientSuite } from '../../helpers/service_client_suite'
 
 jest.setTimeout(30000)
 
 const describeIntegration = shouldRunIntegrationTests() ? describe : describe.skip
-const runOpenDan = shouldRunIntegrationTests()
-  && shouldRunOptionalIntegration('BUCKYOS_RUN_OPENDAN_INTEGRATION_TESTS')
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -106,7 +103,6 @@ describeIntegration('AppClient runtime integration', () => {
     // expose a per-app `getMySettingsPath`, so the settings round-trip case
     // does not apply here.
     skipSettings: true,
-    runOpenDan,
   })
 
   // Phase 3: AppClient-specific assertions.

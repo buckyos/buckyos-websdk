@@ -14,7 +14,6 @@
  * shared `buckyos` module (which is a singleton across dynamic imports).
  */
 
-import type { OpenDanClient } from '../../src/opendan_client'
 import type { SystemConfigClient } from '../../src/system_config_client'
 import type { TaskManagerClient } from '../../src/task_mgr_client'
 import { TaskStatus } from '../../src/task_mgr_client'
@@ -28,7 +27,6 @@ import { TaskStatus } from '../../src/task_mgr_client'
 type BuckyosLikeModule = {
   getSystemConfigClient: () => SystemConfigClient
   getTaskManagerClient: () => TaskManagerClient
-  getOpenDanClient: () => OpenDanClient
   getAppSetting: (name?: string | null) => Promise<unknown>
   setAppSetting: (name: string | null, value: string) => Promise<void>
 }
@@ -52,11 +50,6 @@ export interface SharedSuiteContext {
    * settings namespace is available for the test account).
    */
   skipSettings?: boolean
-  /**
-   * OpenDan is optional in the shared test environment. Only enable the
-   * case when the caller knows OpenDan is provisioned.
-   */
-  runOpenDan?: boolean
 }
 
 /**
@@ -127,15 +120,6 @@ export function defineSharedServiceClientSuite(context: SharedSuiteContext): voi
         } finally {
           await client.deleteTask(created.id).catch(() => undefined)
         }
-      })
-    }
-
-    if (context.runOpenDan) {
-      it('OpenDanClient lists agents', async () => {
-        const sdk = context.getSdk()
-        const result = await sdk.getOpenDanClient().listAgents({ limit: 1 })
-
-        expect(Array.isArray(result.items)).toBe(true)
       })
     }
   })

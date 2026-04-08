@@ -139,7 +139,6 @@ function buildRuntimeSummary(identity: AppInstanceIdentity) {
     serviceUrls: {
       verifyHub: buckyos.getZoneServiceURL('verify-hub'),
       taskManager: buckyos.getZoneServiceURL('task-manager'),
-      opendan: buckyos.getZoneServiceURL('opendan'),
       systemConfig: buckyos.getZoneServiceURL('system-config'),
     },
     accountInfo: accountInfo

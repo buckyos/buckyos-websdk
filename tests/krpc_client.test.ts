@@ -1,4 +1,4 @@
-import { kRPCClient } from '../../src/krpc_client'
+import { kRPCClient } from '../src/krpc_client'
 
 function makeResponse(body: unknown, ok: boolean = true, status: number = 200) {
   return {
