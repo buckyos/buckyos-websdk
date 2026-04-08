@@ -132,12 +132,19 @@ export class BuckyOSSDK {
     const finalConfig = this.buildRuntimeConfig(appid, config)
 
     if (this.target !== 'node' && isBrowserRuntime() && !config) {
-      let zoneHostName = localStorage.getItem('zone_host_name')
+      // Cache key is versioned: pre-v2 entries were filled by a buggy
+      // tryGetZoneHostName that always pinned the zone host to whatever
+      // app subdomain the user happened to load (e.g. `sys-test.test.buckyos.io`
+      // instead of `test.buckyos.io`). Bumping the key forces a re-probe
+      // through the new identifier-doc-aware logic on first load and also
+      // clears the stale entry so it doesn't keep wasting localStorage space.
+      localStorage.removeItem('zone_host_name')
+      let zoneHostName = localStorage.getItem('zone_host_name_v2')
       if (zoneHostName) {
         finalConfig.zoneHost = zoneHostName
       } else {
         zoneHostName = await this.tryGetZoneHostName(appid, window.location.host, finalConfig.defaultProtocol)
-        localStorage.setItem('zone_host_name', zoneHostName)
+        localStorage.setItem('zone_host_name_v2', zoneHostName)
         finalConfig.zoneHost = zoneHostName
       }
     }
@@ -534,10 +541,20 @@ export class BuckyOSSDK {
     const ignoredAppId = appid
     void ignoredAppId
 
-    let zoneDocUrl = defaultProtocol + host + '/1.0/identifiers/self'
-    let response = await fetch(zoneDocUrl)
-    if (response.status === 200) {
-      return host
+    // Inside a BuckyOS zone every app subdomain (e.g. `sys-test.test.buckyos.io`)
+    // serves the same `/1.0/identifiers/self` document as the zone root, so we
+    // cannot infer the zone host from "did this URL respond 200?" alone — that
+    // logic would happily pin the zone host to whatever app the user is
+    // currently visiting, and AuthClient would then build SSO URLs like
+    // `sys.<app>.<zone>/login` (wrong) instead of `sys.<zone>/login`.
+    //
+    // The DID document itself carries the canonical zone host in either the
+    // `hostname` field or the `did:web:<host>` form of `id`. Use that as the
+    // primary signal, and only fall back to the walk-up-the-DNS-tree probe
+    // when the document does not contain a hostname.
+    const zoneFromDoc = await this.fetchZoneHostFromIdentifierDoc(defaultProtocol + host + '/1.0/identifiers/self')
+    if (zoneFromDoc) {
+      return zoneFromDoc
     }
 
     const upHost = host.split('.').slice(1).join('.')
@@ -545,13 +562,36 @@ export class BuckyOSSDK {
       return host
     }
 
-    zoneDocUrl = defaultProtocol + upHost + '/1.0/identifiers/self'
-    response = await fetch(zoneDocUrl)
-    if (response.status === 200) {
-      return upHost
+    const zoneFromParent = await this.fetchZoneHostFromIdentifierDoc(defaultProtocol + upHost + '/1.0/identifiers/self')
+    if (zoneFromParent) {
+      return zoneFromParent
     }
 
     return host
+  }
+
+  private async fetchZoneHostFromIdentifierDoc(url: string): Promise<string | null> {
+    try {
+      const response = await fetch(url)
+      if (response.status !== 200) {
+        return null
+      }
+      const doc = await response.json() as { hostname?: unknown; id?: unknown }
+      const hostname = typeof doc.hostname === 'string' ? doc.hostname.trim() : ''
+      if (hostname.length > 0) {
+        return hostname
+      }
+      // Fallback: derive from `did:web:<host>` style id if `hostname` is missing.
+      if (typeof doc.id === 'string') {
+        const match = doc.id.match(/^did:web:([^/?#]+)/)
+        if (match && match[1]) {
+          return match[1]
+        }
+      }
+      return null
+    } catch {
+      return null
+    }
   }
 
   private syncCurrentAccountInfoFromRuntime() {

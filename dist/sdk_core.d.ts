@@ -46,6 +46,7 @@ export declare class BuckyOSSDK {
     getRepoClient(): RepoClient;
     private buildRuntimeConfig;
     private tryGetZoneHostName;
+    private fetchZoneHostFromIdentifierDoc;
     private syncCurrentAccountInfoFromRuntime;
     private usesRuntimeManagedSession;
     private detectEnvironmentRuntimeType;

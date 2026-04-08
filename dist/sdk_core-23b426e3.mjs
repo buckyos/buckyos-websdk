@@ -2828,12 +2828,13 @@ class BuckyOSSDK {
     var _a;
     const finalConfig = this.buildRuntimeConfig(appid, config);
     if (this.target !== "node" && isBrowserRuntime() && !config) {
-      let zoneHostName = localStorage.getItem("zone_host_name");
+      localStorage.removeItem("zone_host_name");
+      let zoneHostName = localStorage.getItem("zone_host_name_v2");
       if (zoneHostName) {
         finalConfig.zoneHost = zoneHostName;
       } else {
         zoneHostName = await this.tryGetZoneHostName(appid, window.location.host, finalConfig.defaultProtocol);
-        localStorage.setItem("zone_host_name", zoneHostName);
+        localStorage.setItem("zone_host_name_v2", zoneHostName);
         finalConfig.zoneHost = zoneHostName;
       }
     }
@@ -3160,21 +3161,41 @@ class BuckyOSSDK {
     };
   }
   async tryGetZoneHostName(appid, host, defaultProtocol) {
-    let zoneDocUrl = defaultProtocol + host + "/1.0/identifiers/self";
-    let response = await fetch(zoneDocUrl);
-    if (response.status === 200) {
-      return host;
+    const zoneFromDoc = await this.fetchZoneHostFromIdentifierDoc(defaultProtocol + host + "/1.0/identifiers/self");
+    if (zoneFromDoc) {
+      return zoneFromDoc;
     }
     const upHost = host.split(".").slice(1).join(".");
     if (!upHost) {
       return host;
     }
-    zoneDocUrl = defaultProtocol + upHost + "/1.0/identifiers/self";
-    response = await fetch(zoneDocUrl);
-    if (response.status === 200) {
-      return upHost;
+    const zoneFromParent = await this.fetchZoneHostFromIdentifierDoc(defaultProtocol + upHost + "/1.0/identifiers/self");
+    if (zoneFromParent) {
+      return zoneFromParent;
     }
     return host;
+  }
+  async fetchZoneHostFromIdentifierDoc(url) {
+    try {
+      const response = await fetch(url);
+      if (response.status !== 200) {
+        return null;
+      }
+      const doc = await response.json();
+      const hostname = typeof doc.hostname === "string" ? doc.hostname.trim() : "";
+      if (hostname.length > 0) {
+        return hostname;
+      }
+      if (typeof doc.id === "string") {
+        const match = doc.id.match(/^did:web:([^/?#]+)/);
+        if (match && match[1]) {
+          return match[1];
+        }
+      }
+      return null;
+    } catch {
+      return null;
+    }
   }
   syncCurrentAccountInfoFromRuntime() {
     if (this.currentRuntime == null) {
@@ -3286,4 +3307,4 @@ export {
   hashPassword as h,
   parseSessionTokenClaims as p
 };
-//# sourceMappingURL=sdk_core-29d96307.mjs.map
+//# sourceMappingURL=sdk_core-23b426e3.mjs.map
