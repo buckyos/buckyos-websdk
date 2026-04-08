@@ -102,6 +102,10 @@ describeIntegration('AppClient runtime integration', () => {
     getSdk: () => buckyosRef,
     getAppId: () => appId,
     getUserId: () => accountUserId,
+    // AppClient is a system-level client; the runtime intentionally does not
+    // expose a per-app `getMySettingsPath`, so the settings round-trip case
+    // does not apply here.
+    skipSettings: true,
     runOpenDan,
   })
 

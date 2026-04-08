@@ -42,7 +42,7 @@ describe('TaskManagerClient', () => {
       task: makeTask({ id: 11, root_id: '3', status: 'Pending' }),
     }, 9))
 
-    const rpcClient = new kRPCClient('/kapi/task-manager/', null, 9, fetcher)
+    const rpcClient = new kRPCClient('/kapi/task-manager/', null, 9, { fetcher: fetcher })
     const client = new TaskManagerClient(rpcClient)
     const task = await client.createTask({
       name: 'publish package',
@@ -82,7 +82,7 @@ describe('TaskManagerClient', () => {
       .mockResolvedValueOnce(makeResponse({ task_id: 22 }, 1))
       .mockResolvedValueOnce(makeResponse({ task: makeTask({ id: 22, status: 'Running' }) }, 2))
 
-    const rpcClient = new kRPCClient('/kapi/task-manager/', null, 1, fetcher)
+    const rpcClient = new kRPCClient('/kapi/task-manager/', null, 1, { fetcher: fetcher })
     const client = new TaskManagerClient(rpcClient)
     const task = await client.createTask({
       name: 'sync',
@@ -99,7 +99,7 @@ describe('TaskManagerClient', () => {
   it('createDownloadTask sends Rust-compatible payload', async () => {
     const fetcher = jest.fn().mockResolvedValue(makeResponse({ task_id: 31 }, 31))
 
-    const rpcClient = new kRPCClient('/kapi/task-manager/', null, 31, fetcher)
+    const rpcClient = new kRPCClient('/kapi/task-manager/', null, 31, { fetcher: fetcher })
     const client = new TaskManagerClient(rpcClient)
     const taskId = await client.createDownloadTask(
       'https://example.com/pkg.tgz',
@@ -138,8 +138,8 @@ describe('TaskManagerClient', () => {
       41,
     ))
 
-    const wrappedClient = new TaskManagerClient(new kRPCClient('/kapi/task-manager/', null, 40, wrappedFetcher))
-    const directClient = new TaskManagerClient(new kRPCClient('/kapi/task-manager/', null, 41, directFetcher))
+    const wrappedClient = new TaskManagerClient(new kRPCClient('/kapi/task-manager/', null, 40, { fetcher: wrappedFetcher }))
+    const directClient = new TaskManagerClient(new kRPCClient('/kapi/task-manager/', null, 41, { fetcher: directFetcher }))
 
     expect((await wrappedClient.getTask(40)).status).toBe(TaskStatus.Paused)
     expect((await directClient.getTask(41)).status).toBe(TaskStatus.Completed)
@@ -153,8 +153,8 @@ describe('TaskManagerClient', () => {
       makeTask({ id: 51, status: 'Running' }),
     ], 51))
 
-    const wrappedClient = new TaskManagerClient(new kRPCClient('/kapi/task-manager/', null, 50, wrappedFetcher))
-    const directClient = new TaskManagerClient(new kRPCClient('/kapi/task-manager/', null, 51, directFetcher))
+    const wrappedClient = new TaskManagerClient(new kRPCClient('/kapi/task-manager/', null, 50, { fetcher: wrappedFetcher }))
+    const directClient = new TaskManagerClient(new kRPCClient('/kapi/task-manager/', null, 51, { fetcher: directFetcher }))
 
     const wrappedTasks = await wrappedClient.listTasks({
       filter: {
@@ -192,8 +192,8 @@ describe('TaskManagerClient', () => {
       makeTask({ id: 61, parent_id: 10 }),
     ], 61))
 
-    const wrappedClient = new TaskManagerClient(new kRPCClient('/kapi/task-manager/', null, 60, wrappedFetcher))
-    const directClient = new TaskManagerClient(new kRPCClient('/kapi/task-manager/', null, 61, directFetcher))
+    const wrappedClient = new TaskManagerClient(new kRPCClient('/kapi/task-manager/', null, 60, { fetcher: wrappedFetcher }))
+    const directClient = new TaskManagerClient(new kRPCClient('/kapi/task-manager/', null, 61, { fetcher: directFetcher }))
 
     expect((await wrappedClient.getSubtasks(10))).toHaveLength(1)
     expect((await directClient.getSubtasks(10))).toHaveLength(1)
@@ -205,7 +205,7 @@ describe('TaskManagerClient', () => {
       .mockResolvedValueOnce(makeResponse(null, 5))
       .mockResolvedValueOnce(makeResponse(null, 6))
 
-    const rpcClient = new kRPCClient('/kapi/task-manager/', null, 5, fetcher)
+    const rpcClient = new kRPCClient('/kapi/task-manager/', null, 5, { fetcher: fetcher })
     const client = new TaskManagerClient(rpcClient)
     await client.markTaskAsFailed(42, 'network failed')
 
@@ -226,7 +226,7 @@ describe('TaskManagerClient', () => {
       .mockResolvedValueOnce(makeResponse({ task: makeTask({ id: 70, status: 'Running' }) }, 70))
       .mockResolvedValueOnce(makeResponse({ task: makeTask({ id: 70, status: 'Completed' }) }, 71))
 
-    const rpcClient = new kRPCClient('/kapi/task-manager/', null, 70, fetcher)
+    const rpcClient = new kRPCClient('/kapi/task-manager/', null, 70, { fetcher: fetcher })
     const client = new TaskManagerClient(rpcClient)
 
     await expect(client.waitForTaskEndWithInterval(70, 1)).resolves.toBe(TaskStatus.Completed)
@@ -236,7 +236,7 @@ describe('TaskManagerClient', () => {
   it('resumeLastPausedTask throws when paused task does not exist', async () => {
     const fetcher = jest.fn().mockResolvedValue(makeResponse({ tasks: [] }, 77))
 
-    const rpcClient = new kRPCClient('/kapi/task-manager/', null, 77, fetcher)
+    const rpcClient = new kRPCClient('/kapi/task-manager/', null, 77, { fetcher: fetcher })
     const client = new TaskManagerClient(rpcClient)
 
     await expect(client.resumeLastPausedTask()).rejects.toThrow('No paused tasks found')
@@ -244,7 +244,7 @@ describe('TaskManagerClient', () => {
 
   it('waitForTaskEndWithInterval validates poll interval', async () => {
     const fetcher = jest.fn()
-    const rpcClient = new kRPCClient('/kapi/task-manager/', null, 1, fetcher)
+    const rpcClient = new kRPCClient('/kapi/task-manager/', null, 1, { fetcher: fetcher })
     const client = new TaskManagerClient(rpcClient)
 
     await expect(client.waitForTaskEndWithInterval(1, 0)).rejects.toThrow('pollIntervalMs must be greater than 0')

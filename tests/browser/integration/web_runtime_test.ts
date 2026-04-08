@@ -76,6 +76,12 @@ describeIntegration('Browser runtime integration', () => {
     getSdk: () => buckyosRef,
     getAppId: () => appId,
     getUserId: () => accountUserId,
+    // The Browser runtime profile resolves the settings path to
+    // `services/${appId}/settings`, which only the system app itself or root
+    // can read/write. The DV password-login user used by this smoke test
+    // (devtest) is a regular user without permission for that key, so the
+    // settings round trip is not applicable here.
+    skipSettings: true,
     runOpenDan,
   })
 

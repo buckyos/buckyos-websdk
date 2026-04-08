@@ -16,7 +16,7 @@ describe('VerifyHubClient', () => {
       sys: [7],
     }))
 
-    const rpcClient = new kRPCClient('/kapi/verify-hub/', 'init-token', 7, fetcher)
+    const rpcClient = new kRPCClient('/kapi/verify-hub/', 'init-token', 7, { fetcher: fetcher })
     rpcClient.setSessionToken('stale-token')
 
     const client = new VerifyHubClient(rpcClient)
@@ -46,7 +46,7 @@ describe('VerifyHubClient', () => {
       sys: [11],
     }))
 
-    const rpcClient = new kRPCClient('/kapi/verify-hub/', 'init-token', 11, fetcher)
+    const rpcClient = new kRPCClient('/kapi/verify-hub/', 'init-token', 11, { fetcher: fetcher })
     rpcClient.setSessionToken('stale-token')
 
     const client = new VerifyHubClient(rpcClient)
@@ -75,7 +75,7 @@ describe('VerifyHubClient', () => {
         sys: [22],
       }))
 
-    const rpcClient = new kRPCClient('/kapi/verify-hub/', 'session-1', 21, fetcher)
+    const rpcClient = new kRPCClient('/kapi/verify-hub/', 'session-1', 21, { fetcher: fetcher })
     const client = new VerifyHubClient(rpcClient)
 
     const refreshed = await client.refreshToken({ refresh_token: 'refresh-1' })

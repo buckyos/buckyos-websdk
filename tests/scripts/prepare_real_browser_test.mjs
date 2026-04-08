@@ -3,7 +3,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
-const repoRoot = resolve(scriptDir, '..');
+const repoRoot = resolve(scriptDir, '..', '..');
 const distDir = join(repoRoot, 'dist');
 const htmlSource = join(repoRoot, 'tests', 'browser', 'real-browser', 'test.html');
 const buckyosRoot = process.env.BUCKYOS_ROOT?.trim() || '/opt/buckyos';

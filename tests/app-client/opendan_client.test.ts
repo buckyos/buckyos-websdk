@@ -20,7 +20,7 @@ describe('OpenDanClient', () => {
       total: 1,
     }, 101))
 
-    const rpcClient = new kRPCClient('/kapi/opendan/', null, 101, fetcher)
+    const rpcClient = new kRPCClient('/kapi/opendan/', null, 101, { fetcher: fetcher })
     const client = new OpenDanClient(rpcClient)
     const result = await client.listAgents({
       status: 'running',
@@ -49,7 +49,7 @@ describe('OpenDanClient', () => {
       status: 'idle',
     }, 8))
 
-    const rpcClient = new kRPCClient('/kapi/opendan/', null, 8, fetcher)
+    const rpcClient = new kRPCClient('/kapi/opendan/', null, 8, { fetcher: fetcher })
     const client = new OpenDanClient(rpcClient)
     const agent = await client.getAgent('did:opendan:agent-a')
 
@@ -68,7 +68,7 @@ describe('OpenDanClient', () => {
       workspace_path: '/tmp/ws-1',
     }, 9))
 
-    const rpcClient = new kRPCClient('/kapi/opendan/', null, 9, fetcher)
+    const rpcClient = new kRPCClient('/kapi/opendan/', null, 9, { fetcher: fetcher })
     const client = new OpenDanClient(rpcClient)
     const workspace = await client.getWorkspace('did:opendan:agent-a')
 
@@ -86,7 +86,7 @@ describe('OpenDanClient', () => {
       total: 1,
     }, 55))
 
-    const rpcClient = new kRPCClient('/kapi/opendan/', null, 55, fetcher)
+    const rpcClient = new kRPCClient('/kapi/opendan/', null, 55, { fetcher: fetcher })
     const client = new OpenDanClient(rpcClient)
     const result = await client.listWorkspaceWorklogs({
       agentId: 'did:opendan:agent-b',
@@ -126,7 +126,7 @@ describe('OpenDanClient', () => {
         items: [{ agent_id: 'did:opendan:sub-1', status: 'running' }],
       }, 2))
 
-    const rpcClient = new kRPCClient('/kapi/opendan/', null, 1, fetcher)
+    const rpcClient = new kRPCClient('/kapi/opendan/', null, 1, { fetcher: fetcher })
     const client = new OpenDanClient(rpcClient)
 
     const todos = await client.listWorkspaceTodos({
@@ -225,7 +225,7 @@ describe('OpenDanClient', () => {
         meta: {},
       }, 25))
 
-    const rpcClient = new kRPCClient('/kapi/opendan/', null, 21, fetcher)
+    const rpcClient = new kRPCClient('/kapi/opendan/', null, 21, { fetcher: fetcher })
     const client = new OpenDanClient(rpcClient)
 
     const sessions = await client.listAgentSessions({ agentId: 'did:opendan:main', limit: 10 })

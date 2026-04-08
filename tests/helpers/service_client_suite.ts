@@ -78,7 +78,10 @@ export function defineSharedServiceClientSuite(context: SharedSuiteContext): voi
     it('SystemConfigClient writes and reads back a namespaced key', async () => {
       const sdk = context.getSdk()
       const appId = context.getAppId()
-      const key = `test/websdk/${appId}/${Date.now()}`
+      const userId = context.getUserId()
+      // Write under the logged-in user's own namespace so the test does not
+      // depend on having permission to write the shared `test/...` tree.
+      const key = `users/${userId}/test_websdk/${appId}/${Date.now()}`
       const value = JSON.stringify({ ok: true, key })
 
       await sdk.getSystemConfigClient().set(key, value)

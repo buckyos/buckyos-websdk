@@ -7,10 +7,10 @@ Usage:
   debug_systest.sh [owner_user_id] [service_debug_args...]
 
 Examples:
-  ./scripts/debug_systest.sh
-  ./scripts/debug_systest.sh devtest
-  ./scripts/debug_systest.sh devtest --port 10176
-  ./scripts/debug_systest.sh --port 10176
+  ./tests/scripts/debug_systest.sh
+  ./tests/scripts/debug_systest.sh devtest
+  ./tests/scripts/debug_systest.sh devtest --port 10176
+  ./tests/scripts/debug_systest.sh --port 10176
 EOF
 }
 
@@ -20,7 +20,7 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 BUCKYOS_ROOT="${BUCKYOS_ROOT:-/opt/buckyos}"
 APP_ID="buckyos_systest"
 OWNER_USER_ID="devtest"
@@ -36,7 +36,7 @@ TARGET_ROOT="${BUCKYOS_ROOT}/bin/${APP_ID}"
 find_service_debug_script() {
   local candidates=(
     "${SERVICE_DEBUG_SCRIPT:-}"
-    "${REPO_ROOT}/scripts/service_debug.tsx"
+    "${REPO_ROOT}/tests/scripts/service_debug.tsx"
     "${BUCKYOS_ROOT}/bin/service_debug.tsx"
     "/Users/liuzhicong/project/buckyos/src/rootfs/bin/service_debug.tsx"
   )
@@ -61,7 +61,7 @@ SERVICE_DEBUG_SCRIPT="$(find_service_debug_script || true)"
 if [[ -z "${SERVICE_DEBUG_SCRIPT}" ]]; then
   echo "service_debug.tsx not found. Checked:" >&2
   echo "  - \${SERVICE_DEBUG_SCRIPT}" >&2
-  echo "  - ${REPO_ROOT}/scripts/service_debug.tsx" >&2
+  echo "  - ${REPO_ROOT}/tests/scripts/service_debug.tsx" >&2
   echo "  - ${BUCKYOS_ROOT}/bin/service_debug.tsx" >&2
   echo "  - /Users/liuzhicong/project/buckyos/src/rootfs/bin/service_debug.tsx" >&2
   exit 2

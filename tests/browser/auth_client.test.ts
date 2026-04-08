@@ -7,7 +7,7 @@ describe('AuthClient in SSO browser environment', () => {
     })
 
     expect(authClient.buildLoginURL()).toBe(
-      'http://sys.test.buckyos.io/login?client_id=demo-app&redirect_uri=http%3A%2F%2Flocalhost%2F&response_type=token',
+      'http://sys.test.buckyos.io/login?client_id=demo-app&redirect_url=http%3A%2F%2Flocalhost%2F',
     )
   })
 
@@ -21,7 +21,7 @@ describe('AuthClient in SSO browser environment', () => {
     await expect(authClient.login('https://app.test/login/callback')).resolves.toBeUndefined()
 
     expect(navigate).toHaveBeenCalledWith(
-      'http://sys.test.buckyos.io/login?client_id=demo-app&redirect_uri=https%3A%2F%2Fapp.test%2Flogin%2Fcallback&response_type=token',
+      'http://sys.test.buckyos.io/login?client_id=demo-app&redirect_url=https%3A%2F%2Fapp.test%2Flogin%2Fcallback',
     )
     expect(openSpy).not.toHaveBeenCalled()
 

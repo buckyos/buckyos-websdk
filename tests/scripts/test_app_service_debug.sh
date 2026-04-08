@@ -7,9 +7,9 @@ Usage:
   test_app_service_debug.sh [owner_user_id] [--port <port>]
 
 Examples:
-  ./scripts/test_app_service_debug.sh
-  ./scripts/test_app_service_debug.sh devtest
-  ./scripts/test_app_service_debug.sh devtest --port 10176
+  ./tests/scripts/test_app_service_debug.sh
+  ./tests/scripts/test_app_service_debug.sh devtest
+  ./tests/scripts/test_app_service_debug.sh devtest --port 10176
 EOF
 }
 
@@ -19,7 +19,7 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 OWNER_USER_ID="devtest"
 PORT="10176"
 
@@ -45,8 +45,8 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-SERVICE_DEBUG_SCRIPT="${REPO_ROOT}/scripts/service_debug.tsx"
-DEBUG_SYSTEST_SCRIPT="${REPO_ROOT}/scripts/debug_systest.sh"
+SERVICE_DEBUG_SCRIPT="${REPO_ROOT}/tests/scripts/service_debug.tsx"
+DEBUG_SYSTEST_SCRIPT="${REPO_ROOT}/tests/scripts/debug_systest.sh"
 APP_ID="buckyos_systest"
 HEALTH_URL="http://127.0.0.1:${PORT}/sdk/appservice/healthz"
 RUNTIME_URL="http://systest.test.buckyos.io/sdk/appservice/runtime"

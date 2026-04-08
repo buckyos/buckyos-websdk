@@ -15,7 +15,7 @@ describe('kRPCClient', () => {
       sys: [123, 'next-token'],
     }))
 
-    const client = new kRPCClient('/kapi/test/', 'init-token', 123, fetcher)
+    const client = new kRPCClient('/kapi/test/', 'init-token', 123, { fetcher: fetcher })
     const result = await client.call<{ ok: boolean }, { foo: string }>('test', { foo: 'bar' })
 
     expect(result).toEqual({ ok: true })
@@ -33,7 +33,7 @@ describe('kRPCClient', () => {
       sys: [5],
     }))
 
-    const client = new kRPCClient('/kapi/test/', null, 5, fetcher)
+    const client = new kRPCClient('/kapi/test/', null, 5, { fetcher: fetcher })
     await client.call('test', {})
 
     expect(JSON.parse((fetcher.mock.calls[0][1] as RequestInit).body as string)).toEqual({
@@ -49,7 +49,7 @@ describe('kRPCClient', () => {
       sys: [999],
     }))
 
-    const client = new kRPCClient('/kapi/test/', null, 1, fetcher)
+    const client = new kRPCClient('/kapi/test/', null, 1, { fetcher: fetcher })
 
     await expect(client.call('test', {})).rejects.toThrow('seq not match: 999!=1')
   })
@@ -60,7 +60,7 @@ describe('kRPCClient', () => {
       sys: { seq: 1 },
     }))
 
-    const client = new kRPCClient('/kapi/test/', null, 1, fetcher)
+    const client = new kRPCClient('/kapi/test/', null, 1, { fetcher: fetcher })
 
     await expect(client.call('test', {})).rejects.toThrow('sys is not array')
   })
@@ -71,7 +71,7 @@ describe('kRPCClient', () => {
       sys: [1, 123],
     }))
 
-    const client = new kRPCClient('/kapi/test/', 'token', 1, fetcher)
+    const client = new kRPCClient('/kapi/test/', 'token', 1, { fetcher: fetcher })
 
     await expect(client.call('test', {})).rejects.toThrow('sys[1] is not string')
   })
@@ -79,7 +79,7 @@ describe('kRPCClient', () => {
   it('throws on non-200 http responses', async () => {
     const fetcher = jest.fn().mockResolvedValue(makeResponse({}, false, 503))
 
-    const client = new kRPCClient('/kapi/test/', null, 1, fetcher)
+    const client = new kRPCClient('/kapi/test/', null, 1, { fetcher: fetcher })
 
     await expect(client.call('test', {})).rejects.toThrow('RPC call error: 503')
   })
@@ -90,7 +90,7 @@ describe('kRPCClient', () => {
       sys: [1],
     }))
 
-    const client = new kRPCClient('/kapi/test/', null, 1, fetcher)
+    const client = new kRPCClient('/kapi/test/', null, 1, { fetcher: fetcher })
 
     await expect(client.call('test', {})).rejects.toThrow('RPC call error: denied')
   })
@@ -100,7 +100,7 @@ describe('kRPCClient', () => {
       sys: [1],
     }))
 
-    const client = new kRPCClient('/kapi/test/', null, 1, fetcher)
+    const client = new kRPCClient('/kapi/test/', null, 1, { fetcher: fetcher })
 
     await expect(client.call('test', {})).rejects.toThrow('RPC response missing result')
   })
