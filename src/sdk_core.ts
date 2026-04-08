@@ -19,6 +19,10 @@ import {
 import { VerifyHubClient } from './verify-hub-client'
 import { TaskManagerClient } from './task_mgr_client'
 import { SystemConfigClient } from './system_config_client'
+import { AiccClient } from './aicc_client'
+import { MsgQueueClient } from './msg_queue_client'
+import { MsgCenterClient } from './msg_center_client'
+import { RepoClient } from './repo_client'
 
 export const WEB3_BRIDGE_HOST = 'web3.buckyos.ai'
 
@@ -457,6 +461,34 @@ export class BuckyOSSDK {
     return this.currentRuntime.getTaskManagerClient()
   }
 
+  getAiccClient(): AiccClient {
+    if (this.currentRuntime == null) {
+      throw new Error('BuckyOS WebSDK is not initialized,call initBuckyOS first')
+    }
+    return this.currentRuntime.getAiccClient()
+  }
+
+  getMsgQueueClient(): MsgQueueClient {
+    if (this.currentRuntime == null) {
+      throw new Error('BuckyOS WebSDK is not initialized,call initBuckyOS first')
+    }
+    return this.currentRuntime.getMsgQueueClient()
+  }
+
+  getMsgCenterClient(): MsgCenterClient {
+    if (this.currentRuntime == null) {
+      throw new Error('BuckyOS WebSDK is not initialized,call initBuckyOS first')
+    }
+    return this.currentRuntime.getMsgCenterClient()
+  }
+
+  getRepoClient(): RepoClient {
+    if (this.currentRuntime == null) {
+      throw new Error('BuckyOS WebSDK is not initialized,call initBuckyOS first')
+    }
+    return this.currentRuntime.getRepoClient()
+  }
+
   private buildRuntimeConfig(appid: string, config: BuckyOSConfig | null): BuckyOSConfig {
     if (config) {
       let runtimeType = config.runtimeType
@@ -626,6 +658,10 @@ export function createSDKModule(target: SDKTarget) {
     getVerifyHubClient: sdk.getVerifyHubClient.bind(sdk),
     getSystemConfigClient: sdk.getSystemConfigClient.bind(sdk),
     getTaskManagerClient: sdk.getTaskManagerClient.bind(sdk),
+    getAiccClient: sdk.getAiccClient.bind(sdk),
+    getMsgQueueClient: sdk.getMsgQueueClient.bind(sdk),
+    getMsgCenterClient: sdk.getMsgCenterClient.bind(sdk),
+    getRepoClient: sdk.getRepoClient.bind(sdk),
   }
 
   return {
@@ -645,3 +681,7 @@ export { parseSessionTokenClaims }
 export { VerifyHubClient }
 export { SystemConfigClient }
 export { TaskManagerClient }
+export { AiccClient }
+export { MsgQueueClient }
+export { MsgCenterClient }
+export { RepoClient }

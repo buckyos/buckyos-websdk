@@ -2,6 +2,10 @@ import { kRPCClient } from './krpc_client';
 import { VerifyHubClient } from './verify-hub-client';
 import { TaskManagerClient } from './task_mgr_client';
 import { SystemConfigClient } from './system_config_client';
+import { AiccClient } from './aicc_client';
+import { MsgQueueClient } from './msg_queue_client';
+import { MsgCenterClient } from './msg_center_client';
+import { RepoClient } from './repo_client';
 import { BrowserUserInfo } from './account';
 export declare enum RuntimeType {
     Browser = "Browser",
@@ -72,6 +76,10 @@ export declare class BuckyOSRuntime {
     getSystemConfigClient(): SystemConfigClient;
     getVerifyHubClient(): VerifyHubClient;
     getTaskManagerClient(): TaskManagerClient;
+    getAiccClient(): AiccClient;
+    getMsgQueueClient(): MsgQueueClient;
+    getMsgCenterClient(): MsgCenterClient;
+    getRepoClient(): RepoClient;
     getMySettings(): Promise<unknown>;
     updateMySettings(jsonPath: string, settings: unknown): Promise<void>;
     updateAllMySettings(settings: unknown): Promise<void>;

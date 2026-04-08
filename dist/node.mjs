@@ -1,5 +1,5 @@
-import { c as createSDKModule } from "./sdk_core-6fa9d27e.mjs";
-import { a, B, b, R, S, T, V, W, h, p } from "./sdk_core-6fa9d27e.mjs";
+import { c as createSDKModule } from "./sdk_core-a352f12d.mjs";
+import { A, a, B, b, d, M, e, R, S, T, V, W, h, p } from "./sdk_core-a352f12d.mjs";
 const sdkModule = createSDKModule("node");
 const buckyos = sdkModule.buckyos;
 const initBuckyOS = sdkModule.initBuckyOS;
@@ -25,9 +25,13 @@ const getVerifyHubClient = sdkModule.getVerifyHubClient;
 const getSystemConfigClient = sdkModule.getSystemConfigClient;
 const getTaskManagerClient = sdkModule.getTaskManagerClient;
 export {
+  A as AiccClient,
   a as BS_SERVICE_TASK_MANAGER,
   B as BS_SERVICE_VERIFY_HUB,
   b as BuckyOSSDK,
+  d as MsgCenterClient,
+  M as MsgQueueClient,
+  e as RepoClient,
   R as RuntimeType,
   S as SystemConfigClient,
   T as TaskManagerClient,

@@ -1,5 +1,5 @@
-import { c as createSDKModule } from "./sdk_core-6fa9d27e.mjs";
-import { a, B, b, R, S, T, V, W, h, p } from "./sdk_core-6fa9d27e.mjs";
+import { c as createSDKModule } from "./sdk_core-a352f12d.mjs";
+import { A, a, B, b, d, M, e, R, S, T, V, W, h, p } from "./sdk_core-a352f12d.mjs";
 const sdkModule = createSDKModule("universal");
 const buckyos = sdkModule.buckyos;
 const initBuckyOS = sdkModule.initBuckyOS;
@@ -24,10 +24,18 @@ const getServiceRpcClient = sdkModule.getServiceRpcClient;
 const getVerifyHubClient = sdkModule.getVerifyHubClient;
 const getSystemConfigClient = sdkModule.getSystemConfigClient;
 const getTaskManagerClient = sdkModule.getTaskManagerClient;
+const getAiccClient = sdkModule.getAiccClient;
+const getMsgQueueClient = sdkModule.getMsgQueueClient;
+const getMsgCenterClient = sdkModule.getMsgCenterClient;
+const getRepoClient = sdkModule.getRepoClient;
 export {
+  A as AiccClient,
   a as BS_SERVICE_TASK_MANAGER,
   B as BS_SERVICE_VERIFY_HUB,
   b as BuckyOSSDK,
+  d as MsgCenterClient,
+  M as MsgQueueClient,
+  e as RepoClient,
   R as RuntimeType,
   S as SystemConfigClient,
   T as TaskManagerClient,
@@ -37,10 +45,14 @@ export {
   buckyos,
   createSDKModule,
   getAccountInfo,
+  getAiccClient,
   getAppId,
   getAppSetting,
   getBuckyOSConfig,
   getCurrentWalletUser,
+  getMsgCenterClient,
+  getMsgQueueClient,
+  getRepoClient,
   getRuntimeType,
   getServiceRpcClient,
   getSystemConfigClient,

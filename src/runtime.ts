@@ -2,6 +2,10 @@ import { kRPCClient } from './krpc_client'
 import { VerifyHubClient } from './verify-hub-client'
 import { TaskManagerClient } from './task_mgr_client'
 import { SystemConfigClient } from './system_config_client'
+import { AiccClient } from './aicc_client'
+import { MsgQueueClient } from './msg_queue_client'
+import { MsgCenterClient } from './msg_center_client'
+import { RepoClient } from './repo_client'
 import { BrowserUserInfo, getBrowserUserInfo, saveBrowserUserInfo } from './account'
 
 declare const require: undefined | ((name: string) => any)
@@ -538,6 +542,22 @@ export class BuckyOSRuntime {
   getTaskManagerClient(): TaskManagerClient {
     const rpcClient = this.getServiceRpcClient('task-manager')
     return new TaskManagerClient(rpcClient)
+  }
+
+  getAiccClient(): AiccClient {
+    return new AiccClient(this.getServiceRpcClient('aicc'))
+  }
+
+  getMsgQueueClient(): MsgQueueClient {
+    return new MsgQueueClient(this.getServiceRpcClient('kmsg'))
+  }
+
+  getMsgCenterClient(): MsgCenterClient {
+    return new MsgCenterClient(this.getServiceRpcClient('msg-center'))
+  }
+
+  getRepoClient(): RepoClient {
+    return new RepoClient(this.getServiceRpcClient('repo-service'))
   }
 
   async getMySettings(): Promise<unknown> {

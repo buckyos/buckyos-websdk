@@ -26,11 +26,26 @@ type ConfigCacheEntry = {
 }
 
 export class SystemConfigClient {
-  private static readonly configCache = new Map<string, ConfigCacheEntry>()
   private rpcClient: kRPCClient
+  // Cache is per-client-instance to mirror the Rust SystemConfigClient
+  // (../../buckyos/src/kernel/buckyos-api/src/system_config.rs). A static
+  // cache would leak across logins / different RBAC contexts.
+  private readonly configCache = new Map<string, ConfigCacheEntry>()
 
   constructor(serviceUrl: string, sessionToken: string | null = null, options: KRPCClientOptions = {}) {
     this.rpcClient = new kRPCClient(serviceUrl, sessionToken, null, options)
+  }
+
+  setSeq(seq: number) {
+    this.rpcClient.setSeq(seq)
+  }
+
+  async syncSessionToken(token: string | null): Promise<void> {
+    this.rpcClient.setSessionToken(token)
+  }
+
+  getSessionToken(): string | null {
+    return this.rpcClient.getSessionToken()
   }
 
   private needCache(key: string): boolean {
@@ -42,13 +57,13 @@ export class SystemConfigClient {
   }
 
   private getConfigCache(key: string): ConfigCacheEntry | null {
-    const cached = SystemConfigClient.configCache.get(key)
+    const cached = this.configCache.get(key)
     if (!cached) {
       return null
     }
 
     if (cached.cachedAt + CONFIG_CACHE_TIME_SECONDS < this.getUnixTimestamp()) {
-      SystemConfigClient.configCache.delete(key)
+      this.configCache.delete(key)
       return null
     }
 
@@ -60,8 +75,8 @@ export class SystemConfigClient {
       return true
     }
 
-    const previous = SystemConfigClient.configCache.get(key)
-    SystemConfigClient.configCache.set(key, {
+    const previous = this.configCache.get(key)
+    this.configCache.set(key, {
       value,
       version,
       cachedAt: this.getUnixTimestamp(),
@@ -73,7 +88,7 @@ export class SystemConfigClient {
   }
 
   private removeConfigCache(key: string) {
-    SystemConfigClient.configCache.delete(key)
+    this.configCache.delete(key)
   }
 
   async get(key: string): Promise<SystemConfigValue> {

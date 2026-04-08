@@ -1,10 +1,6 @@
 import { SystemConfigClient } from '../src/system_config_client'
 
 describe('SystemConfigClient', () => {
-  beforeEach(() => {
-    ;((SystemConfigClient as unknown) as { configCache: Map<string, unknown> }).configCache.clear()
-  })
-
   function createClient(call: jest.Mock) {
     const client = new SystemConfigClient('https://example.test/kapi/system_config', 'session-token')
     ;(client as unknown as { rpcClient: { call: jest.Mock } }).rpcClient = { call }
@@ -205,5 +201,74 @@ describe('SystemConfigClient', () => {
     await client.refreshTrustKeys()
 
     expect(call).toHaveBeenCalledWith('sys_refresh_trust_keys', {})
+  })
+
+  it('cache is scoped per client instance (mirror of Rust SystemConfigClient)', async () => {
+    const callA = jest.fn().mockResolvedValue({ value: 'value-a', version: 1 })
+    const callB = jest.fn().mockResolvedValue({ value: 'value-b', version: 7 })
+    const clientA = createClient(callA)
+    const clientB = createClient(callB)
+
+    const firstA = await clientA.get('services/demo')
+    const secondA = await clientA.get('services/demo')
+    const firstB = await clientB.get('services/demo')
+
+    expect(firstA.value).toBe('value-a')
+    expect(secondA.value).toBe('value-a')
+    expect(firstB.value).toBe('value-b')
+    // clientA cached after the first call, second call should not fire RPC.
+    expect(callA).toHaveBeenCalledTimes(1)
+    // clientB has its own (empty) cache, so it must fire its own RPC.
+    expect(callB).toHaveBeenCalledTimes(1)
+  })
+
+  it('set rejects empty key/value and keys containing colon', async () => {
+    const call = jest.fn()
+    const client = createClient(call)
+
+    await expect(client.set('', 'x')).rejects.toThrow('key or value is empty')
+    await expect(client.set('k', '')).rejects.toThrow('key or value is empty')
+    await expect(client.set('a:b', 'x')).rejects.toThrow("key can not contain ':'")
+    expect(call).not.toHaveBeenCalled()
+  })
+
+  it('non-cacheable keys never populate the cache', async () => {
+    const call = jest
+      .fn()
+      .mockResolvedValueOnce({ value: 'v1', version: 1 })
+      .mockResolvedValueOnce({ value: 'v2', version: 2 })
+    const client = createClient(call)
+
+    const first = await client.get('boot/config')
+    const second = await client.get('boot/config')
+
+    expect(first.value).toBe('v1')
+    expect(second.value).toBe('v2')
+    // Two calls because boot/config is not in CACHE_KEY_PREFIXES.
+    expect(call).toHaveBeenCalledTimes(2)
+  })
+
+  it('get throws when the server reports a missing key (null result)', async () => {
+    const call = jest.fn().mockResolvedValue(null)
+    const client = createClient(call)
+
+    await expect(client.get('services/missing')).rejects.toThrow('system_config key not found: services/missing')
+  })
+
+  it('syncSessionToken updates the underlying rpc client token', async () => {
+    const client = new SystemConfigClient('https://example.test/kapi/system_config', 'old-token')
+    expect(client.getSessionToken()).toBe('old-token')
+
+    await client.syncSessionToken('new-token')
+
+    expect(client.getSessionToken()).toBe('new-token')
+  })
+
+  it('dumpConfigsForScheduler forwards to the rpc method', async () => {
+    const call = jest.fn().mockResolvedValue({ value: 'ok' })
+    const client = createClient(call)
+
+    await expect(client.dumpConfigsForScheduler()).resolves.toEqual({ value: 'ok' })
+    expect(call).toHaveBeenCalledWith('dump_configs_for_scheduler', {})
   })
 })

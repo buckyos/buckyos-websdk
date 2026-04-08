@@ -23,6 +23,10 @@ export declare const buckyos: {
     getVerifyHubClient: () => import("./verify-hub-client").VerifyHubClient;
     getSystemConfigClient: () => import("./system_config_client").SystemConfigClient;
     getTaskManagerClient: () => import("./task_mgr_client").TaskManagerClient;
+    getAiccClient: () => import("./aicc_client").AiccClient;
+    getMsgQueueClient: () => import("./msg_queue_client").MsgQueueClient;
+    getMsgCenterClient: () => import("./msg_center_client").MsgCenterClient;
+    getRepoClient: () => import("./repo_client").RepoClient;
     kRPCClient: typeof import("./krpc_client").kRPCClient;
     AuthClient: typeof import("./auth_client").AuthClient;
 };

@@ -14,9 +14,12 @@ export type SystemConfigTxAction = {
     action: 'remove';
 };
 export declare class SystemConfigClient {
-    private static readonly configCache;
     private rpcClient;
+    private readonly configCache;
     constructor(serviceUrl: string, sessionToken?: string | null, options?: KRPCClientOptions);
+    setSeq(seq: number): void;
+    syncSessionToken(token: string | null): Promise<void>;
+    getSessionToken(): string | null;
     private needCache;
     private getUnixTimestamp;
     private getConfigCache;

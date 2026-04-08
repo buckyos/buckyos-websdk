@@ -991,14 +991,14 @@ function isTerminalTaskStatus(status) {
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
-function asRecord(value) {
+function asRecord$3(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new RPCError("Invalid RPC response format");
   }
   return value;
 }
 function parseTask(value) {
-  const record = asRecord(value);
+  const record = asRecord$3(value);
   const id = record.id;
   const status = record.status;
   if (typeof id !== "number") {
@@ -1022,7 +1022,7 @@ function parseTaskListResult(value) {
   if (Array.isArray(value)) {
     return parseTasks(value);
   }
-  const parsed = asRecord(value);
+  const parsed = asRecord$3(value);
   if ("tasks" in parsed) {
     return parseTasks(parsed.tasks);
   }
@@ -1050,7 +1050,7 @@ class TaskManagerClient {
       app_name: params.appId || void 0
     };
     const result = await this.rpcClient.call("create_task", req);
-    const parsed = asRecord(result);
+    const parsed = asRecord$3(result);
     if ("task" in parsed) {
       return parseTask(parsed.task);
     }
@@ -1063,7 +1063,7 @@ class TaskManagerClient {
   async getTask(id) {
     const req = { id };
     const result = await this.rpcClient.call("get_task", req);
-    const parsed = asRecord(result);
+    const parsed = asRecord$3(result);
     if ("task" in parsed) {
       return parseTask(parsed.task);
     }
@@ -1167,7 +1167,7 @@ class TaskManagerClient {
       app_name: appId || void 0
     };
     const result = await this.rpcClient.call("create_download_task", req);
-    const parsed = asRecord(result);
+    const parsed = asRecord$3(result);
     const taskId = parsed.task_id;
     if (typeof taskId !== "number") {
       throw new RPCError("Expected CreateDownloadTaskResult response");
@@ -1241,9 +1241,19 @@ class TaskManagerClient {
 }
 const CONFIG_CACHE_TIME_SECONDS = 10;
 const CACHE_KEY_PREFIXES = ["services/", "system/rbac/"];
-const _SystemConfigClient = class _SystemConfigClient2 {
+class SystemConfigClient {
   constructor(serviceUrl, sessionToken = null, options = {}) {
+    this.configCache = /* @__PURE__ */ new Map();
     this.rpcClient = new kRPCClient(serviceUrl, sessionToken, null, options);
+  }
+  setSeq(seq) {
+    this.rpcClient.setSeq(seq);
+  }
+  async syncSessionToken(token) {
+    this.rpcClient.setSessionToken(token);
+  }
+  getSessionToken() {
+    return this.rpcClient.getSessionToken();
   }
   needCache(key) {
     return CACHE_KEY_PREFIXES.some((prefix) => key.startsWith(prefix));
@@ -1252,12 +1262,12 @@ const _SystemConfigClient = class _SystemConfigClient2 {
     return Math.floor(Date.now() / 1e3);
   }
   getConfigCache(key) {
-    const cached = _SystemConfigClient2.configCache.get(key);
+    const cached = this.configCache.get(key);
     if (!cached) {
       return null;
     }
     if (cached.cachedAt + CONFIG_CACHE_TIME_SECONDS < this.getUnixTimestamp()) {
-      _SystemConfigClient2.configCache.delete(key);
+      this.configCache.delete(key);
       return null;
     }
     return cached;
@@ -1266,8 +1276,8 @@ const _SystemConfigClient = class _SystemConfigClient2 {
     if (!this.needCache(key)) {
       return true;
     }
-    const previous = _SystemConfigClient2.configCache.get(key);
-    _SystemConfigClient2.configCache.set(key, {
+    const previous = this.configCache.get(key);
+    this.configCache.set(key, {
       value,
       version,
       cachedAt: this.getUnixTimestamp()
@@ -1278,7 +1288,7 @@ const _SystemConfigClient = class _SystemConfigClient2 {
     return previous.value !== value || previous.version !== version;
   }
   removeConfigCache(key) {
-    _SystemConfigClient2.configCache.delete(key);
+    this.configCache.delete(key);
   }
   async get(key) {
     const cachedValue = this.getConfigCache(key);
@@ -1360,9 +1370,586 @@ const _SystemConfigClient = class _SystemConfigClient2 {
   async refreshTrustKeys() {
     await this.rpcClient.call("sys_refresh_trust_keys", {});
   }
+}
+function asRecord$2(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new RPCError("Invalid RPC response format");
+  }
+  return value;
+}
+class AiccClient {
+  constructor(rpcClient) {
+    this.rpcClient = rpcClient;
+  }
+  setSeq(seq) {
+    this.rpcClient.setSeq(seq);
+  }
+  async complete(request) {
+    if (!request.capability) {
+      throw new RPCError("AiccCompleteRequest.capability is required");
+    }
+    if (!request.model || !request.model.alias) {
+      throw new RPCError("AiccCompleteRequest.model.alias is required");
+    }
+    const result = await this.rpcClient.call("complete", request);
+    const record = asRecord$2(result);
+    if (typeof record.task_id !== "string") {
+      throw new RPCError("AiccCompleteResponse missing task_id");
+    }
+    if (typeof record.status !== "string") {
+      throw new RPCError("AiccCompleteResponse missing status");
+    }
+    return record;
+  }
+  async cancel(taskId) {
+    if (!taskId) {
+      throw new RPCError("AiccClient.cancel requires a non-empty task_id");
+    }
+    const result = await this.rpcClient.call("cancel", { task_id: taskId });
+    const record = asRecord$2(result);
+    if (typeof record.task_id !== "string" || typeof record.accepted !== "boolean") {
+      throw new RPCError("Invalid cancel response");
+    }
+    return { task_id: record.task_id, accepted: record.accepted };
+  }
+}
+const DEFAULT_QUEUE_CONFIG = {
+  max_messages: null,
+  retention_seconds: null,
+  sync_write: false,
+  other_app_can_read: true,
+  other_app_can_write: false,
+  other_user_can_read: false,
+  other_user_can_write: false
 };
-_SystemConfigClient.configCache = /* @__PURE__ */ new Map();
-let SystemConfigClient = _SystemConfigClient;
+function asNumber$1(value, what) {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new RPCError(`expected ${what} to be a number`);
+  }
+  return value;
+}
+function asString$1(value, what) {
+  if (typeof value !== "string") {
+    throw new RPCError(`expected ${what} to be a string`);
+  }
+  return value;
+}
+function asMessageList(value) {
+  if (!Array.isArray(value)) {
+    throw new RPCError("expected message list to be an array");
+  }
+  return value.map((entry, idx) => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      throw new RPCError(`message[${idx}] is not an object`);
+    }
+    const record = entry;
+    return {
+      index: asNumber$1(record.index, `message[${idx}].index`),
+      created_at: asNumber$1(record.created_at, `message[${idx}].created_at`),
+      payload: Array.isArray(record.payload) ? record.payload : [],
+      headers: record.headers && typeof record.headers === "object" && !Array.isArray(record.headers) ? record.headers : {}
+    };
+  });
+}
+class MsgQueueClient {
+  constructor(rpcClient) {
+    this.rpcClient = rpcClient;
+  }
+  setSeq(seq) {
+    this.rpcClient.setSeq(seq);
+  }
+  async createQueue(name, appid, appOwner, config = { ...DEFAULT_QUEUE_CONFIG }) {
+    const result = await this.rpcClient.call("create_queue", {
+      name,
+      appid,
+      app_owner: appOwner,
+      config
+    });
+    return asString$1(result, "queue_urn");
+  }
+  async deleteQueue(queueUrn) {
+    await this.rpcClient.call("delete_queue", {
+      queue_urn: queueUrn
+    });
+  }
+  async getQueueStats(queueUrn) {
+    const result = await this.rpcClient.call("get_queue_stats", {
+      queue_urn: queueUrn
+    });
+    if (!result || typeof result !== "object") {
+      throw new RPCError("invalid get_queue_stats response");
+    }
+    const record = result;
+    return {
+      message_count: asNumber$1(record.message_count, "message_count"),
+      first_index: asNumber$1(record.first_index, "first_index"),
+      last_index: asNumber$1(record.last_index, "last_index"),
+      size_bytes: asNumber$1(record.size_bytes, "size_bytes")
+    };
+  }
+  async updateQueueConfig(queueUrn, config) {
+    await this.rpcClient.call(
+      "update_queue_config",
+      { queue_urn: queueUrn, config }
+    );
+  }
+  async postMessage(queueUrn, message) {
+    const result = await this.rpcClient.call(
+      "post_message",
+      { queue_urn: queueUrn, message }
+    );
+    return asNumber$1(result, "msg_index");
+  }
+  async subscribe(params) {
+    const result = await this.rpcClient.call("subscribe", {
+      queue_urn: params.queueUrn,
+      // Wire fields are `userid` / `appid` to match Rust serde rename rules
+      // (#[serde(rename = "userid", alias = "user_id")]).
+      userid: params.userId,
+      appid: params.appId,
+      sub_id: params.subId ?? null,
+      position: params.position
+    });
+    return asString$1(result, "subscription_id");
+  }
+  async unsubscribe(subId) {
+    await this.rpcClient.call("unsubscribe", { sub_id: subId });
+  }
+  async fetchMessages(subId, length, autoCommit) {
+    const result = await this.rpcClient.call("fetch_messages", { sub_id: subId, length, auto_commit: autoCommit });
+    return asMessageList(result);
+  }
+  async readMessage(queueUrn, cursor, length) {
+    const result = await this.rpcClient.call("read_message", { queue_urn: queueUrn, cursor, length });
+    return asMessageList(result);
+  }
+  async commitAck(subId, index) {
+    await this.rpcClient.call(
+      "commit_ack",
+      { sub_id: subId, index }
+    );
+  }
+  async seek(subId, index) {
+    await this.rpcClient.call(
+      "seek",
+      { sub_id: subId, index }
+    );
+  }
+  async deleteMessageBefore(queueUrn, index) {
+    const result = await this.rpcClient.call(
+      "delete_message_before",
+      { queue_urn: queueUrn, index }
+    );
+    return asNumber$1(result, "deleted_count");
+  }
+}
+function compact$1(input) {
+  const out = {};
+  for (const [k2, v2] of Object.entries(input)) {
+    if (v2 !== void 0) {
+      out[k2] = v2;
+    }
+  }
+  return out;
+}
+function asRecord$1(value, what) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new RPCError(`expected ${what} to be an object`);
+  }
+  return value;
+}
+function asArrayOf(value, what) {
+  if (!Array.isArray(value)) {
+    throw new RPCError(`expected ${what} to be an array`);
+  }
+  return value;
+}
+class MsgCenterClient {
+  constructor(rpcClient) {
+    this.rpcClient = rpcClient;
+  }
+  setSeq(seq) {
+    this.rpcClient.setSeq(seq);
+  }
+  // ---- msg.* ---------------------------------------------------------------
+  async dispatch(msg, ingressCtx, idempotencyKey) {
+    const params = compact$1({
+      msg,
+      ingress_ctx: ingressCtx,
+      idempotency_key: idempotencyKey
+    });
+    const result = await this.rpcClient.call("msg.dispatch", params);
+    return asRecord$1(result, "DispatchResult");
+  }
+  async postSend(msg, sendCtx, idempotencyKey) {
+    const params = compact$1({
+      msg,
+      send_ctx: sendCtx,
+      idempotency_key: idempotencyKey
+    });
+    const result = await this.rpcClient.call("msg.post_send", params);
+    return asRecord$1(result, "PostSendResult");
+  }
+  async getNext(req) {
+    const result = await this.rpcClient.call(
+      "msg.get_next",
+      compact$1({ ...req })
+    );
+    if (result == null) {
+      return null;
+    }
+    return asRecord$1(result, "MsgRecordWithObject");
+  }
+  async peekBox(req) {
+    const result = await this.rpcClient.call(
+      "msg.peek_box",
+      compact$1({ ...req })
+    );
+    return asArrayOf(result, "Vec<MsgRecordWithObject>");
+  }
+  async listBoxByTime(req) {
+    const result = await this.rpcClient.call(
+      "msg.list_box_by_time",
+      compact$1({ ...req })
+    );
+    const record = asRecord$1(result, "MsgRecordPage");
+    return {
+      items: Array.isArray(record.items) ? record.items : [],
+      next_cursor_sort_key: typeof record.next_cursor_sort_key === "number" ? record.next_cursor_sort_key : void 0,
+      next_cursor_record_id: typeof record.next_cursor_record_id === "string" ? record.next_cursor_record_id : void 0
+    };
+  }
+  async updateRecordState(recordId, newState, reason) {
+    const result = await this.rpcClient.call(
+      "msg.update_record_state",
+      compact$1({ record_id: recordId, new_state: newState, reason })
+    );
+    return asRecord$1(result, "MsgRecord");
+  }
+  async updateRecordSession(recordId, sessionId) {
+    const result = await this.rpcClient.call(
+      "msg.update_record_session",
+      { record_id: recordId, session_id: sessionId }
+    );
+    return asRecord$1(result, "MsgRecord");
+  }
+  async reportDelivery(recordId, result) {
+    const response = await this.rpcClient.call(
+      "msg.report_delivery",
+      { record_id: recordId, result }
+    );
+    return asRecord$1(response, "MsgRecord");
+  }
+  async setReadState(req) {
+    const result = await this.rpcClient.call(
+      "msg.set_read_state",
+      compact$1({ ...req })
+    );
+    return asRecord$1(result, "MsgReceiptObj");
+  }
+  async listReadReceipts(req) {
+    const result = await this.rpcClient.call(
+      "msg.list_read_receipts",
+      compact$1({ ...req })
+    );
+    return asArrayOf(result, "Vec<MsgReceiptObj>");
+  }
+  async getRecord(recordId, withObject) {
+    const result = await this.rpcClient.call(
+      "msg.get_record",
+      compact$1({ record_id: recordId, with_object: withObject })
+    );
+    if (result == null) {
+      return null;
+    }
+    return asRecord$1(result, "MsgRecordWithObject");
+  }
+  async getMessage(msgId) {
+    const result = await this.rpcClient.call(
+      "msg.get_message",
+      { msg_id: msgId }
+    );
+    if (result == null) {
+      return null;
+    }
+    return asRecord$1(result, "MsgObject");
+  }
+  // ---- contact.* -----------------------------------------------------------
+  async resolveDid(platform, accountId, profileHint, contactMgrOwner) {
+    const result = await this.rpcClient.call(
+      "contact.resolve_did",
+      compact$1({
+        platform,
+        account_id: accountId,
+        profile_hint: profileHint,
+        contact_mgr_owner: contactMgrOwner
+      })
+    );
+    if (typeof result !== "string") {
+      throw new RPCError("contact.resolve_did expected to return a DID string");
+    }
+    return result;
+  }
+  async getPreferredBinding(did, contactMgrOwner) {
+    const result = await this.rpcClient.call(
+      "contact.get_preferred_binding",
+      compact$1({ did, contact_mgr_owner: contactMgrOwner })
+    );
+    return asRecord$1(result, "AccountBinding");
+  }
+  async checkAccessPermission(did, contextId, contactMgrOwner) {
+    const result = await this.rpcClient.call(
+      "contact.check_access_permission",
+      compact$1({ did, context_id: contextId, contact_mgr_owner: contactMgrOwner })
+    );
+    return asRecord$1(result, "AccessDecision");
+  }
+  async grantTemporaryAccess(dids, contextId, durationSecs, contactMgrOwner) {
+    const result = await this.rpcClient.call(
+      "contact.grant_temporary_access",
+      compact$1({
+        dids,
+        context_id: contextId,
+        duration_secs: durationSecs,
+        contact_mgr_owner: contactMgrOwner
+      })
+    );
+    const record = asRecord$1(result, "GrantTemporaryAccessResult");
+    return {
+      updated: Array.isArray(record.updated) ? record.updated : []
+    };
+  }
+  async blockContact(did, reason, contactMgrOwner) {
+    await this.rpcClient.call(
+      "contact.block_contact",
+      compact$1({ did, reason, contact_mgr_owner: contactMgrOwner })
+    );
+  }
+  async importContacts(contacts, upgradeToFriend, contactMgrOwner) {
+    const result = await this.rpcClient.call(
+      "contact.import_contacts",
+      compact$1({
+        contacts,
+        upgrade_to_friend: upgradeToFriend,
+        contact_mgr_owner: contactMgrOwner
+      })
+    );
+    return asRecord$1(result, "ImportReport");
+  }
+  async mergeContacts(targetDid, sourceDid, contactMgrOwner) {
+    const result = await this.rpcClient.call(
+      "contact.merge_contacts",
+      compact$1({ target_did: targetDid, source_did: sourceDid, contact_mgr_owner: contactMgrOwner })
+    );
+    return asRecord$1(result, "Contact");
+  }
+  async updateContact(did, patch, contactMgrOwner) {
+    const result = await this.rpcClient.call(
+      "contact.update_contact",
+      compact$1({ did, patch, contact_mgr_owner: contactMgrOwner })
+    );
+    return asRecord$1(result, "Contact");
+  }
+  async getContact(did, contactMgrOwner) {
+    const result = await this.rpcClient.call(
+      "contact.get_contact",
+      compact$1({ did, contact_mgr_owner: contactMgrOwner })
+    );
+    if (result == null) {
+      return null;
+    }
+    return asRecord$1(result, "Contact");
+  }
+  async listContacts(query, contactMgrOwner) {
+    const result = await this.rpcClient.call(
+      "contact.list_contacts",
+      compact$1({ query, contact_mgr_owner: contactMgrOwner })
+    );
+    return asArrayOf(result, "Vec<Contact>");
+  }
+  async getGroupSubscribers(groupId, limit, offset, contactMgrOwner) {
+    const result = await this.rpcClient.call(
+      "contact.get_group_subscribers",
+      compact$1({ group_id: groupId, limit, offset, contact_mgr_owner: contactMgrOwner })
+    );
+    if (!Array.isArray(result)) {
+      throw new RPCError("expected Vec<DID> response");
+    }
+    return result;
+  }
+  async setGroupSubscribers(groupId, subscribers, contactMgrOwner) {
+    const result = await this.rpcClient.call(
+      "contact.set_group_subscribers",
+      compact$1({ group_id: groupId, subscribers, contact_mgr_owner: contactMgrOwner })
+    );
+    const record = asRecord$1(result, "SetGroupSubscribersResult");
+    if (typeof record.group_id !== "string" || typeof record.subscriber_count !== "number") {
+      throw new RPCError("Invalid SetGroupSubscribersResult");
+    }
+    return {
+      group_id: record.group_id,
+      subscriber_count: record.subscriber_count
+    };
+  }
+}
+function compact(input) {
+  const out = {};
+  for (const [k2, v2] of Object.entries(input)) {
+    if (v2 !== void 0) {
+      out[k2] = v2;
+    }
+  }
+  return out;
+}
+function asString(value, what) {
+  if (typeof value !== "string") {
+    throw new RPCError(`expected ${what} to be a string`);
+  }
+  return value;
+}
+function asBoolean(value, what) {
+  if (typeof value !== "boolean") {
+    throw new RPCError(`expected ${what} to be a boolean`);
+  }
+  return value;
+}
+function asNumber(value, what) {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new RPCError(`expected ${what} to be a number`);
+  }
+  return value;
+}
+function asArray(value, what) {
+  if (!Array.isArray(value)) {
+    throw new RPCError(`expected ${what} to be an array`);
+  }
+  return value;
+}
+function asRecord(value, what) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new RPCError(`expected ${what} to be an object`);
+  }
+  return value;
+}
+class RepoClient {
+  constructor(rpcClient) {
+    this.rpcClient = rpcClient;
+  }
+  setSeq(seq) {
+    this.rpcClient.setSeq(seq);
+  }
+  async store(contentId) {
+    const result = await this.rpcClient.call("store", {
+      content_id: contentId
+    });
+    return asString(result, "ObjId");
+  }
+  async collect(contentMeta, referralProof) {
+    const result = await this.rpcClient.call(
+      "collect",
+      compact({ content_meta: contentMeta, referral_proof: referralProof })
+    );
+    return asString(result, "content_id");
+  }
+  async pin(contentId, downloadProof) {
+    const result = await this.rpcClient.call("pin", { content_id: contentId, download_proof: downloadProof });
+    return asBoolean(result, "pin response");
+  }
+  async unpin(contentId, force = false) {
+    const result = await this.rpcClient.call(
+      "unpin",
+      { content_id: contentId, force }
+    );
+    return asBoolean(result, "unpin response");
+  }
+  async uncollect(contentId, force = false) {
+    const result = await this.rpcClient.call(
+      "uncollect",
+      { content_id: contentId, force }
+    );
+    return asBoolean(result, "uncollect response");
+  }
+  async addProof(proof) {
+    const result = await this.rpcClient.call("add_proof", { proof });
+    return asString(result, "proof_id");
+  }
+  async getProofs(contentId, filter) {
+    const result = await this.rpcClient.call(
+      "get_proofs",
+      compact({ content_id: contentId, filter })
+    );
+    const arr = asArray(result, "Vec<RepoProof>");
+    return arr.map((entry, idx) => {
+      const record = asRecord(entry, `RepoProof[${idx}]`);
+      if (record.kind !== "Action" && record.kind !== "Collection") {
+        throw new RPCError(`RepoProof[${idx}] has unknown kind: ${String(record.kind)}`);
+      }
+      return record;
+    });
+  }
+  async resolve(contentName) {
+    const result = await this.rpcClient.call("resolve", {
+      content_name: contentName
+    });
+    const arr = asArray(result, "Vec<ObjId>");
+    return arr.map((entry, idx) => asString(entry, `ObjId[${idx}]`));
+  }
+  async list(filter) {
+    const result = await this.rpcClient.call(
+      "list",
+      compact({ filter })
+    );
+    const arr = asArray(result, "Vec<RepoRecord>");
+    return arr.map((entry, idx) => {
+      const record = asRecord(entry, `RepoRecord[${idx}]`);
+      return {
+        content_id: asString(record.content_id, `RepoRecord[${idx}].content_id`),
+        content_name: typeof record.content_name === "string" ? record.content_name : void 0,
+        status: asString(record.status, `RepoRecord[${idx}].status`),
+        origin: asString(record.origin, `RepoRecord[${idx}].origin`),
+        meta: record.meta,
+        owner_did: typeof record.owner_did === "string" ? record.owner_did : void 0,
+        author: typeof record.author === "string" ? record.author : void 0,
+        access_policy: asString(record.access_policy, `RepoRecord[${idx}].access_policy`),
+        price: typeof record.price === "string" ? record.price : void 0,
+        content_size: typeof record.content_size === "number" ? record.content_size : void 0,
+        collected_at: typeof record.collected_at === "number" ? record.collected_at : void 0,
+        pinned_at: typeof record.pinned_at === "number" ? record.pinned_at : void 0,
+        updated_at: typeof record.updated_at === "number" ? record.updated_at : void 0
+      };
+    });
+  }
+  async stat() {
+    const result = await this.rpcClient.call("stat", {});
+    const record = asRecord(result, "RepoStat");
+    return {
+      total_objects: asNumber(record.total_objects, "RepoStat.total_objects"),
+      collected_objects: asNumber(record.collected_objects, "RepoStat.collected_objects"),
+      pinned_objects: asNumber(record.pinned_objects, "RepoStat.pinned_objects"),
+      local_objects: asNumber(record.local_objects, "RepoStat.local_objects"),
+      remote_objects: asNumber(record.remote_objects, "RepoStat.remote_objects"),
+      total_content_bytes: asNumber(record.total_content_bytes, "RepoStat.total_content_bytes"),
+      total_proofs: asNumber(record.total_proofs, "RepoStat.total_proofs")
+    };
+  }
+  async serve(contentId, requestContext) {
+    const result = await this.rpcClient.call("serve", { content_id: contentId, request_context: requestContext });
+    const record = asRecord(result, "RepoServeResult");
+    return {
+      status: asString(record.status, "RepoServeResult.status"),
+      content_ref: record.content_ref && typeof record.content_ref === "object" ? record.content_ref : void 0,
+      download_proof: record.download_proof && typeof record.download_proof === "object" ? record.download_proof : void 0,
+      reject_code: typeof record.reject_code === "string" ? record.reject_code : void 0,
+      reject_reason: typeof record.reject_reason === "string" ? record.reject_reason : void 0
+    };
+  }
+  async announce(contentId) {
+    const result = await this.rpcClient.call("announce", {
+      content_id: contentId
+    });
+    return asBoolean(result, "announce response");
+  }
+}
 const DEFAULT_NODE_GATEWAY_PORT = 3180;
 const DEFAULT_SESSION_TOKEN_TTL_SECONDS = 15 * 60;
 const DEFAULT_RENEW_INTERVAL_MS = 5e3;
@@ -1738,6 +2325,18 @@ class BuckyOSRuntime {
   getTaskManagerClient() {
     const rpcClient = this.getServiceRpcClient("task-manager");
     return new TaskManagerClient(rpcClient);
+  }
+  getAiccClient() {
+    return new AiccClient(this.getServiceRpcClient("aicc"));
+  }
+  getMsgQueueClient() {
+    return new MsgQueueClient(this.getServiceRpcClient("kmsg"));
+  }
+  getMsgCenterClient() {
+    return new MsgCenterClient(this.getServiceRpcClient("msg-center"));
+  }
+  getRepoClient() {
+    return new RepoClient(this.getServiceRpcClient("repo-service"));
   }
   async getMySettings() {
     const settingsPath = this.getMySettingsPath();
@@ -2511,6 +3110,30 @@ class BuckyOSSDK {
     }
     return this.currentRuntime.getTaskManagerClient();
   }
+  getAiccClient() {
+    if (this.currentRuntime == null) {
+      throw new Error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
+    }
+    return this.currentRuntime.getAiccClient();
+  }
+  getMsgQueueClient() {
+    if (this.currentRuntime == null) {
+      throw new Error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
+    }
+    return this.currentRuntime.getMsgQueueClient();
+  }
+  getMsgCenterClient() {
+    if (this.currentRuntime == null) {
+      throw new Error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
+    }
+    return this.currentRuntime.getMsgCenterClient();
+  }
+  getRepoClient() {
+    if (this.currentRuntime == null) {
+      throw new Error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
+    }
+    return this.currentRuntime.getRepoClient();
+  }
   buildRuntimeConfig(appid, config) {
     if (config) {
       let runtimeType = config.runtimeType;
@@ -2651,7 +3274,11 @@ function createSDKModule(target) {
     getServiceRpcClient: sdk.getServiceRpcClient.bind(sdk),
     getVerifyHubClient: sdk.getVerifyHubClient.bind(sdk),
     getSystemConfigClient: sdk.getSystemConfigClient.bind(sdk),
-    getTaskManagerClient: sdk.getTaskManagerClient.bind(sdk)
+    getTaskManagerClient: sdk.getTaskManagerClient.bind(sdk),
+    getAiccClient: sdk.getAiccClient.bind(sdk),
+    getMsgQueueClient: sdk.getMsgQueueClient.bind(sdk),
+    getMsgCenterClient: sdk.getMsgCenterClient.bind(sdk),
+    getRepoClient: sdk.getRepoClient.bind(sdk)
   };
   return {
     ...api,
@@ -2664,7 +3291,9 @@ function createSDKModule(target) {
   };
 }
 export {
+  AiccClient as A,
   BS_SERVICE_VERIFY_HUB as B,
+  MsgQueueClient as M,
   RuntimeType as R,
   SystemConfigClient as S,
   TaskManagerClient as T,
@@ -2673,7 +3302,9 @@ export {
   BS_SERVICE_TASK_MANAGER as a,
   BuckyOSSDK as b,
   createSDKModule as c,
+  MsgCenterClient as d,
+  RepoClient as e,
   hashPassword as h,
   parseSessionTokenClaims as p
 };
-//# sourceMappingURL=sdk_core-6fa9d27e.mjs.map
+//# sourceMappingURL=sdk_core-a352f12d.mjs.map
