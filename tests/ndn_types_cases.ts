@@ -132,6 +132,88 @@ function deepEqual(a: unknown, b: unknown): boolean {
     return true
 }
 
+// ============================================================
+// Test-local strict verification: decode → re-encode → compare hash.
+// ============================================================
+//
+// The SDK's `verifyNamedObject` is intentionally shape-agnostic: it
+// canonicalizes whatever JSON value you hand it and compares the hash
+// against the given ObjId. That's the right contract for the library
+// (callers may be working with object types the SDK has no TS class for).
+//
+// For the test suite we want a stronger invariant on every NamedObject
+// whose TS class the SDK ships: the raw JSON must survive a full
+// decode → re-encode (`toJSON()`) round-trip and STILL hash to the
+// expected ObjId. That way regressions like
+//   - `static fromJSON` silently dropping a field
+//   - `toJSON` emitting a field in a way that doesn't match what the
+//     Rust reference impl wrote
+// show up as test failures instead of slipping through a pure
+// canonical-on-raw hash check.
+//
+// For object types that don't have a TS class in the SDK (cyact / cymsg /
+// cymsgr in the rust fixture), the helper falls back to the SDK's
+// `verifyNamedObject` — the canonical-JSON bit-for-bit check is still the
+// strongest invariant we can assert without a typed decoder.
+
+type ObjIdProducer = { genObjId(): [ObjId, string] }
+type NamedObjectDecoder = (raw: unknown) => ObjIdProducer
+
+function asJsonObject(raw: unknown, ctx: string): Record<string, unknown> {
+    if (raw == null || typeof raw !== 'object' || Array.isArray(raw)) {
+        throw new NdnError(
+            'InvalidData',
+            `${ctx}: expected JSON object, got ${Array.isArray(raw) ? 'array' : typeof raw}`,
+        )
+    }
+    return raw as Record<string, unknown>
+}
+
+const TEST_NAMED_OBJECT_DECODERS: Record<string, NamedObjectDecoder> = {
+    [OBJ_TYPE_FILE]: raw => FileObject.fromJSON(asJsonObject(raw, 'FileObject.fromJSON')),
+    [OBJ_TYPE_PATH]: raw => PathObject.fromJSON(asJsonObject(raw, 'PathObject.fromJSON')),
+    [OBJ_TYPE_DIR]: raw => DirObject.fromJSON(asJsonObject(raw, 'DirObject.fromJSON')),
+    [OBJ_TYPE_INCLUSION_PROOF]: raw =>
+        InclusionProof.fromJSON(asJsonObject(raw, 'InclusionProof.fromJSON')),
+    [OBJ_TYPE_RELATION]: raw =>
+        RelationObject.fromJSON(asJsonObject(raw, 'RelationObject.fromJSON')),
+    [OBJ_TYPE_CHUNK_LIST_SIMPLE]: raw => SimpleChunkList.fromJsonValue(raw),
+}
+
+/**
+ * Strict verification used by the test suite: run `raw` through the TS SDK
+ * decoder for `objId.objType` (if one is registered), re-encode the decoded
+ * instance via its `genObjId()` (which internally calls `toJSON()` +
+ * canonical hash), and compare against `objId`.
+ *
+ * Behaviour:
+ *   - registered type + clean round-trip → returns `true`
+ *   - registered type + hash mismatch    → returns `false`
+ *   - registered type + decode failure   → throws an Error tagged with the
+ *                                          decode stage (caller sees the
+ *                                          underlying NdnError message in
+ *                                          the stack, jest prints it)
+ *   - unregistered type                  → falls back to the SDK's
+ *                                          shape-agnostic `verifyNamedObject`
+ */
+function verifyNamedObjectByDecode(objId: ObjId, raw: unknown): boolean {
+    const decoder = TEST_NAMED_OBJECT_DECODERS[objId.objType]
+    if (!decoder) {
+        return verifyNamedObject(objId, raw)
+    }
+    let producer: ObjIdProducer
+    try {
+        producer = decoder(raw)
+    } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e)
+        throw new Error(
+            `verifyNamedObjectByDecode: decode stage failed for ${objId.toString()}: ${msg}`,
+        )
+    }
+    const [objId2] = producer.genObjId()
+    return objId.equals(objId2)
+}
+
 export const defaultTap: Tap = {
     eq(actual, expected, msg) {
         if (actual !== expected) {
@@ -529,6 +611,74 @@ export const NDN_TYPES_TEST_CASES: NdnTypesTestCase[] = [
             t.throws(() => loadNamedObjectFromObjStr('plain'), 'Unsupported')
         },
     },
+    {
+        // The point of verifyNamedObjectByDecode is to exercise the SDK's
+        // typed decoder as part of verification. This case pins both halves
+        // of that contract down:
+        //   (a) round-trip on a real typed object passes
+        //   (b) a malformed payload aborts in the decode stage with an
+        //       Error that names the offending type, rather than silently
+        //       returning false (which is what the SDK's raw
+        //       verifyNamedObject would do for the same input)
+        name: 'verifyNamedObjectByDecode runs the SDK decode/encode round-trip',
+        run(t) {
+            const target = new ObjId('cyfile', new Uint8Array(32).fill(7))
+            const p = new PathObject('/strict', target, 1111, 2222)
+            const [id, str] = p.genObjId()
+
+            // (a) Clean round-trip: decode → toJSON → canonical hash matches.
+            t.eq(verifyNamedObjectByDecode(id, JSON.parse(str)), true)
+
+            // (b) Decode-stage failure: `target` is required by the SDK
+            // PathObject decoder (ObjId.fromString on an empty string
+            // throws). The helper MUST bubble that up, not swallow it
+            // into a boolean — that's the whole reason to decode first.
+            let caught: unknown = null
+            try {
+                verifyNamedObjectByDecode(id, {
+                    path: '/strict',
+                    uptime: 1111,
+                    exp: 2222,
+                    // no `target`
+                })
+            } catch (e) {
+                caught = e
+            }
+            t.truthy(caught, 'decode-stage failure must throw')
+            t.truthy(
+                caught instanceof Error &&
+                    caught.message.includes('decode stage failed'),
+                `expected decode-stage error, got ${
+                    caught instanceof Error ? caught.message : String(caught)
+                }`,
+            )
+
+            // For contrast: the SDK's shape-agnostic verifier just returns
+            // false for the same malformed payload. Both behaviours are
+            // legitimate; the helper is strictly a superset.
+            t.eq(
+                verifyNamedObject(id, {
+                    path: '/strict',
+                    uptime: 1111,
+                    exp: 2222,
+                }),
+                false,
+            )
+        },
+    },
+    {
+        // Documents (and pins) the fallback path: for objTypes the test
+        // suite has no TS class for, verifyNamedObjectByDecode must behave
+        // exactly like the SDK's verifyNamedObject, because there's no
+        // decoder to run. This is what keeps the rust fixture's cyact /
+        // cymsg / cymsgr entries passing after the helper switch.
+        name: 'verifyNamedObjectByDecode falls back for unregistered objTypes',
+        run(t) {
+            const [id] = buildNamedObjectByJson('no-such-type', { k: 1 })
+            t.eq(verifyNamedObjectByDecode(id, { k: 1 }), true)
+            t.eq(verifyNamedObjectByDecode(id, { k: 2 }), false)
+        },
+    },
 
     // ----- extractObjIdByPath -----
     {
@@ -600,7 +750,9 @@ export const NDN_TYPES_TEST_CASES: NdnTypesTestCase[] = [
             t.eq(id1.equals(id2), true)
             t.eq(str1, str2)
             t.eq(id1.objType, OBJ_TYPE_FILE)
-            t.eq(verifyNamedObject(id1, JSON.parse(str1)), true)
+            // Stricter than `verifyNamedObject`: force the decode → toJSON
+            // round-trip so any drift in FileObject.fromJSON/toJSON shows up.
+            t.eq(verifyNamedObjectByDecode(id1, JSON.parse(str1)), true)
         },
     },
     {
@@ -677,7 +829,10 @@ export const NDN_TYPES_TEST_CASES: NdnTypesTestCase[] = [
             proof.exp = 2
             const [id, str] = proof.genObjId()
             t.eq(id.objType, OBJ_TYPE_INCLUSION_PROOF)
-            t.eq(verifyNamedObject(id, JSON.parse(str)), true)
+            // Stricter round-trip: the local InclusionProof decoder must
+            // reproduce every field `toJSON` emits, otherwise the canonical
+            // hash drifts.
+            t.eq(verifyNamedObjectByDecode(id, JSON.parse(str)), true)
         },
     },
 
@@ -907,7 +1062,10 @@ export const NDN_TYPES_TEST_CASES: NdnTypesTestCase[] = [
             const rel = RelationObject.createByLinkData(src, { kind: 'sameAs', target: tgt })
             const [id, str] = rel.genObjId()
             t.eq(id.objType, OBJ_TYPE_RELATION)
-            t.eq(verifyNamedObject(id, JSON.parse(str)), true)
+            // Decode → re-encode round-trip via the local RelationObject
+            // shim: exercises the source/target ObjId path and the `body`
+            // spread, not just the raw canonical hash.
+            t.eq(verifyNamedObjectByDecode(id, JSON.parse(str)), true)
         },
     },
     {
@@ -1003,8 +1161,13 @@ function buildRustFixtureCases(): NdnTypesTestCase[] {
     const cases: NdnTypesTestCase[] = []
 
     // Aggregate "all entries verify" check — fast feedback when bulk-loading.
+    // Uses the stricter decode → re-encode helper so that for fixture
+    // entries whose objType has a TS class (cyfile / cypath / cyinc / cyrel)
+    // we exercise the full SDK decoder pipeline; for the rest (cyact /
+    // cymsg / cymsgr) the helper transparently falls back to the SDK's
+    // shape-agnostic `verifyNamedObject`.
     cases.push({
-        name: 'rust fixture: every entry verifies via verifyNamedObject',
+        name: 'rust fixture: every entry verifies via verifyNamedObjectByDecode',
         run(t) {
             t.truthy(
                 ndnObjectFixture.length > 0,
@@ -1021,7 +1184,7 @@ function buildRustFixtureCases(): NdnTypesTestCase[] {
                     `entry missing objjson: ${JSON.stringify(entry)}`,
                 )
                 const expected = ObjId.fromString(entry.objid as string)
-                const ok = verifyNamedObject(expected, entry.objjson)
+                const ok = verifyNamedObjectByDecode(expected, entry.objjson)
                 if (!ok) {
                     // Recompute to surface the actual hash for easier triage.
                     const [actual, canonical] = buildNamedObjectByJson(
@@ -1057,7 +1220,7 @@ function buildRustFixtureCases(): NdnTypesTestCase[] {
                     expected.toString(),
                     `canonical=${canonical}`,
                 )
-                t.eq(verifyNamedObject(expected, objJson), true)
+                t.eq(verifyNamedObjectByDecode(expected, objJson), true)
             },
         })
     }

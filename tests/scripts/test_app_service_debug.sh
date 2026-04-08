@@ -6,10 +6,13 @@ usage() {
 Usage:
   test_app_service_debug.sh [owner_user_id] [--port <port>]
 
+If --port is omitted, the buckyos_systest port is read from
+${BUCKYOS_ROOT:-/opt/buckyos}/etc/node_gateway_info.json (the entry whose
+app_id == "buckyos_systest"). The script aborts if it cannot be resolved.
+
 Examples:
   ./tests/scripts/test_app_service_debug.sh
   ./tests/scripts/test_app_service_debug.sh devtest
-  ./tests/scripts/test_app_service_debug.sh devtest --port 10176
 EOF
 }
 
@@ -20,8 +23,13 @@ fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+BUCKYOS_ROOT="${BUCKYOS_ROOT:-/opt/buckyos}"
 OWNER_USER_ID="devtest"
-PORT="10176"
+# PORT is resolved from ${BUCKYOS_ROOT}/etc/node_gateway_info.json (the entry
+# whose app_id == "buckyos_systest") unless --port is given. We do not keep a
+# hard-coded default — the gateway routing is the source of truth, and a
+# stale guess silently breaks the gateway smoke checks below.
+PORT=""
 
 if [[ $# -gt 0 && "${1}" != -* ]]; then
   OWNER_USER_ID="$1"
@@ -44,6 +52,42 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+resolve_systest_port() {
+  local gateway_info="${BUCKYOS_ROOT}/etc/node_gateway_info.json"
+  if [[ ! -f "${gateway_info}" ]]; then
+    echo "[test_app_service_debug] gateway info file not found: ${gateway_info}" >&2
+    return 1
+  fi
+  if ! command -v python3 >/dev/null 2>&1; then
+    echo "[test_app_service_debug] python3 is required to read ${gateway_info}" >&2
+    return 1
+  fi
+  python3 - "${gateway_info}" buckyos_systest <<'PY'
+import json, sys
+path, app_id = sys.argv[1], sys.argv[2]
+with open(path) as f:
+    data = json.load(f)
+for entry in (data.get("app_info") or {}).values():
+    if isinstance(entry, dict) and entry.get("app_id") == app_id:
+        port = entry.get("port")
+        if isinstance(port, int) and 0 < port <= 65535:
+            print(port)
+            sys.exit(0)
+        sys.stderr.write(f"invalid port for {app_id} in {path}: {port!r}\n")
+        sys.exit(2)
+sys.stderr.write(f"app_id {app_id} not found in {path}\n")
+sys.exit(2)
+PY
+}
+
+if [[ -z "${PORT}" ]]; then
+  if ! PORT="$(resolve_systest_port)"; then
+    echo "[test_app_service_debug] could not resolve buckyos_systest port from ${BUCKYOS_ROOT}/etc/node_gateway_info.json" >&2
+    exit 2
+  fi
+  echo "[test_app_service_debug] resolved buckyos_systest port from gateway info: ${PORT}"
+fi
 
 DEBUG_SYSTEST_SCRIPT="${REPO_ROOT}/tests/scripts/debug_systest.sh"
 APP_ID="buckyos_systest"

@@ -1,6 +1,6 @@
 import { c as createSDKModule } from "./sdk_core-4704b88c.mjs";
 import { A, a, B, b, d, M, e, R, S, T, V, W, h, p } from "./sdk_core-4704b88c.mjs";
-import { n } from "./ndn_types-93a8c3f2.mjs";
+import { n } from "./ndn_types-d5a581f1.mjs";
 const sdkModule = createSDKModule("universal");
 const buckyos = sdkModule.buckyos;
 const initBuckyOS = sdkModule.initBuckyOS;

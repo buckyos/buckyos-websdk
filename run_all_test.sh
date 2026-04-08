@@ -34,9 +34,13 @@ Usage:
                   [--skip-unit] [--skip-app-client]
                   [--skip-app-service] [--skip-browser]
 
+If --port is omitted, the buckyos_systest port is read from
+${BUCKYOS_ROOT:-/opt/buckyos}/etc/node_gateway_info.json (the entry whose
+app_id == "buckyos_systest"). The script aborts if it cannot be resolved.
+
 Examples:
   ./run_all_test.sh
-  ./run_all_test.sh devtest --port 10176
+  ./run_all_test.sh devtest
   ./run_all_test.sh --skip-browser
 EOF
 }
@@ -48,9 +52,14 @@ fi
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TESTS_SCRIPTS_DIR="${REPO_ROOT}/tests/scripts"
+BUCKYOS_ROOT="${BUCKYOS_ROOT:-/opt/buckyos}"
 
 OWNER_USER_ID="devtest"
-PORT="10176"
+# PORT is resolved from ${BUCKYOS_ROOT}/etc/node_gateway_info.json (the entry
+# whose app_id == "buckyos_systest") unless --port is explicitly given. We do
+# not keep a hard-coded fallback — the gateway routing is the source of truth,
+# and a stale guess silently breaks the gateway smoke checks in Phase 3.
+PORT=""
 SKIP_UNIT=0
 SKIP_APP_CLIENT=0
 SKIP_APP_SERVICE=0
@@ -84,6 +93,46 @@ while [[ $# -gt 0 ]]; do
 done
 
 cd "${REPO_ROOT}"
+
+# Resolve the buckyos_systest port from the live gateway info file, so the
+# test always uses whatever port the BuckyOS scheduler actually wired the
+# `systest.test.buckyos.io` virtual host to. We refuse to fall back to a
+# guessed default — see the PORT comment above.
+resolve_systest_port() {
+  local gateway_info="${BUCKYOS_ROOT}/etc/node_gateway_info.json"
+  if [[ ! -f "${gateway_info}" ]]; then
+    echo "[run_all_test] gateway info file not found: ${gateway_info}" >&2
+    return 1
+  fi
+  if ! command -v python3 >/dev/null 2>&1; then
+    echo "[run_all_test] python3 is required to read ${gateway_info}" >&2
+    return 1
+  fi
+  python3 - "${gateway_info}" buckyos_systest <<'PY'
+import json, sys
+path, app_id = sys.argv[1], sys.argv[2]
+with open(path) as f:
+    data = json.load(f)
+for entry in (data.get("app_info") or {}).values():
+    if isinstance(entry, dict) and entry.get("app_id") == app_id:
+        port = entry.get("port")
+        if isinstance(port, int) and 0 < port <= 65535:
+            print(port)
+            sys.exit(0)
+        sys.stderr.write(f"invalid port for {app_id} in {path}: {port!r}\n")
+        sys.exit(2)
+sys.stderr.write(f"app_id {app_id} not found in {path}\n")
+sys.exit(2)
+PY
+}
+
+if [[ -z "${PORT}" ]]; then
+  if ! PORT="$(resolve_systest_port)"; then
+    echo "[run_all_test] could not resolve buckyos_systest port from ${BUCKYOS_ROOT}/etc/node_gateway_info.json" >&2
+    exit 2
+  fi
+  echo "[run_all_test] resolved buckyos_systest port from gateway info: ${PORT}"
+fi
 
 step() {
   echo

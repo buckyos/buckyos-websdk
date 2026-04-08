@@ -771,6 +771,38 @@ class InclusionProof extends NamedObjectBase {
     this.iat = now;
     this.exp = now + 3600 * 24 * 30 * 12;
   }
+  /**
+   * Reconstruct an InclusionProof from its JSON form. The decode /
+   * re-encode round-trip (fromJSON followed by toJSON) must be
+   * byte-stable under canonical JSON, otherwise ObjId verification on a
+   * payload produced by the Rust reference impl would drift. That is
+   * exactly what the tests under `tests/ndn_types_cases.ts` pin down.
+   *
+   * Notes on the field mapping:
+   *   - `content_id` is passed through ObjId.fromString for validation,
+   *     then pinned back to the raw input string so any non-hex-canonical
+   *     forms survive the round-trip unchanged (the Rust side doesn't
+   *     renormalize on deserialization either).
+   *   - `iat` / `exp` must come from the payload, not from the
+   *     constructor's `nowSeconds()` defaults, or decoding an older
+   *     proof would silently rewrite its validity window.
+   */
+  static fromJSON(value) {
+    const proof = new InclusionProof(
+      ObjId.fromString(String(value.content_id ?? "")),
+      value.content_obj ?? null,
+      String(value.curator ?? ""),
+      Number(value.rank ?? 0),
+      Array.isArray(value.collection) ? value.collection.slice() : []
+    );
+    proof.content_id = String(value.content_id ?? "");
+    proof.editor = Array.isArray(value.editor) ? value.editor.slice() : [];
+    proof.meta = value.meta ?? null;
+    proof.review_url = typeof value.review_url === "string" ? value.review_url : null;
+    proof.iat = Number(value.iat ?? 0);
+    proof.exp = Number(value.exp ?? 0);
+    return proof;
+  }
   getObjType() {
     return OBJ_TYPE_INCLUSION_PROOF;
   }
@@ -1144,6 +1176,30 @@ class RelationObject extends NamedObjectBase {
     this.iat = null;
     this.exp = null;
   }
+  /**
+   * Reconstruct a RelationObject from its JSON form. `source`, `relation`,
+   * `target`, `iat` and `exp` are reserved top-level fields; every other
+   * key lands back in `body` (matching what `toJSON` spreads out), so the
+   * decode → re-encode round-trip is byte-stable under canonical JSON
+   * for any shape the TS class is capable of emitting.
+   */
+  static fromJSON(value) {
+    const reserved = /* @__PURE__ */ new Set(["source", "relation", "target", "iat", "exp"]);
+    const body = {};
+    for (const [k, v] of Object.entries(value)) {
+      if (!reserved.has(k))
+        body[k] = v;
+    }
+    const rel = new RelationObject(
+      ObjId.fromString(String(value.source ?? "")),
+      String(value.relation ?? ""),
+      ObjId.fromString(String(value.target ?? "")),
+      body
+    );
+    rel.iat = typeof value.iat === "number" ? value.iat : null;
+    rel.exp = typeof value.exp === "number" ? value.exp : null;
+    return rel;
+  }
   static createByLinkData(source, link) {
     switch (link.kind) {
       case "sameAs":
@@ -1378,4 +1434,4 @@ const ndn_types = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.definePro
 export {
   ndn_types as n
 };
-//# sourceMappingURL=ndn_types-93a8c3f2.mjs.map
+//# sourceMappingURL=ndn_types-d5a581f1.mjs.map

@@ -250,6 +250,23 @@ export declare class InclusionProof extends NamedObjectBase {
     iat: number;
     exp: number;
     constructor(contentId: ObjId, contentObj: unknown, curator: DID, rank: number, collection: string[]);
+    /**
+     * Reconstruct an InclusionProof from its JSON form. The decode /
+     * re-encode round-trip (fromJSON followed by toJSON) must be
+     * byte-stable under canonical JSON, otherwise ObjId verification on a
+     * payload produced by the Rust reference impl would drift. That is
+     * exactly what the tests under `tests/ndn_types_cases.ts` pin down.
+     *
+     * Notes on the field mapping:
+     *   - `content_id` is passed through ObjId.fromString for validation,
+     *     then pinned back to the raw input string so any non-hex-canonical
+     *     forms survive the round-trip unchanged (the Rust side doesn't
+     *     renormalize on deserialization either).
+     *   - `iat` / `exp` must come from the payload, not from the
+     *     constructor's `nowSeconds()` defaults, or decoding an older
+     *     proof would silently rewrite its validity window.
+     */
+    static fromJSON(value: Record<string, unknown>): InclusionProof;
     getObjType(): string;
     toJSON(): Record<string, unknown>;
 }
@@ -363,6 +380,14 @@ export declare class RelationObject extends NamedObjectBase {
     iat: number | null;
     exp: number | null;
     constructor(source: ObjId, relation: string, target: ObjId, body?: Record<string, unknown>);
+    /**
+     * Reconstruct a RelationObject from its JSON form. `source`, `relation`,
+     * `target`, `iat` and `exp` are reserved top-level fields; every other
+     * key lands back in `body` (matching what `toJSON` spreads out), so the
+     * decode → re-encode round-trip is byte-stable under canonical JSON
+     * for any shape the TS class is capable of emitting.
+     */
+    static fromJSON(value: Record<string, unknown>): RelationObject;
     static createByLinkData(source: ObjId, link: ObjectLinkData): RelationObject;
     getLinkData(): ObjectLinkData;
     getObjType(): string;
