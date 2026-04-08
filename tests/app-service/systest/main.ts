@@ -37,11 +37,13 @@ type NodeSdkModule = {
     initBuckyOS: (appid: string, config: Record<string, unknown>) => Promise<void>;
     login: () => Promise<unknown>;
     logout: (cleanAccountInfo?: boolean) => void;
-    getAccountInfo: () => {
-      user_id?: string;
-      user_type?: string;
-      session_token?: string | null;
-    } | null;
+    getAccountInfo: () => Promise<
+      {
+        user_id?: string;
+        user_type?: string;
+        session_token?: string | null;
+      } | null
+    >;
     getZoneHostName: () => string | null;
     getZoneServiceURL: (serviceName: string) => string;
     getAppSetting: (settingName?: string | null) => Promise<unknown>;
@@ -52,11 +54,13 @@ type NodeSdkModule = {
   RuntimeType: {
     AppService: string;
   };
-  TaskStatus: {
-    Completed: string;
-  };
   parseSessionTokenClaims: (token: string | null | undefined) => Record<string, unknown> | null;
 };
+
+// Mirrors the Completed value in src/task_mgr_client.ts. The TaskStatus enum
+// is currently not re-exported from the SDK barrel, so we hard-code the
+// string here. Keep in sync with src/task_mgr_client.ts.
+const TASK_STATUS_COMPLETED = "Completed";
 
 type SelftestCaseResult = {
   name: string;
@@ -263,8 +267,12 @@ async function runSharedServiceClientSelftest(): Promise<{
     await runSelftestCase(
       "SystemConfigClient writes and reads back a namespaced key",
       async () => {
-        const key = `users/${identity.ownerUserId}/test_websdk/${identity.appId}/${nowStamp}`;
-        const value = JSON.stringify({ ok: true, key });
+        // The `app` role's RBAC policy only allows writes under
+        // `users/{owner}/apps/{appid}/{settings,info}`. Use the `info` slot
+        // and embed the unique timestamp inside the value so each test run
+        // still verifies a fresh write/read round trip.
+        const key = `users/${identity.ownerUserId}/apps/${identity.appId}/info`;
+        const value = JSON.stringify({ ok: true, key, ts: nowStamp });
         await sdk.buckyos.getSystemConfigClient().set(key, value);
         const read = await sdk.buckyos.getSystemConfigClient().get(key);
         if (read.value !== value) {
@@ -322,9 +330,9 @@ async function runSharedServiceClientSelftest(): Promise<{
         });
         try {
           await client.updateTaskProgress(created.id, 1, 2);
-          await client.updateTaskStatus(created.id, sdk.TaskStatus.Completed);
+          await client.updateTaskStatus(created.id, TASK_STATUS_COMPLETED);
           const fetched = await client.getTask(created.id);
-          if (fetched.status !== sdk.TaskStatus.Completed) {
+          if (fetched.status !== TASK_STATUS_COMPLETED) {
             throw new Error(
               `expected task ${created.id} to be Completed, got ${fetched.status}`,
             );
@@ -372,7 +380,7 @@ Deno.serve({
     }
 
     if (req.method === "GET" && url.pathname === `${sdkRoutePrefix}/runtime`) {
-      const accountInfo = sdk.buckyos.getAccountInfo();
+      const accountInfo = await sdk.buckyos.getAccountInfo();
       return jsonResponse({
         ok: true,
         mode: "app-service-local-debug",

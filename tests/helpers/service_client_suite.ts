@@ -72,10 +72,13 @@ export function defineSharedServiceClientSuite(context: SharedSuiteContext): voi
       const sdk = context.getSdk()
       const appId = context.getAppId()
       const userId = context.getUserId()
-      // Write under the logged-in user's own namespace so the test does not
-      // depend on having permission to write the shared `test/...` tree.
-      const key = `users/${userId}/test_websdk/${appId}/${Date.now()}`
-      const value = JSON.stringify({ ok: true, key })
+      // The `app` role's RBAC policy only allows writes under
+      // `users/{owner}/apps/{appid}/{settings,info}`. Use the `info` slot and
+      // embed a unique timestamp inside the value so each test run still
+      // verifies a fresh write/read round trip. Mirrors the AppService
+      // selftest case in tests/app-service/systest/main.ts.
+      const key = `users/${userId}/apps/${appId}/info`
+      const value = JSON.stringify({ ok: true, key, ts: Date.now() })
 
       await sdk.getSystemConfigClient().set(key, value)
       await expect(sdk.getSystemConfigClient().get(key)).resolves.toEqual(

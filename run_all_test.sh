@@ -92,6 +92,45 @@ step() {
   echo "================================================================"
 }
 
+# Kill anything left over from a previous (possibly crashed) test run that
+# would otherwise hold the systest port or keep the systest deno child
+# alive. test_app_service_debug.sh's port-in-use check would otherwise abort
+# Phase 3 with "port already in use".
+kill_test_services() {
+  local port="$1"
+
+  # 1) Anything currently listening on the systest port (covers the deno
+  #    main.ts process that serves /sdk/appservice/*).
+  if command -v lsof >/dev/null 2>&1; then
+    local listen_pids
+    listen_pids="$(lsof -nP -tiTCP:"${port}" -sTCP:LISTEN 2>/dev/null || true)"
+    if [[ -n "${listen_pids}" ]]; then
+      echo "[run_all_test] killing leftover listener(s) on :${port}: ${listen_pids}"
+      # shellcheck disable=SC2086
+      kill ${listen_pids} 2>/dev/null || true
+      sleep 1
+      listen_pids="$(lsof -nP -tiTCP:"${port}" -sTCP:LISTEN 2>/dev/null || true)"
+      if [[ -n "${listen_pids}" ]]; then
+        echo "[run_all_test] forcing kill -9 on stragglers: ${listen_pids}"
+        # shellcheck disable=SC2086
+        kill -9 ${listen_pids} 2>/dev/null || true
+      fi
+    fi
+  fi
+
+  # 2) Any leftover deno processes still running our systest entrypoints
+  #    (service_debug.tsx and the systest main.ts) — they may not bind the
+  #    port directly but can still hold child processes / file locks.
+  if command -v pkill >/dev/null 2>&1; then
+    pkill -f 'service_debug\.tsx'                  >/dev/null 2>&1 || true
+    pkill -f 'buckyos_systest/main\.ts'            >/dev/null 2>&1 || true
+    pkill -f 'tests/app-service/systest/main\.ts'  >/dev/null 2>&1 || true
+  fi
+}
+
+step "killing leftover test services (port ${PORT})"
+kill_test_services "${PORT}"
+
 # Build once. test_app_service_debug.sh and the real-browser script will
 # rebuild on their own — that is acceptable; we build here so phases 1 and
 # 2 also see fresh dist/.
