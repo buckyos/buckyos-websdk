@@ -4071,9 +4071,13 @@ class BuckyOSSDK {
       throw new Error("BuckyApi is only available in browser runtime");
     }
     return (async () => {
+      var _a, _b;
       const result = await window.BuckyApi.signJsonWithActiveDid(payloads);
       if (result.code === 0) {
-        return result.data.signatures;
+        return {
+          signatures: Array.isArray((_a = result.data) == null ? void 0 : _a.signatures) ? result.data.signatures : [],
+          pwd_hash: typeof ((_b = result.data) == null ? void 0 : _b.pwd_hash) === "string" ? result.data.pwd_hash : null
+        };
       }
       console.error("BuckyApi.signWithActiveDid failed: ", result.message);
       return null;
@@ -6004,4 +6008,4 @@ export {
   WorkflowClient as y,
   AICC_SERVICE_UNIQUE_ID as z
 };
-//# sourceMappingURL=ndm_proxy-7c0573b3.mjs.map
+//# sourceMappingURL=ndm_proxy-32fcccec.mjs.map

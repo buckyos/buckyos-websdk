@@ -49,6 +49,11 @@ const activeRuntimeContext: ActiveRuntimeContext = {
   runtime: null,
 }
 
+export interface WalletSignWithActiveDidResult {
+  signatures: (string | null)[]
+  pwd_hash: string | null
+}
+
 function isBrowserRuntime(): boolean {
   return typeof window !== 'undefined'
 }
@@ -514,7 +519,7 @@ export class BuckyOSSDK {
     })()
   }
 
-  walletSignWithActiveDid(payloads: Record<string, unknown>[]): Promise<string[] | null> {
+  walletSignWithActiveDid(payloads: Record<string, unknown>[]): Promise<WalletSignWithActiveDidResult | null> {
     if (typeof window === 'undefined') {
       throw new Error('BuckyApi is only available in browser runtime')
     }
@@ -522,7 +527,10 @@ export class BuckyOSSDK {
     return (async () => {
       const result: any = await (window as any).BuckyApi.signJsonWithActiveDid(payloads)
       if (result.code === 0) {
-        return result.data.signatures
+        return {
+          signatures: Array.isArray(result.data?.signatures) ? result.data.signatures : [],
+          pwd_hash: typeof result.data?.pwd_hash === 'string' ? result.data.pwd_hash : null,
+        }
       }
 
       console.error('BuckyApi.signWithActiveDid failed: ', result.message)
