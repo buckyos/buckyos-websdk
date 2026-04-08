@@ -7,6 +7,31 @@ type AppInstanceIdentity = {
 
 type JsonObject = Record<string, unknown>;
 
+type TaskLike = {
+  id: number;
+  status: string;
+};
+
+type TaskManagerClientLike = {
+  createTask: (params: {
+    name: string;
+    taskType: string;
+    data: unknown;
+    userId: string;
+    appId: string;
+  }) => Promise<TaskLike>;
+  updateTaskProgress: (id: number, completedItems: number, totalItems: number) => Promise<void>;
+  updateTaskStatus: (id: number, status: string) => Promise<void>;
+  getTask: (id: number) => Promise<TaskLike>;
+  listTasks: (params: { filter?: Record<string, unknown> }) => Promise<TaskLike[]>;
+  deleteTask: (id: number) => Promise<void>;
+};
+
+type SystemConfigClientLike = {
+  get: (key: string) => Promise<{ value: string; version: number; is_changed: boolean }>;
+  set: (key: string, value: string) => Promise<void>;
+};
+
 type NodeSdkModule = {
   buckyos: {
     initBuckyOS: (appid: string, config: Record<string, unknown>) => Promise<void>;
@@ -21,14 +46,24 @@ type NodeSdkModule = {
     getZoneServiceURL: (serviceName: string) => string;
     getAppSetting: (settingName?: string | null) => Promise<unknown>;
     setAppSetting: (settingName: string | null, settingValue: string) => Promise<void>;
-    getSystemConfigClient: () => {
-      get: (key: string) => Promise<{ value: string; version: number; is_changed: boolean }>;
-    };
+    getSystemConfigClient: () => SystemConfigClientLike;
+    getTaskManagerClient: () => TaskManagerClientLike;
   };
   RuntimeType: {
     AppService: string;
   };
+  TaskStatus: {
+    Completed: string;
+  };
   parseSessionTokenClaims: (token: string | null | undefined) => Record<string, unknown> | null;
+};
+
+type SelftestCaseResult = {
+  name: string;
+  ok: boolean;
+  durationMs: number;
+  error?: string;
+  details?: Record<string, unknown>;
 };
 
 const port = Number.parseInt(Deno.env.get("PORT") ?? "3000", 10);
@@ -176,6 +211,148 @@ async function bootstrapSdk() {
 
 const { identity, sdk } = await bootstrapSdk();
 
+async function runSelftestCase(
+  name: string,
+  runCase: () => Promise<Record<string, unknown> | void>,
+): Promise<SelftestCaseResult> {
+  const startedAt = Date.now();
+  try {
+    const details = (await runCase()) ?? undefined;
+    return {
+      name,
+      ok: true,
+      durationMs: Date.now() - startedAt,
+      details: details ?? undefined,
+    };
+  } catch (error) {
+    return {
+      name,
+      ok: false,
+      durationMs: Date.now() - startedAt,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+// Mirrors the cases in tests/helpers/service_client_suite.ts, but runs them
+// here inside the real AppService runtime process so that Jest in a separate
+// process can trigger the whole suite with a single HTTP call.
+async function runSharedServiceClientSelftest(): Promise<{
+  ok: boolean;
+  results: SelftestCaseResult[];
+}> {
+  const results: SelftestCaseResult[] = [];
+
+  results.push(
+    await runSelftestCase("SystemConfigClient.get(boot/config)", async () => {
+      const bootConfig = await sdk.buckyos.getSystemConfigClient().get("boot/config");
+      const parsed = JSON.parse(bootConfig.value) as Record<string, unknown>;
+      if (!parsed || typeof parsed !== "object") {
+        throw new Error("boot/config did not decode into an object");
+      }
+      if (Object.keys(parsed).length === 0) {
+        throw new Error("boot/config decoded into an empty object");
+      }
+      return { version: bootConfig.version };
+    }),
+  );
+
+  const nowStamp = Date.now();
+
+  results.push(
+    await runSelftestCase(
+      "SystemConfigClient writes and reads back a namespaced key",
+      async () => {
+        const key = `users/${identity.ownerUserId}/test_websdk/${identity.appId}/${nowStamp}`;
+        const value = JSON.stringify({ ok: true, key });
+        await sdk.buckyos.getSystemConfigClient().set(key, value);
+        const read = await sdk.buckyos.getSystemConfigClient().get(key);
+        if (read.value !== value) {
+          throw new Error(`value mismatch at ${key}`);
+        }
+        return { key };
+      },
+    ),
+  );
+
+  results.push(
+    await runSelftestCase(
+      "getAppSetting/setAppSetting round trip on namespaced key",
+      async () => {
+        const settingPath = `test_settings.websdk_${nowStamp}`;
+        try {
+          await sdk.buckyos.setAppSetting(settingPath, '"roundtrip"');
+        } catch (error) {
+          if (!isMissingSettingsError(error)) {
+            throw error;
+          }
+          // First-time settings write: synthesize the full settings tree at
+          // the app-level key so subsequent `setAppSetting` calls succeed.
+          const settingsPath = getSettingsPath(identity);
+          const segments = settingPath.split(/[./]/).filter(Boolean);
+          const rootSettings = segments.reduceRight<unknown>(
+            (acc, segment) => ({ [segment]: acc }),
+            "roundtrip",
+          );
+          await sdk.buckyos
+            .getSystemConfigClient()
+            .set(settingsPath, JSON.stringify(rootSettings));
+        }
+        const read = await sdk.buckyos.getAppSetting(settingPath);
+        if (read !== "roundtrip") {
+          throw new Error(`settings round trip mismatch, got ${JSON.stringify(read)}`);
+        }
+        return { settingPath };
+      },
+    ),
+  );
+
+  results.push(
+    await runSelftestCase(
+      "TaskManagerClient creates/updates/queries/deletes a namespaced task",
+      async () => {
+        const client = sdk.buckyos.getTaskManagerClient();
+        const name = `test-websdk-${nowStamp}`;
+        const created = await client.createTask({
+          name,
+          taskType: "test",
+          data: { createdBy: "websdk-systest" },
+          userId: identity.ownerUserId,
+          appId: identity.appId,
+        });
+        try {
+          await client.updateTaskProgress(created.id, 1, 2);
+          await client.updateTaskStatus(created.id, sdk.TaskStatus.Completed);
+          const fetched = await client.getTask(created.id);
+          if (fetched.status !== sdk.TaskStatus.Completed) {
+            throw new Error(
+              `expected task ${created.id} to be Completed, got ${fetched.status}`,
+            );
+          }
+          const filtered = await client.listTasks({
+            filter: { root_id: String(created.id) },
+          });
+          if (!filtered.some((task) => task.id === created.id)) {
+            throw new Error(`task ${created.id} missing from filtered list`);
+          }
+          return { taskId: created.id };
+        } finally {
+          try {
+            await client.deleteTask(created.id);
+          } catch {
+            // best-effort cleanup, ignore
+          }
+        }
+      },
+    ),
+  );
+
+  return {
+    ok: results.every((result) => result.ok),
+    results,
+  };
+}
+
 console.log(`[sys_test] serving ${staticRoot} on http://0.0.0.0:${port}`);
 console.log(`[sys_test] sdk debug routes mounted at ${sdkRoutePrefix}`);
 
@@ -262,6 +439,16 @@ Deno.serve({
         name,
         value: savedValue,
       });
+    }
+
+    if (req.method === "POST" && url.pathname === `${sdkRoutePrefix}/selftest`) {
+      const report = await runSharedServiceClientSelftest();
+      return jsonResponse({
+        ok: report.ok,
+        appId: identity.appId,
+        ownerUserId: identity.ownerUserId,
+        results: report.results,
+      }, report.ok ? 200 : 500);
     }
 
     if (req.method === "GET" && url.pathname === `${sdkRoutePrefix}/system-config`) {

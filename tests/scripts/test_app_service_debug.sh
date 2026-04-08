@@ -45,17 +45,12 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-SERVICE_DEBUG_SCRIPT="${REPO_ROOT}/tests/scripts/service_debug.tsx"
 DEBUG_SYSTEST_SCRIPT="${REPO_ROOT}/tests/scripts/debug_systest.sh"
 APP_ID="buckyos_systest"
-HEALTH_URL="http://127.0.0.1:${PORT}/sdk/appservice/healthz"
+SYSTEST_BASE_URL="http://127.0.0.1:${PORT}"
+HEALTH_URL="${SYSTEST_BASE_URL}/sdk/appservice/healthz"
 RUNTIME_URL="http://systest.test.buckyos.io/sdk/appservice/runtime"
 SYSTEM_CONFIG_URL="http://systest.test.buckyos.io/sdk/appservice/system-config?key=boot/config"
-
-if [[ ! -f "${SERVICE_DEBUG_SCRIPT}" ]]; then
-  echo "missing service_debug script: ${SERVICE_DEBUG_SCRIPT}" >&2
-  exit 2
-fi
 
 if [[ ! -x "${DEBUG_SYSTEST_SCRIPT}" ]]; then
   echo "missing executable debug script: ${DEBUG_SYSTEST_SCRIPT}" >&2
@@ -80,7 +75,6 @@ fi
 echo "[test_app_service_debug] building SDK"
 pnpm run build >/dev/null
 
-ENV_JSON_FILE="$(mktemp -t buckyos-websdk-appservice-env.XXXXXX.json)"
 START_LOG_FILE="$(mktemp -t buckyos-websdk-appservice-start.XXXXXX.log)"
 
 cleanup() {
@@ -88,11 +82,15 @@ cleanup() {
     kill "${SERVICE_PID}" >/dev/null 2>&1 || true
     wait "${SERVICE_PID}" >/dev/null 2>&1 || true
   fi
-  rm -f "${ENV_JSON_FILE}" "${START_LOG_FILE}"
+  rm -f "${START_LOG_FILE}"
 }
 trap cleanup EXIT
 
-echo "[test_app_service_debug] starting local debug service"
+# Start the real AppService through service_debug.tsx. This injects the same
+# env (app_instance_config, <OWNER>_<APP>_TOKEN, BUCKYOS_HOST_GATEWAY) that a
+# production node-daemon would pass, which is why the Jest side no longer
+# tries to synthesize that env on its own.
+echo "[test_app_service_debug] starting systest AppService on port ${PORT}"
 "${DEBUG_SYSTEST_SCRIPT}" "${OWNER_USER_ID}" --port "${PORT}" > "${START_LOG_FILE}" 2>&1 &
 SERVICE_PID=$!
 
@@ -105,56 +103,16 @@ for _ in $(seq 1 40); do
 done
 
 if ! curl -fsS "${HEALTH_URL}" >/dev/null 2>&1; then
-  echo "local debug service did not become ready" >&2
+  echo "systest AppService did not become ready" >&2
   cat "${START_LOG_FILE}" >&2 || true
   exit 1
 fi
 
-echo "[test_app_service_debug] resolving fresh app-service env for jest"
-sleep 1
-deno run --quiet -A "${SERVICE_DEBUG_SCRIPT}" "${APP_ID}" "${OWNER_USER_ID}" --port "${PORT}" --print-env-json > "${ENV_JSON_FILE}"
-
-APP_SERVICE_TOKEN="$(
-  node -e '
-    const fs = require("fs");
-    const payload = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
-    const env = payload.env || {};
-    const tokenKey = Object.keys(env).find((key) => key.endsWith("_TOKEN") && key.includes("BUCKYOS_SYSTEST"));
-    if (!tokenKey) {
-      process.exit(2);
-    }
-    process.stdout.write(String(env[tokenKey]));
-  ' "${ENV_JSON_FILE}"
-)"
-
-APP_INSTANCE_CONFIG="$(
-  node -e '
-    const fs = require("fs");
-    const payload = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
-    process.stdout.write(String(payload.env?.app_instance_config || ""));
-  ' "${ENV_JSON_FILE}"
-)"
-
-HOST_GATEWAY="$(
-  node -e '
-    const fs = require("fs");
-    const payload = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
-    process.stdout.write(String(payload.env?.BUCKYOS_HOST_GATEWAY || "127.0.0.1"));
-  ' "${ENV_JSON_FILE}"
-)"
-
-if [[ -z "${APP_SERVICE_TOKEN}" || -z "${APP_INSTANCE_CONFIG}" ]]; then
-  echo "failed to resolve app-service env from ${SERVICE_DEBUG_SCRIPT}" >&2
-  exit 2
-fi
-
-echo "[test_app_service_debug] running app-service jest suite"
+echo "[test_app_service_debug] running app-service jest suite against ${SYSTEST_BASE_URL}"
 BUCKYOS_RUN_INTEGRATION_TESTS=1 \
 BUCKYOS_TEST_APP_ID="${APP_ID}" \
 BUCKYOS_TEST_OWNER_USER_ID="${OWNER_USER_ID}" \
-BUCKYOS_TEST_APP_SERVICE_TOKEN="${APP_SERVICE_TOKEN}" \
-BUCKYOS_TEST_APP_INSTANCE_CONFIG="${APP_INSTANCE_CONFIG}" \
-BUCKYOS_TEST_HOST_GATEWAY="${HOST_GATEWAY}" \
+BUCKYOS_TEST_SYSTEST_URL="${SYSTEST_BASE_URL}" \
 pnpm exec jest --runInBand tests/app-service
 
 echo "[test_app_service_debug] running gateway smoke checks"
