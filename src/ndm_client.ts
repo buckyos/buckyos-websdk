@@ -1499,6 +1499,8 @@ async function uploadChunkViaTus(
             endpoint: `${endpoint}/ndm/v1/uploads`,
             chunkSize: chunkData.length,
             retryDelays: [0, 1000, 3000, 5000],
+            removeFingerprintOnSuccess: true,
+            fingerprint: () => Promise.resolve(`tus-${appId}-${fileHash}-chunk${chunkIndex}-${chunkInfo.chunkId}`),
             metadata: {
                 app_id: appId,
                 logical_path: logicalPath,

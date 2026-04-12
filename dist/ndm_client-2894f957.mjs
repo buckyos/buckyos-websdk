@@ -5511,6 +5511,8 @@ async function uploadChunkViaTus(endpoint, file, chunkInfo, chunkIndex, appId, l
       endpoint: `${endpoint}/ndm/v1/uploads`,
       chunkSize: chunkData.length,
       retryDelays: [0, 1e3, 3e3, 5e3],
+      removeFingerprintOnSuccess: true,
+      fingerprint: () => Promise.resolve(`tus-${appId}-${fileHash}-chunk${chunkIndex}-${chunkInfo.chunkId}`),
       metadata: {
         app_id: appId,
         logical_path: logicalPath,
@@ -5685,4 +5687,4 @@ export {
   ndn_types as n,
   parseSessionTokenClaims as p
 };
-//# sourceMappingURL=ndm_client-2f590473.mjs.map
+//# sourceMappingURL=ndm_client-2894f957.mjs.map
