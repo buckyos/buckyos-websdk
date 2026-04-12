@@ -24,6 +24,7 @@ import {
     getActiveZoneGatewayOrigin,
 } from './sdk_core'
 import { RuntimeType } from './runtime'
+import { isHashWorkerAvailable, hashFileInWorker } from './internal/hash_worker'
 
 // ============================================================
 // Public types
@@ -34,6 +35,27 @@ export type ImportMode = 'single_file' | 'multi_file' | 'single_dir' | 'mixed'
 export type MaterializationStatus = 'ok' | 'on_cache' | 'all_in_store'
 
 export type UploadStatus = 'not_started' | 'uploading' | 'completed' | 'failed' | 'not_required'
+
+export type MaterializationPhase = 'qcid_lookup' | 'materializing' | 'thumbnail'
+
+/**
+ * Progress information emitted during the materialization (hashing) phase
+ * of `pickupAndImport`.  Web developers can use this to drive progress bars
+ * or status text while files are being processed.
+ */
+export interface MaterializationProgress {
+    phase: MaterializationPhase
+    /** 0-based index of the file currently being processed. */
+    fileIndex: number
+    /** Total number of files selected by the user. */
+    fileCount: number
+    /** Name of the file currently being processed. */
+    fileName: string
+    /** Bytes hashed so far for the current file (materializing phase only). */
+    bytesProcessed?: number
+    /** Total bytes of the current file. */
+    fileTotalBytes?: number
+}
 
 // ---- Error codes ----
 
@@ -109,6 +131,11 @@ export interface PickupAndImportOptions<TMode extends ImportMode = ImportMode> {
     accept?: string[]
     thumbnails?: ThumbnailOptions
     autoStartUpload?: boolean
+    /**
+     * Optional callback invoked during the materialization (hashing) phase.
+     * Use this to drive a progress bar while large files are being processed.
+     */
+    onProgress?: (progress: MaterializationProgress) => void
 }
 
 export interface ImportSessionSummary {
@@ -923,6 +950,66 @@ async function materializeFile(
     return { objectId: objId.toString(), chunks, fileObject: fileObj.toJSON() }
 }
 
+/**
+ * Worker-based variant of `materializeFile`.  Offloads file reading and
+ * SHA-256 hashing to a Web Worker so the UI thread stays responsive.
+ * Falls back to the main-thread implementation when Workers are unavailable.
+ */
+async function materializeFileViaWorker(
+    file: File,
+    onHashProgress?: (bytesHashed: number) => void,
+    chunkSize: number = DEFAULT_CHUNK_SIZE,
+): Promise<{ objectId: string; chunks: ObjectUploadState['chunks']; fileObject: Record<string, unknown> }> {
+    if (!isHashWorkerAvailable()) {
+        return materializeFile(file, chunkSize)
+    }
+
+    let hashResults: Awaited<ReturnType<typeof hashFileInWorker>['result']>
+    try {
+        const session = hashFileInWorker(file, chunkSize)
+        if (onHashProgress) {
+            session.onProgress(onHashProgress)
+        }
+
+        // Race against a timeout so a broken/blocked worker doesn't hang forever.
+        const WORKER_TIMEOUT_MS = 5 * 60 * 1000 // 5 minutes
+        const timeout = new Promise<never>((_, reject) => {
+            setTimeout(() => reject(new Error('hash worker timeout')), WORKER_TIMEOUT_MS)
+        })
+        hashResults = await Promise.race([session.result, timeout])
+    } catch {
+        // Worker failed — fall back to main-thread hashing.
+        return materializeFile(file, chunkSize)
+    }
+    const fileSize = file.size
+    const chunks: ObjectUploadState['chunks'] = []
+
+    if (hashResults.length === 1) {
+        // Single-chunk file
+        const r = hashResults[0]
+        const chunkId = ChunkId.fromMix256Result(r.length, r.hash)
+        const chunkIdStr = chunkId.toString()
+        chunks.push({ chunkId: chunkIdStr, offset: 0, length: r.length, uploaded: false })
+
+        const fileObj = new NdnFileObject(file.name, fileSize, chunkIdStr)
+        const [objId] = fileObj.genObjId()
+        return { objectId: objId.toString(), chunks, fileObject: fileObj.toJSON() }
+    }
+
+    // Multi-chunk: build ChunkList from worker results
+    const chunkList = new SimpleChunkList()
+    for (const r of hashResults) {
+        const chunkId = ChunkId.fromMix256Result(r.length, r.hash)
+        chunkList.appendChunk(chunkId)
+        chunks.push({ chunkId: chunkId.toString(), offset: r.offset, length: r.length, uploaded: false })
+    }
+
+    const [chunkListObjId] = chunkList.genObjId()
+    const fileObj = new NdnFileObject(file.name, fileSize, chunkListObjId.toString())
+    const [objId] = fileObj.genObjId()
+    return { objectId: objId.toString(), chunks, fileObject: fileObj.toJSON() }
+}
+
 function buildFileObjectFromContentId(
     name: string,
     size: number,
@@ -1279,10 +1366,35 @@ export async function pickupAndImport<TMode extends ImportMode>(
     const objectStates = new Map<string, ObjectUploadState>()
     let allFilesAlreadyStored = true
 
-    for (const file of files) {
+    const onProgress = options.onProgress
+    const fileCount = files.length
+
+    for (let fi = 0; fi < files.length; fi++) {
+        const file = files[fi]
         const relativePath = (file as any).webkitRelativePath || undefined
+
+        // Phase 1: QCID fast-path lookup (skips full hash when server already has the file)
+        if (onProgress) {
+            onProgress({ phase: 'qcid_lookup', fileIndex: fi, fileCount, fileName: file.name, fileTotalBytes: file.size })
+        }
         const lookupHit = await lookupFileByQcid(file)
-        const materialized = lookupHit ? null : await materializeFile(file)
+
+        // Phase 2: Full materialization (worker-based when available)
+        let materialized: Awaited<ReturnType<typeof materializeFile>> | null = null
+        if (!lookupHit) {
+            if (onProgress) {
+                onProgress({ phase: 'materializing', fileIndex: fi, fileCount, fileName: file.name, bytesProcessed: 0, fileTotalBytes: file.size })
+            }
+            materialized = await materializeFileViaWorker(
+                file,
+                onProgress
+                    ? (bytesHashed) => {
+                        onProgress({ phase: 'materializing', fileIndex: fi, fileCount, fileName: file.name, bytesProcessed: bytesHashed, fileTotalBytes: file.size })
+                    }
+                    : undefined,
+            )
+        }
+
         const objectId = lookupHit?.objectId ?? materialized!.objectId
         const fileObject = lookupHit?.fileObject ?? materialized!.fileObject
         const chunks = lookupHit ? [] : materialized!.chunks
@@ -1299,8 +1411,11 @@ export async function pickupAndImport<TMode extends ImportMode>(
             _ndnFileObject: fileObject,
         }
 
-        // Thumbnail
+        // Phase 3: Thumbnail
         if (shouldGenerateThumbnail(file, options.thumbnails)) {
+            if (onProgress) {
+                onProgress({ phase: 'thumbnail', fileIndex: fi, fileCount, fileName: file.name, fileTotalBytes: file.size })
+            }
             const eager = options.thumbnails?.eager !== false
             if (eager) {
                 imported.thumbnail = await generateThumbnail(file, options.thumbnails!)

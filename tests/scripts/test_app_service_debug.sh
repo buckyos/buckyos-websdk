@@ -30,6 +30,7 @@ OWNER_USER_ID="devtest"
 # hard-coded default — the gateway routing is the source of truth, and a
 # stale guess silently breaks the gateway smoke checks below.
 PORT=""
+SKIP_BUILD=0
 
 if [[ $# -gt 0 && "${1}" != -* ]]; then
   OWNER_USER_ID="$1"
@@ -45,6 +46,10 @@ while [[ $# -gt 0 ]]; do
       fi
       PORT="$2"
       shift 2
+      ;;
+    --skip-build)
+      SKIP_BUILD=1
+      shift
       ;;
     *)
       echo "unknown argument: $1" >&2
@@ -116,8 +121,12 @@ if lsof -nP -iTCP:"${PORT}" -sTCP:LISTEN >/dev/null 2>&1; then
   exit 2
 fi
 
-echo "[test_app_service_debug] building SDK"
-pnpm run build >/dev/null
+if [[ "${SKIP_BUILD}" -eq 0 ]]; then
+  echo "[test_app_service_debug] building SDK"
+  pnpm run build >/dev/null
+else
+  echo "[test_app_service_debug] skipping SDK build (--skip-build)"
+fi
 
 START_LOG_FILE="$(mktemp -t buckyos-websdk-appservice-start.XXXXXX.log)"
 

@@ -2730,13 +2730,13 @@ class BuckyOSRuntime {
     return trimToNull$1(getProcessEnv()[BUCKYOS_HOST_GATEWAY_ENV]) ?? DEFAULT_DOCKER_HOST_GATEWAY;
   }
   async signJwtWithEd25519(header, payload, privateKeyPem) {
-    const crypto = await importNodeModule("node:crypto");
+    const crypto2 = await importNodeModule("node:crypto");
     const BufferCtor = ensureBuffer();
     const signingInput = `${base64UrlEncode(JSON.stringify(header))}.${base64UrlEncode(JSON.stringify(payload))}`;
-    const signature = crypto.sign(
+    const signature = crypto2.sign(
       null,
       BufferCtor.from(signingInput, "utf8"),
-      crypto.createPrivateKey({
+      crypto2.createPrivateKey({
         key: privateKeyPem,
         format: "pem"
       })
@@ -4773,6 +4773,93 @@ const ndn_types = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.definePro
   verifyNamedObject,
   verifyNamedObjectFromStr
 }, Symbol.toStringTag, { value: "Module" }));
+const WORKER_SOURCE = (
+  /* js */
+  `
+"use strict";
+self.onmessage = async function (e) {
+    var file = e.data.file;
+    var chunkSize = e.data.chunkSize;
+    var fileSize = file.size;
+    try {
+        var offset = 0;
+        var index = 0;
+        while (offset < fileSize) {
+            var end = Math.min(offset + chunkSize, fileSize);
+            var buf = await file.slice(offset, end).arrayBuffer();
+            var hashBuf = await crypto.subtle.digest("SHA-256", buf);
+            var hash = new Uint8Array(hashBuf);
+            self.postMessage(
+                { type: "chunk", index: index, hash: hash, offset: offset, length: end - offset },
+                [hashBuf]
+            );
+            offset = end;
+            index++;
+        }
+        self.postMessage({ type: "done" });
+    } catch (err) {
+        self.postMessage({ type: "error", message: err && err.message ? err.message : String(err) });
+    }
+};
+`
+);
+let cachedWorkerUrl = null;
+function getWorkerBlobUrl() {
+  if (!cachedWorkerUrl) {
+    const blob = new Blob([WORKER_SOURCE], { type: "application/javascript" });
+    cachedWorkerUrl = URL.createObjectURL(blob);
+  }
+  return cachedWorkerUrl;
+}
+function isHashWorkerAvailable() {
+  return typeof Worker !== "undefined" && typeof Blob !== "undefined" && typeof URL !== "undefined" && typeof URL.createObjectURL === "function" && typeof crypto !== "undefined" && typeof crypto.subtle !== "undefined";
+}
+function hashFileInWorker(file, chunkSize) {
+  let progressCb = null;
+  let cumulativeBytes = 0;
+  const chunks = [];
+  const result = new Promise((resolve, reject) => {
+    let worker;
+    try {
+      worker = new Worker(getWorkerBlobUrl());
+    } catch {
+      reject(new Error("Failed to create hash worker"));
+      return;
+    }
+    worker.onmessage = (e2) => {
+      const msg = e2.data;
+      if (msg.type === "chunk") {
+        const r2 = {
+          index: msg.index,
+          hash: msg.hash,
+          offset: msg.offset,
+          length: msg.length
+        };
+        chunks.push(r2);
+        cumulativeBytes += r2.length;
+        if (progressCb)
+          progressCb(cumulativeBytes);
+      } else if (msg.type === "done") {
+        worker.terminate();
+        resolve(chunks);
+      } else if (msg.type === "error") {
+        worker.terminate();
+        reject(new Error(msg.message ?? "Worker hash error"));
+      }
+    };
+    worker.onerror = (err) => {
+      worker.terminate();
+      reject(new Error(err.message ?? "Worker error"));
+    };
+    worker.postMessage({ file, chunkSize });
+  });
+  return {
+    result,
+    onProgress(cb) {
+      progressCb = cb;
+    }
+  };
+}
 class NdmError extends Error {
   constructor(code, message) {
     super(message ?? code);
@@ -5086,6 +5173,46 @@ async function materializeFile(file, chunkSize = DEFAULT_CHUNK_SIZE) {
   const [objId] = fileObj.genObjId();
   return { objectId: objId.toString(), chunks, fileObject: fileObj.toJSON() };
 }
+async function materializeFileViaWorker(file, onHashProgress, chunkSize = DEFAULT_CHUNK_SIZE) {
+  if (!isHashWorkerAvailable()) {
+    return materializeFile(file, chunkSize);
+  }
+  let hashResults;
+  try {
+    const session = hashFileInWorker(file, chunkSize);
+    if (onHashProgress) {
+      session.onProgress(onHashProgress);
+    }
+    const WORKER_TIMEOUT_MS = 5 * 60 * 1e3;
+    const timeout = new Promise((_2, reject) => {
+      setTimeout(() => reject(new Error("hash worker timeout")), WORKER_TIMEOUT_MS);
+    });
+    hashResults = await Promise.race([session.result, timeout]);
+  } catch {
+    return materializeFile(file, chunkSize);
+  }
+  const fileSize = file.size;
+  const chunks = [];
+  if (hashResults.length === 1) {
+    const r2 = hashResults[0];
+    const chunkId = ChunkId.fromMix256Result(r2.length, r2.hash);
+    const chunkIdStr = chunkId.toString();
+    chunks.push({ chunkId: chunkIdStr, offset: 0, length: r2.length, uploaded: false });
+    const fileObj2 = new FileObject(file.name, fileSize, chunkIdStr);
+    const [objId2] = fileObj2.genObjId();
+    return { objectId: objId2.toString(), chunks, fileObject: fileObj2.toJSON() };
+  }
+  const chunkList = new SimpleChunkList();
+  for (const r2 of hashResults) {
+    const chunkId = ChunkId.fromMix256Result(r2.length, r2.hash);
+    chunkList.appendChunk(chunkId);
+    chunks.push({ chunkId: chunkId.toString(), offset: r2.offset, length: r2.length, uploaded: false });
+  }
+  const [chunkListObjId] = chunkList.genObjId();
+  const fileObj = new FileObject(file.name, fileSize, chunkListObjId.toString());
+  const [objId] = fileObj.genObjId();
+  return { objectId: objId.toString(), chunks, fileObject: fileObj.toJSON() };
+}
 function buildFileObjectFromContentId(name, size, contentId) {
   const fileObj = new FileObject(name, size, contentId);
   const [objId] = fileObj.genObjId();
@@ -5346,10 +5473,27 @@ async function pickupAndImport(options) {
   const fileObjects = [];
   const objectStates = /* @__PURE__ */ new Map();
   let allFilesAlreadyStored = true;
-  for (const file of files) {
+  const onProgress = options.onProgress;
+  const fileCount = files.length;
+  for (let fi = 0; fi < files.length; fi++) {
+    const file = files[fi];
     const relativePath = file.webkitRelativePath || void 0;
+    if (onProgress) {
+      onProgress({ phase: "qcid_lookup", fileIndex: fi, fileCount, fileName: file.name, fileTotalBytes: file.size });
+    }
     const lookupHit = await lookupFileByQcid(file);
-    const materialized = lookupHit ? null : await materializeFile(file);
+    let materialized = null;
+    if (!lookupHit) {
+      if (onProgress) {
+        onProgress({ phase: "materializing", fileIndex: fi, fileCount, fileName: file.name, bytesProcessed: 0, fileTotalBytes: file.size });
+      }
+      materialized = await materializeFileViaWorker(
+        file,
+        onProgress ? (bytesHashed) => {
+          onProgress({ phase: "materializing", fileIndex: fi, fileCount, fileName: file.name, bytesProcessed: bytesHashed, fileTotalBytes: file.size });
+        } : void 0
+      );
+    }
     const objectId = (lookupHit == null ? void 0 : lookupHit.objectId) ?? materialized.objectId;
     const fileObject = (lookupHit == null ? void 0 : lookupHit.fileObject) ?? materialized.fileObject;
     const chunks = lookupHit ? [] : materialized.chunks;
@@ -5365,6 +5509,9 @@ async function pickupAndImport(options) {
       _ndnFileObject: fileObject
     };
     if (shouldGenerateThumbnail(file, options.thumbnails)) {
+      if (onProgress) {
+        onProgress({ phase: "thumbnail", fileIndex: fi, fileCount, fileName: file.name, fileTotalBytes: file.size });
+      }
       const eager = ((_a = options.thumbnails) == null ? void 0 : _a.eager) !== false;
       if (eager) {
         imported.thumbnail = await generateThumbnail(file, options.thumbnails);
@@ -5689,4 +5836,4 @@ export {
   ndn_types as n,
   parseSessionTokenClaims as p
 };
-//# sourceMappingURL=ndm_client-af2c737d.mjs.map
+//# sourceMappingURL=ndm_client-ffd3f93b.mjs.map

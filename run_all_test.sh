@@ -222,7 +222,7 @@ fi
 # which handles the systest start/wait/run/teardown sequence end-to-end.
 if [[ "${SKIP_APP_SERVICE}" -eq 0 ]]; then
   step "Phase 3 — AppService integration (via systest slot)"
-  bash "${TESTS_SCRIPTS_DIR}/test_app_service_debug.sh" "${OWNER_USER_ID}" --port "${PORT}"
+  bash "${TESTS_SCRIPTS_DIR}/test_app_service_debug.sh" "${OWNER_USER_ID}" --port "${PORT}" --skip-build
 else
   echo "[run_all_test] skipping Phase 3 AppService integration (--skip-app-service)"
 fi

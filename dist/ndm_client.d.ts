@@ -9,6 +9,25 @@
 export type ImportMode = 'single_file' | 'multi_file' | 'single_dir' | 'mixed';
 export type MaterializationStatus = 'ok' | 'on_cache' | 'all_in_store';
 export type UploadStatus = 'not_started' | 'uploading' | 'completed' | 'failed' | 'not_required';
+export type MaterializationPhase = 'qcid_lookup' | 'materializing' | 'thumbnail';
+/**
+ * Progress information emitted during the materialization (hashing) phase
+ * of `pickupAndImport`.  Web developers can use this to drive progress bars
+ * or status text while files are being processed.
+ */
+export interface MaterializationProgress {
+    phase: MaterializationPhase;
+    /** 0-based index of the file currently being processed. */
+    fileIndex: number;
+    /** Total number of files selected by the user. */
+    fileCount: number;
+    /** Name of the file currently being processed. */
+    fileName: string;
+    /** Bytes hashed so far for the current file (materializing phase only). */
+    bytesProcessed?: number;
+    /** Total bytes of the current file. */
+    fileTotalBytes?: number;
+}
 export type NdmErrorCode = 'USER_CANCELLED' | 'MODE_NOT_SUPPORTED_IN_RUNTIME' | 'DIRECTORY_NOT_SUPPORTED' | 'INVALID_ACCEPT_FILTER' | 'SESSION_NOT_FOUND' | 'UPLOAD_FAILED' | 'THUMBNAIL_GENERATION_FAILED' | 'STORE_API_NOT_SUPPORTED_IN_RUNTIME' | 'STORE_API_ENDPOINT_REQUIRED';
 export declare class NdmError extends Error {
     readonly code: NdmErrorCode;
@@ -55,6 +74,11 @@ export interface PickupAndImportOptions<TMode extends ImportMode = ImportMode> {
     accept?: string[];
     thumbnails?: ThumbnailOptions;
     autoStartUpload?: boolean;
+    /**
+     * Optional callback invoked during the materialization (hashing) phase.
+     * Use this to drive a progress bar while large files are being processed.
+     */
+    onProgress?: (progress: MaterializationProgress) => void;
 }
 export interface ImportSessionSummary {
     totalObjects: number;
