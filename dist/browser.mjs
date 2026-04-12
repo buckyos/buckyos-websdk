@@ -1,5 +1,5 @@
-import { c as createSDKModule } from "./ndm_client-453c7e0d.mjs";
-import { A, b, B, d, e, M, f, R, S, T, V, W, h, a, n, p } from "./ndm_client-453c7e0d.mjs";
+import { c as createSDKModule } from "./ndm_client-025d790a.mjs";
+import { A, b, B, f, i, M, j, R, S, T, V, W, g, e, d, h, a, n, p } from "./ndm_client-025d790a.mjs";
 const sdkModule = createSDKModule("browser");
 const buckyos = sdkModule.buckyos;
 const initBuckyOS = sdkModule.initBuckyOS;
@@ -28,10 +28,10 @@ export {
   A as AiccClient,
   b as BS_SERVICE_TASK_MANAGER,
   B as BS_SERVICE_VERIFY_HUB,
-  d as BuckyOSSDK,
-  e as MsgCenterClient,
+  f as BuckyOSSDK,
+  i as MsgCenterClient,
   M as MsgQueueClient,
-  f as RepoClient,
+  j as RepoClient,
   R as RuntimeType,
   S as SystemConfigClient,
   T as TaskManagerClient,
@@ -41,6 +41,9 @@ export {
   buckyos,
   createSDKModule,
   getAccountInfo,
+  g as getActiveRuntimeType,
+  e as getActiveSessionToken,
+  d as getActiveZoneGatewayOrigin,
   getAppId,
   getAppSetting,
   getBuckyOSConfig,

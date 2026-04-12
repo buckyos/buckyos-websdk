@@ -30,6 +30,14 @@ export const BS_SERVICE_TASK_MANAGER = 'task-manager'
 
 export type SDKTarget = 'universal' | 'browser' | 'node'
 
+interface ActiveRuntimeContext {
+  runtime: BuckyOSRuntime | null
+}
+
+const activeRuntimeContext: ActiveRuntimeContext = {
+  runtime: null,
+}
+
 function isBrowserRuntime(): boolean {
   return typeof window !== 'undefined'
 }
@@ -119,6 +127,60 @@ function inferNodeRuntimeType(): RuntimeType {
   return RuntimeType.AppClient
 }
 
+function detectHostRuntimeType(): RuntimeType {
+  if (typeof window !== 'undefined') {
+    if ((window as unknown as { BuckyApi?: unknown }).BuckyApi) {
+      return RuntimeType.AppRuntime
+    }
+    return RuntimeType.Browser
+  }
+
+  const runtimeProcess = (globalThis as { process?: { versions?: { node?: string } } }).process
+  if (runtimeProcess?.versions?.node) {
+    return RuntimeType.NodeJS
+  }
+
+  return RuntimeType.Unknown
+}
+
+function toAbsoluteOrigin(url: string): string | null {
+  try {
+    const base = typeof window !== 'undefined' ? window.location.origin : 'http://localhost'
+    return new URL(url, base).origin
+  } catch {
+    return null
+  }
+}
+
+function setActiveRuntime(runtime: BuckyOSRuntime | null) {
+  activeRuntimeContext.runtime = runtime
+}
+
+export function getActiveRuntimeType(): RuntimeType {
+  return activeRuntimeContext.runtime?.getConfig().runtimeType ?? detectHostRuntimeType()
+}
+
+export function getActiveZoneGatewayOrigin(): string | null {
+  const runtime = activeRuntimeContext.runtime
+  if (runtime) {
+    return toAbsoluteOrigin(runtime.getSystemConfigServiceURL())
+  }
+
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    return window.location.origin
+  }
+
+  return null
+}
+
+export async function getActiveSessionToken(): Promise<string | null> {
+  const runtime = activeRuntimeContext.runtime
+  if (!runtime) {
+    return null
+  }
+  return runtime.ensureSessionTokenReady()
+}
+
 export class BuckyOSSDK {
   private currentRuntime: BuckyOSRuntime | null = null
   private currentAccountInfo: AccountInfo | null = null
@@ -152,6 +214,7 @@ export class BuckyOSSDK {
     this.currentRuntime?.stopAutoRenew()
     this.currentRuntime = new BuckyOSRuntime(finalConfig)
     await this.currentRuntime.initialize()
+    setActiveRuntime(this.currentRuntime)
     this.syncCurrentAccountInfoFromRuntime()
   }
 

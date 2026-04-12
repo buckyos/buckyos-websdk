@@ -3,7 +3,8 @@
  *
  * Provides `pickupAndImport` and companion session/upload APIs that hide
  * runtime differences (pure browser, NDM Cache, NDM Store) behind a single
- * provider-based abstraction.
+ * provider-based abstraction, plus structured `/ndm/v1/store/*` helpers for
+ * trusted runtimes.
  */
 
 import {
@@ -17,6 +18,12 @@ import {
     OBJ_TYPE_DIR,
     SimpleMapItem,
 } from './ndn_types'
+import {
+    getActiveRuntimeType,
+    getActiveSessionToken,
+    getActiveZoneGatewayOrigin,
+} from './sdk_core'
+import { RuntimeType } from './runtime'
 
 // ============================================================
 // Public types
@@ -38,6 +45,8 @@ export type NdmErrorCode =
     | 'SESSION_NOT_FOUND'
     | 'UPLOAD_FAILED'
     | 'THUMBNAIL_GENERATION_FAILED'
+    | 'STORE_API_NOT_SUPPORTED_IN_RUNTIME'
+    | 'STORE_API_ENDPOINT_REQUIRED'
 
 export class NdmError extends Error {
     public readonly code: NdmErrorCode
@@ -187,6 +196,168 @@ export interface ImportProvider {
     pickFiles(options: PickupAndImportOptions): Promise<File[]>
 }
 
+export interface NdmStoreRequestOptions {
+    /**
+     * Base origin for the zone gateway, for example `https://app.zone.example`
+     * or `http://host.docker.internal:3180`.
+     */
+    endpoint?: string
+    fetcher?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
+    headers?: Record<string, string>
+    credentials?: RequestCredentials
+    sessionToken?: string | null
+}
+
+export interface NdmStoreErrorBody {
+    error?: string
+    message?: string
+    [key: string]: unknown
+}
+
+export class NdmStoreApiError extends Error {
+    public readonly status: number
+    public readonly errorCode?: string
+    public readonly responseBody?: unknown
+
+    constructor(status: number, errorCode?: string, message?: string, responseBody?: unknown) {
+        super(message ?? `NDM store API request failed with status ${status}`)
+        this.name = 'NdmStoreApiError'
+        this.status = status
+        this.errorCode = errorCode
+        this.responseBody = responseBody
+    }
+}
+
+export interface GetObjectRequest {
+    obj_id: string
+}
+
+export interface GetObjectResponse {
+    obj_id: string
+    obj_data: string
+}
+
+export interface ObjIdWithInnerPathRequest {
+    obj_id: string
+    inner_path?: string
+}
+
+export interface OpenObjectResponse {
+    obj_data: string
+}
+
+export interface GetDirChildRequest {
+    dir_obj_id: string
+    item_name: string
+}
+
+export interface GetDirChildResponse {
+    obj_id: string
+}
+
+export interface IsObjectStoredResponse {
+    stored: boolean
+}
+
+export interface IsObjectExistResponse {
+    exists: boolean
+}
+
+export type QueryObjectByIdResponse =
+    | { state: 'not_exist' }
+    | { state: 'object'; obj_data: string }
+
+export interface PutObjectRequest {
+    obj_id: string
+    obj_data: string
+}
+
+export interface ChunkIdRequest {
+    chunk_id: string
+}
+
+export interface HaveChunkResponse {
+    exists: boolean
+}
+
+export interface ChunkStateLocalInfoRange {
+    start: number
+    end: number
+}
+
+export interface ChunkStateLocalInfo {
+    qcid: string
+    last_modify_time: number
+    range?: ChunkStateLocalInfoRange
+}
+
+export type QueryChunkStateResponse =
+    | { state: 'new'; chunk_size: number }
+    | { state: 'completed'; chunk_size: number }
+    | { state: 'disabled'; chunk_size: number }
+    | { state: 'not_exist'; chunk_size: number }
+    | { state: 'local_link'; chunk_size: number; local_info: ChunkStateLocalInfo }
+    | { state: 'same_as'; chunk_size: number; same_as: string }
+
+export interface AddChunkBySameAsRequest {
+    big_chunk_id: string
+    chunk_list_id: string
+    big_chunk_size: number
+}
+
+export type PinScope = 'recursive' | 'skeleton' | 'lease'
+
+export interface EdgeMsg {
+    op: 'add' | 'remove'
+    referee: string
+    referrer: string
+    target_epoch: number
+}
+
+export interface PinRequest {
+    obj_id: string
+    owner: string
+    scope: PinScope
+    ttl_secs?: number
+}
+
+export interface UnpinRequest {
+    obj_id: string
+    owner: string
+}
+
+export interface OwnerRequest {
+    owner: string
+}
+
+export interface CountResponse {
+    count: number
+}
+
+export interface FsAnchorRequest {
+    obj_id: string
+    inode_id: number
+    field_tag: number
+}
+
+export interface InodeRequest {
+    inode_id: number
+}
+
+export type AnchorStateValue = 'Pending' | 'Materializing' | string
+
+export interface AnchorStateResponse {
+    state: AnchorStateValue
+}
+
+export interface ForcedGcUntilRequest {
+    target_bytes: number
+}
+
+export interface ForcedGcUntilResponse {
+    freed_bytes: number
+}
+
 // ============================================================
 // Default chunk size for splitting files (4 MiB)
 // ============================================================
@@ -306,6 +477,272 @@ export function setImportProvider(provider: ImportProvider): void {
 
 export function getImportProvider(): ImportProvider {
     return currentProvider
+}
+
+function defaultStoreFetcher(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+    if (typeof window !== 'undefined' && typeof window.fetch === 'function') {
+        return window.fetch(input, init)
+    }
+
+    if (typeof globalThis !== 'undefined' && typeof globalThis.fetch === 'function') {
+        return globalThis.fetch(input, init)
+    }
+
+    throw new Error('fetch is not available in this runtime')
+}
+
+function normalizeEndpoint(endpoint: string): string {
+    return endpoint.replace(/\/+$/, '')
+}
+
+function ensureStoreApiSupportedRuntime(): void {
+    if (getActiveRuntimeType() === RuntimeType.Browser) {
+        throw new NdmError(
+            'STORE_API_NOT_SUPPORTED_IN_RUNTIME',
+            'NDM structured store APIs are not available in pure Browser runtime',
+        )
+    }
+}
+
+function resolveStoreEndpoint(options?: NdmStoreRequestOptions): string {
+    if (options?.endpoint) {
+        return normalizeEndpoint(options.endpoint)
+    }
+
+    const activeOrigin = getActiveZoneGatewayOrigin()
+    if (activeOrigin) {
+        return normalizeEndpoint(activeOrigin)
+    }
+
+    throw new NdmError(
+        'STORE_API_ENDPOINT_REQUIRED',
+        'NDM structured store endpoint is unknown; pass options.endpoint or call initBuckyOS first',
+    )
+}
+
+async function callStoreApi<TRequest, TResponse>(
+    methodName: string,
+    requestBody: TRequest,
+    options?: NdmStoreRequestOptions,
+): Promise<TResponse> {
+    ensureStoreApiSupportedRuntime()
+
+    const endpoint = resolveStoreEndpoint(options)
+    const fetcher = options?.fetcher ?? defaultStoreFetcher
+    const sessionToken = options?.sessionToken !== undefined
+        ? options.sessionToken
+        : await getActiveSessionToken()
+
+    const headers: Record<string, string> = {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        ...(options?.headers ?? {}),
+    }
+
+    if (sessionToken && !headers.Authorization) {
+        headers.Authorization = `Bearer ${sessionToken}`
+    }
+
+    const response = await fetcher(`${endpoint}/ndm/v1/store/${methodName}`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(requestBody),
+        credentials: options?.credentials ?? 'include',
+    })
+
+    if (response.status === 204) {
+        await response.body?.cancel()
+        return undefined as TResponse
+    }
+
+    const contentType = response.headers.get('content-type') ?? ''
+    const isJsonResponse = contentType.includes('application/json')
+    const responseBody = isJsonResponse
+        ? await response.json() as unknown
+        : await response.text()
+
+    if (!response.ok) {
+        const errorBody = responseBody && typeof responseBody === 'object' && !Array.isArray(responseBody)
+            ? responseBody as NdmStoreErrorBody
+            : null
+        throw new NdmStoreApiError(
+            response.status,
+            errorBody?.error,
+            errorBody?.message ?? (typeof responseBody === 'string' && responseBody.length > 0
+                ? responseBody
+                : `NDM store API request failed with status ${response.status}`),
+            responseBody,
+        )
+    }
+
+    return responseBody as TResponse
+}
+
+export async function getObject(
+    request: GetObjectRequest,
+    options?: NdmStoreRequestOptions,
+): Promise<GetObjectResponse> {
+    return callStoreApi<GetObjectRequest, GetObjectResponse>('get_object', request, options)
+}
+
+export async function openObject(
+    request: ObjIdWithInnerPathRequest,
+    options?: NdmStoreRequestOptions,
+): Promise<OpenObjectResponse> {
+    return callStoreApi<ObjIdWithInnerPathRequest, OpenObjectResponse>('open_object', request, options)
+}
+
+export async function getDirChild(
+    request: GetDirChildRequest,
+    options?: NdmStoreRequestOptions,
+): Promise<GetDirChildResponse> {
+    return callStoreApi<GetDirChildRequest, GetDirChildResponse>('get_dir_child', request, options)
+}
+
+export async function isObjectStored(
+    request: ObjIdWithInnerPathRequest,
+    options?: NdmStoreRequestOptions,
+): Promise<IsObjectStoredResponse> {
+    return callStoreApi<ObjIdWithInnerPathRequest, IsObjectStoredResponse>('is_object_stored', request, options)
+}
+
+export async function isObjectExist(
+    request: GetObjectRequest,
+    options?: NdmStoreRequestOptions,
+): Promise<IsObjectExistResponse> {
+    return callStoreApi<GetObjectRequest, IsObjectExistResponse>('is_object_exist', request, options)
+}
+
+export async function queryObjectById(
+    request: GetObjectRequest,
+    options?: NdmStoreRequestOptions,
+): Promise<QueryObjectByIdResponse> {
+    return callStoreApi<GetObjectRequest, QueryObjectByIdResponse>('query_object_by_id', request, options)
+}
+
+export async function putObject(
+    request: PutObjectRequest,
+    options?: NdmStoreRequestOptions,
+): Promise<void> {
+    return callStoreApi<PutObjectRequest, void>('put_object', request, options)
+}
+
+export async function removeObject(
+    request: GetObjectRequest,
+    options?: NdmStoreRequestOptions,
+): Promise<void> {
+    return callStoreApi<GetObjectRequest, void>('remove_object', request, options)
+}
+
+export async function haveChunk(
+    request: ChunkIdRequest,
+    options?: NdmStoreRequestOptions,
+): Promise<HaveChunkResponse> {
+    return callStoreApi<ChunkIdRequest, HaveChunkResponse>('have_chunk', request, options)
+}
+
+export async function queryChunkState(
+    request: ChunkIdRequest,
+    options?: NdmStoreRequestOptions,
+): Promise<QueryChunkStateResponse> {
+    return callStoreApi<ChunkIdRequest, QueryChunkStateResponse>('query_chunk_state', request, options)
+}
+
+export async function removeChunk(
+    request: ChunkIdRequest,
+    options?: NdmStoreRequestOptions,
+): Promise<void> {
+    return callStoreApi<ChunkIdRequest, void>('remove_chunk', request, options)
+}
+
+export async function addChunkBySameAs(
+    request: AddChunkBySameAsRequest,
+    options?: NdmStoreRequestOptions,
+): Promise<void> {
+    return callStoreApi<AddChunkBySameAsRequest, void>('add_chunk_by_same_as', request, options)
+}
+
+export async function applyEdge(
+    request: EdgeMsg,
+    options?: NdmStoreRequestOptions,
+): Promise<void> {
+    return callStoreApi<EdgeMsg, void>('apply_edge', request, options)
+}
+
+export async function pin(
+    request: PinRequest,
+    options?: NdmStoreRequestOptions,
+): Promise<void> {
+    return callStoreApi<PinRequest, void>('pin', request, options)
+}
+
+export async function unpin(
+    request: UnpinRequest,
+    options?: NdmStoreRequestOptions,
+): Promise<void> {
+    return callStoreApi<UnpinRequest, void>('unpin', request, options)
+}
+
+export async function unpinOwner(
+    request: OwnerRequest,
+    options?: NdmStoreRequestOptions,
+): Promise<CountResponse> {
+    return callStoreApi<OwnerRequest, CountResponse>('unpin_owner', request, options)
+}
+
+export async function fsAcquire(
+    request: FsAnchorRequest,
+    options?: NdmStoreRequestOptions,
+): Promise<void> {
+    return callStoreApi<FsAnchorRequest, void>('fs_acquire', request, options)
+}
+
+export async function fsRelease(
+    request: FsAnchorRequest,
+    options?: NdmStoreRequestOptions,
+): Promise<void> {
+    return callStoreApi<FsAnchorRequest, void>('fs_release', request, options)
+}
+
+export async function fsReleaseInode(
+    request: InodeRequest,
+    options?: NdmStoreRequestOptions,
+): Promise<CountResponse> {
+    return callStoreApi<InodeRequest, CountResponse>('fs_release_inode', request, options)
+}
+
+export async function fsAnchorState(
+    request: FsAnchorRequest,
+    options?: NdmStoreRequestOptions,
+): Promise<AnchorStateResponse> {
+    return callStoreApi<FsAnchorRequest, AnchorStateResponse>('fs_anchor_state', request, options)
+}
+
+export async function forcedGcUntil(
+    request: ForcedGcUntilRequest,
+    options?: NdmStoreRequestOptions,
+): Promise<ForcedGcUntilResponse> {
+    return callStoreApi<ForcedGcUntilRequest, ForcedGcUntilResponse>('forced_gc_until', request, options)
+}
+
+export async function outboxCount(
+    options?: NdmStoreRequestOptions,
+): Promise<CountResponse> {
+    return callStoreApi<Record<string, never>, CountResponse>('outbox_count', {}, options)
+}
+
+export async function debugDumpExpandState<TResponse = unknown>(
+    request: GetObjectRequest,
+    options?: NdmStoreRequestOptions,
+): Promise<TResponse> {
+    return callStoreApi<GetObjectRequest, TResponse>('debug_dump_expand_state', request, options)
+}
+
+export async function anchorState(
+    request: UnpinRequest,
+    options?: NdmStoreRequestOptions,
+): Promise<AnchorStateResponse> {
+    return callStoreApi<UnpinRequest, AnchorStateResponse>('anchor_state', request, options)
 }
 
 // ============================================================

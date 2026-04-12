@@ -13,6 +13,9 @@ export declare const WEB3_BRIDGE_HOST = "web3.buckyos.ai";
 export declare const BS_SERVICE_VERIFY_HUB = "verify-hub";
 export declare const BS_SERVICE_TASK_MANAGER = "task-manager";
 export type SDKTarget = 'universal' | 'browser' | 'node';
+export declare function getActiveRuntimeType(): RuntimeType;
+export declare function getActiveZoneGatewayOrigin(): string | null;
+export declare function getActiveSessionToken(): Promise<string | null>;
 export declare class BuckyOSSDK {
     private currentRuntime;
     private currentAccountInfo;

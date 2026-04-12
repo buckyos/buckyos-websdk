@@ -2747,6 +2747,9 @@ class BuckyOSRuntime {
 const WEB3_BRIDGE_HOST = "web3.buckyos.ai";
 const BS_SERVICE_VERIFY_HUB = "verify-hub";
 const BS_SERVICE_TASK_MANAGER = "task-manager";
+const activeRuntimeContext = {
+  runtime: null
+};
 function isBrowserRuntime() {
   return typeof window !== "undefined";
 }
@@ -2818,6 +2821,53 @@ function inferNodeRuntimeType() {
   }
   return RuntimeType.AppClient;
 }
+function detectHostRuntimeType() {
+  var _a;
+  if (typeof window !== "undefined") {
+    if (window.BuckyApi) {
+      return RuntimeType.AppRuntime;
+    }
+    return RuntimeType.Browser;
+  }
+  const runtimeProcess = globalThis.process;
+  if ((_a = runtimeProcess == null ? void 0 : runtimeProcess.versions) == null ? void 0 : _a.node) {
+    return RuntimeType.NodeJS;
+  }
+  return RuntimeType.Unknown;
+}
+function toAbsoluteOrigin(url) {
+  try {
+    const base = typeof window !== "undefined" ? window.location.origin : "http://localhost";
+    return new URL(url, base).origin;
+  } catch {
+    return null;
+  }
+}
+function setActiveRuntime(runtime) {
+  activeRuntimeContext.runtime = runtime;
+}
+function getActiveRuntimeType() {
+  var _a;
+  return ((_a = activeRuntimeContext.runtime) == null ? void 0 : _a.getConfig().runtimeType) ?? detectHostRuntimeType();
+}
+function getActiveZoneGatewayOrigin() {
+  var _a;
+  const runtime = activeRuntimeContext.runtime;
+  if (runtime) {
+    return toAbsoluteOrigin(runtime.getSystemConfigServiceURL());
+  }
+  if (typeof window !== "undefined" && ((_a = window.location) == null ? void 0 : _a.origin)) {
+    return window.location.origin;
+  }
+  return null;
+}
+async function getActiveSessionToken() {
+  const runtime = activeRuntimeContext.runtime;
+  if (!runtime) {
+    return null;
+  }
+  return runtime.ensureSessionTokenReady();
+}
 class BuckyOSSDK {
   constructor(target) {
     this.currentRuntime = null;
@@ -2841,6 +2891,7 @@ class BuckyOSSDK {
     (_a = this.currentRuntime) == null ? void 0 : _a.stopAutoRenew();
     this.currentRuntime = new BuckyOSRuntime(finalConfig);
     await this.currentRuntime.initialize();
+    setActiveRuntime(this.currentRuntime);
     this.syncCurrentAccountInfoFromRuntime();
   }
   getBuckyOSConfig() {
@@ -4729,6 +4780,15 @@ class NdmError extends Error {
     this.name = "NdmError";
   }
 }
+class NdmStoreApiError extends Error {
+  constructor(status, errorCode, message, responseBody) {
+    super(message ?? `NDM store API request failed with status ${status}`);
+    this.name = "NdmStoreApiError";
+    this.status = status;
+    this.errorCode = errorCode;
+    this.responseBody = responseBody;
+  }
+}
 const DEFAULT_CHUNK_SIZE = 32 * 1024 * 1024;
 const sessionRegistry = /* @__PURE__ */ new Map();
 let sessionCounter = 0;
@@ -4794,6 +4854,149 @@ function setImportProvider(provider) {
 }
 function getImportProvider() {
   return currentProvider;
+}
+function defaultStoreFetcher(input, init) {
+  if (typeof window !== "undefined" && typeof window.fetch === "function") {
+    return window.fetch(input, init);
+  }
+  if (typeof globalThis !== "undefined" && typeof globalThis.fetch === "function") {
+    return globalThis.fetch(input, init);
+  }
+  throw new Error("fetch is not available in this runtime");
+}
+function normalizeEndpoint(endpoint) {
+  return endpoint.replace(/\/+$/, "");
+}
+function ensureStoreApiSupportedRuntime() {
+  if (getActiveRuntimeType() === RuntimeType.Browser) {
+    throw new NdmError(
+      "STORE_API_NOT_SUPPORTED_IN_RUNTIME",
+      "NDM structured store APIs are not available in pure Browser runtime"
+    );
+  }
+}
+function resolveStoreEndpoint(options) {
+  if (options == null ? void 0 : options.endpoint) {
+    return normalizeEndpoint(options.endpoint);
+  }
+  const activeOrigin = getActiveZoneGatewayOrigin();
+  if (activeOrigin) {
+    return normalizeEndpoint(activeOrigin);
+  }
+  throw new NdmError(
+    "STORE_API_ENDPOINT_REQUIRED",
+    "NDM structured store endpoint is unknown; pass options.endpoint or call initBuckyOS first"
+  );
+}
+async function callStoreApi(methodName, requestBody, options) {
+  var _a;
+  ensureStoreApiSupportedRuntime();
+  const endpoint = resolveStoreEndpoint(options);
+  const fetcher = (options == null ? void 0 : options.fetcher) ?? defaultStoreFetcher;
+  const sessionToken = (options == null ? void 0 : options.sessionToken) !== void 0 ? options.sessionToken : await getActiveSessionToken();
+  const headers = {
+    Accept: "application/json",
+    "Content-Type": "application/json",
+    ...(options == null ? void 0 : options.headers) ?? {}
+  };
+  if (sessionToken && !headers.Authorization) {
+    headers.Authorization = `Bearer ${sessionToken}`;
+  }
+  const response = await fetcher(`${endpoint}/ndm/v1/store/${methodName}`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(requestBody),
+    credentials: (options == null ? void 0 : options.credentials) ?? "include"
+  });
+  if (response.status === 204) {
+    await ((_a = response.body) == null ? void 0 : _a.cancel());
+    return void 0;
+  }
+  const contentType = response.headers.get("content-type") ?? "";
+  const isJsonResponse = contentType.includes("application/json");
+  const responseBody = isJsonResponse ? await response.json() : await response.text();
+  if (!response.ok) {
+    const errorBody = responseBody && typeof responseBody === "object" && !Array.isArray(responseBody) ? responseBody : null;
+    throw new NdmStoreApiError(
+      response.status,
+      errorBody == null ? void 0 : errorBody.error,
+      (errorBody == null ? void 0 : errorBody.message) ?? (typeof responseBody === "string" && responseBody.length > 0 ? responseBody : `NDM store API request failed with status ${response.status}`),
+      responseBody
+    );
+  }
+  return responseBody;
+}
+async function getObject(request, options) {
+  return callStoreApi("get_object", request, options);
+}
+async function openObject(request, options) {
+  return callStoreApi("open_object", request, options);
+}
+async function getDirChild(request, options) {
+  return callStoreApi("get_dir_child", request, options);
+}
+async function isObjectStored(request, options) {
+  return callStoreApi("is_object_stored", request, options);
+}
+async function isObjectExist(request, options) {
+  return callStoreApi("is_object_exist", request, options);
+}
+async function queryObjectById(request, options) {
+  return callStoreApi("query_object_by_id", request, options);
+}
+async function putObject(request, options) {
+  return callStoreApi("put_object", request, options);
+}
+async function removeObject(request, options) {
+  return callStoreApi("remove_object", request, options);
+}
+async function haveChunk(request, options) {
+  return callStoreApi("have_chunk", request, options);
+}
+async function queryChunkState(request, options) {
+  return callStoreApi("query_chunk_state", request, options);
+}
+async function removeChunk(request, options) {
+  return callStoreApi("remove_chunk", request, options);
+}
+async function addChunkBySameAs(request, options) {
+  return callStoreApi("add_chunk_by_same_as", request, options);
+}
+async function applyEdge(request, options) {
+  return callStoreApi("apply_edge", request, options);
+}
+async function pin(request, options) {
+  return callStoreApi("pin", request, options);
+}
+async function unpin(request, options) {
+  return callStoreApi("unpin", request, options);
+}
+async function unpinOwner(request, options) {
+  return callStoreApi("unpin_owner", request, options);
+}
+async function fsAcquire(request, options) {
+  return callStoreApi("fs_acquire", request, options);
+}
+async function fsRelease(request, options) {
+  return callStoreApi("fs_release", request, options);
+}
+async function fsReleaseInode(request, options) {
+  return callStoreApi("fs_release_inode", request, options);
+}
+async function fsAnchorState(request, options) {
+  return callStoreApi("fs_anchor_state", request, options);
+}
+async function forcedGcUntil(request, options) {
+  return callStoreApi("forced_gc_until", request, options);
+}
+async function outboxCount(options) {
+  return callStoreApi("outbox_count", {}, options);
+}
+async function debugDumpExpandState(request, options) {
+  return callStoreApi("debug_dump_expand_state", request, options);
+}
+async function anchorState(request, options) {
+  return callStoreApi("anchor_state", request, options);
 }
 async function materializeFile(file, chunkSize = DEFAULT_CHUNK_SIZE) {
   const fileSize = file.size;
@@ -5302,12 +5505,37 @@ async function uploadSingleObject(session, endpoint, state) {
 const ndm_client = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
   __proto__: null,
   NdmError,
+  NdmStoreApiError,
+  addChunkBySameAs,
+  anchorState,
+  applyEdge,
+  debugDumpExpandState,
+  forcedGcUntil,
+  fsAcquire,
+  fsAnchorState,
+  fsRelease,
+  fsReleaseInode,
+  getDirChild,
   getImportProvider,
   getImportSessionStatus,
+  getObject,
   getUploadProgress,
+  haveChunk,
+  isObjectExist,
+  isObjectStored,
+  openObject,
+  outboxCount,
   pickupAndImport,
+  pin,
+  putObject,
+  queryChunkState,
+  queryObjectById,
+  removeChunk,
+  removeObject,
   setImportProvider,
-  startUpload
+  startUpload,
+  unpin,
+  unpinOwner
 }, Symbol.toStringTag, { value: "Module" }));
 export {
   AiccClient as A,
@@ -5321,11 +5549,14 @@ export {
   ndm_client as a,
   BS_SERVICE_TASK_MANAGER as b,
   createSDKModule as c,
-  BuckyOSSDK as d,
-  MsgCenterClient as e,
-  RepoClient as f,
+  getActiveZoneGatewayOrigin as d,
+  getActiveSessionToken as e,
+  BuckyOSSDK as f,
+  getActiveRuntimeType as g,
   hashPassword as h,
+  MsgCenterClient as i,
+  RepoClient as j,
   ndn_types as n,
   parseSessionTokenClaims as p
 };
-//# sourceMappingURL=ndm_client-453c7e0d.mjs.map
+//# sourceMappingURL=ndm_client-025d790a.mjs.map
