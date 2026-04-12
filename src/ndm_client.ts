@@ -1473,13 +1473,13 @@ async function uploadChunkViaTus(
     chunkInfo: ObjectUploadState['chunks'][0],
     chunkIndex: number,
     appId: string,
-    logicalPath: string,
     fileHash: string,
     onProgress: (uploaded: number) => void,
     signal?: AbortSignal,
 ): Promise<string> {
     const slice = file.slice(chunkInfo.offset, chunkInfo.offset + chunkInfo.length)
     const chunkData = new Uint8Array(await slice.arrayBuffer())
+    const logicalPath = `${appId}/${chunkInfo.chunkId}`
 
     // Load a local wrapper so the dependency is resolved and bundled at build
     // time, while the runtime can still lazy-load the chunk on demand.
@@ -1647,7 +1647,6 @@ async function uploadSingleObject(
             chunk,
             chunkIndex,
             'default',
-            state.name,
             state.objectId,
             (uploaded) => {
                 // Update byte-level progress
