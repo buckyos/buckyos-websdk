@@ -580,6 +580,42 @@ type HostScriptLaunchContext = {
 
 type LaunchContext = AgentLaunchContext | HostScriptLaunchContext
 
+async function waitForForegroundChild(child: Deno.ChildProcess): Promise<number> {
+  const signalListeners: Array<{ signal: Deno.Signal; listener: () => void }> = []
+  let forwardedTermination = false
+
+  const forwardTermination = (signal: Deno.Signal) => {
+    if (forwardedTermination) {
+      return
+    }
+    forwardedTermination = true
+    try {
+      child.kill(signal)
+    } catch {
+      try {
+        child.kill()
+      } catch {
+        // The child may already have exited.
+      }
+    }
+  }
+
+  for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) {
+    const listener = () => forwardTermination(signal)
+    Deno.addSignalListener(signal, listener)
+    signalListeners.push({ signal, listener })
+  }
+
+  try {
+    const status = await child.status
+    return status.code
+  } finally {
+    for (const { signal, listener } of signalListeners) {
+      Deno.removeSignalListener(signal, listener)
+    }
+  }
+}
+
 async function buildLaunchContext(options: StartupOptions) {
   const buckyosRoot = getBuckyosRoot()
   const etcDir = joinPath(buckyosRoot, 'etc')
@@ -745,8 +781,7 @@ async function runForeground(
     stderr: 'inherit',
   }).spawn()
 
-  const status = await child.status
-  return status.code
+  return await waitForForegroundChild(child)
 }
 
 async function resolveLocalScriptServiceEntrypoint(): Promise<string | null> {
@@ -856,8 +891,7 @@ async function runHostScriptForeground(
       stdout: 'inherit',
       stderr: 'inherit',
     }).spawn()
-    const status = await child.status
-    return status.code
+    return await waitForForegroundChild(child)
   }
 
   const language = detectHostScriptLanguage(packageRoot)
@@ -879,8 +913,7 @@ async function runHostScriptForeground(
       stdout: 'inherit',
       stderr: 'inherit',
     }).spawn()
-    const status = await child.status
-    return status.code
+    return await waitForForegroundChild(child)
   }
 
   if (language === 'python') {
@@ -892,8 +925,7 @@ async function runHostScriptForeground(
       stdout: 'inherit',
       stderr: 'inherit',
     }).spawn()
-    const status = await child.status
-    return status.code
+    return await waitForForegroundChild(child)
   }
 
   throw new Error(`unsupported host-script language for package ${packageRoot}`)

@@ -3179,4 +3179,4 @@ export {
   enableDebugLog,
   isSupported
 };
-//# sourceMappingURL=index-abe54758.mjs.map
+//# sourceMappingURL=tus_client-abe54758.mjs.map

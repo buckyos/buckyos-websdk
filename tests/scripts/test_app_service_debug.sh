@@ -121,11 +121,31 @@ pnpm run build >/dev/null
 
 START_LOG_FILE="$(mktemp -t buckyos-websdk-appservice-start.XXXXXX.log)"
 
+kill_systest_service() {
+  if lsof -nP -iTCP:"${PORT}" -sTCP:LISTEN >/dev/null 2>&1; then
+    local listen_pids
+    listen_pids="$(lsof -nP -tiTCP:"${PORT}" -sTCP:LISTEN 2>/dev/null || true)"
+    if [[ -n "${listen_pids}" ]]; then
+      echo "[test_app_service_debug] killing listener(s) on :${PORT}: ${listen_pids}" >&2
+      # shellcheck disable=SC2086
+      kill ${listen_pids} >/dev/null 2>&1 || true
+      sleep 1
+      listen_pids="$(lsof -nP -tiTCP:"${PORT}" -sTCP:LISTEN 2>/dev/null || true)"
+      if [[ -n "${listen_pids}" ]]; then
+        echo "[test_app_service_debug] forcing kill -9 on stragglers: ${listen_pids}" >&2
+        # shellcheck disable=SC2086
+        kill -9 ${listen_pids} >/dev/null 2>&1 || true
+      fi
+    fi
+  fi
+}
+
 cleanup() {
   if [[ -n "${SERVICE_PID:-}" ]]; then
     kill "${SERVICE_PID}" >/dev/null 2>&1 || true
     wait "${SERVICE_PID}" >/dev/null 2>&1 || true
   fi
+  kill_systest_service
   rm -f "${START_LOG_FILE}"
 }
 trap cleanup EXIT

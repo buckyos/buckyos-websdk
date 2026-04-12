@@ -11,7 +11,10 @@ const realBrowserDir = join(repoRoot, 'tests', 'browser', 'real-browser');
 const buckyosRoot = process.env.BUCKYOS_ROOT?.trim() || '/opt/buckyos';
 const systestDistDir = join(buckyosRoot, 'bin', 'buckyos_systest', 'dist');
 
-const importPattern = /from\s+['"](\.\/[^'"]+\.(?:mjs|js))['"]/g;
+const importPatterns = [
+  /from\s+['"](\.\/[^'"]+\.(?:mjs|js))['"]/g,
+  /import\(\s*['"](\.\/[^'"]+\.(?:mjs|js))['"]\s*\)/g,
+];
 
 async function copyRuntimeBundle(sourceDir, entryFile) {
   const pending = [entryFile];
@@ -31,11 +34,13 @@ async function copyRuntimeBundle(sourceDir, entryFile) {
     await mkdir(dirname(targetPath), { recursive: true });
     await copyFile(sourcePath, targetPath);
 
-    let match;
-    while ((match = importPattern.exec(sourceText)) !== null) {
-      pending.push(match[1].slice(2));
+    for (const pattern of importPatterns) {
+      let match;
+      while ((match = pattern.exec(sourceText)) !== null) {
+        pending.push(match[1].slice(2));
+      }
+      pattern.lastIndex = 0;
     }
-    importPattern.lastIndex = 0;
   }
 
   return [...visited].sort();

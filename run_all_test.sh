@@ -177,6 +177,20 @@ kill_test_services() {
   fi
 }
 
+cleanup_on_exit() {
+  local exit_code="$1"
+  if [[ "${SKIP_APP_SERVICE}" -eq 0 && -n "${PORT}" ]]; then
+    echo
+    echo "================================================================"
+    echo "[run_all_test] cleanup test services (port ${PORT})"
+    echo "================================================================"
+    kill_test_services "${PORT}"
+  fi
+  return "${exit_code}"
+}
+
+trap 'rc=$?; trap - EXIT; cleanup_on_exit "${rc}"; exit "${rc}"' EXIT
+
 step "killing leftover test services (port ${PORT})"
 kill_test_services "${PORT}"
 

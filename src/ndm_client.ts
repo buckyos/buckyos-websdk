@@ -1464,7 +1464,8 @@ export async function getUploadProgress(sessionId: string): Promise<UploadProgre
 
 /**
  * Upload a single chunk to the NDM zone gateway using the TUS protocol.
- * Uses tus-js-client when available, falls back to manual fetch-based TUS.
+ * Loads tus-js-client lazily from a local wrapper so the dependency is still
+ * resolved and bundled at build time.
  */
 async function uploadChunkViaTus(
     endpoint: string,
@@ -1479,129 +1480,51 @@ async function uploadChunkViaTus(
     const slice = file.slice(chunkInfo.offset, chunkInfo.offset + chunkInfo.length)
     const chunkData = new Uint8Array(await slice.arrayBuffer())
 
-    // Try to use tus-js-client if available
-    let tus: typeof import('tus-js-client') | undefined
+    // Load a local wrapper so the dependency is resolved and bundled at build
+    // time, while the runtime can still lazy-load the chunk on demand.
+    let tusModule: typeof import('./internal/tus_client')
     try {
-        tus = await import('tus-js-client')
-    } catch {
-        // tus-js-client not available, use manual fetch
+        tusModule = await import('./internal/tus_client')
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        throw new NdmError('UPLOAD_FAILED', `Failed to load tus-js-client: ${message}`)
     }
 
-    if (tus != null) {
-        const tusModule = tus
-        return new Promise<string>((resolve, reject) => {
-            if (signal?.aborted) { reject(new NdmError('UPLOAD_FAILED', 'Upload aborted')); return }
+    return new Promise<string>((resolve, reject) => {
+        if (signal?.aborted) { reject(new NdmError('UPLOAD_FAILED', 'Upload aborted')); return }
 
-            const blob = new Blob([chunkData])
-            const upload = new tusModule.Upload(blob, {
-                endpoint: `${endpoint}/ndm/v1/uploads`,
-                chunkSize: chunkData.length,
-                retryDelays: [0, 1000, 3000, 5000],
-                metadata: {
-                    app_id: appId,
-                    logical_path: logicalPath,
-                    chunk_index: '0',
-                    file_hash: fileHash,
-                },
-                onProgress: (bytesUploaded: number) => {
-                    onProgress(bytesUploaded)
-                },
-                onSuccess: () => {
-                    onProgress(chunkData.length)
-                    resolve(chunkInfo.chunkId)
-                },
-                onError: (error: Error) => {
-                    reject(new NdmError('UPLOAD_FAILED', error.message))
-                },
-            })
-
-            if (signal) {
-                signal.addEventListener('abort', () => {
-                    upload.abort(true)
-                    reject(new NdmError('UPLOAD_FAILED', 'Upload aborted'))
-                })
-            }
-
-            upload.start()
+        const blob = new Blob([chunkData])
+        const upload = new tusModule.Upload(blob, {
+            endpoint: `${endpoint}/ndm/v1/uploads`,
+            chunkSize: chunkData.length,
+            retryDelays: [0, 1000, 3000, 5000],
+            metadata: {
+                app_id: appId,
+                logical_path: logicalPath,
+                chunk_index: '0',
+                file_hash: fileHash,
+            },
+            onProgress: (bytesUploaded: number) => {
+                onProgress(bytesUploaded)
+            },
+            onSuccess: () => {
+                onProgress(chunkData.length)
+                resolve(chunkInfo.chunkId)
+            },
+            onError: (error: Error) => {
+                reject(new NdmError('UPLOAD_FAILED', error.message))
+            },
         })
-    }
 
-    // Manual TUS implementation via fetch
-    return await manualTusUpload(endpoint, chunkData, chunkInfo, appId, logicalPath, fileHash, onProgress, signal)
-}
+        if (signal) {
+            signal.addEventListener('abort', () => {
+                upload.abort(true)
+                reject(new NdmError('UPLOAD_FAILED', 'Upload aborted'))
+            })
+        }
 
-async function manualTusUpload(
-    endpoint: string,
-    chunkData: Uint8Array,
-    chunkInfo: ObjectUploadState['chunks'][0],
-    appId: string,
-    logicalPath: string,
-    fileHash: string,
-    onProgress: (uploaded: number) => void,
-    signal?: AbortSignal,
-): Promise<string> {
-    const tusResumable = '1.0.0'
-
-    const metadata = `app_id=${appId},logical_path=${logicalPath},chunk_index=0,file_hash=${fileHash}`
-
-    // POST: create upload session
-    const createResp = await fetch(`${endpoint}/ndm/v1/uploads`, {
-        method: 'POST',
-        headers: {
-            'tus-resumable': tusResumable,
-            'upload-length': String(chunkData.length),
-            'upload-metadata': metadata,
-        },
-        signal,
+        upload.start()
     })
-
-    if (createResp.status !== 201 && createResp.status !== 200) {
-        await createResp.body?.cancel()
-        throw new NdmError('UPLOAD_FAILED', `TUS create failed with status ${createResp.status}`)
-    }
-
-    const location = createResp.headers.get('location')
-    if (!location) {
-        await createResp.body?.cancel()
-        throw new NdmError('UPLOAD_FAILED', 'TUS create did not return location header')
-    }
-    await createResp.body?.cancel()
-
-    // Check current offset (in case of resume)
-    const headResp = await fetch(`${endpoint}${location}`, {
-        method: 'HEAD',
-        headers: { 'tus-resumable': tusResumable },
-        signal,
-    })
-    const currentOffset = parseInt(headResp.headers.get('upload-offset') ?? '0', 10)
-    await headResp.body?.cancel()
-
-    if (currentOffset >= chunkData.length) {
-        // Already fully uploaded
-        onProgress(chunkData.length)
-        return chunkInfo.chunkId
-    }
-
-    // PATCH: upload remaining data
-    const patchResp = await fetch(`${endpoint}${location}`, {
-        method: 'PATCH',
-        headers: {
-            'tus-resumable': tusResumable,
-            'upload-offset': String(currentOffset),
-            'content-type': 'application/offset+octet-stream',
-        },
-        body: chunkData.slice(currentOffset),
-        signal,
-    })
-
-    if (patchResp.status !== 204) {
-        await patchResp.body?.cancel()
-        throw new NdmError('UPLOAD_FAILED', `TUS PATCH failed with status ${patchResp.status}`)
-    }
-    await patchResp.body?.cancel()
-
-    onProgress(chunkData.length)
-    return chunkInfo.chunkId
 }
 
 /**
@@ -1717,7 +1640,7 @@ async function uploadSingleObject(
             state.file,
             chunk,
             'default',
-            state.name,
+            `default/${chunk.chunkId}`,
             state.objectId,
             (uploaded) => {
                 // Update byte-level progress
