@@ -13,6 +13,7 @@ import {
     setImportProvider,
     getImportProvider,
     pickupAndImport,
+    calculateQcidFromFile,
     getImportSessionStatus,
     getUploadProgress,
     startUpload,
@@ -179,6 +180,21 @@ function computeExpectedMultiChunkFileObjectId(
     return objId.toString()
 }
 
+function computeExpectedQcid(content: Uint8Array): string {
+    const partSize = 4096
+    if (content.length < partSize * 3) {
+        throw new Error('content too small for QCID test helper')
+    }
+
+    const midOffset = Math.floor(content.length / 2)
+    const merged = new Uint8Array(partSize * 2)
+    merged.set(content.slice(0, partSize), 0)
+    merged.set(content.slice(midOffset, midOffset + partSize), partSize)
+
+    const hash = sha256Bytes(merged)
+    return ChunkId.fromMixHashResult(content.length, hash, 'qcid').toString()
+}
+
 function mockProvider(
     caps: Partial<RuntimeCapabilities> = {},
     files: File[] = [],
@@ -266,6 +282,21 @@ export const NDM_CLIENT_TEST_CASES: NdmClientTestCase[] = [
             } finally {
                 setImportProvider(saved)
             }
+        },
+    },
+    {
+        name: 'calculateQcidFromFile matches ndn-lib quick-hash rule',
+        async run(t) {
+            const data = new Uint8Array(20000)
+            for (let i = 0; i < data.length; i++) {
+                data[i] = (i * 17) & 0xff
+            }
+
+            const file = makeFile('qcid.bin', data)
+            const actual = await calculateQcidFromFile(file)
+            const expected = computeExpectedQcid(data)
+
+            t.eq(actual, expected)
         },
     },
 

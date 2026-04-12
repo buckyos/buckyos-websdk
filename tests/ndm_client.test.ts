@@ -10,6 +10,7 @@ import {
     setImportProvider,
     getImportProvider,
     pickupAndImport,
+    calculateQcidFromFile,
     ImportProvider,
     RuntimeCapabilities,
     ImportedFileObject,
@@ -21,7 +22,7 @@ import {
     NdmStoreApiError,
 } from '../src/ndm_client'
 import { createSDKModule, RuntimeType } from '../src/sdk_core'
-import { ObjId } from '../src/ndn_types'
+import { FileObject as NdnFileObject, ObjId } from '../src/ndn_types'
 
 describe('ndm_client (shared cases)', () => {
     for (const c of NDM_CLIENT_TEST_CASES) {
@@ -84,6 +85,54 @@ describe('ndm_client (jest-only)', () => {
         expect(sel.size).toBe(size)
         expect(sel.objectId).toBeTruthy()
         expect(sel.objectId).toContain(':')
+    })
+
+    it('pickupAndImport reuses lookup hit resolved by QCID before local materialization', async () => {
+        await sdk.initBuckyOS('test-app', {
+            appId: 'test-app',
+            runtimeType: RuntimeType.Browser,
+            zoneHost: 'example.com',
+            defaultProtocol: 'https://',
+        })
+
+        const data = new Uint8Array(20000)
+        for (let i = 0; i < data.length; i++) data[i] = (i * 29) & 0xff
+        const file = makeFile('lookup-hit.bin', data)
+        const qcid = await calculateQcidFromFile(file)
+        const chunkListId = 'chunklist:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd'
+        const expectedFileObj = new NdnFileObject(file.name, file.size, chunkListId)
+        const [expectedObjId] = expectedFileObj.genObjId()
+
+        const fetchMock = jest.fn().mockResolvedValue(
+            new Response(JSON.stringify({
+                object_id: qcid,
+                scope: 'app',
+                state: 'same_as',
+                chunk_size: file.size,
+                same_as: chunkListId,
+            }), {
+                status: 200,
+                headers: {
+                    'content-type': 'application/json',
+                },
+            }),
+        )
+        global.fetch = fetchMock as typeof fetch
+        setImportProvider(mockProvider({}, [file]))
+
+        const result = await pickupAndImport({ mode: 'single_file' })
+        const selection = result.selection as ImportedFileObject
+
+        expect(fetchMock).toHaveBeenCalledWith(
+            expect.stringContaining(`/ndm/v1/objects/lookup?scope=app&quick_hash=${qcid}`),
+            expect.objectContaining({
+                method: 'GET',
+            }),
+        )
+        expect(selection.objectId).toBe(expectedObjId.toString())
+        expect(selection.locality).toBe('store')
+        expect(result.materializationStatus).toBe('all_in_store')
+        expect(result.uploadStatus).toBe('not_required')
     })
 
     it('structured store APIs reject pure Browser runtime', async () => {

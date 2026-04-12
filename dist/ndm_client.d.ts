@@ -43,6 +43,8 @@ export interface ImportedFileObject extends BaseImportedObject {
     thumbnail?: ThumbnailResult;
     /** The browser File handle, kept for upload. */
     _file?: File;
+    /** The canonical NDN FileObject JSON used for parent DirObject hashing. */
+    _ndnFileObject?: Record<string, unknown>;
 }
 export interface ImportedDirObject extends BaseImportedObject {
     kind: 'dir';
@@ -132,6 +134,8 @@ export interface NdmStoreRequestOptions {
     headers?: Record<string, string>;
     credentials?: RequestCredentials;
     sessionToken?: string | null;
+}
+export interface NdmLookupRequestOptions extends NdmStoreRequestOptions {
 }
 export interface NdmStoreErrorBody {
     error?: string;
@@ -263,8 +267,58 @@ export interface ForcedGcUntilRequest {
 export interface ForcedGcUntilResponse {
     freed_bytes: number;
 }
+export type NdmLookupScope = 'app' | 'global';
+export interface LookupObjectRequest {
+    scope: NdmLookupScope;
+    quick_hash: string;
+    inner_path?: string;
+}
+export interface LookupObjectExistsResponse {
+    object_id: string;
+    scope: NdmLookupScope;
+    exists: boolean;
+}
+export type LookupObjectChunkStateResponse = ({
+    object_id: string;
+    scope: NdmLookupScope;
+} & {
+    state: 'new';
+    chunk_size: number;
+}) | ({
+    object_id: string;
+    scope: NdmLookupScope;
+} & {
+    state: 'completed';
+    chunk_size: number;
+}) | ({
+    object_id: string;
+    scope: NdmLookupScope;
+} & {
+    state: 'disabled';
+    chunk_size: number;
+}) | ({
+    object_id: string;
+    scope: NdmLookupScope;
+} & {
+    state: 'not_exist';
+    chunk_size: number;
+}) | ({
+    object_id: string;
+    scope: NdmLookupScope;
+    state: 'local_link';
+    chunk_size: number;
+    local_info: ChunkStateLocalInfo;
+}) | ({
+    object_id: string;
+    scope: NdmLookupScope;
+    state: 'same_as';
+    chunk_size: number;
+    same_as: string;
+});
+export type LookupObjectResponse = LookupObjectExistsResponse | LookupObjectChunkStateResponse;
 export declare function setImportProvider(provider: ImportProvider): void;
 export declare function getImportProvider(): ImportProvider;
+export declare function lookupObject(request: LookupObjectRequest, options?: NdmLookupRequestOptions): Promise<LookupObjectResponse>;
 export declare function getObject(request: GetObjectRequest, options?: NdmStoreRequestOptions): Promise<GetObjectResponse>;
 export declare function openObject(request: ObjIdWithInnerPathRequest, options?: NdmStoreRequestOptions): Promise<OpenObjectResponse>;
 export declare function getDirChild(request: GetDirChildRequest, options?: NdmStoreRequestOptions): Promise<GetDirChildResponse>;
@@ -289,6 +343,11 @@ export declare function forcedGcUntil(request: ForcedGcUntilRequest, options?: N
 export declare function outboxCount(options?: NdmStoreRequestOptions): Promise<CountResponse>;
 export declare function debugDumpExpandState<TResponse = unknown>(request: GetObjectRequest, options?: NdmStoreRequestOptions): Promise<TResponse>;
 export declare function anchorState(request: UnpinRequest, options?: NdmStoreRequestOptions): Promise<AnchorStateResponse>;
+/**
+ * Calculate a QCID for a File using the same quick-hash rule as ndn-lib:
+ * SHA-256(first 4096 bytes + middle 4096 bytes), encoded as ChunkType `qcid`.
+ */
+export declare function calculateQcidFromFile(file: File): Promise<string>;
 /**
  * Initiate a user file/directory selection and materialize the chosen items
  * into NDN objects. Returns a session snapshot with objectIds ready to use.

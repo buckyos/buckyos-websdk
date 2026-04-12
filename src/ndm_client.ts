@@ -403,6 +403,8 @@ export type LookupObjectResponse = LookupObjectExistsResponse | LookupObjectChun
 // ============================================================
 
 const DEFAULT_CHUNK_SIZE = 32 * 1024 * 1024
+const QCID_HASH_PIECE_SIZE = 4096
+const MIN_QCID_FILE_SIZE = QCID_HASH_PIECE_SIZE * 3
 
 // ============================================================
 // Internal session storage
@@ -921,6 +923,142 @@ async function materializeFile(
     return { objectId: objId.toString(), chunks, fileObject: fileObj.toJSON() }
 }
 
+function buildFileObjectFromContentId(
+    name: string,
+    size: number,
+    contentId: string,
+): { objectId: string; fileObject: Record<string, unknown> } {
+    const fileObj = new NdnFileObject(name, size, contentId)
+    const [objId] = fileObj.genObjId()
+    return {
+        objectId: objId.toString(),
+        fileObject: fileObj.toJSON(),
+    }
+}
+
+function resolveImportLookupEndpoint(): string | undefined {
+    const activeOrigin = getActiveZoneGatewayOrigin()
+    if (activeOrigin) {
+        return normalizeEndpoint(activeOrigin)
+    }
+
+    if (typeof window !== 'undefined' && window.location?.origin) {
+        return normalizeEndpoint(window.location.origin)
+    }
+
+    return undefined
+}
+
+async function tryCalculateQcidFromFile(file: File): Promise<string | null> {
+    const fileSize = file.size
+    if (fileSize < MIN_QCID_FILE_SIZE) {
+        return null
+    }
+
+    const beginBytes = new Uint8Array(await file.slice(0, QCID_HASH_PIECE_SIZE).arrayBuffer())
+    const midOffset = Math.floor(fileSize / 2)
+    const midBytes = new Uint8Array(
+        await file.slice(midOffset, midOffset + QCID_HASH_PIECE_SIZE).arrayBuffer(),
+    )
+
+    const combined = new Uint8Array(beginBytes.length + midBytes.length)
+    combined.set(beginBytes, 0)
+    combined.set(midBytes, beginBytes.length)
+
+    const hash = sha256Bytes(combined)
+    return ChunkId.fromMixHashResult(fileSize, hash, 'qcid').toString()
+}
+
+/**
+ * Calculate a QCID for a File using the same quick-hash rule as ndn-lib:
+ * SHA-256(first 4096 bytes + middle 4096 bytes), encoded as ChunkType `qcid`.
+ */
+export async function calculateQcidFromFile(file: File): Promise<string> {
+    const qcid = await tryCalculateQcidFromFile(file)
+    if (!qcid) {
+        throw new Error(`QCID requires file size >= ${MIN_QCID_FILE_SIZE} bytes`)
+    }
+    return qcid
+}
+
+function extractLookupContentId(
+    response: LookupObjectResponse,
+    quickHash: string,
+): string | undefined {
+    const body = response as LookupObjectResponse & Record<string, unknown>
+
+    if (typeof body.same_as === 'string' && body.same_as.length > 0) {
+        return body.same_as
+    }
+
+    const directContentKeys = [
+        'chunk_list_id',
+        'chunklistid',
+        'chunk_id',
+        'chunkid',
+        'content_id',
+        'content',
+    ]
+    for (const key of directContentKeys) {
+        const value = body[key]
+        if (typeof value === 'string' && value.length > 0) {
+            return value
+        }
+    }
+
+    if (typeof body.object_id === 'string' && body.object_id.length > 0 && body.object_id !== quickHash) {
+        return body.object_id
+    }
+
+    return undefined
+}
+
+async function lookupFileByQcid(
+    file: File,
+): Promise<{ objectId: string; fileObject: Record<string, unknown>; locality: 'store' } | null> {
+    const endpoint = resolveImportLookupEndpoint()
+    if (!endpoint) {
+        return null
+    }
+
+    const qcid = await tryCalculateQcidFromFile(file)
+    if (!qcid) {
+        return null
+    }
+
+    for (const scope of ['app', 'global'] as const) {
+        try {
+            const response = await lookupObject(
+                { scope, quick_hash: qcid },
+                {
+                    endpoint,
+                    sessionToken: getActiveRuntimeType() === RuntimeType.Browser ? null : undefined,
+                },
+            )
+
+            const contentId = extractLookupContentId(response, qcid)
+            if (!contentId) {
+                continue
+            }
+
+            return {
+                ...buildFileObjectFromContentId(file.name, file.size, contentId),
+                locality: 'store',
+            }
+        } catch (error) {
+            if (error instanceof NdmStoreApiError && error.status === 404) {
+                continue
+            }
+
+            // QCID lookup is an optimization. Fall back to local materialization
+            // when the gateway is unavailable or returns an incompatible shape.
+            return null
+        }
+    }
+
+    return null
+}
+
 /**
  * Build directory tree from flat file list (for webkitdirectory results).
  */
@@ -1139,10 +1277,15 @@ export async function pickupAndImport<TMode extends ImportMode>(
     // Materialize each file
     const fileObjects: ImportedFileObject[] = []
     const objectStates = new Map<string, ObjectUploadState>()
+    let allFilesAlreadyStored = true
 
     for (const file of files) {
         const relativePath = (file as any).webkitRelativePath || undefined
-        const { objectId, chunks, fileObject } = await materializeFile(file)
+        const lookupHit = await lookupFileByQcid(file)
+        const materialized = lookupHit ? null : await materializeFile(file)
+        const objectId = lookupHit?.objectId ?? materialized!.objectId
+        const fileObject = lookupHit?.fileObject ?? materialized!.fileObject
+        const chunks = lookupHit ? [] : materialized!.chunks
 
         const imported: ImportedFileObject = {
             kind: 'file',
@@ -1151,7 +1294,7 @@ export async function pickupAndImport<TMode extends ImportMode>(
             size: file.size,
             mimeType: file.type || undefined,
             relativePath,
-            locality: 'local_only',
+            locality: lookupHit?.locality ?? 'local_only',
             _file: file,
             _ndnFileObject: fileObject,
         }
@@ -1172,13 +1315,17 @@ export async function pickupAndImport<TMode extends ImportMode>(
 
         fileObjects.push(imported)
 
+        if (!lookupHit) {
+            allFilesAlreadyStored = false
+        }
+
         objectStates.set(objectId, {
             objectId,
             name: file.name,
             size: file.size,
             file,
-            uploadedBytes: 0,
-            state: 'pending',
+            uploadedBytes: lookupHit ? file.size : 0,
+            state: lookupHit ? 'completed' : 'pending',
             chunks,
         })
     }
@@ -1205,7 +1352,7 @@ export async function pickupAndImport<TMode extends ImportMode>(
 
     // Determine initial materialization status
     let materializationStatus: MaterializationStatus = 'ok'
-    if (caps.canUseNDMStore) {
+    if (allFilesAlreadyStored || caps.canUseNDMStore) {
         materializationStatus = 'all_in_store'
     } else if (caps.canUseNDMCache) {
         materializationStatus = 'on_cache'

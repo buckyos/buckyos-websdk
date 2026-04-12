@@ -4790,6 +4790,8 @@ class NdmStoreApiError extends Error {
   }
 }
 const DEFAULT_CHUNK_SIZE = 32 * 1024 * 1024;
+const QCID_HASH_PIECE_SIZE = 4096;
+const MIN_QCID_FILE_SIZE = QCID_HASH_PIECE_SIZE * 3;
 const sessionRegistry = /* @__PURE__ */ new Map();
 let sessionCounter = 0;
 function generateSessionId() {
@@ -4867,6 +4869,16 @@ function defaultStoreFetcher(input, init) {
 function normalizeEndpoint(endpoint) {
   return endpoint.replace(/\/+$/, "");
 }
+function isChunkQuickHash(quickHash) {
+  try {
+    return ObjId.fromString(quickHash).isChunk();
+  } catch {
+    return false;
+  }
+}
+function encodeLookupQueryValue(value) {
+  return encodeURIComponent(value).replace(/%3A/gi, ":");
+}
 function ensureStoreApiSupportedRuntime() {
   if (getActiveRuntimeType() === RuntimeType.Browser) {
     throw new NdmError(
@@ -4925,6 +4937,53 @@ async function callStoreApi(methodName, requestBody, options) {
     );
   }
   return responseBody;
+}
+async function getZoneGatewayJson(pathWithQuery, options) {
+  const endpoint = resolveStoreEndpoint(options);
+  const fetcher = (options == null ? void 0 : options.fetcher) ?? defaultStoreFetcher;
+  const sessionToken = (options == null ? void 0 : options.sessionToken) !== void 0 ? options.sessionToken : await getActiveSessionToken();
+  const headers = {
+    Accept: "application/json",
+    ...(options == null ? void 0 : options.headers) ?? {}
+  };
+  if (sessionToken && !headers.Authorization) {
+    headers.Authorization = `Bearer ${sessionToken}`;
+  }
+  const response = await fetcher(`${endpoint}${pathWithQuery}`, {
+    method: "GET",
+    headers,
+    credentials: (options == null ? void 0 : options.credentials) ?? "include"
+  });
+  const contentType = response.headers.get("content-type") ?? "";
+  const isJsonResponse = contentType.includes("application/json");
+  const responseBody = isJsonResponse ? await response.json() : await response.text();
+  if (!response.ok) {
+    const errorBody = responseBody && typeof responseBody === "object" && !Array.isArray(responseBody) ? responseBody : null;
+    throw new NdmStoreApiError(
+      response.status,
+      errorBody == null ? void 0 : errorBody.error,
+      (errorBody == null ? void 0 : errorBody.message) ?? (typeof responseBody === "string" && responseBody.length > 0 ? responseBody : `NDM zone gateway request failed with status ${response.status}`),
+      responseBody
+    );
+  }
+  return responseBody;
+}
+async function lookupObject(request, options) {
+  const query = [
+    `scope=${encodeLookupQueryValue(request.scope)}`,
+    `quick_hash=${encodeLookupQueryValue(request.quick_hash)}`
+  ];
+  if (request.inner_path) {
+    query.push(`inner_path=${encodeLookupQueryValue(request.inner_path)}`);
+  }
+  const response = await getZoneGatewayJson(
+    `/ndm/v1/objects/lookup?${query.join("&")}`,
+    options
+  );
+  if (isChunkQuickHash(request.quick_hash)) {
+    return response;
+  }
+  return response;
 }
 async function getObject(request, options) {
   return callStoreApi("get_object", request, options);
@@ -5009,7 +5068,7 @@ async function materializeFile(file, chunkSize = DEFAULT_CHUNK_SIZE) {
     chunks.push({ chunkId: chunkIdStr, offset: 0, length: buf.length, uploaded: false });
     const fileObj2 = new FileObject(file.name, fileSize, chunkIdStr);
     const [objId2] = fileObj2.genObjId();
-    return { objectId: objId2.toString(), chunks };
+    return { objectId: objId2.toString(), chunks, fileObject: fileObj2.toJSON() };
   }
   const chunkList = new SimpleChunkList();
   let offset = 0;
@@ -5025,7 +5084,108 @@ async function materializeFile(file, chunkSize = DEFAULT_CHUNK_SIZE) {
   const [chunkListObjId] = chunkList.genObjId();
   const fileObj = new FileObject(file.name, fileSize, chunkListObjId.toString());
   const [objId] = fileObj.genObjId();
-  return { objectId: objId.toString(), chunks };
+  return { objectId: objId.toString(), chunks, fileObject: fileObj.toJSON() };
+}
+function buildFileObjectFromContentId(name, size, contentId) {
+  const fileObj = new FileObject(name, size, contentId);
+  const [objId] = fileObj.genObjId();
+  return {
+    objectId: objId.toString(),
+    fileObject: fileObj.toJSON()
+  };
+}
+function resolveImportLookupEndpoint() {
+  var _a;
+  const activeOrigin = getActiveZoneGatewayOrigin();
+  if (activeOrigin) {
+    return normalizeEndpoint(activeOrigin);
+  }
+  if (typeof window !== "undefined" && ((_a = window.location) == null ? void 0 : _a.origin)) {
+    return normalizeEndpoint(window.location.origin);
+  }
+  return void 0;
+}
+async function tryCalculateQcidFromFile(file) {
+  const fileSize = file.size;
+  if (fileSize < MIN_QCID_FILE_SIZE) {
+    return null;
+  }
+  const beginBytes = new Uint8Array(await file.slice(0, QCID_HASH_PIECE_SIZE).arrayBuffer());
+  const midOffset = Math.floor(fileSize / 2);
+  const midBytes = new Uint8Array(
+    await file.slice(midOffset, midOffset + QCID_HASH_PIECE_SIZE).arrayBuffer()
+  );
+  const combined = new Uint8Array(beginBytes.length + midBytes.length);
+  combined.set(beginBytes, 0);
+  combined.set(midBytes, beginBytes.length);
+  const hash = sha256Bytes(combined);
+  return ChunkId.fromMixHashResult(fileSize, hash, "qcid").toString();
+}
+async function calculateQcidFromFile(file) {
+  const qcid = await tryCalculateQcidFromFile(file);
+  if (!qcid) {
+    throw new Error(`QCID requires file size >= ${MIN_QCID_FILE_SIZE} bytes`);
+  }
+  return qcid;
+}
+function extractLookupContentId(response, quickHash) {
+  const body = response;
+  if (typeof body.same_as === "string" && body.same_as.length > 0) {
+    return body.same_as;
+  }
+  const directContentKeys = [
+    "chunk_list_id",
+    "chunklistid",
+    "chunk_id",
+    "chunkid",
+    "content_id",
+    "content"
+  ];
+  for (const key of directContentKeys) {
+    const value = body[key];
+    if (typeof value === "string" && value.length > 0) {
+      return value;
+    }
+  }
+  if (typeof body.object_id === "string" && body.object_id.length > 0 && body.object_id !== quickHash) {
+    return body.object_id;
+  }
+  return void 0;
+}
+async function lookupFileByQcid(file) {
+  const endpoint = resolveImportLookupEndpoint();
+  if (!endpoint) {
+    return null;
+  }
+  const qcid = await tryCalculateQcidFromFile(file);
+  if (!qcid) {
+    return null;
+  }
+  for (const scope of ["app", "global"]) {
+    try {
+      const response = await lookupObject(
+        { scope, quick_hash: qcid },
+        {
+          endpoint,
+          sessionToken: getActiveRuntimeType() === RuntimeType.Browser ? null : void 0
+        }
+      );
+      const contentId = extractLookupContentId(response, qcid);
+      if (!contentId) {
+        continue;
+      }
+      return {
+        ...buildFileObjectFromContentId(file.name, file.size, contentId),
+        locality: "store"
+      };
+    } catch (error) {
+      if (error instanceof NdmStoreApiError && error.status === 404) {
+        continue;
+      }
+      return null;
+    }
+  }
+  return null;
 }
 function buildDirTree(files, fileObjects) {
   const firstPath = files[0].webkitRelativePath;
@@ -5071,17 +5231,24 @@ function computeDirObjectIds(dir) {
   if (dir.children) {
     for (const child of dir.children) {
       if (child.kind === "file") {
-        const fileObj = new FileObject(child.name, child.size, "");
-        ndnDir.addFile(child.name, fileObj.toJSON(), child.size);
+        if (!child._ndnFileObject) {
+          throw new NdmError("UPLOAD_FAILED", `Missing NDN FileObject for ${child.name}`);
+        }
+        ndnDir.addFile(child.name, child._ndnFileObject, child.size);
       } else {
-        const childObjId = computeDirObjectIds(child);
-        ndnDir.addDirectory(child.name, ObjId.fromString(childObjId), 0);
+        const childState = computeDirObjectIds(child);
+        ndnDir.addDirectory(child.name, ObjId.fromString(childState.objectId), childState.totalSize);
       }
     }
   }
   const [objId] = ndnDir.genObjId();
   dir.objectId = objId.toString();
-  return dir.objectId;
+  return {
+    objectId: dir.objectId,
+    totalSize: ndnDir.total_size,
+    fileCount: ndnDir.file_count,
+    fileSize: ndnDir.file_size
+  };
 }
 function shouldGenerateThumbnail(file, options) {
   if (!options || !options.enabled)
@@ -5178,9 +5345,14 @@ async function pickupAndImport(options) {
   }
   const fileObjects = [];
   const objectStates = /* @__PURE__ */ new Map();
+  let allFilesAlreadyStored = true;
   for (const file of files) {
     const relativePath = file.webkitRelativePath || void 0;
-    const { objectId, chunks } = await materializeFile(file);
+    const lookupHit = await lookupFileByQcid(file);
+    const materialized = lookupHit ? null : await materializeFile(file);
+    const objectId = (lookupHit == null ? void 0 : lookupHit.objectId) ?? materialized.objectId;
+    const fileObject = (lookupHit == null ? void 0 : lookupHit.fileObject) ?? materialized.fileObject;
+    const chunks = lookupHit ? [] : materialized.chunks;
     const imported = {
       kind: "file",
       objectId,
@@ -5188,8 +5360,9 @@ async function pickupAndImport(options) {
       size: file.size,
       mimeType: file.type || void 0,
       relativePath,
-      locality: "local_only",
-      _file: file
+      locality: (lookupHit == null ? void 0 : lookupHit.locality) ?? "local_only",
+      _file: file,
+      _ndnFileObject: fileObject
     };
     if (shouldGenerateThumbnail(file, options.thumbnails)) {
       const eager = ((_a = options.thumbnails) == null ? void 0 : _a.eager) !== false;
@@ -5203,13 +5376,16 @@ async function pickupAndImport(options) {
       }
     }
     fileObjects.push(imported);
+    if (!lookupHit) {
+      allFilesAlreadyStored = false;
+    }
     objectStates.set(objectId, {
       objectId,
       name: file.name,
       size: file.size,
       file,
-      uploadedBytes: 0,
-      state: "pending",
+      uploadedBytes: lookupHit ? file.size : 0,
+      state: lookupHit ? "completed" : "pending",
       chunks
     });
   }
@@ -5230,7 +5406,7 @@ async function pickupAndImport(options) {
   const summary = collectSummary(items);
   const sessionId = generateSessionId();
   let materializationStatus = "ok";
-  if (caps.canUseNDMStore) {
+  if (allFilesAlreadyStored || caps.canUseNDMStore) {
     materializationStatus = "all_in_store";
   } else if (caps.canUseNDMCache) {
     materializationStatus = "on_cache";
@@ -5509,6 +5685,7 @@ const ndm_client = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.definePr
   addChunkBySameAs,
   anchorState,
   applyEdge,
+  calculateQcidFromFile,
   debugDumpExpandState,
   forcedGcUntil,
   fsAcquire,
@@ -5523,6 +5700,7 @@ const ndm_client = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.definePr
   haveChunk,
   isObjectExist,
   isObjectStored,
+  lookupObject,
   openObject,
   outboxCount,
   pickupAndImport,
@@ -5559,4 +5737,4 @@ export {
   ndn_types as n,
   parseSessionTokenClaims as p
 };
-//# sourceMappingURL=ndm_client-025d790a.mjs.map
+//# sourceMappingURL=ndm_client-98258b89.mjs.map
