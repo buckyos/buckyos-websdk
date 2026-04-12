@@ -1636,15 +1636,14 @@ async function uploadSingleObject(
 
     for (const [chunkIndex, chunk] of state.chunks.entries()) {
         if (chunk.uploaded) continue
-        
-        let logicalPath = `${session.sessionId}/${state.objectId}/${chunkIndex}`
+
         await uploadChunkViaTus(
             endpoint,
             state.file,
             chunk,
             chunkIndex,
             'default',
-            logicalPath,
+            `${session.sessionId}/${chunk.chunkId}`,
             state.objectId,
             (uploaded) => {
                 // Update byte-level progress

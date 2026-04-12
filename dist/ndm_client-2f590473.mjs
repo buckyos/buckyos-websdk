@@ -5607,14 +5607,13 @@ async function uploadSingleObject(session, endpoint, state) {
   for (const [chunkIndex, chunk] of state.chunks.entries()) {
     if (chunk.uploaded)
       continue;
-    let logicalPath = `${session.sessionId}/${state.objectId}/${chunkIndex}`;
     await uploadChunkViaTus(
       endpoint,
       state.file,
       chunk,
       chunkIndex,
       "default",
-      logicalPath,
+      `${session.sessionId}/${chunk.chunkId}`,
       state.objectId,
       (uploaded) => {
         const prevChunkBytes = state.chunks.filter((c2) => c2 !== chunk && c2.uploaded).reduce((sum, c2) => sum + c2.length, 0);
@@ -5686,4 +5685,4 @@ export {
   ndn_types as n,
   parseSessionTokenClaims as p
 };
-//# sourceMappingURL=ndm_client-f3858acb.mjs.map
+//# sourceMappingURL=ndm_client-2f590473.mjs.map
