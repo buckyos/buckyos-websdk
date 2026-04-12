@@ -59,4 +59,5 @@ export declare const getRepoClient: () => import("./repo_client").RepoClient;
 export { hashPassword };
 export * from './sdk_core';
 export * as ndn from './ndn_types';
+export * as ndm from './ndm_client';
 //# sourceMappingURL=index.d.ts.map

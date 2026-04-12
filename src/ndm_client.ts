@@ -150,6 +150,12 @@ export interface ImportSessionStatus {
 export interface StartUploadOptions {
     concurrency?: number
     priority?: 'foreground' | 'background'
+    /**
+     * Override the NDM service base URL for TUS uploads. When omitted the
+     * SDK will try to derive it from the zone host; the final TUS endpoint
+     * is `${endpoint}/ndm/v1/uploads`.
+     */
+    endpoint?: string
     extra?: Record<string, unknown>
 }
 
@@ -906,15 +912,13 @@ export async function startUpload(
 
     const concurrency = options?.concurrency ?? 3
 
-    // Determine upload endpoint from the SDK runtime
+    // Determine the NDM upload base URL.
+    // TUS requests go to `${endpoint}/ndm/v1/uploads`, so `endpoint` should
+    // be the origin of the zone gateway that routes /ndm/*.
     let endpoint: string
-    try {
-        // Try to get the zone service URL from the SDK
-        const sdkCore = await import('./sdk_core')
-        const sdkModule = sdkCore.createSDKModule('universal')
-        endpoint = sdkModule.getZoneServiceURL('ndm')
-    } catch {
-        // Fallback: use current origin
+    if (options?.endpoint) {
+        endpoint = options.endpoint.replace(/\/+$/, '')
+    } else {
         endpoint = typeof window !== 'undefined' ? window.location.origin : ''
     }
 

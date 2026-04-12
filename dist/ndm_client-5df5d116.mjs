@@ -3290,6 +3290,2025 @@ function createSDKModule(target) {
     }
   };
 }
+class NdnError extends Error {
+  constructor(kind, message) {
+    super(`${kind}: ${message}`);
+    this.kind = kind;
+    this.name = "NdnError";
+  }
+}
+const OBJ_TYPE_FILE = "cyfile";
+const OBJ_TYPE_DIR = "cydir";
+const OBJ_TYPE_MSG = "cymsg";
+const OBJ_TYPE_MSG_RECE = "cymsgr";
+const OBJ_TYPE_PATH = "cypath";
+const OBJ_TYPE_INCLUSION_PROOF = "cyinc";
+const OBJ_TYPE_RELATION = "cyrel";
+const OBJ_TYPE_ACTION = "cyact";
+const OBJ_TYPE_PACK = "cypack";
+const OBJ_TYPE_TRIE = "cytrie";
+const OBJ_TYPE_TRIE_SIMPLE = "cytrie-s";
+const OBJ_TYPE_OBJMAP = "cymap-mtp";
+const OBJ_TYPE_OBJMAP_SIMPLE = "cymap";
+const OBJ_TYPE_LIST = "cylist-mtree";
+const OBJ_TYPE_LIST_SIMPLE = "cylist";
+const OBJ_TYPE_CHUNK_LIST = "cl";
+const OBJ_TYPE_CHUNK_LIST_SIMPLE = "clist";
+const OBJ_TYPE_CHUNK_LIST_FIX_SIZE = "clist-fix";
+const OBJ_TYPE_CHUNK_LIST_SIMPLE_FIX_SIZE = "cl-sf";
+const OBJ_TYPE_PKG = "pkg";
+const RELATION_TYPE_SAME = "same";
+const RELATION_TYPE_PART_OF = "part_of";
+const HEX_CHARS = "0123456789abcdef";
+function bytesToHex(bytes) {
+  let s2 = "";
+  for (let i2 = 0; i2 < bytes.length; i2++) {
+    const b2 = bytes[i2];
+    s2 += HEX_CHARS[b2 >>> 4 & 15];
+    s2 += HEX_CHARS[b2 & 15];
+  }
+  return s2;
+}
+function hexToBytes(hex) {
+  if (hex.length % 2 !== 0) {
+    throw new NdnError("InvalidId", `invalid hex length: ${hex.length}`);
+  }
+  const out = new Uint8Array(hex.length / 2);
+  for (let i2 = 0; i2 < out.length; i2++) {
+    const hi = HEX_CHARS.indexOf(hex[i2 * 2].toLowerCase());
+    const lo = HEX_CHARS.indexOf(hex[i2 * 2 + 1].toLowerCase());
+    if (hi < 0 || lo < 0) {
+      throw new NdnError("InvalidId", `invalid hex char at offset ${i2 * 2}`);
+    }
+    out[i2] = hi << 4 | lo;
+  }
+  return out;
+}
+const BASE32_ALPHABET = "abcdefghijklmnopqrstuvwxyz234567";
+function base32Encode(bytes) {
+  let bits = 0;
+  let value = 0;
+  let out = "";
+  for (let i2 = 0; i2 < bytes.length; i2++) {
+    value = value << 8 | bytes[i2];
+    bits += 8;
+    while (bits >= 5) {
+      bits -= 5;
+      out += BASE32_ALPHABET[value >>> bits & 31];
+    }
+  }
+  if (bits > 0) {
+    out += BASE32_ALPHABET[value << 5 - bits & 31];
+  }
+  return out;
+}
+function base32Decode(str) {
+  const lower = str.toLowerCase();
+  let bits = 0;
+  let value = 0;
+  const out = [];
+  for (let i2 = 0; i2 < lower.length; i2++) {
+    const ch = lower[i2];
+    const idx = BASE32_ALPHABET.indexOf(ch);
+    if (idx < 0) {
+      throw new NdnError("InvalidId", `invalid base32 char '${ch}' at ${i2}`);
+    }
+    value = value << 5 | idx;
+    bits += 5;
+    if (bits >= 8) {
+      bits -= 8;
+      out.push(value >>> bits & 255);
+    }
+  }
+  return new Uint8Array(out);
+}
+function varintEncode(value) {
+  if (!Number.isFinite(value) || value < 0) {
+    throw new NdnError("InvalidParam", `varint must be non-negative finite: ${value}`);
+  }
+  if (!Number.isSafeInteger(value)) {
+    throw new NdnError("InvalidParam", `varint exceeds safe integer range: ${value}`);
+  }
+  const out = [];
+  let v2 = value;
+  while (v2 >= 128) {
+    out.push(v2 & 127 | 128);
+    v2 = Math.floor(v2 / 128);
+  }
+  out.push(v2 & 127);
+  return new Uint8Array(out);
+}
+function varintDecode(bytes, offset = 0) {
+  let result = 0;
+  let shiftMul = 1;
+  let i2 = offset;
+  let consumed = 0;
+  while (i2 < bytes.length) {
+    const b2 = bytes[i2++];
+    consumed++;
+    const part = b2 & 127;
+    result += part * shiftMul;
+    if (!Number.isSafeInteger(result)) {
+      throw new NdnError("InvalidData", "varint exceeds safe integer range");
+    }
+    if ((b2 & 128) === 0) {
+      return [result, consumed];
+    }
+    shiftMul *= 128;
+    if (consumed > 10) {
+      throw new NdnError("InvalidData", "varint too long");
+    }
+  }
+  throw new NdnError("InvalidData", "varint truncated");
+}
+function sha256Bytes(data) {
+  const sha = new ht("SHA-256", "UINT8ARRAY");
+  sha.update(data);
+  return sha.getHash("UINT8ARRAY");
+}
+function sha256Utf8(text) {
+  const sha = new ht("SHA-256", "TEXT", { encoding: "UTF8" });
+  sha.update(text);
+  return sha.getHash("UINT8ARRAY");
+}
+function canonicalizeJson(value) {
+  if (value === null || typeof value !== "object")
+    return value;
+  if (Array.isArray(value))
+    return value.map(canonicalizeJson);
+  const keys = Object.keys(value).sort();
+  const result = {};
+  for (const k2 of keys) {
+    result[k2] = canonicalizeJson(value[k2]);
+  }
+  return result;
+}
+function toCanonicalJsonString(value) {
+  return JSON.stringify(canonicalizeJson(value));
+}
+const DEFAULT_HASH_METHOD = "sha256";
+const HashMethod = {
+  Sha256: "sha256",
+  Sha512: "sha512",
+  QCID: "qcid",
+  Blake2s256: "blake2s256",
+  Keccak256: "keccak256",
+  hashResultSize(method) {
+    switch (method) {
+      case "sha256":
+        return 32;
+      case "sha512":
+        return 64;
+      case "qcid":
+        return 32;
+      case "blake2s256":
+        return 32;
+      case "keccak256":
+        return 32;
+    }
+  },
+  /** parse(s) -> [HashMethod, isMix]; "mix256" -> [Sha256, true]. */
+  parse(s2) {
+    const isMix = s2.startsWith("mix");
+    const method = HashMethod.fromString(s2);
+    return [method, isMix];
+  },
+  fromString(s2) {
+    switch (s2) {
+      case "sha256":
+      case "mix256":
+        return "sha256";
+      case "sha512":
+      case "mix512":
+        return "sha512";
+      case "qcid":
+      case "mixqcid":
+        return "qcid";
+      case "blake2s256":
+      case "mixblake2s256":
+        return "blake2s256";
+      case "keccak256":
+      case "mixkeccak256":
+        return "keccak256";
+      default:
+        throw new NdnError("InvalidData", `Invalid hash method: ${s2}`);
+    }
+  }
+};
+const ChunkType = {
+  Sha256: "sha256",
+  Mix256: "mix256",
+  Sha512: "sha512",
+  Mix512: "mix512",
+  QCID: "qcid",
+  Blake2s256: "blake2s256",
+  MixBlake2s256: "mixblake2s256",
+  Keccak256: "keccak256",
+  MixKeccak256: "mixkeccak256",
+  isChunkType(typeStr) {
+    switch (typeStr) {
+      case "sha256":
+      case "mix256":
+      case "sha512":
+      case "mix512":
+      case "qcid":
+      case "blake2s256":
+      case "mixblake2s256":
+      case "keccak256":
+      case "mixkeccak256":
+        return true;
+      default:
+        return false;
+    }
+  },
+  isMix(typeStr) {
+    switch (typeStr) {
+      case "mix256":
+      case "mix512":
+      case "mixblake2s256":
+      case "mixkeccak256":
+      case "qcid":
+        return true;
+      default:
+        return false;
+    }
+  },
+  fromHashType(hashType, isMix) {
+    switch (hashType) {
+      case "sha256":
+        return isMix ? "mix256" : "sha256";
+      case "sha512":
+        return isMix ? "mix512" : "sha512";
+      case "qcid":
+        if (!isMix) {
+          throw new NdnError("InvalidObjType", "QCID must be mix hash");
+        }
+        return "qcid";
+      case "blake2s256":
+        return isMix ? "mixblake2s256" : "blake2s256";
+      case "keccak256":
+        return isMix ? "mixkeccak256" : "keccak256";
+    }
+  },
+  toHashMethod(typeStr) {
+    switch (typeStr) {
+      case "sha256":
+      case "mix256":
+        return "sha256";
+      case "sha512":
+      case "mix512":
+        return "sha512";
+      case "qcid":
+        return "qcid";
+      case "blake2s256":
+      case "mixblake2s256":
+        return "blake2s256";
+      case "keccak256":
+      case "mixkeccak256":
+        return "keccak256";
+      default:
+        throw new NdnError("InvalidObjType", `invalid chunk type: ${typeStr}`);
+    }
+  }
+};
+class ObjId {
+  constructor(objType, objHash) {
+    this.objType = objType;
+    this.objHash = objHash;
+  }
+  /** Parse from base32 (no separator) or `obj_type:hex_hash`. */
+  static fromString(s2) {
+    const parts = s2.split(":");
+    if (parts.length === 1) {
+      const decoded = base32Decode(parts[0]);
+      let pos = -1;
+      for (let i2 = 0; i2 < decoded.length; i2++) {
+        if (decoded[i2] === 58) {
+          pos = i2;
+          break;
+        }
+      }
+      if (pos < 0) {
+        throw new NdnError("InvalidId", "separator ':' not found");
+      }
+      const objType = utf8Decode(decoded.subarray(0, pos));
+      const objHash = decoded.slice(pos + 1);
+      return new ObjId(objType, objHash);
+    } else if (parts.length === 2) {
+      return new ObjId(parts[0], hexToBytes(parts[1]));
+    } else {
+      throw new NdnError("InvalidId", s2);
+    }
+  }
+  static fromBytes(bytes) {
+    if (bytes.length < 3) {
+      throw new NdnError("InvalidId", "objid bytes too short");
+    }
+    let pos = -1;
+    for (let i2 = 0; i2 < bytes.length; i2++) {
+      if (bytes[i2] === 58) {
+        pos = i2;
+        break;
+      }
+    }
+    if (pos < 0) {
+      throw new NdnError("InvalidId", "separator ':' not found");
+    }
+    const objType = utf8Decode(bytes.subarray(0, pos));
+    const objHash = bytes.slice(pos + 1);
+    return new ObjId(objType, objHash);
+  }
+  static fromValue(v2) {
+    if (typeof v2 === "string") {
+      return ObjId.fromString(v2);
+    }
+    throw new NdnError("InvalidData", "ObjId MUST be string");
+  }
+  static fromHostname(hostname) {
+    const first = hostname.split(".")[0];
+    return ObjId.fromString(first);
+  }
+  /**
+   * Try to extract an ObjId from an NDN-style path. Returns the ObjId and
+   * the optional remaining sub-path (with leading '/'), or null if no part
+   * of the path parses as an ObjId.
+   */
+  static fromPath(path) {
+    const parts = path.split("/");
+    for (let i2 = 0; i2 < parts.length; i2++) {
+      const part = parts[i2];
+      if (part.length === 0)
+        continue;
+      try {
+        const objId = ObjId.fromString(part);
+        if (i2 < parts.length - 1) {
+          return { objId, subPath: "/" + parts.slice(i2 + 1).join("/") };
+        }
+        return { objId, subPath: null };
+      } catch {
+      }
+    }
+    throw new NdnError("InvalidId", `no objid found in path: ${path}`);
+  }
+  /** Construct an ObjId from a precomputed hash. */
+  static fromRaw(objType, hashValue) {
+    return new ObjId(objType, hashValue);
+  }
+  isChunk() {
+    return ChunkType.isChunkType(this.objType);
+  }
+  isChunkList() {
+    return this.objType === OBJ_TYPE_CHUNK_LIST_SIMPLE;
+  }
+  isJson() {
+    if (this.isChunk() || this.isContainer())
+      return false;
+    return this.objType !== OBJ_TYPE_PACK;
+  }
+  isDirObject() {
+    return this.objType === OBJ_TYPE_DIR;
+  }
+  isFileObject() {
+    return this.objType === OBJ_TYPE_FILE;
+  }
+  isContainer() {
+    switch (this.objType) {
+      case OBJ_TYPE_DIR:
+      case OBJ_TYPE_TRIE:
+      case OBJ_TYPE_TRIE_SIMPLE:
+      case OBJ_TYPE_OBJMAP:
+      case OBJ_TYPE_OBJMAP_SIMPLE:
+      case OBJ_TYPE_LIST:
+      case OBJ_TYPE_LIST_SIMPLE:
+      case OBJ_TYPE_CHUNK_LIST:
+      case OBJ_TYPE_CHUNK_LIST_SIMPLE:
+      case OBJ_TYPE_CHUNK_LIST_FIX_SIZE:
+      case OBJ_TYPE_CHUNK_LIST_SIMPLE_FIX_SIZE:
+        return true;
+      default:
+        return false;
+    }
+  }
+  isBigContainer() {
+    switch (this.objType) {
+      case OBJ_TYPE_TRIE:
+      case OBJ_TYPE_OBJMAP:
+      case OBJ_TYPE_LIST:
+      case OBJ_TYPE_CHUNK_LIST:
+      case OBJ_TYPE_CHUNK_LIST_FIX_SIZE:
+        return true;
+      default:
+        return false;
+    }
+  }
+  /** `${obj_type}:${hex(obj_hash)}` form. */
+  toString() {
+    return `${this.objType}:${bytesToHex(this.objHash)}`;
+  }
+  toFilename() {
+    return `${bytesToHex(this.objHash)}.${this.objType}`;
+  }
+  toBase32() {
+    return base32Encode(this.toBytes());
+  }
+  toBytes() {
+    const typeBytes = utf8Encode(this.objType);
+    const out = new Uint8Array(typeBytes.length + 1 + this.objHash.length);
+    out.set(typeBytes, 0);
+    out[typeBytes.length] = 58;
+    out.set(this.objHash, typeBytes.length + 1);
+    return out;
+  }
+  /** Used for JSON.stringify -> serialized as the `${type}:${hex}` string. */
+  toJSON() {
+    return this.toString();
+  }
+  equals(other) {
+    if (this.objType !== other.objType)
+      return false;
+    if (this.objHash.length !== other.objHash.length)
+      return false;
+    for (let i2 = 0; i2 < this.objHash.length; i2++) {
+      if (this.objHash[i2] !== other.objHash[i2])
+        return false;
+    }
+    return true;
+  }
+}
+class ChunkId {
+  constructor(chunkType, hashResult) {
+    this.chunkType = chunkType;
+    this.hashResult = hashResult;
+  }
+  static defaultChunkType() {
+    return "mix256";
+  }
+  static fromString(s2) {
+    const objId = ObjId.fromString(s2);
+    if (!objId.isChunk()) {
+      throw new NdnError("InvalidId", `invalid chunk id: ${s2}`);
+    }
+    return new ChunkId(objId.objType, objId.objHash);
+  }
+  static fromObjId(objId) {
+    return new ChunkId(objId.objType, new Uint8Array(objId.objHash));
+  }
+  static fromBytes(bytes) {
+    const obj = ObjId.fromBytes(bytes);
+    return new ChunkId(obj.objType, obj.objHash);
+  }
+  /** Construct from raw hash result, no length encoding. */
+  static fromHashResult(hashResult, chunkType) {
+    return new ChunkId(chunkType, new Uint8Array(hashResult));
+  }
+  /** Construct mix-style ChunkId by prepending varint(length) to hash. */
+  static fromMixHashResult(dataLength, hashResult, chunkType) {
+    return new ChunkId(chunkType, ChunkId.mixLengthAndHashResult(dataLength, hashResult));
+  }
+  static fromMixHashResultByHashMethod(dataLength, hashResult, hashMethod) {
+    const chunkType = ChunkType.fromHashType(hashMethod, true);
+    return new ChunkId(chunkType, ChunkId.mixLengthAndHashResult(dataLength, hashResult));
+  }
+  static fromSha256Result(hashResult) {
+    return new ChunkId("sha256", new Uint8Array(hashResult));
+  }
+  static fromMix256Result(dataLength, hashResult) {
+    return new ChunkId("mix256", ChunkId.mixLengthAndHashResult(dataLength, hashResult));
+  }
+  static mixLengthAndHashResult(dataLength, hashResult) {
+    const lenBytes = varintEncode(dataLength);
+    const out = new Uint8Array(lenBytes.length + hashResult.length);
+    out.set(lenBytes, 0);
+    out.set(hashResult, lenBytes.length);
+    return out;
+  }
+  toObjId() {
+    return new ObjId(this.chunkType, new Uint8Array(this.hashResult));
+  }
+  toString() {
+    return `${this.chunkType}:${bytesToHex(this.hashResult)}`;
+  }
+  toBase32() {
+    const typeBytes = utf8Encode(this.chunkType);
+    const buf = new Uint8Array(typeBytes.length + 1 + this.hashResult.length);
+    buf.set(typeBytes, 0);
+    buf[typeBytes.length] = 58;
+    buf.set(this.hashResult, typeBytes.length + 1);
+    return base32Encode(buf);
+  }
+  toDidString() {
+    return `did:${this.chunkType}:${bytesToHex(this.hashResult)}`;
+  }
+  toBytes() {
+    return this.toObjId().toBytes();
+  }
+  toJSON() {
+    return this.toString();
+  }
+  /** For mix-* types, return the data length encoded in the prefix. */
+  getLength() {
+    if (this.hashResult.length === 0)
+      return null;
+    if (!ChunkType.isMix(this.chunkType))
+      return null;
+    try {
+      const [len] = varintDecode(this.hashResult, 0);
+      return len;
+    } catch {
+      return null;
+    }
+  }
+  equalsHash(hashBytes) {
+    if (this.hashResult.length !== hashBytes.length)
+      return false;
+    for (let i2 = 0; i2 < this.hashResult.length; i2++) {
+      if (this.hashResult[i2] !== hashBytes[i2])
+        return false;
+    }
+    return true;
+  }
+}
+class NamedObjectBase {
+  genObjId() {
+    return buildNamedObjectByJson(this.getObjType(), this.toJSON());
+  }
+}
+function buildObjId(objType, objJsonStr) {
+  const hash = sha256Utf8(objJsonStr);
+  return ObjId.fromRaw(objType, hash);
+}
+function buildNamedObjectByJson(objType, jsonValue) {
+  const jsonStr = toCanonicalJsonString(jsonValue);
+  const objId = buildObjId(objType, jsonStr);
+  return [objId, jsonStr];
+}
+function verifyNamedObject(objId, jsonValue) {
+  const [objId2] = buildNamedObjectByJson(objId.objType, jsonValue);
+  return objId.equals(objId2);
+}
+function verifyNamedObjectFromStr(objId, objStr) {
+  let parsed;
+  try {
+    parsed = JSON.parse(objStr);
+  } catch (e2) {
+    throw new NdnError("InvalidId", `failed to parse obj_str: ${e2.message}`);
+  }
+  if (!verifyNamedObject(objId, parsed)) {
+    throw new NdnError("InvalidId", `verify named object failed: ${objStr}`);
+  }
+  return parsed;
+}
+function loadNamedObjectFromObjStr(objStr) {
+  if (objStr.indexOf("{") >= 0) {
+    try {
+      return JSON.parse(objStr);
+    } catch (e2) {
+      throw new NdnError("InvalidId", `failed to parse obj_str: ${e2.message}`);
+    }
+  }
+  throw new NdnError(
+    "Unsupported",
+    "JWT-encoded named objects are not supported in this TypeScript port"
+  );
+}
+function loadNamedObj(objStr) {
+  return loadNamedObjectFromObjStr(objStr);
+}
+function loadNamedObjAndVerify(objId, objStr) {
+  const parsed = loadNamedObjectFromObjStr(objStr);
+  if (!verifyNamedObject(objId, parsed)) {
+    throw new NdnError("InvalidId", `verify named object failed for obj_id: ${objId.toString()}`);
+  }
+  return parsed;
+}
+function extractObjIdByPath(jsonValue, path) {
+  const parts = path.split("/").filter((p2) => p2.length > 0);
+  let cursor = jsonValue;
+  for (const p2 of parts) {
+    if (cursor == null) {
+      throw new NdnError("InvalidParam", `objid path not found: ${path}`);
+    }
+    if (Array.isArray(cursor)) {
+      const idx = Number(p2);
+      if (!Number.isInteger(idx) || idx < 0 || idx >= cursor.length) {
+        throw new NdnError("InvalidParam", `objid path not found: ${path}`);
+      }
+      cursor = cursor[idx];
+    } else if (typeof cursor === "object") {
+      if (!(p2 in cursor)) {
+        throw new NdnError("InvalidParam", `objid path not found: ${path}`);
+      }
+      cursor = cursor[p2];
+    } else {
+      throw new NdnError("InvalidParam", `objid path not found: ${path}`);
+    }
+  }
+  try {
+    return ObjId.fromValue(cursor);
+  } catch (e2) {
+    throw new NdnError("InvalidData", `invalid objid at path ${path}: ${e2.message}`);
+  }
+}
+class BaseContentObject {
+  constructor(fields = {}) {
+    this.did = fields.did ?? null;
+    this.name = fields.name ?? "";
+    this.author = fields.author ?? "";
+    this.owner = fields.owner ?? "";
+    this.create_time = fields.create_time ?? 0;
+    this.last_update_time = fields.last_update_time ?? 0;
+    this.copyright = fields.copyright ?? null;
+    this.tags = fields.tags ?? [];
+    this.categories = fields.categories ?? [];
+    this.base_on = fields.base_on ?? null;
+    this.directory = fields.directory ?? {};
+    this.references = fields.references ?? {};
+    this.exp = fields.exp ?? 0;
+  }
+  /** Build the JSON object using the same skip rules as Rust serde. */
+  toJSON() {
+    const out = {};
+    if (this.did != null)
+      out.did = this.did;
+    if (this.name.length > 0)
+      out.name = this.name;
+    if (this.author.length > 0)
+      out.author = this.author;
+    if (this.owner.length > 0)
+      out.owner = this.owner;
+    out.create_time = this.create_time;
+    out.last_update_time = this.last_update_time;
+    if (this.copyright != null)
+      out.copyright = this.copyright;
+    if (this.tags.length > 0)
+      out.tags = this.tags;
+    if (this.categories.length > 0)
+      out.categories = this.categories;
+    if (this.base_on != null)
+      out.base_on = this.base_on.toString();
+    if (Object.keys(this.directory).length > 0)
+      out.directory = this.directory;
+    if (Object.keys(this.references).length > 0)
+      out.references = this.references;
+    if (this.exp !== 0)
+      out.exp = this.exp;
+    return out;
+  }
+}
+function nowSeconds() {
+  return Math.floor(Date.now() / 1e3);
+}
+class FileObject extends NamedObjectBase {
+  constructor(name, size, content) {
+    super();
+    this.content_obj = new BaseContentObject({ name });
+    this.size = size;
+    this.content = content;
+    this.meta = {};
+  }
+  static fromJSON(value) {
+    const file = new FileObject("", 0, "");
+    const base = {};
+    const meta = {};
+    const baseKeys = /* @__PURE__ */ new Set([
+      "did",
+      "name",
+      "author",
+      "owner",
+      "create_time",
+      "last_update_time",
+      "copyright",
+      "tags",
+      "categories",
+      "base_on",
+      "directory",
+      "references",
+      "exp"
+    ]);
+    for (const [k2, v2] of Object.entries(value)) {
+      if (k2 === "size") {
+        file.size = v2 ?? 0;
+      } else if (k2 === "content") {
+        file.content = v2 ?? "";
+      } else if (baseKeys.has(k2)) {
+        if (k2 === "base_on" && typeof v2 === "string") {
+          base.base_on = ObjId.fromString(v2);
+        } else {
+          base[k2] = v2;
+        }
+      } else {
+        meta[k2] = v2;
+      }
+    }
+    file.content_obj = new BaseContentObject(base);
+    file.meta = meta;
+    return file;
+  }
+  getObjType() {
+    return OBJ_TYPE_FILE;
+  }
+  toJSON() {
+    const out = { ...this.content_obj.toJSON() };
+    if (this.size !== 0)
+      out.size = this.size;
+    if (this.content.length > 0)
+      out.content = this.content;
+    for (const [k2, v2] of Object.entries(this.meta)) {
+      out[k2] = v2;
+    }
+    return out;
+  }
+}
+class PathObject extends NamedObjectBase {
+  constructor(path, target, uptime, exp) {
+    super();
+    const now = nowSeconds();
+    this.path = path;
+    this.target = target;
+    this.uptime = uptime ?? now;
+    this.exp = exp ?? now + 3600 * 24 * 365 * 3;
+  }
+  static fromJSON(value) {
+    const path = String(value.path ?? "");
+    const target = ObjId.fromString(String(value.target ?? ""));
+    const uptime = Number(value.uptime ?? 0);
+    const exp = Number(value.exp ?? 0);
+    return new PathObject(path, target, uptime, exp);
+  }
+  getObjType() {
+    return OBJ_TYPE_PATH;
+  }
+  toJSON() {
+    return {
+      path: this.path,
+      uptime: this.uptime,
+      target: this.target.toString(),
+      exp: this.exp
+    };
+  }
+}
+class InclusionProof extends NamedObjectBase {
+  constructor(contentId, contentObj, curator, rank, collection) {
+    super();
+    const now = nowSeconds();
+    this.content_id = contentId.toString();
+    this.content_obj = contentObj;
+    this.curator = curator;
+    this.editor = [];
+    this.meta = null;
+    this.rank = rank;
+    this.collection = collection;
+    this.review_url = null;
+    this.iat = now;
+    this.exp = now + 3600 * 24 * 30 * 12;
+  }
+  /**
+   * Reconstruct an InclusionProof from its JSON form. The decode /
+   * re-encode round-trip (fromJSON followed by toJSON) must be
+   * byte-stable under canonical JSON, otherwise ObjId verification on a
+   * payload produced by the Rust reference impl would drift. That is
+   * exactly what the tests under `tests/ndn_types_cases.ts` pin down.
+   *
+   * Notes on the field mapping:
+   *   - `content_id` is passed through ObjId.fromString for validation,
+   *     then pinned back to the raw input string so any non-hex-canonical
+   *     forms survive the round-trip unchanged (the Rust side doesn't
+   *     renormalize on deserialization either).
+   *   - `iat` / `exp` must come from the payload, not from the
+   *     constructor's `nowSeconds()` defaults, or decoding an older
+   *     proof would silently rewrite its validity window.
+   */
+  static fromJSON(value) {
+    const proof = new InclusionProof(
+      ObjId.fromString(String(value.content_id ?? "")),
+      value.content_obj ?? null,
+      String(value.curator ?? ""),
+      Number(value.rank ?? 0),
+      Array.isArray(value.collection) ? value.collection.slice() : []
+    );
+    proof.content_id = String(value.content_id ?? "");
+    proof.editor = Array.isArray(value.editor) ? value.editor.slice() : [];
+    proof.meta = value.meta ?? null;
+    proof.review_url = typeof value.review_url === "string" ? value.review_url : null;
+    proof.iat = Number(value.iat ?? 0);
+    proof.exp = Number(value.exp ?? 0);
+    return proof;
+  }
+  getObjType() {
+    return OBJ_TYPE_INCLUSION_PROOF;
+  }
+  toJSON() {
+    const out = {
+      content_id: this.content_id,
+      content_obj: this.content_obj,
+      curator: this.curator,
+      editor: this.editor,
+      meta: this.meta,
+      rank: this.rank,
+      iat: this.iat,
+      exp: this.exp
+    };
+    if (this.collection.length > 0)
+      out.collection = this.collection;
+    if (this.review_url != null)
+      out.review_url = this.review_url;
+    return out;
+  }
+}
+const SimpleMapItem = {
+  fromObjId(objId) {
+    return { kind: "objId", objId };
+  },
+  fromObject(objType, obj) {
+    return { kind: "object", objType, obj };
+  },
+  fromObjectJwt(objType, jwt) {
+    return { kind: "objectJwt", objType, jwt };
+  },
+  getObjType(item) {
+    switch (item.kind) {
+      case "objId":
+        return item.objId.objType;
+      case "object":
+        return item.objType;
+      case "objectJwt":
+        return item.objType;
+    }
+  },
+  /** Compute (objId, optional inline obj-string) for this item. */
+  getObjId(item) {
+    switch (item.kind) {
+      case "objId":
+        return [item.objId, ""];
+      case "object":
+        return buildNamedObjectByJson(item.objType, item.obj);
+      case "objectJwt":
+        throw new NdnError(
+          "Unsupported",
+          "JWT-encoded SimpleMapItem requires JWT decoding (not implemented in TS port)"
+        );
+    }
+  },
+  toJSON(item) {
+    switch (item.kind) {
+      case "objId":
+        return item.objId.toString();
+      case "object":
+        return { obj_type: item.objType, body: item.obj };
+      case "objectJwt":
+        return { obj_type: item.objType, jwt: item.jwt };
+    }
+  },
+  fromJSON(value) {
+    if (typeof value === "string") {
+      return { kind: "objId", objId: ObjId.fromString(value) };
+    }
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      const v2 = value;
+      const objType = v2.obj_type;
+      if (typeof objType !== "string") {
+        throw new NdnError("InvalidData", "SimpleMapItem must have obj_type field");
+      }
+      if (typeof v2.jwt === "string") {
+        return { kind: "objectJwt", objType, jwt: v2.jwt };
+      }
+      if ("body" in v2) {
+        return { kind: "object", objType, obj: v2.body };
+      }
+      throw new NdnError("InvalidData", "SimpleMapItem must have body or jwt field");
+    }
+    throw new NdnError("InvalidData", "SimpleMapItem must be string or object");
+  }
+};
+class SimpleObjectMap {
+  constructor() {
+    this.body = /* @__PURE__ */ new Map();
+  }
+  static fromJSON(value) {
+    const map = new SimpleObjectMap();
+    if (!value || typeof value !== "object") {
+      throw new NdnError("InvalidData", "SimpleObjectMap must be an object");
+    }
+    const root = value;
+    const body = root.body;
+    if (body == null)
+      return map;
+    if (typeof body !== "object" || Array.isArray(body)) {
+      throw new NdnError("InvalidData", "SimpleObjectMap.body must be an object");
+    }
+    for (const [k2, v2] of Object.entries(body)) {
+      map.body.set(k2, SimpleMapItem.fromJSON(v2));
+    }
+    return map;
+  }
+  /**
+   * Resolve every entry to its ObjId string and merge it into `realObj` as
+   * the `body` field, then derive a NamedObject ObjId. Matches
+   * SimpleObjectMap::gen_obj_id_with_real_obj() in Rust.
+   */
+  genObjIdWithRealObj(resultObjType, realObj) {
+    const realMap = {};
+    for (const [k2, v2] of this.body) {
+      const [subId] = SimpleMapItem.getObjId(v2);
+      realMap[k2] = subId.toString();
+    }
+    realObj.body = realMap;
+    return buildNamedObjectByJson(resultObjType, realObj);
+  }
+  get size() {
+    return this.body.size;
+  }
+  isEmpty() {
+    return this.body.size === 0;
+  }
+  get(key) {
+    return this.body.get(key);
+  }
+  set(key, value) {
+    this.body.set(key, value);
+  }
+  delete(key) {
+    return this.body.delete(key);
+  }
+  has(key) {
+    return this.body.has(key);
+  }
+  keys() {
+    return this.body.keys();
+  }
+  values() {
+    return this.body.values();
+  }
+  entries() {
+    return this.body.entries();
+  }
+  /** Serialize to wire JSON (matches Rust SimpleObjectMap serde). */
+  toJSON() {
+    const body = {};
+    for (const [k2, v2] of this.body) {
+      body[k2] = SimpleMapItem.toJSON(v2);
+    }
+    return { body };
+  }
+}
+class DirObject extends NamedObjectBase {
+  constructor(name) {
+    super();
+    this.content_obj = name != null ? new BaseContentObject({ name }) : new BaseContentObject();
+    this.meta = {};
+    this.total_size = 0;
+    this.file_count = 0;
+    this.file_size = 0;
+    this.object_map = new SimpleObjectMap();
+  }
+  static fromJSON(value) {
+    const dir = new DirObject();
+    const baseKeys = /* @__PURE__ */ new Set([
+      "did",
+      "name",
+      "author",
+      "owner",
+      "create_time",
+      "last_update_time",
+      "copyright",
+      "tags",
+      "categories",
+      "base_on",
+      "directory",
+      "references",
+      "exp"
+    ]);
+    const baseFields = {};
+    for (const [k2, v2] of Object.entries(value)) {
+      if (k2 === "meta") {
+        dir.meta = v2 ?? {};
+      } else if (k2 === "total_size") {
+        dir.total_size = Number(v2 ?? 0);
+      } else if (k2 === "file_count") {
+        dir.file_count = Number(v2 ?? 0);
+      } else if (k2 === "file_size") {
+        dir.file_size = Number(v2 ?? 0);
+      } else if (k2 === "body") {
+        const body = v2;
+        if (body) {
+          for (const [name, item] of Object.entries(body)) {
+            dir.object_map.set(name, SimpleMapItem.fromJSON(item));
+          }
+        }
+      } else if (baseKeys.has(k2)) {
+        if (k2 === "base_on" && typeof v2 === "string") {
+          baseFields.base_on = ObjId.fromString(v2);
+        } else {
+          baseFields[k2] = v2;
+        }
+      }
+    }
+    dir.content_obj = new BaseContentObject(baseFields);
+    return dir;
+  }
+  getObjType() {
+    return OBJ_TYPE_DIR;
+  }
+  /** JSON form (with raw `body`) - useful for storage / debug. */
+  toJSON() {
+    const out = { ...this.content_obj.toJSON() };
+    if (Object.keys(this.meta).length > 0)
+      out.meta = this.meta;
+    out.total_size = this.total_size;
+    out.file_count = this.file_count;
+    out.file_size = this.file_size;
+    out.body = this.object_map.toJSON().body;
+    return out;
+  }
+  /**
+   * DirObject's ObjId is derived from a JSON form whose `body` field is a
+   * `name -> objIdString` map (children are reduced to ObjIds first).
+   * Matches DirObject::gen_obj_id() in Rust.
+   */
+  genObjId() {
+    const realObj = { ...this.content_obj.toJSON() };
+    realObj.total_size = this.total_size;
+    realObj.file_count = this.file_count;
+    realObj.file_size = this.file_size;
+    return this.object_map.genObjIdWithRealObj(OBJ_TYPE_DIR, realObj);
+  }
+  get size() {
+    return this.object_map.size;
+  }
+  isEmpty() {
+    return this.object_map.isEmpty();
+  }
+  get(key) {
+    return this.object_map.get(key);
+  }
+  delete(key) {
+    return this.object_map.delete(key);
+  }
+  has(key) {
+    return this.object_map.has(key);
+  }
+  keys() {
+    return this.object_map.keys();
+  }
+  values() {
+    return this.object_map.values();
+  }
+  entries() {
+    return this.object_map.entries();
+  }
+  addFile(name, fileObj, fileSize) {
+    this.file_size += fileSize;
+    this.file_count += 1;
+    this.total_size += fileSize;
+    this.object_map.set(name, SimpleMapItem.fromObject(OBJ_TYPE_FILE, fileObj));
+  }
+  addDirectory(name, dirObjId, dirSize) {
+    if (dirObjId.objType !== OBJ_TYPE_DIR) {
+      throw new NdnError("InvalidParam", "dir_obj_id is not a directory");
+    }
+    this.total_size += dirSize;
+    this.object_map.set(name, SimpleMapItem.fromObjId(dirObjId));
+  }
+  listEntries() {
+    return Array.from(this.object_map.keys());
+  }
+  isFile(name) {
+    const item = this.object_map.get(name);
+    if (!item)
+      return false;
+    return item.kind === "object" && item.objType === OBJ_TYPE_FILE;
+  }
+  isDirectory(name) {
+    const item = this.object_map.get(name);
+    if (!item)
+      return false;
+    switch (item.kind) {
+      case "objId":
+        return item.objId.objType === OBJ_TYPE_DIR;
+      case "objectJwt":
+        return item.objType === OBJ_TYPE_DIR;
+      default:
+        return false;
+    }
+  }
+}
+class SimpleChunkList {
+  constructor() {
+    this.total_size = 0;
+    this.body = [];
+  }
+  static fromChunkList(chunks) {
+    const list = new SimpleChunkList();
+    for (const c2 of chunks) {
+      const len = c2.getLength();
+      if (len == null) {
+        throw new NdnError("InvalidParam", "get chunk length from chunkid failed");
+      }
+      list.total_size += len;
+    }
+    list.body = chunks.slice();
+    return list;
+  }
+  static fromJson(objStr) {
+    let parsed;
+    try {
+      parsed = JSON.parse(objStr);
+    } catch (e2) {
+      throw new NdnError(
+        "InvalidParam",
+        `parse chunk list from json failed: ${e2.message}`
+      );
+    }
+    return SimpleChunkList.fromJsonValue(parsed);
+  }
+  static fromJsonValue(value) {
+    if (!Array.isArray(value)) {
+      throw new NdnError("InvalidParam", "chunk list must be a JSON array");
+    }
+    const chunks = value.map((item) => {
+      if (typeof item !== "string") {
+        throw new NdnError("InvalidParam", "chunk list item must be a string");
+      }
+      return ChunkId.fromString(item);
+    });
+    return SimpleChunkList.fromChunkList(chunks);
+  }
+  appendChunk(chunkId) {
+    const len = chunkId.getLength();
+    if (len == null) {
+      throw new NdnError("InvalidParam", "get chunk length from chunkid failed");
+    }
+    this.body.push(chunkId);
+    this.total_size += len;
+  }
+  /**
+   * Mirrors SimpleChunkList::gen_obj_id(): hash the JSON list of ChunkId
+   * strings, then prefix the resulting hash bytes with varint(total_size)
+   * to form the final ObjId.
+   */
+  genObjId() {
+    const bodyJson = this.body.map((c2) => c2.toString());
+    const [innerObjId, objStr] = buildNamedObjectByJson(
+      OBJ_TYPE_CHUNK_LIST_SIMPLE,
+      bodyJson
+    );
+    const mixed = ChunkId.mixLengthAndHashResult(this.total_size, innerObjId.objHash);
+    const resultId = ObjId.fromRaw(OBJ_TYPE_CHUNK_LIST_SIMPLE, mixed);
+    return [resultId, objStr];
+  }
+}
+class RelationObject extends NamedObjectBase {
+  constructor(source, relation, target, body = {}) {
+    super();
+    this.source = source;
+    this.relation = relation;
+    this.target = target;
+    this.body = body;
+    this.iat = null;
+    this.exp = null;
+  }
+  /**
+   * Reconstruct a RelationObject from its JSON form. `source`, `relation`,
+   * `target`, `iat` and `exp` are reserved top-level fields; every other
+   * key lands back in `body` (matching what `toJSON` spreads out), so the
+   * decode → re-encode round-trip is byte-stable under canonical JSON
+   * for any shape the TS class is capable of emitting.
+   */
+  static fromJSON(value) {
+    const reserved = /* @__PURE__ */ new Set(["source", "relation", "target", "iat", "exp"]);
+    const body = {};
+    for (const [k2, v2] of Object.entries(value)) {
+      if (!reserved.has(k2))
+        body[k2] = v2;
+    }
+    const rel = new RelationObject(
+      ObjId.fromString(String(value.source ?? "")),
+      String(value.relation ?? ""),
+      ObjId.fromString(String(value.target ?? "")),
+      body
+    );
+    rel.iat = typeof value.iat === "number" ? value.iat : null;
+    rel.exp = typeof value.exp === "number" ? value.exp : null;
+    return rel;
+  }
+  static createByLinkData(source, link) {
+    switch (link.kind) {
+      case "sameAs":
+        return new RelationObject(source, RELATION_TYPE_SAME, link.target);
+      case "partOf":
+        return new RelationObject(
+          source,
+          RELATION_TYPE_PART_OF,
+          link.target,
+          { range: { start: link.range.start, end: link.range.end } }
+        );
+    }
+  }
+  getLinkData() {
+    switch (this.relation) {
+      case RELATION_TYPE_SAME:
+        return { kind: "sameAs", target: this.target };
+      case RELATION_TYPE_PART_OF: {
+        const range = this.body.range;
+        if (!range || typeof range.start !== "number" || typeof range.end !== "number") {
+          throw new NdnError(
+            "InvalidLink",
+            `invalid range: ${JSON.stringify(this.body.range)}`
+          );
+        }
+        return {
+          kind: "partOf",
+          target: this.target,
+          range: { start: range.start, end: range.end }
+        };
+      }
+      default:
+        throw new NdnError("InvalidLink", `invalid relation: ${this.relation}`);
+    }
+  }
+  getObjType() {
+    return OBJ_TYPE_RELATION;
+  }
+  toJSON() {
+    const out = {
+      source: this.source.toString(),
+      relation: this.relation,
+      target: this.target.toString()
+    };
+    for (const [k2, v2] of Object.entries(this.body)) {
+      out[k2] = v2;
+    }
+    if (this.iat != null)
+      out.iat = this.iat;
+    if (this.exp != null)
+      out.exp = this.exp;
+    return out;
+  }
+}
+const KnownStandardObject = {
+  fromObjData(objId, objData) {
+    switch (objId.objType) {
+      case OBJ_TYPE_DIR: {
+        let parsed;
+        try {
+          parsed = JSON.parse(objData);
+        } catch (e2) {
+          throw new NdnError(
+            "InvalidParam",
+            `parse dir object from json failed: ${e2.message}`
+          );
+        }
+        return {
+          kind: "dir",
+          obj: DirObject.fromJSON(parsed),
+          objStr: objData
+        };
+      }
+      case OBJ_TYPE_FILE: {
+        let parsed;
+        try {
+          parsed = JSON.parse(objData);
+        } catch (e2) {
+          throw new NdnError(
+            "InvalidParam",
+            `parse file object from json failed: ${e2.message}`
+          );
+        }
+        return {
+          kind: "file",
+          obj: FileObject.fromJSON(parsed),
+          objStr: objData
+        };
+      }
+      case OBJ_TYPE_CHUNK_LIST_SIMPLE: {
+        return {
+          kind: "chunkList",
+          obj: SimpleChunkList.fromJson(objData),
+          objStr: objData
+        };
+      }
+      default:
+        throw new NdnError("InvalidParam", `Unknown object type: ${objId.objType}`);
+    }
+  },
+  /** Return ObjIds (and optional inline obj-string) for the children. */
+  getChildObjs(known) {
+    switch (known.kind) {
+      case "dir": {
+        const out = [];
+        for (const [, item] of known.obj.entries()) {
+          const [objId, objStr] = SimpleMapItem.getObjId(item);
+          out.push({ objId, objStr: objStr.length > 0 ? objStr : null });
+        }
+        return out;
+      }
+      case "file": {
+        if (known.obj.content.length === 0)
+          return [];
+        return [{ objId: ObjId.fromString(known.obj.content), objStr: null }];
+      }
+      case "chunkList":
+        return known.obj.body.map((c2) => ({ objId: c2.toObjId(), objStr: null }));
+    }
+  }
+};
+const _textEncoder = typeof TextEncoder !== "undefined" ? new TextEncoder() : null;
+const _textDecoder = typeof TextDecoder !== "undefined" ? new TextDecoder("utf-8") : null;
+function utf8Encode(s2) {
+  if (_textEncoder)
+    return _textEncoder.encode(s2);
+  const out = [];
+  for (let i2 = 0; i2 < s2.length; i2++) {
+    let c2 = s2.charCodeAt(i2);
+    if (c2 < 128) {
+      out.push(c2);
+    } else if (c2 < 2048) {
+      out.push(192 | c2 >> 6, 128 | c2 & 63);
+    } else if (c2 >= 55296 && c2 <= 56319 && i2 + 1 < s2.length) {
+      const c22 = s2.charCodeAt(++i2);
+      const cp = 65536 + ((c2 & 1023) << 10 | c22 & 1023);
+      out.push(
+        240 | cp >> 18,
+        128 | cp >> 12 & 63,
+        128 | cp >> 6 & 63,
+        128 | cp & 63
+      );
+    } else {
+      out.push(224 | c2 >> 12, 128 | c2 >> 6 & 63, 128 | c2 & 63);
+    }
+  }
+  return new Uint8Array(out);
+}
+function utf8Decode(bytes) {
+  if (_textDecoder)
+    return _textDecoder.decode(bytes);
+  let s2 = "";
+  let i2 = 0;
+  while (i2 < bytes.length) {
+    const b2 = bytes[i2++];
+    if (b2 < 128) {
+      s2 += String.fromCharCode(b2);
+    } else if (b2 < 224) {
+      s2 += String.fromCharCode((b2 & 31) << 6 | bytes[i2++] & 63);
+    } else if (b2 < 240) {
+      s2 += String.fromCharCode(
+        (b2 & 15) << 12 | (bytes[i2++] & 63) << 6 | bytes[i2++] & 63
+      );
+    } else {
+      const cp = (b2 & 7) << 18 | (bytes[i2++] & 63) << 12 | (bytes[i2++] & 63) << 6 | bytes[i2++] & 63;
+      const u2 = cp - 65536;
+      s2 += String.fromCharCode(55296 + (u2 >> 10), 56320 + (u2 & 1023));
+    }
+  }
+  return s2;
+}
+const ndn_types = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
+  __proto__: null,
+  BaseContentObject,
+  ChunkId,
+  ChunkType,
+  DEFAULT_HASH_METHOD,
+  DirObject,
+  FileObject,
+  HashMethod,
+  InclusionProof,
+  KnownStandardObject,
+  NamedObjectBase,
+  NdnError,
+  OBJ_TYPE_ACTION,
+  OBJ_TYPE_CHUNK_LIST,
+  OBJ_TYPE_CHUNK_LIST_FIX_SIZE,
+  OBJ_TYPE_CHUNK_LIST_SIMPLE,
+  OBJ_TYPE_CHUNK_LIST_SIMPLE_FIX_SIZE,
+  OBJ_TYPE_DIR,
+  OBJ_TYPE_FILE,
+  OBJ_TYPE_INCLUSION_PROOF,
+  OBJ_TYPE_LIST,
+  OBJ_TYPE_LIST_SIMPLE,
+  OBJ_TYPE_MSG,
+  OBJ_TYPE_MSG_RECE,
+  OBJ_TYPE_OBJMAP,
+  OBJ_TYPE_OBJMAP_SIMPLE,
+  OBJ_TYPE_PACK,
+  OBJ_TYPE_PATH,
+  OBJ_TYPE_PKG,
+  OBJ_TYPE_RELATION,
+  OBJ_TYPE_TRIE,
+  OBJ_TYPE_TRIE_SIMPLE,
+  ObjId,
+  PathObject,
+  RELATION_TYPE_PART_OF,
+  RELATION_TYPE_SAME,
+  RelationObject,
+  SimpleChunkList,
+  SimpleMapItem,
+  SimpleObjectMap,
+  base32Decode,
+  base32Encode,
+  buildNamedObjectByJson,
+  buildObjId,
+  bytesToHex,
+  canonicalizeJson,
+  extractObjIdByPath,
+  hexToBytes,
+  loadNamedObj,
+  loadNamedObjAndVerify,
+  loadNamedObjectFromObjStr,
+  sha256Bytes,
+  sha256Utf8,
+  toCanonicalJsonString,
+  varintDecode,
+  varintEncode,
+  verifyNamedObject,
+  verifyNamedObjectFromStr
+}, Symbol.toStringTag, { value: "Module" }));
+class NdmError extends Error {
+  constructor(code, message) {
+    super(message ?? code);
+    this.code = code;
+    this.name = "NdmError";
+  }
+}
+const DEFAULT_CHUNK_SIZE = 4 * 1024 * 1024;
+const sessionRegistry = /* @__PURE__ */ new Map();
+let sessionCounter = 0;
+function generateSessionId() {
+  sessionCounter += 1;
+  return `import-${Date.now()}-${sessionCounter}`;
+}
+const browserProvider = {
+  getCapabilities() {
+    return {
+      canRevealRealPath: false,
+      canUseNDMCache: false,
+      canUseNDMStore: false,
+      canPickDirectory: typeof HTMLInputElement !== "undefined" && "webkitdirectory" in HTMLInputElement.prototype,
+      canPickMixed: false
+    };
+  },
+  pickFiles(options) {
+    return new Promise((resolve, reject) => {
+      const input = document.createElement("input");
+      input.type = "file";
+      if (options.mode === "single_dir") {
+        if (!this.getCapabilities().canPickDirectory) {
+          reject(new NdmError("DIRECTORY_NOT_SUPPORTED", "This browser does not support directory selection"));
+          return;
+        }
+        input.webkitdirectory = true;
+      } else if (options.mode === "multi_file" || options.mode === "mixed") {
+        input.multiple = true;
+      }
+      if (options.accept && options.accept.length > 0 && options.mode !== "single_dir") {
+        input.accept = options.accept.join(",");
+      }
+      let settled = false;
+      input.addEventListener("change", () => {
+        if (settled)
+          return;
+        settled = true;
+        const files = input.files;
+        if (!files || files.length === 0) {
+          reject(new NdmError("USER_CANCELLED", "No files selected"));
+          return;
+        }
+        resolve(Array.from(files));
+      });
+      const onFocus = () => {
+        setTimeout(() => {
+          if (!settled) {
+            settled = true;
+            reject(new NdmError("USER_CANCELLED", "User cancelled file selection"));
+          }
+          window.removeEventListener("focus", onFocus);
+        }, 500);
+      };
+      window.addEventListener("focus", onFocus);
+      input.click();
+    });
+  }
+};
+let currentProvider = browserProvider;
+function setImportProvider(provider) {
+  currentProvider = provider;
+}
+function getImportProvider() {
+  return currentProvider;
+}
+async function materializeFile(file, chunkSize = DEFAULT_CHUNK_SIZE) {
+  const fileSize = file.size;
+  const chunks = [];
+  if (fileSize <= chunkSize) {
+    const buf = new Uint8Array(await file.arrayBuffer());
+    const hash = sha256Bytes(buf);
+    const chunkId = ChunkId.fromMix256Result(buf.length, hash);
+    const chunkIdStr = chunkId.toString();
+    chunks.push({ chunkId: chunkIdStr, offset: 0, length: buf.length, uploaded: false });
+    const fileObj2 = new FileObject(file.name, fileSize, chunkIdStr);
+    const [objId2] = fileObj2.genObjId();
+    return { objectId: objId2.toString(), chunks };
+  }
+  const chunkList = new SimpleChunkList();
+  let offset = 0;
+  while (offset < fileSize) {
+    const end = Math.min(offset + chunkSize, fileSize);
+    const slice = new Uint8Array(await file.slice(offset, end).arrayBuffer());
+    const hash = sha256Bytes(slice);
+    const chunkId = ChunkId.fromMix256Result(slice.length, hash);
+    chunkList.appendChunk(chunkId);
+    chunks.push({ chunkId: chunkId.toString(), offset, length: slice.length, uploaded: false });
+    offset = end;
+  }
+  const [chunkListObjId] = chunkList.genObjId();
+  const fileObj = new FileObject(file.name, fileSize, chunkListObjId.toString());
+  const [objId] = fileObj.genObjId();
+  return { objectId: objId.toString(), chunks };
+}
+function buildDirTree(files, fileObjects) {
+  const firstPath = files[0].webkitRelativePath;
+  const rootName = firstPath ? firstPath.split("/")[0] : "directory";
+  const root = {
+    kind: "dir",
+    objectId: "",
+    // will be computed later
+    name: rootName,
+    children: []
+  };
+  const dirMap = /* @__PURE__ */ new Map();
+  dirMap.set("", root);
+  for (const fileObj of fileObjects) {
+    const relPath = fileObj.relativePath ?? fileObj.name;
+    const parts = relPath.split("/");
+    const pathParts = parts.length > 1 ? parts.slice(1) : parts;
+    let currentDir = root;
+    for (let i2 = 0; i2 < pathParts.length - 1; i2++) {
+      const dirName = pathParts[i2];
+      const dirPath = pathParts.slice(0, i2 + 1).join("/");
+      let dir = dirMap.get(dirPath);
+      if (!dir) {
+        dir = {
+          kind: "dir",
+          objectId: "",
+          name: dirName,
+          relativePath: dirPath,
+          children: []
+        };
+        dirMap.set(dirPath, dir);
+        currentDir.children.push(dir);
+      }
+      currentDir = dir;
+    }
+    currentDir.children.push(fileObj);
+  }
+  computeDirObjectIds(root);
+  return root;
+}
+function computeDirObjectIds(dir) {
+  const ndnDir = new DirObject(dir.name);
+  if (dir.children) {
+    for (const child of dir.children) {
+      if (child.kind === "file") {
+        const fileObj = new FileObject(child.name, child.size, "");
+        ndnDir.addFile(child.name, fileObj.toJSON(), child.size);
+      } else {
+        const childObjId = computeDirObjectIds(child);
+        ndnDir.addDirectory(child.name, ObjId.fromString(childObjId), 0);
+      }
+    }
+  }
+  const [objId] = ndnDir.genObjId();
+  dir.objectId = objId.toString();
+  return dir.objectId;
+}
+function shouldGenerateThumbnail(file, options) {
+  if (!options || !options.enabled)
+    return false;
+  if (!options.forTypes || options.forTypes.length === 0) {
+    return file.type.startsWith("image/");
+  }
+  for (const filter of options.forTypes) {
+    if (filter.endsWith("/*")) {
+      const prefix = filter.slice(0, -1);
+      if (file.type.startsWith(prefix))
+        return true;
+    } else if (filter.startsWith(".")) {
+      if (file.name.toLowerCase().endsWith(filter.toLowerCase()))
+        return true;
+    } else {
+      if (file.type === filter)
+        return true;
+    }
+  }
+  return false;
+}
+async function generateThumbnail(file, options) {
+  const maxWidth = options.maxWidth ?? 256;
+  const maxHeight = options.maxHeight ?? 256;
+  try {
+    if (file.type.startsWith("image/")) {
+      return await generateImageThumbnail(file, maxWidth, maxHeight);
+    }
+    return { available: false, errorCode: "UNSUPPORTED_TYPE" };
+  } catch {
+    return { available: false, errorCode: "THUMBNAIL_GENERATION_FAILED" };
+  }
+}
+function generateImageThumbnail(file, maxWidth, maxHeight) {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      let w2 = img.naturalWidth;
+      let h2 = img.naturalHeight;
+      if (w2 > maxWidth || h2 > maxHeight) {
+        const scale = Math.min(maxWidth / w2, maxHeight / h2);
+        w2 = Math.round(w2 * scale);
+        h2 = Math.round(h2 * scale);
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = w2;
+      canvas.height = h2;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0, w2, h2);
+      const thumbUrl = canvas.toDataURL("image/jpeg", 0.8);
+      URL.revokeObjectURL(url);
+      resolve({ available: true, url: thumbUrl, width: w2, height: h2, mimeType: "image/jpeg" });
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve({ available: false, errorCode: "THUMBNAIL_GENERATION_FAILED" });
+    };
+    img.src = url;
+  });
+}
+function collectSummary(items) {
+  let totalFiles = 0;
+  let totalDirs = 0;
+  let totalBytes = 0;
+  function walk(list) {
+    for (const item of list) {
+      if (item.kind === "file") {
+        totalFiles++;
+        totalBytes += item.size;
+      } else {
+        totalDirs++;
+        if (item.children)
+          walk(item.children);
+      }
+    }
+  }
+  walk(items);
+  return { totalObjects: totalFiles + totalDirs, totalFiles, totalDirs, totalBytes };
+}
+async function pickupAndImport(options) {
+  var _a;
+  const caps = currentProvider.getCapabilities();
+  if (options.mode === "single_dir" && !caps.canPickDirectory) {
+    throw new NdmError("DIRECTORY_NOT_SUPPORTED", "Current runtime does not support directory selection");
+  }
+  if (options.mode === "mixed" && !caps.canPickMixed) {
+    throw new NdmError("MODE_NOT_SUPPORTED_IN_RUNTIME", "Current runtime does not support mixed file/directory selection");
+  }
+  const files = await currentProvider.pickFiles(options);
+  if (files.length === 0) {
+    throw new NdmError("USER_CANCELLED", "No files selected");
+  }
+  const fileObjects = [];
+  const objectStates = /* @__PURE__ */ new Map();
+  for (const file of files) {
+    const relativePath = file.webkitRelativePath || void 0;
+    const { objectId, chunks } = await materializeFile(file);
+    const imported = {
+      kind: "file",
+      objectId,
+      name: file.name,
+      size: file.size,
+      mimeType: file.type || void 0,
+      relativePath,
+      locality: "local_only",
+      _file: file
+    };
+    if (shouldGenerateThumbnail(file, options.thumbnails)) {
+      const eager = ((_a = options.thumbnails) == null ? void 0 : _a.eager) !== false;
+      if (eager) {
+        imported.thumbnail = await generateThumbnail(file, options.thumbnails);
+      } else {
+        imported.thumbnail = { available: false };
+        generateThumbnail(file, options.thumbnails).then((result) => {
+          imported.thumbnail = result;
+        });
+      }
+    }
+    fileObjects.push(imported);
+    objectStates.set(objectId, {
+      objectId,
+      name: file.name,
+      size: file.size,
+      file,
+      uploadedBytes: 0,
+      state: "pending",
+      chunks
+    });
+  }
+  let items;
+  let selection;
+  if (options.mode === "single_dir") {
+    const dirObj = buildDirTree(files, fileObjects);
+    items = [dirObj];
+    selection = dirObj;
+  } else {
+    items = fileObjects;
+    if (options.mode === "single_file") {
+      selection = fileObjects[0];
+    } else {
+      selection = fileObjects;
+    }
+  }
+  const summary = collectSummary(items);
+  const sessionId = generateSessionId();
+  let materializationStatus = "ok";
+  if (caps.canUseNDMStore) {
+    materializationStatus = "all_in_store";
+  } else if (caps.canUseNDMCache) {
+    materializationStatus = "on_cache";
+  }
+  const uploadStatus = materializationStatus === "all_in_store" ? "not_required" : "not_started";
+  const session = {
+    sessionId,
+    items,
+    materializationStatus,
+    uploadStatus,
+    summary,
+    objectStates
+  };
+  sessionRegistry.set(sessionId, session);
+  const snapshot = {
+    sessionId,
+    selection,
+    items,
+    materializationStatus,
+    uploadStatus,
+    summary
+  };
+  if (options.autoStartUpload && uploadStatus === "not_started") {
+    startUpload(sessionId).catch(() => {
+    });
+    snapshot.uploadStatus = "uploading";
+  }
+  return snapshot;
+}
+async function getImportSessionStatus(sessionId) {
+  const session = sessionRegistry.get(sessionId);
+  if (!session) {
+    throw new NdmError("SESSION_NOT_FOUND", `Session ${sessionId} not found`);
+  }
+  const perObjectProgress = {};
+  let uploadedBytes = 0;
+  let uploadedObjects = 0;
+  for (const [id, state] of session.objectStates) {
+    perObjectProgress[id] = {
+      objectId: state.objectId,
+      uploadedBytes: state.uploadedBytes,
+      totalBytes: state.size,
+      state: state.state
+    };
+    uploadedBytes += state.uploadedBytes;
+    if (state.state === "completed")
+      uploadedObjects++;
+  }
+  return {
+    sessionId,
+    materializationStatus: session.materializationStatus,
+    uploadStatus: session.uploadStatus,
+    summary: session.summary,
+    progress: {
+      uploadedBytes,
+      uploadedObjects,
+      totalBytes: session.summary.totalBytes,
+      totalObjects: session.summary.totalFiles
+    },
+    perObjectProgress
+  };
+}
+async function getUploadProgress(sessionId) {
+  const status = await getImportSessionStatus(sessionId);
+  const result = {
+    sessionId,
+    uploadStatus: status.uploadStatus,
+    totalBytes: status.progress.totalBytes,
+    uploadedBytes: status.progress.uploadedBytes,
+    totalObjects: status.progress.totalObjects,
+    uploadedObjects: status.progress.uploadedObjects,
+    perObjectProgress: status.perObjectProgress
+  };
+  const session = sessionRegistry.get(sessionId);
+  if (session.uploadStartTime && status.uploadStatus === "uploading") {
+    result.elapsedMs = Date.now() - session.uploadStartTime;
+    if (result.uploadedBytes > 0 && result.elapsedMs > 0) {
+      result.speedBps = Math.round(result.uploadedBytes * 1e3 / result.elapsedMs);
+      const remaining = result.totalBytes - result.uploadedBytes;
+      result.estimatedRemainingMs = Math.round(remaining * 1e3 / result.speedBps);
+    }
+  }
+  return result;
+}
+async function uploadChunkViaTus(endpoint, file, chunkInfo, appId, logicalPath, fileHash, onProgress, signal) {
+  const slice = file.slice(chunkInfo.offset, chunkInfo.offset + chunkInfo.length);
+  const chunkData = new Uint8Array(await slice.arrayBuffer());
+  let tus;
+  try {
+    tus = await import("./index-abe54758.mjs");
+  } catch {
+  }
+  if (tus != null) {
+    const tusModule = tus;
+    return new Promise((resolve, reject) => {
+      if (signal == null ? void 0 : signal.aborted) {
+        reject(new NdmError("UPLOAD_FAILED", "Upload aborted"));
+        return;
+      }
+      const blob = new Blob([chunkData]);
+      const upload = new tusModule.Upload(blob, {
+        endpoint: `${endpoint}/ndm/v1/uploads`,
+        chunkSize: chunkData.length,
+        retryDelays: [0, 1e3, 3e3, 5e3],
+        metadata: {
+          app_id: appId,
+          logical_path: logicalPath,
+          chunk_index: "0",
+          file_hash: fileHash
+        },
+        onProgress: (bytesUploaded) => {
+          onProgress(bytesUploaded);
+        },
+        onSuccess: () => {
+          onProgress(chunkData.length);
+          resolve(chunkInfo.chunkId);
+        },
+        onError: (error) => {
+          reject(new NdmError("UPLOAD_FAILED", error.message));
+        }
+      });
+      if (signal) {
+        signal.addEventListener("abort", () => {
+          upload.abort(true);
+          reject(new NdmError("UPLOAD_FAILED", "Upload aborted"));
+        });
+      }
+      upload.start();
+    });
+  }
+  return await manualTusUpload(endpoint, chunkData, chunkInfo, appId, logicalPath, fileHash, onProgress, signal);
+}
+async function manualTusUpload(endpoint, chunkData, chunkInfo, appId, logicalPath, fileHash, onProgress, signal) {
+  var _a, _b, _c, _d, _e, _f;
+  const tusResumable = "1.0.0";
+  const metadata = `app_id=${appId},logical_path=${logicalPath},chunk_index=0,file_hash=${fileHash}`;
+  const createResp = await fetch(`${endpoint}/ndm/v1/uploads`, {
+    method: "POST",
+    headers: {
+      "tus-resumable": tusResumable,
+      "upload-length": String(chunkData.length),
+      "upload-metadata": metadata
+    },
+    signal
+  });
+  if (createResp.status !== 201 && createResp.status !== 200) {
+    await ((_a = createResp.body) == null ? void 0 : _a.cancel());
+    throw new NdmError("UPLOAD_FAILED", `TUS create failed with status ${createResp.status}`);
+  }
+  const location = createResp.headers.get("location");
+  if (!location) {
+    await ((_b = createResp.body) == null ? void 0 : _b.cancel());
+    throw new NdmError("UPLOAD_FAILED", "TUS create did not return location header");
+  }
+  await ((_c = createResp.body) == null ? void 0 : _c.cancel());
+  const headResp = await fetch(`${endpoint}${location}`, {
+    method: "HEAD",
+    headers: { "tus-resumable": tusResumable },
+    signal
+  });
+  const currentOffset = parseInt(headResp.headers.get("upload-offset") ?? "0", 10);
+  await ((_d = headResp.body) == null ? void 0 : _d.cancel());
+  if (currentOffset >= chunkData.length) {
+    onProgress(chunkData.length);
+    return chunkInfo.chunkId;
+  }
+  const patchResp = await fetch(`${endpoint}${location}`, {
+    method: "PATCH",
+    headers: {
+      "tus-resumable": tusResumable,
+      "upload-offset": String(currentOffset),
+      "content-type": "application/offset+octet-stream"
+    },
+    body: chunkData.slice(currentOffset),
+    signal
+  });
+  if (patchResp.status !== 204) {
+    await ((_e = patchResp.body) == null ? void 0 : _e.cancel());
+    throw new NdmError("UPLOAD_FAILED", `TUS PATCH failed with status ${patchResp.status}`);
+  }
+  await ((_f = patchResp.body) == null ? void 0 : _f.cancel());
+  onProgress(chunkData.length);
+  return chunkInfo.chunkId;
+}
+async function startUpload(sessionId, options) {
+  const session = sessionRegistry.get(sessionId);
+  if (!session) {
+    throw new NdmError("SESSION_NOT_FOUND", `Session ${sessionId} not found`);
+  }
+  if (session.uploadStatus === "completed" || session.uploadStatus === "not_required") {
+    return getImportSessionStatus(sessionId);
+  }
+  if (session.uploadStatus === "uploading") {
+    return getImportSessionStatus(sessionId);
+  }
+  if (session.materializationStatus === "all_in_store") {
+    session.uploadStatus = "not_required";
+    return getImportSessionStatus(sessionId);
+  }
+  session.uploadStatus = "uploading";
+  session.uploadStartTime = Date.now();
+  session.abortController = new AbortController();
+  const concurrency = (options == null ? void 0 : options.concurrency) ?? 3;
+  let endpoint;
+  if (options == null ? void 0 : options.endpoint) {
+    endpoint = options.endpoint.replace(/\/+$/, "");
+  } else {
+    endpoint = typeof window !== "undefined" ? window.location.origin : "";
+  }
+  doUpload(session, endpoint, concurrency).catch(() => {
+  });
+  return getImportSessionStatus(sessionId);
+}
+async function doUpload(session, endpoint, concurrency) {
+  const states = Array.from(session.objectStates.values()).filter((s2) => s2.state !== "completed");
+  let running = 0;
+  let idx = 0;
+  let hasError = false;
+  await new Promise((resolve, reject) => {
+    function next() {
+      if (hasError)
+        return;
+      if (idx >= states.length && running === 0) {
+        const allCompleted = Array.from(session.objectStates.values()).every((s2) => s2.state === "completed");
+        session.uploadStatus = allCompleted ? "completed" : "failed";
+        resolve();
+        return;
+      }
+      while (running < concurrency && idx < states.length) {
+        const state = states[idx++];
+        running++;
+        uploadSingleObject(session, endpoint, state).then(() => {
+          running--;
+          next();
+        }).catch(() => {
+          running--;
+          if (!hasError) {
+            hasError = true;
+            session.uploadStatus = "failed";
+            reject(new NdmError("UPLOAD_FAILED", `Upload of ${state.name} failed`));
+          }
+        });
+      }
+    }
+    next();
+  });
+}
+async function uploadSingleObject(session, endpoint, state) {
+  var _a;
+  state.state = "uploading";
+  for (const chunk of state.chunks) {
+    if (chunk.uploaded)
+      continue;
+    await uploadChunkViaTus(
+      endpoint,
+      state.file,
+      chunk,
+      "default",
+      state.name,
+      state.objectId,
+      (uploaded) => {
+        const prevChunkBytes = state.chunks.filter((c2) => c2 !== chunk && c2.uploaded).reduce((sum, c2) => sum + c2.length, 0);
+        state.uploadedBytes = prevChunkBytes + uploaded;
+      },
+      (_a = session.abortController) == null ? void 0 : _a.signal
+    );
+    chunk.uploaded = true;
+  }
+  state.uploadedBytes = state.size;
+  state.state = "completed";
+}
+const ndm_client = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
+  __proto__: null,
+  NdmError,
+  getImportProvider,
+  getImportSessionStatus,
+  getUploadProgress,
+  pickupAndImport,
+  setImportProvider,
+  startUpload
+}, Symbol.toStringTag, { value: "Module" }));
 export {
   AiccClient as A,
   BS_SERVICE_VERIFY_HUB as B,
@@ -3299,13 +5318,14 @@ export {
   TaskManagerClient as T,
   VerifyHubClient as V,
   WEB3_BRIDGE_HOST as W,
-  BS_SERVICE_TASK_MANAGER as a,
-  BuckyOSSDK as b,
+  ndm_client as a,
+  BS_SERVICE_TASK_MANAGER as b,
   createSDKModule as c,
-  MsgCenterClient as d,
-  RepoClient as e,
-  ht as f,
+  BuckyOSSDK as d,
+  MsgCenterClient as e,
+  RepoClient as f,
   hashPassword as h,
+  ndn_types as n,
   parseSessionTokenClaims as p
 };
-//# sourceMappingURL=sdk_core-4704b88c.mjs.map
+//# sourceMappingURL=ndm_client-5df5d116.mjs.map

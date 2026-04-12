@@ -1,6 +1,6 @@
 {
   "name": "buckyos",
-  "version": "1.5.1",
+  "version": "1.5.2",
   "description": "BuckyOS WebSDK for browser and Node.js environments",
   "main": "dist/index.cjs",
   "module": "dist/index.mjs",
@@ -50,7 +50,7 @@
     "test:app-service:debug": "bash ./tests/scripts/test_app_service_debug.sh",
     "test": "jest",
     "test:browser:real:prepare": "node tests/scripts/prepare_real_browser_test.mjs",
-    "test:browser:real": "pnpm run build && pnpm run test:browser:real:prepare && npx playwright test tests/browser/real-browser/playwright.spec.js tests/browser/real-browser/ndn_types.spec.js --reporter=line",
+    "test:browser:real": "pnpm run build && pnpm run test:browser:real:prepare && npx playwright test tests/browser/real-browser/playwright.spec.js tests/browser/real-browser/ndn_types.spec.js tests/browser/real-browser/ndm_client.spec.js tests/browser/real-browser/ndm_client_upload.spec.js --reporter=line",
     "test:app-client": "jest --runInBand tests/app-client",
     "test:app-client:integration": "BUCKYOS_RUN_INTEGRATION_TESTS=1 jest --runInBand tests/app-client",
     "test:app-service": "jest --runInBand tests/app-service",

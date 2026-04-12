@@ -76,14 +76,35 @@ async function main() {
     'ndn_types_runner.mjs',
   );
 
+  // 3) ndm_client browser test page (shared cases, mock provider).
+  // The runner is bundled alongside ndn_types_runner by the same vite config.
+  await copyFile(
+    join(realBrowserDir, 'ndm_client.html'),
+    join(systestDistDir, 'ndm_client.html'),
+  );
+  const copiedNdmClientBundleFiles = await copyRuntimeBundle(
+    distTestsDir,
+    'ndm_client_runner.mjs',
+  );
+
+  // 4) ndm_client upload integration page (real file picker + TUS upload).
+  // This page imports browser.mjs directly (already copied in step 1).
+  await copyFile(
+    join(realBrowserDir, 'ndm_client_upload.html'),
+    join(systestDistDir, 'ndm_client_upload.html'),
+  );
+
   console.log(JSON.stringify({
     buckyosRoot,
     systestDistDir,
     copiedBundleFiles,
     copiedNdnTypesBundleFiles,
+    copiedNdmClientBundleFiles,
     htmlTargets: [
       join(systestDistDir, 'test.html'),
       join(systestDistDir, 'ndn_types.html'),
+      join(systestDistDir, 'ndm_client.html'),
+      join(systestDistDir, 'ndm_client_upload.html'),
     ],
   }, null, 2));
 }

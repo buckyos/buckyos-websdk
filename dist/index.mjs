@@ -1,6 +1,5 @@
-import { c as createSDKModule } from "./sdk_core-4704b88c.mjs";
-import { A, a, B, b, d, M, e, R, S, T, V, W, h, p } from "./sdk_core-4704b88c.mjs";
-import { n } from "./ndn_types-d5a581f1.mjs";
+import { c as createSDKModule } from "./ndm_client-5df5d116.mjs";
+import { A, b, B, d, e, M, f, R, S, T, V, W, h, a, n, p } from "./ndm_client-5df5d116.mjs";
 const sdkModule = createSDKModule("universal");
 const buckyos = sdkModule.buckyos;
 const initBuckyOS = sdkModule.initBuckyOS;
@@ -31,12 +30,12 @@ const getMsgCenterClient = sdkModule.getMsgCenterClient;
 const getRepoClient = sdkModule.getRepoClient;
 export {
   A as AiccClient,
-  a as BS_SERVICE_TASK_MANAGER,
+  b as BS_SERVICE_TASK_MANAGER,
   B as BS_SERVICE_VERIFY_HUB,
-  b as BuckyOSSDK,
-  d as MsgCenterClient,
+  d as BuckyOSSDK,
+  e as MsgCenterClient,
   M as MsgQueueClient,
-  e as RepoClient,
+  f as RepoClient,
   R as RuntimeType,
   S as SystemConfigClient,
   T as TaskManagerClient,
@@ -68,6 +67,7 @@ export {
   loginByPassword,
   loginByRuntimeSession,
   logout,
+  a as ndm,
   n as ndn,
   p as parseSessionTokenClaims,
   removeEvent,

@@ -3,10 +3,11 @@
 // so it never ends up in the published npm artifact — only the real-browser
 // playwright harness consumes it via prepare_real_browser_test.mjs.
 //
-// Currently this bundles tests/browser/real-browser/ndn_types_runner.ts
-// into dist-tests/ndn_types_runner.mjs. Add additional entries here when
-// new browser-driven test runners need to be shipped to the systest dist
-// directory.
+// Currently this bundles:
+//   - tests/browser/real-browser/ndn_types_runner.ts → dist-tests/ndn_types_runner.mjs
+//   - tests/browser/real-browser/ndm_client_runner.ts → dist-tests/ndm_client_runner.mjs
+// Add additional entries here when new browser-driven test runners need to
+// be shipped to the systest dist directory.
 
 import { defineConfig } from 'vite'
 import { resolve } from 'path'
@@ -23,6 +24,10 @@ export default defineConfig({
                 ndn_types_runner: resolve(
                     __dirname,
                     'tests/browser/real-browser/ndn_types_runner.ts',
+                ),
+                ndm_client_runner: resolve(
+                    __dirname,
+                    'tests/browser/real-browser/ndm_client_runner.ts',
                 ),
             },
             name: 'buckyos_browser_tests',

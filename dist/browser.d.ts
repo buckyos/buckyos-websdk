@@ -55,4 +55,5 @@ export declare const getTaskManagerClient: () => import("./task_mgr_client").Tas
 export { hashPassword };
 export * from './sdk_core';
 export * as ndn from './ndn_types';
+export * as ndm from './ndm_client';
 //# sourceMappingURL=browser.d.ts.map
