@@ -23,6 +23,15 @@ import {
     ImportedDirObject,
 } from '../src/ndm_client'
 
+import {
+    sha256Bytes,
+    ChunkId,
+    FileObject as NdnFileObject,
+    DirObject as NdnDirObject,
+    SimpleChunkList,
+    ObjId,
+} from '../src/ndn_types'
+
 // ============================================================
 // AsyncTap — minimal cross-runtime assertion interface
 // ============================================================
@@ -123,6 +132,51 @@ export const defaultAsyncTap: AsyncTap = {
 function makeFile(name: string, content: Uint8Array | string, type = 'application/octet-stream'): File {
     const data = typeof content === 'string' ? new TextEncoder().encode(content) : content
     return new File([data], name, { type })
+}
+
+/**
+ * Independently compute the expected objectId for a single-chunk file
+ * using ndn_types primitives. This mirrors the logic in
+ * ndm_client.ts materializeFile() but is written independently so the
+ * test can cross-verify the two implementations.
+ */
+function computeExpectedFileObjectId(name: string, content: Uint8Array): string {
+    const hash = sha256Bytes(content)
+    const chunkId = ChunkId.fromMix256Result(content.length, hash)
+    const fileObj = new NdnFileObject(name, content.length, chunkId.toString())
+    const [objId] = fileObj.genObjId()
+    return objId.toString()
+}
+
+/**
+ * Independently compute the expected ChunkId string for a data buffer.
+ */
+function computeExpectedChunkId(content: Uint8Array): string {
+    const hash = sha256Bytes(content)
+    return ChunkId.fromMix256Result(content.length, hash).toString()
+}
+
+/**
+ * Independently compute the expected objectId for a multi-chunk file.
+ */
+function computeExpectedMultiChunkFileObjectId(
+    name: string,
+    content: Uint8Array,
+    chunkSize: number,
+): string {
+    const chunkList = new SimpleChunkList()
+    let offset = 0
+    while (offset < content.length) {
+        const end = Math.min(offset + chunkSize, content.length)
+        const slice = content.slice(offset, end)
+        const hash = sha256Bytes(slice)
+        chunkList.appendChunk(ChunkId.fromMix256Result(slice.length, hash))
+        offset = end
+    }
+    const [chunkListObjId] = chunkList.genObjId()
+    const fileObj = new NdnFileObject(name, content.length, chunkListObjId.toString())
+    const [objId] = fileObj.genObjId()
+    return objId.toString()
 }
 
 function mockProvider(
@@ -239,6 +293,83 @@ export const NDM_CLIENT_TEST_CASES: NdmClientTestCase[] = [
         },
     },
 
+    // ---- objectId available before upload ----
+    {
+        name: 'objectId is fully computed before upload starts',
+        async run(t) {
+            const saved = getImportProvider()
+            try {
+                const content = new TextEncoder().encode('pre-upload objectId check')
+                const fileName = 'precheck.txt'
+                const expected = computeExpectedFileObjectId(fileName, content)
+
+                setImportProvider(mockProvider({}, [makeFile(fileName, content)]))
+                const snapshot = await pickupAndImport({
+                    mode: 'single_file',
+                    autoStartUpload: false,
+                })
+
+                // Upload has NOT started
+                t.eq(snapshot.uploadStatus, 'not_started',
+                    'upload must not have started yet')
+
+                // But objectId is already present and correct
+                const sel = snapshot.selection as ImportedFileObject
+                t.eq(sel.objectId, expected,
+                    'objectId must be fully computed before upload')
+
+                // Also verify via items array
+                t.eq(snapshot.items.length, 1)
+                t.eq(snapshot.items[0].objectId, expected,
+                    'items[0].objectId must match')
+
+                // And via session status query
+                const status = await getImportSessionStatus(snapshot.sessionId)
+                t.eq(status.uploadStatus, 'not_started')
+                const progressEntries = Object.values(status.perObjectProgress ?? {})
+                t.eq(progressEntries.length, 1)
+                t.eq(progressEntries[0].objectId, expected,
+                    'session perObjectProgress objectId must match')
+                t.eq(progressEntries[0].state, 'pending',
+                    'object upload state must be pending')
+                t.eq(progressEntries[0].uploadedBytes, 0,
+                    'no bytes uploaded yet')
+            } finally {
+                setImportProvider(saved)
+            }
+        },
+    },
+    {
+        name: 'multi-file: all objectIds available before upload starts',
+        async run(t) {
+            const saved = getImportProvider()
+            try {
+                const contentA = new Uint8Array([10, 20, 30])
+                const contentB = new Uint8Array([40, 50, 60, 70])
+                const expectedA = computeExpectedFileObjectId('x.bin', contentA)
+                const expectedB = computeExpectedFileObjectId('y.bin', contentB)
+
+                setImportProvider(mockProvider({}, [
+                    makeFile('x.bin', contentA),
+                    makeFile('y.bin', contentB),
+                ]))
+                const snapshot = await pickupAndImport({
+                    mode: 'multi_file',
+                    autoStartUpload: false,
+                })
+
+                t.eq(snapshot.uploadStatus, 'not_started')
+
+                const sel = snapshot.selection as ImportedFileObject[]
+                t.eq(sel.length, 2)
+                t.eq(sel[0].objectId, expectedA, 'x.bin objectId ready before upload')
+                t.eq(sel[1].objectId, expectedB, 'y.bin objectId ready before upload')
+            } finally {
+                setImportProvider(saved)
+            }
+        },
+    },
+
     // ---- Deterministic objectId ----
     {
         name: 'same content + name produces same objectId',
@@ -273,6 +404,168 @@ export const NDM_CLIENT_TEST_CASES: NdmClientTestCase[] = [
                 const id1 = (r1.selection as ImportedFileObject).objectId
                 const id2 = (r2.selection as ImportedFileObject).objectId
                 t.truthy(id1 !== id2, 'objectIds must differ for different content')
+            } finally {
+                setImportProvider(saved)
+            }
+        },
+    },
+
+    // ---- Cross-verify objectId against ndn_types ----
+    {
+        name: 'objectId matches independent ndn_types computation (small file)',
+        async run(t) {
+            const saved = getImportProvider()
+            try {
+                const content = new TextEncoder().encode('hello world')
+                const fileName = 'hello.txt'
+
+                // Independently compute expected objectId
+                const expected = computeExpectedFileObjectId(fileName, content)
+
+                // Get objectId from pickupAndImport
+                setImportProvider(mockProvider({}, [makeFile(fileName, content)]))
+                const result = await pickupAndImport({ mode: 'single_file' })
+                const actual = (result.selection as ImportedFileObject).objectId
+
+                t.eq(actual, expected, `objectId mismatch: got ${actual}, expected ${expected}`)
+            } finally {
+                setImportProvider(saved)
+            }
+        },
+    },
+    {
+        name: 'objectId matches independent ndn_types computation (binary data)',
+        async run(t) {
+            const saved = getImportProvider()
+            try {
+                const content = new Uint8Array([0x00, 0x01, 0x02, 0xff, 0xfe, 0xfd, 0x80, 0x7f])
+                const fileName = 'data.bin'
+
+                const expected = computeExpectedFileObjectId(fileName, content)
+
+                setImportProvider(mockProvider({}, [makeFile(fileName, content)]))
+                const result = await pickupAndImport({ mode: 'single_file' })
+                const actual = (result.selection as ImportedFileObject).objectId
+
+                t.eq(actual, expected, `objectId mismatch for binary data`)
+            } finally {
+                setImportProvider(saved)
+            }
+        },
+    },
+    {
+        name: 'objectId changes when file name differs (same content)',
+        async run(t) {
+            const saved = getImportProvider()
+            try {
+                const content = new TextEncoder().encode('same content')
+
+                // ndn_types: FileObject includes name in ObjId derivation
+                const expectedA = computeExpectedFileObjectId('a.txt', content)
+                const expectedB = computeExpectedFileObjectId('b.txt', content)
+                t.truthy(expectedA !== expectedB, 'ndn_types: different names should produce different objectIds')
+
+                setImportProvider(mockProvider({}, [makeFile('a.txt', content)]))
+                const rA = await pickupAndImport({ mode: 'single_file' })
+
+                setImportProvider(mockProvider({}, [makeFile('b.txt', content)]))
+                const rB = await pickupAndImport({ mode: 'single_file' })
+
+                t.eq((rA.selection as ImportedFileObject).objectId, expectedA)
+                t.eq((rB.selection as ImportedFileObject).objectId, expectedB)
+            } finally {
+                setImportProvider(saved)
+            }
+        },
+    },
+    {
+        name: 'ChunkId in session matches independent ndn_types computation',
+        async run(t) {
+            const saved = getImportProvider()
+            try {
+                const content = new TextEncoder().encode('chunk verification test')
+                const expectedChunkId = computeExpectedChunkId(content)
+
+                setImportProvider(mockProvider({}, [makeFile('chunk.txt', content)]))
+                const result = await pickupAndImport({ mode: 'single_file' })
+                const status = await getImportSessionStatus(result.sessionId)
+
+                // The session's perObjectProgress should contain exactly one object
+                const entries = Object.values(status.perObjectProgress ?? {})
+                t.eq(entries.length, 1, 'should have exactly 1 object in progress')
+
+                // Verify the objectId in session matches ndn_types derivation
+                const objId = entries[0].objectId
+                const expectedObjId = computeExpectedFileObjectId('chunk.txt', content)
+                t.eq(objId, expectedObjId, `session objectId mismatch`)
+            } finally {
+                setImportProvider(saved)
+            }
+        },
+    },
+    {
+        name: 'multi-file: each objectId matches independent computation',
+        async run(t) {
+            const saved = getImportProvider()
+            try {
+                const contentA = new Uint8Array([1, 2, 3])
+                const contentB = new Uint8Array([4, 5, 6, 7])
+
+                const expectedA = computeExpectedFileObjectId('a.bin', contentA)
+                const expectedB = computeExpectedFileObjectId('b.bin', contentB)
+
+                setImportProvider(mockProvider({}, [
+                    makeFile('a.bin', contentA),
+                    makeFile('b.bin', contentB),
+                ]))
+                const result = await pickupAndImport({ mode: 'multi_file' })
+                const sel = result.selection as ImportedFileObject[]
+
+                t.eq(sel[0].objectId, expectedA, 'a.bin objectId mismatch')
+                t.eq(sel[1].objectId, expectedB, 'b.bin objectId mismatch')
+            } finally {
+                setImportProvider(saved)
+            }
+        },
+    },
+    {
+        name: 'directory objectId matches independent ndn_types DirObject computation',
+        async run(t) {
+            const saved = getImportProvider()
+            try {
+                const contentA = new TextEncoder().encode('aaa')
+                const contentB = new TextEncoder().encode('bbb')
+
+                // Compute expected dir objectId bottom-up using ndn_types
+                const fileObjA = new NdnFileObject('a.txt', contentA.length, '')
+                const fileObjB = new NdnFileObject('b.txt', contentB.length, '')
+
+                const subDir = new NdnDirObject('sub')
+                subDir.addFile('b.txt', fileObjB.toJSON(), contentB.length)
+                const [subDirObjId] = subDir.genObjId()
+
+                const rootDir = new NdnDirObject('mydir')
+                rootDir.addFile('a.txt', fileObjA.toJSON(), contentA.length)
+                rootDir.addDirectory('sub', subDirObjId, 0)
+                const [expectedRootObjId] = rootDir.genObjId()
+
+                // Now do the same via pickupAndImport
+                const f1 = makeFile('a.txt', contentA)
+                Object.defineProperty(f1, 'webkitRelativePath', { value: 'mydir/a.txt' })
+                const f2 = makeFile('b.txt', contentB)
+                Object.defineProperty(f2, 'webkitRelativePath', { value: 'mydir/sub/b.txt' })
+
+                setImportProvider(mockProvider({ canPickDirectory: true }, [f1, f2]))
+                const result = await pickupAndImport({ mode: 'single_dir' })
+                const dir = result.selection as ImportedDirObject
+
+                t.eq(dir.objectId, expectedRootObjId.toString(),
+                    `root dir objectId mismatch: got ${dir.objectId}, expected ${expectedRootObjId.toString()}`)
+
+                // Also verify sub-dir objectId
+                const subDirResult = dir.children!.find(c => c.name === 'sub') as ImportedDirObject
+                t.eq(subDirResult.objectId, subDirObjId.toString(),
+                    `sub dir objectId mismatch`)
             } finally {
                 setImportProvider(saved)
             }

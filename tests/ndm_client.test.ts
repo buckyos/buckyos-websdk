@@ -56,9 +56,9 @@ describe('ndm_client (jest-only)', () => {
     beforeAll(() => { originalProvider = getImportProvider() })
     afterEach(() => { setImportProvider(originalProvider) })
 
-    it('materializes a file larger than 4 MiB into multiple chunks', async () => {
-        // 5 MiB exceeds the 4 MiB default chunk size
-        const size = 5 * 1024 * 1024
+    it('materializes a file larger than 32 MiB into multiple chunks', async () => {
+        // 33 MiB exceeds the 32 MiB default chunk size
+        const size = 33 * 1024 * 1024
         const data = new Uint8Array(size)
         for (let i = 0; i < size; i++) data[i] = i & 0xff
 

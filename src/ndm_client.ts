@@ -191,7 +191,7 @@ export interface ImportProvider {
 // Default chunk size for splitting files (4 MiB)
 // ============================================================
 
-const DEFAULT_CHUNK_SIZE = 4 * 1024 * 1024
+const DEFAULT_CHUNK_SIZE = 32 * 1024 * 1024
 
 // ============================================================
 // Internal session storage

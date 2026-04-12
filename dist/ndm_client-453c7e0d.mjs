@@ -4729,7 +4729,7 @@ class NdmError extends Error {
     this.name = "NdmError";
   }
 }
-const DEFAULT_CHUNK_SIZE = 4 * 1024 * 1024;
+const DEFAULT_CHUNK_SIZE = 32 * 1024 * 1024;
 const sessionRegistry = /* @__PURE__ */ new Map();
 let sessionCounter = 0;
 function generateSessionId() {
@@ -5328,4 +5328,4 @@ export {
   ndn_types as n,
   parseSessionTokenClaims as p
 };
-//# sourceMappingURL=ndm_client-5df5d116.mjs.map
+//# sourceMappingURL=ndm_client-453c7e0d.mjs.map
