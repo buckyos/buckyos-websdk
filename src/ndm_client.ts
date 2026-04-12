@@ -1471,6 +1471,7 @@ async function uploadChunkViaTus(
     endpoint: string,
     file: File,
     chunkInfo: ObjectUploadState['chunks'][0],
+    chunkIndex: number,
     appId: string,
     logicalPath: string,
     fileHash: string,
@@ -1501,7 +1502,8 @@ async function uploadChunkViaTus(
             metadata: {
                 app_id: appId,
                 logical_path: logicalPath,
-                chunk_index: '0',
+                chunk_index: String(chunkIndex),
+                chunk_hash: chunkInfo.chunkId,
                 file_hash: fileHash,
             },
             onProgress: (bytesUploaded: number) => {
@@ -1632,13 +1634,14 @@ async function uploadSingleObject(
 ): Promise<void> {
     state.state = 'uploading'
 
-    for (const chunk of state.chunks) {
+    for (const [chunkIndex, chunk] of state.chunks.entries()) {
         if (chunk.uploaded) continue
 
         await uploadChunkViaTus(
             endpoint,
             state.file,
             chunk,
+            chunkIndex,
             'default',
             `default/${chunk.chunkId}`,
             state.objectId,

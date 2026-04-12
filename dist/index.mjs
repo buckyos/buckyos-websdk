@@ -1,5 +1,5 @@
-import { c as createSDKModule } from "./ndm_client-2dc8c841.mjs";
-import { A, b, B, f, i, M, j, R, S, T, V, W, g, e, d, h, a, n, p } from "./ndm_client-2dc8c841.mjs";
+import { c as createSDKModule } from "./ndm_client-7c97dd8e.mjs";
+import { A, b, B, f, i, M, j, R, S, T, V, W, g, e, d, h, a, n, p } from "./ndm_client-7c97dd8e.mjs";
 const sdkModule = createSDKModule("universal");
 const buckyos = sdkModule.buckyos;
 const initBuckyOS = sdkModule.initBuckyOS;

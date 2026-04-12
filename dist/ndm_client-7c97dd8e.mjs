@@ -5491,7 +5491,7 @@ async function getUploadProgress(sessionId) {
   }
   return result;
 }
-async function uploadChunkViaTus(endpoint, file, chunkInfo, appId, logicalPath, fileHash, onProgress, signal) {
+async function uploadChunkViaTus(endpoint, file, chunkInfo, chunkIndex, appId, logicalPath, fileHash, onProgress, signal) {
   const slice = file.slice(chunkInfo.offset, chunkInfo.offset + chunkInfo.length);
   const chunkData = new Uint8Array(await slice.arrayBuffer());
   let tusModule;
@@ -5514,7 +5514,8 @@ async function uploadChunkViaTus(endpoint, file, chunkInfo, appId, logicalPath, 
       metadata: {
         app_id: appId,
         logical_path: logicalPath,
-        chunk_index: "0",
+        chunk_index: String(chunkIndex),
+        chunk_hash: chunkInfo.chunkId,
         file_hash: fileHash
       },
       onProgress: (bytesUploaded) => {
@@ -5603,13 +5604,14 @@ async function doUpload(session, endpoint, concurrency) {
 async function uploadSingleObject(session, endpoint, state) {
   var _a;
   state.state = "uploading";
-  for (const chunk of state.chunks) {
+  for (const [chunkIndex, chunk] of state.chunks.entries()) {
     if (chunk.uploaded)
       continue;
     await uploadChunkViaTus(
       endpoint,
       state.file,
       chunk,
+      chunkIndex,
       "default",
       `default/${chunk.chunkId}`,
       state.objectId,
@@ -5683,4 +5685,4 @@ export {
   ndn_types as n,
   parseSessionTokenClaims as p
 };
-//# sourceMappingURL=ndm_client-2dc8c841.mjs.map
+//# sourceMappingURL=ndm_client-7c97dd8e.mjs.map

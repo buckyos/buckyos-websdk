@@ -1,3 +1,41 @@
+const mockTusUpload = jest.fn()
+
+jest.mock('tus-js-client', () => ({
+    Upload: class MockTusUpload {
+        private readonly file: Blob
+        private readonly options: {
+            onProgress?: (bytesUploaded: number, bytesTotal: number) => void
+            onSuccess?: () => void
+            onError?: (error: Error) => void
+            metadata?: Record<string, string>
+        }
+
+        constructor(file: Blob, options: {
+            onProgress?: (bytesUploaded: number, bytesTotal: number) => void
+            onSuccess?: () => void
+            onError?: (error: Error) => void
+            metadata?: Record<string, string>
+        }) {
+            this.file = file
+            this.options = options
+            mockTusUpload(file, options)
+        }
+
+        start() {
+            try {
+                this.options.onProgress?.(this.file.size, this.file.size)
+                this.options.onSuccess?.()
+            } catch (error) {
+                this.options.onError?.(error instanceof Error ? error : new Error(String(error)))
+            }
+        }
+
+        abort() {
+            return undefined
+        }
+    },
+}))
+
 // Jest wrapper around the runtime-agnostic ndm_client test cases.
 //
 // The actual test logic lives in tests/ndm_client_cases.ts so that the same
@@ -10,6 +48,8 @@ import {
     setImportProvider,
     getImportProvider,
     pickupAndImport,
+    startUpload,
+    getImportSessionStatus,
     calculateQcidFromFile,
     ImportProvider,
     RuntimeCapabilities,
@@ -69,6 +109,7 @@ describe('ndm_client (jest-only)', () => {
     afterEach(() => {
         setImportProvider(originalProvider)
         global.fetch = originalFetch
+        mockTusUpload.mockReset()
     })
 
     it('materializes a file larger than 32 MiB into multiple chunks', async () => {
@@ -85,6 +126,52 @@ describe('ndm_client (jest-only)', () => {
         expect(sel.size).toBe(size)
         expect(sel.objectId).toBeTruthy()
         expect(sel.objectId).toContain(':')
+    })
+
+    it('uploads multi-chunk files with distinct chunk_index metadata per chunk session', async () => {
+        await sdk.initBuckyOS('test-app', {
+            appId: 'test-app',
+            runtimeType: RuntimeType.AppService,
+            sessionToken: 'session-token-123',
+            ownerUserId: 'alice',
+            zoneHost: 'example.com',
+            defaultProtocol: 'https://',
+        })
+
+        const size = 33 * 1024 * 1024
+        const data = new Uint8Array(size)
+        for (let i = 0; i < size; i++) data[i] = i & 0xff
+
+        setImportProvider(mockProvider({}, [makeFile('big-upload.bin', data)]))
+        const result = await pickupAndImport({ mode: 'single_file' })
+
+        await startUpload(result.sessionId, {
+            endpoint: 'https://gateway.example.com',
+            concurrency: 1,
+        })
+
+        for (let i = 0; i < 10; i++) {
+            const status = await getImportSessionStatus(result.sessionId)
+            if (status.uploadStatus === 'completed') {
+                break
+            }
+            await new Promise((resolve) => setTimeout(resolve, 0))
+        }
+
+        const status = await getImportSessionStatus(result.sessionId)
+        expect(status.uploadStatus).toBe('completed')
+        expect(mockTusUpload).toHaveBeenCalledTimes(2)
+
+        const firstMetadata = mockTusUpload.mock.calls[0][1].metadata
+        const secondMetadata = mockTusUpload.mock.calls[1][1].metadata
+
+        expect(firstMetadata.chunk_index).toBe('0')
+        expect(secondMetadata.chunk_index).toBe('1')
+        expect(firstMetadata.chunk_hash).toBeTruthy()
+        expect(secondMetadata.chunk_hash).toBeTruthy()
+        expect(firstMetadata.logical_path).toBe(`default/${firstMetadata.chunk_hash}`)
+        expect(secondMetadata.logical_path).toBe(`default/${secondMetadata.chunk_hash}`)
+        expect(firstMetadata.chunk_hash).not.toBe(secondMetadata.chunk_hash)
     })
 
     it('pickupAndImport reuses lookup hit resolved by QCID before local materialization', async () => {
