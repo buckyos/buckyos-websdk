@@ -18,12 +18,13 @@ set -euo pipefail
 #               a) start the Deno systest (debug_systest.sh -> service_debug.tsx)
 #               b) wait for /sdk/appservice/healthz to return ok
 #               c) run jest tests/app-service against the live systest
-#               d) tear the systest back down
-#             That whole orchestration already lives in
-#             test_app_service_debug.sh, so we delegate to it.
 #
 #   Phase 4 — real browser playwright tests
-#             Heaviest phase; downloads playwright browsers on first run.
+#             When Phase 3 is enabled, Phase 4 must reuse the same local
+#             `buckyos_systest` slot. Otherwise the gateway host
+#             `https://systest.test.buckyos.io/*.html` points at an empty
+#             slot (docker is intentionally stopped in local-debug mode) and
+#             the browser pages fail with 500.
 #
 # All Layer 3 / integration phases assume the DV environment is reachable.
 
@@ -53,6 +54,14 @@ fi
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TESTS_SCRIPTS_DIR="${REPO_ROOT}/tests/scripts"
 BUCKYOS_ROOT="${BUCKYOS_ROOT:-/opt/buckyos}"
+DEBUG_SYSTEST_SCRIPT="${TESTS_SCRIPTS_DIR}/debug_systest.sh"
+APP_ID="buckyos_systest"
+PLAYWRIGHT_REAL_BROWSER_TESTS=(
+  tests/browser/real-browser/playwright.spec.js
+  tests/browser/real-browser/ndn_types.spec.js
+  tests/browser/real-browser/ndm_client.spec.js
+  tests/browser/real-browser/ndm_client_upload.spec.js
+)
 
 OWNER_USER_ID="devtest"
 # PORT is resolved from ${BUCKYOS_ROOT}/etc/node_gateway_info.json (the entry
@@ -64,6 +73,8 @@ SKIP_UNIT=0
 SKIP_APP_CLIENT=0
 SKIP_APP_SERVICE=0
 SKIP_BROWSER=0
+LOCAL_SYSTEST_PID=""
+LOCAL_SYSTEST_LOG_FILE=""
 
 if [[ $# -gt 0 && "${1}" != -* ]]; then
   OWNER_USER_ID="$1"
@@ -141,6 +152,23 @@ step() {
   echo "================================================================"
 }
 
+require_local_systest_prereqs() {
+  if [[ ! -x "${DEBUG_SYSTEST_SCRIPT}" ]]; then
+    echo "missing executable debug script: ${DEBUG_SYSTEST_SCRIPT}" >&2
+    exit 2
+  fi
+
+  if ! command -v deno >/dev/null 2>&1; then
+    echo "deno is required but was not found in PATH" >&2
+    exit 2
+  fi
+
+  if docker info >/dev/null 2>&1; then
+    echo "docker service is still running; stop it first, then rerun this script" >&2
+    exit 2
+  fi
+}
+
 # Kill anything left over from a previous (possibly crashed) test run that
 # would otherwise hold the systest port or keep the systest deno child
 # alive. test_app_service_debug.sh's port-in-use check would otherwise abort
@@ -177,14 +205,82 @@ kill_test_services() {
   fi
 }
 
+start_local_systest() {
+  local health_url="http://127.0.0.1:${PORT}/sdk/appservice/healthz"
+
+  if [[ -n "${LOCAL_SYSTEST_PID}" ]]; then
+    return 0
+  fi
+
+  require_local_systest_prereqs
+
+  if lsof -nP -iTCP:"${PORT}" -sTCP:LISTEN >/dev/null 2>&1; then
+    echo "port ${PORT} is already in use; stop the existing process or choose another port" >&2
+    exit 2
+  fi
+
+  LOCAL_SYSTEST_LOG_FILE="$(mktemp -t buckyos-websdk-run-all-systest.XXXXXX.log)"
+
+  echo "[run_all_test] starting local systest AppService on port ${PORT}"
+  "${DEBUG_SYSTEST_SCRIPT}" "${OWNER_USER_ID}" --port "${PORT}" > "${LOCAL_SYSTEST_LOG_FILE}" 2>&1 &
+  LOCAL_SYSTEST_PID=$!
+
+  echo "[run_all_test] waiting for ${health_url}"
+  for _ in $(seq 1 40); do
+    if curl -fsS "${health_url}" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 1
+  done
+
+  echo "local systest AppService did not become ready" >&2
+  cat "${LOCAL_SYSTEST_LOG_FILE}" >&2 || true
+  exit 1
+}
+
+prepare_real_browser_assets() {
+  echo "[run_all_test] preparing real-browser assets in ${BUCKYOS_ROOT}/bin/${APP_ID}/dist"
+  pnpm run test:browser:real:prepare
+}
+
+run_app_service_phase() {
+  local systest_base_url="http://127.0.0.1:${PORT}"
+  local runtime_url="http://systest.test.buckyos.io/sdk/appservice/runtime"
+  local system_config_url="http://systest.test.buckyos.io/sdk/appservice/system-config?key=boot/config"
+
+  echo "[run_all_test] running app-service jest suite against ${systest_base_url}"
+  BUCKYOS_RUN_INTEGRATION_TESTS=1 \
+    BUCKYOS_TEST_APP_ID="${APP_ID}" \
+    BUCKYOS_TEST_OWNER_USER_ID="${OWNER_USER_ID}" \
+    BUCKYOS_TEST_SYSTEST_URL="${systest_base_url}" \
+    pnpm exec jest --runInBand tests/app-service
+
+  echo "[run_all_test] running gateway smoke checks"
+  curl -fsS "${runtime_url}" >/dev/null
+  curl -fsS "${system_config_url}" >/dev/null
+}
+
+run_real_browser_playwright() {
+  npx playwright test \
+    "${PLAYWRIGHT_REAL_BROWSER_TESTS[@]}" \
+    --reporter=line
+}
+
 cleanup_on_exit() {
   local exit_code="$1"
+  if [[ -n "${LOCAL_SYSTEST_PID}" ]]; then
+    kill "${LOCAL_SYSTEST_PID}" >/dev/null 2>&1 || true
+    wait "${LOCAL_SYSTEST_PID}" >/dev/null 2>&1 || true
+  fi
   if [[ "${SKIP_APP_SERVICE}" -eq 0 && -n "${PORT}" ]]; then
     echo
     echo "================================================================"
     echo "[run_all_test] cleanup test services (port ${PORT})"
     echo "================================================================"
     kill_test_services "${PORT}"
+  fi
+  if [[ -n "${LOCAL_SYSTEST_LOG_FILE}" ]]; then
+    rm -f "${LOCAL_SYSTEST_LOG_FILE}"
   fi
   return "${exit_code}"
 }
@@ -218,11 +314,23 @@ else
   echo "[run_all_test] skipping Phase 2 AppClient integration (--skip-app-client)"
 fi
 
-# Phase 3 — AppService integration. Delegated to test_app_service_debug.sh,
-# which handles the systest start/wait/run/teardown sequence end-to-end.
+# When AppService integration is enabled, keep the local systest slot alive
+# across both Phase 3 and Phase 4. The browser tests are served by the same
+# `buckyos_systest` host slot, so tearing the debug service down after the
+# Jest phase leaves `https://systest.test.buckyos.io/*.html` pointing at an
+# empty gateway target and causes 500s.
+if [[ "${SKIP_APP_SERVICE}" -eq 0 && "${SKIP_BROWSER}" -eq 0 ]]; then
+  require_local_systest_prereqs
+  step "preparing real-browser assets for the local systest slot"
+  prepare_real_browser_assets
+fi
+
 if [[ "${SKIP_APP_SERVICE}" -eq 0 ]]; then
+  step "starting local systest debug service (shared by Phase 3 / Phase 4)"
+  start_local_systest
+
   step "Phase 3 — AppService integration (via systest slot)"
-  bash "${TESTS_SCRIPTS_DIR}/test_app_service_debug.sh" "${OWNER_USER_ID}" --port "${PORT}" --skip-build
+  run_app_service_phase
 else
   echo "[run_all_test] skipping Phase 3 AppService integration (--skip-app-service)"
 fi
@@ -230,7 +338,11 @@ fi
 # Phase 4 — real browser playwright tests.
 if [[ "${SKIP_BROWSER}" -eq 0 ]]; then
   step "Phase 4 — real browser (playwright)"
-  pnpm run test:browser:real
+  if [[ "${SKIP_APP_SERVICE}" -eq 0 ]]; then
+    run_real_browser_playwright
+  else
+    pnpm run test:browser:real
+  fi
 else
   echo "[run_all_test] skipping Phase 4 real-browser tests (--skip-browser)"
 fi
