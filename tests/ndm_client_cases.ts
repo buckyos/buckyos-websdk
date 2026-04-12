@@ -537,8 +537,8 @@ export const NDM_CLIENT_TEST_CASES: NdmClientTestCase[] = [
                 const contentB = new TextEncoder().encode('bbb')
 
                 // Compute expected dir objectId bottom-up using ndn_types
-                const fileObjA = new NdnFileObject('a.txt', contentA.length, '')
-                const fileObjB = new NdnFileObject('b.txt', contentB.length, '')
+                const fileObjA = new NdnFileObject('a.txt', contentA.length, computeExpectedChunkId(contentA))
+                const fileObjB = new NdnFileObject('b.txt', contentB.length, computeExpectedChunkId(contentB))
 
                 const subDir = new NdnDirObject('sub')
                 subDir.addFile('b.txt', fileObjB.toJSON(), contentB.length)
@@ -546,7 +546,7 @@ export const NDM_CLIENT_TEST_CASES: NdmClientTestCase[] = [
 
                 const rootDir = new NdnDirObject('mydir')
                 rootDir.addFile('a.txt', fileObjA.toJSON(), contentA.length)
-                rootDir.addDirectory('sub', subDirObjId, 0)
+                rootDir.addDirectory('sub', subDirObjId, subDir.total_size)
                 const [expectedRootObjId] = rootDir.genObjId()
 
                 // Now do the same via pickupAndImport
@@ -566,6 +566,36 @@ export const NDM_CLIENT_TEST_CASES: NdmClientTestCase[] = [
                 const subDirResult = dir.children!.find(c => c.name === 'sub') as ImportedDirObject
                 t.eq(subDirResult.objectId, subDirObjId.toString(),
                     `sub dir objectId mismatch`)
+            } finally {
+                setImportProvider(saved)
+            }
+        },
+    },
+    {
+        name: 'directory objectId changes when nested file content changes with same size',
+        async run(t) {
+            const saved = getImportProvider()
+            try {
+                const f1 = makeFile('a.txt', 'abc')
+                Object.defineProperty(f1, 'webkitRelativePath', { value: 'mydir/a.txt' })
+                const f2 = makeFile('b.txt', 'bbb')
+                Object.defineProperty(f2, 'webkitRelativePath', { value: 'mydir/sub/b.txt' })
+
+                setImportProvider(mockProvider({ canPickDirectory: true }, [f1, f2]))
+                const first = await pickupAndImport({ mode: 'single_dir' })
+
+                const f3 = makeFile('a.txt', 'xyz')
+                Object.defineProperty(f3, 'webkitRelativePath', { value: 'mydir/a.txt' })
+                const f4 = makeFile('b.txt', 'bbb')
+                Object.defineProperty(f4, 'webkitRelativePath', { value: 'mydir/sub/b.txt' })
+
+                setImportProvider(mockProvider({ canPickDirectory: true }, [f3, f4]))
+                const second = await pickupAndImport({ mode: 'single_dir' })
+
+                t.falsy(
+                    (first.selection as ImportedDirObject).objectId === (second.selection as ImportedDirObject).objectId,
+                    'directory objectId should change when child file content changes',
+                )
             } finally {
                 setImportProvider(saved)
             }

@@ -14,12 +14,14 @@ import {
     RuntimeCapabilities,
     ImportedFileObject,
     getObject,
+    lookupObject,
     queryChunkState,
     outboxCount,
     removeChunk,
     NdmStoreApiError,
 } from '../src/ndm_client'
 import { createSDKModule, RuntimeType } from '../src/sdk_core'
+import { ObjId } from '../src/ndn_types'
 
 describe('ndm_client (shared cases)', () => {
     for (const c of NDM_CLIENT_TEST_CASES) {
@@ -218,5 +220,140 @@ describe('ndm_client (jest-only)', () => {
         }))
 
         expect(fetchMock).toHaveBeenCalledTimes(1)
+    })
+
+    it('lookupObject returns same_as chunk state for qcid quick_hash', async () => {
+        await sdk.initBuckyOS('test-app', {
+            appId: 'test-app',
+            runtimeType: RuntimeType.Browser,
+            zoneHost: 'example.com',
+            defaultProtocol: 'https://',
+        })
+
+        const fetchMock = jest.fn().mockResolvedValue(
+            new Response(JSON.stringify({
+                object_id: 'qcid:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
+                scope: 'global',
+                state: 'same_as',
+                chunk_size: 4194304,
+                same_as: 'chunklist:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd',
+            }), {
+                status: 200,
+                headers: {
+                    'content-type': 'application/json',
+                },
+            }),
+        )
+        global.fetch = fetchMock as typeof fetch
+
+        const result = await lookupObject({
+            scope: 'global',
+            quick_hash: 'qcid:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
+        }, {
+            endpoint: 'https://example.com',
+            sessionToken: null,
+        })
+
+        expect(result).toEqual({
+            object_id: 'qcid:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
+            scope: 'global',
+            state: 'same_as',
+            chunk_size: 4194304,
+            same_as: 'chunklist:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd',
+        })
+        expect(fetchMock).toHaveBeenCalledWith(
+            'https://example.com/ndm/v1/objects/lookup?scope=global&quick_hash=qcid:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
+            expect.objectContaining({
+                method: 'GET',
+                headers: expect.objectContaining({
+                    Accept: 'application/json',
+                }),
+            }),
+        )
+    })
+
+    it('lookupObject keeps non-chunk lookup response as exists boolean', async () => {
+        await sdk.initBuckyOS('test-app', {
+            appId: 'test-app',
+            runtimeType: RuntimeType.Browser,
+            zoneHost: 'example.com',
+            defaultProtocol: 'https://',
+        })
+
+        const fetchMock = jest.fn().mockResolvedValue(
+            new Response(JSON.stringify({
+                object_id: 'file:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
+                scope: 'app',
+                exists: true,
+            }), {
+                status: 200,
+                headers: {
+                    'content-type': 'application/json',
+                },
+            }),
+        )
+        global.fetch = fetchMock as typeof fetch
+
+        const result = await lookupObject({
+            scope: 'app',
+            quick_hash: 'file:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
+        }, {
+            endpoint: 'https://example.com',
+            sessionToken: null,
+        })
+
+        expect(result).toEqual({
+            object_id: 'file:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
+            scope: 'app',
+            exists: true,
+        })
+    })
+
+    it('lookupObject accepts base32 objid in quick_hash parameters', async () => {
+        await sdk.initBuckyOS('test-app', {
+            appId: 'test-app',
+            runtimeType: RuntimeType.Browser,
+            zoneHost: 'example.com',
+            defaultProtocol: 'https://',
+        })
+
+        const canonicalChunkId = 'qcid:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'
+        const quickHash = ObjId.fromString(canonicalChunkId).toBase32()
+
+        const fetchMock = jest.fn().mockResolvedValue(
+            new Response(JSON.stringify({
+                object_id: quickHash,
+                scope: 'global',
+                state: 'completed',
+                chunk_size: 1048576,
+            }), {
+                status: 200,
+                headers: {
+                    'content-type': 'application/json',
+                },
+            }),
+        )
+        global.fetch = fetchMock as typeof fetch
+
+        const result = await lookupObject({
+            scope: 'global',
+            quick_hash: quickHash,
+        }, {
+            endpoint: 'https://example.com',
+            sessionToken: null,
+        })
+
+        expect(result).toEqual({
+            object_id: quickHash,
+            scope: 'global',
+            state: 'completed',
+            chunk_size: 1048576,
+        })
+        expect(fetchMock).toHaveBeenCalledWith(
+            `https://example.com/ndm/v1/objects/lookup?scope=global&quick_hash=${quickHash}`,
+            expect.objectContaining({
+                method: 'GET',
+            }),
+        )
     })
 })

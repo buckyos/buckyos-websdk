@@ -93,6 +93,8 @@ export interface ImportedFileObject extends BaseImportedObject {
     thumbnail?: ThumbnailResult
     /** The browser File handle, kept for upload. */
     _file?: File
+    /** The canonical NDN FileObject JSON used for parent DirObject hashing. */
+    _ndnFileObject?: Record<string, unknown>
 }
 
 export interface ImportedDirObject extends BaseImportedObject {
@@ -207,6 +209,8 @@ export interface NdmStoreRequestOptions {
     credentials?: RequestCredentials
     sessionToken?: string | null
 }
+
+export interface NdmLookupRequestOptions extends NdmStoreRequestOptions {}
 
 export interface NdmStoreErrorBody {
     error?: string
@@ -358,6 +362,42 @@ export interface ForcedGcUntilResponse {
     freed_bytes: number
 }
 
+export type NdmLookupScope = 'app' | 'global'
+
+export interface LookupObjectRequest {
+    scope: NdmLookupScope
+    quick_hash: string
+    inner_path?: string
+}
+
+export interface LookupObjectExistsResponse {
+    object_id: string
+    scope: NdmLookupScope
+    exists: boolean
+}
+
+export type LookupObjectChunkStateResponse =
+    | ({ object_id: string; scope: NdmLookupScope } & { state: 'new'; chunk_size: number })
+    | ({ object_id: string; scope: NdmLookupScope } & { state: 'completed'; chunk_size: number })
+    | ({ object_id: string; scope: NdmLookupScope } & { state: 'disabled'; chunk_size: number })
+    | ({ object_id: string; scope: NdmLookupScope } & { state: 'not_exist'; chunk_size: number })
+    | ({
+        object_id: string
+        scope: NdmLookupScope
+        state: 'local_link'
+        chunk_size: number
+        local_info: ChunkStateLocalInfo
+    })
+    | ({
+        object_id: string
+        scope: NdmLookupScope
+        state: 'same_as'
+        chunk_size: number
+        same_as: string
+    })
+
+export type LookupObjectResponse = LookupObjectExistsResponse | LookupObjectChunkStateResponse
+
 // ============================================================
 // Default chunk size for splitting files (4 MiB)
 // ============================================================
@@ -495,6 +535,20 @@ function normalizeEndpoint(endpoint: string): string {
     return endpoint.replace(/\/+$/, '')
 }
 
+function isChunkQuickHash(quickHash: string): boolean {
+    try {
+        return ObjId.fromString(quickHash).isChunk()
+    } catch {
+        return false
+    }
+}
+
+function encodeLookupQueryValue(value: string): string {
+    // The current gateway query parser is still in debug mode and does not
+    // URL-decode values, so keep the colon literal for ids like `qcid:...`.
+    return encodeURIComponent(value).replace(/%3A/gi, ':')
+}
+
 function ensureStoreApiSupportedRuntime(): void {
     if (getActiveRuntimeType() === RuntimeType.Browser) {
         throw new NdmError(
@@ -576,6 +630,79 @@ async function callStoreApi<TRequest, TResponse>(
     }
 
     return responseBody as TResponse
+}
+
+async function getZoneGatewayJson<TResponse>(
+    pathWithQuery: string,
+    options?: NdmStoreRequestOptions,
+): Promise<TResponse> {
+    const endpoint = resolveStoreEndpoint(options)
+    const fetcher = options?.fetcher ?? defaultStoreFetcher
+    const sessionToken = options?.sessionToken !== undefined
+        ? options.sessionToken
+        : await getActiveSessionToken()
+
+    const headers: Record<string, string> = {
+        Accept: 'application/json',
+        ...(options?.headers ?? {}),
+    }
+
+    if (sessionToken && !headers.Authorization) {
+        headers.Authorization = `Bearer ${sessionToken}`
+    }
+
+    const response = await fetcher(`${endpoint}${pathWithQuery}`, {
+        method: 'GET',
+        headers,
+        credentials: options?.credentials ?? 'include',
+    })
+
+    const contentType = response.headers.get('content-type') ?? ''
+    const isJsonResponse = contentType.includes('application/json')
+    const responseBody = isJsonResponse
+        ? await response.json() as unknown
+        : await response.text()
+
+    if (!response.ok) {
+        const errorBody = responseBody && typeof responseBody === 'object' && !Array.isArray(responseBody)
+            ? responseBody as NdmStoreErrorBody
+            : null
+        throw new NdmStoreApiError(
+            response.status,
+            errorBody?.error,
+            errorBody?.message ?? (typeof responseBody === 'string' && responseBody.length > 0
+                ? responseBody
+                : `NDM zone gateway request failed with status ${response.status}`),
+            responseBody,
+        )
+    }
+
+    return responseBody as TResponse
+}
+
+export async function lookupObject(
+    request: LookupObjectRequest,
+    options?: NdmLookupRequestOptions,
+): Promise<LookupObjectResponse> {
+    const query: string[] = [
+        `scope=${encodeLookupQueryValue(request.scope)}`,
+        `quick_hash=${encodeLookupQueryValue(request.quick_hash)}`,
+    ]
+
+    if (request.inner_path) {
+        query.push(`inner_path=${encodeLookupQueryValue(request.inner_path)}`)
+    }
+
+    const response = await getZoneGatewayJson<LookupObjectResponse>(
+        `/ndm/v1/objects/lookup?${query.join('&')}`,
+        options,
+    )
+
+    if (isChunkQuickHash(request.quick_hash)) {
+        return response as LookupObjectChunkStateResponse
+    }
+
+    return response as LookupObjectExistsResponse
 }
 
 export async function getObject(
@@ -756,7 +883,7 @@ export async function anchorState(
 async function materializeFile(
     file: File,
     chunkSize: number = DEFAULT_CHUNK_SIZE,
-): Promise<{ objectId: string; chunks: ObjectUploadState['chunks'] }> {
+): Promise<{ objectId: string; chunks: ObjectUploadState['chunks']; fileObject: Record<string, unknown> }> {
     const fileSize = file.size
     const chunks: ObjectUploadState['chunks'] = []
 
@@ -772,7 +899,7 @@ async function materializeFile(
         // Build a FileObject to derive the objectId
         const fileObj = new NdnFileObject(file.name, fileSize, chunkIdStr)
         const [objId] = fileObj.genObjId()
-        return { objectId: objId.toString(), chunks }
+        return { objectId: objId.toString(), chunks, fileObject: fileObj.toJSON() }
     }
 
     // Multi-chunk: split file, hash each chunk, build ChunkList
@@ -791,7 +918,7 @@ async function materializeFile(
     const [chunkListObjId] = chunkList.genObjId()
     const fileObj = new NdnFileObject(file.name, fileSize, chunkListObjId.toString())
     const [objId] = fileObj.genObjId()
-    return { objectId: objId.toString(), chunks }
+    return { objectId: objId.toString(), chunks, fileObject: fileObj.toJSON() }
 }
 
 /**
@@ -849,24 +976,38 @@ function buildDirTree(
     return root
 }
 
-function computeDirObjectIds(dir: ImportedDirObject): string {
+interface ComputedDirState {
+    objectId: string
+    totalSize: number
+    fileCount: number
+    fileSize: number
+}
+
+function computeDirObjectIds(dir: ImportedDirObject): ComputedDirState {
     const ndnDir = new NdnDirObject(dir.name)
 
     if (dir.children) {
         for (const child of dir.children) {
             if (child.kind === 'file') {
-                const fileObj = new NdnFileObject(child.name, child.size, '')
-                ndnDir.addFile(child.name, fileObj.toJSON(), child.size)
+                if (!child._ndnFileObject) {
+                    throw new NdmError('UPLOAD_FAILED', `Missing NDN FileObject for ${child.name}`)
+                }
+                ndnDir.addFile(child.name, child._ndnFileObject, child.size)
             } else {
-                const childObjId = computeDirObjectIds(child)
-                ndnDir.addDirectory(child.name, ObjId.fromString(childObjId), 0)
+                const childState = computeDirObjectIds(child)
+                ndnDir.addDirectory(child.name, ObjId.fromString(childState.objectId), childState.totalSize)
             }
         }
     }
 
     const [objId] = ndnDir.genObjId()
     dir.objectId = objId.toString()
-    return dir.objectId
+    return {
+        objectId: dir.objectId,
+        totalSize: ndnDir.total_size,
+        fileCount: ndnDir.file_count,
+        fileSize: ndnDir.file_size,
+    }
 }
 
 // ============================================================
@@ -1001,7 +1142,7 @@ export async function pickupAndImport<TMode extends ImportMode>(
 
     for (const file of files) {
         const relativePath = (file as any).webkitRelativePath || undefined
-        const { objectId, chunks } = await materializeFile(file)
+        const { objectId, chunks, fileObject } = await materializeFile(file)
 
         const imported: ImportedFileObject = {
             kind: 'file',
@@ -1012,6 +1153,7 @@ export async function pickupAndImport<TMode extends ImportMode>(
             relativePath,
             locality: 'local_only',
             _file: file,
+            _ndnFileObject: fileObject,
         }
 
         // Thumbnail
