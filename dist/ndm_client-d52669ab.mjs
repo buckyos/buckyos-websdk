@@ -5511,14 +5511,16 @@ async function uploadChunkViaTus(endpoint, file, chunkInfo, chunkIndex, appId, l
       endpoint: `${endpoint}/ndm/v1/uploads`,
       chunkSize: chunkData.length,
       retryDelays: [0, 1e3, 3e3, 5e3],
-      removeFingerprintOnSuccess: true,
-      fingerprint: () => Promise.resolve(`tus-${appId}-${fileHash}-chunk${chunkIndex}-${chunkInfo.chunkId}`),
+      storeFingerprintForResuming: false,
       metadata: {
         app_id: appId,
         logical_path: logicalPath,
+        file_name: file.name,
+        file_size: String(file.size),
+        file_hash: fileHash,
         chunk_index: String(chunkIndex),
         chunk_hash: chunkInfo.chunkId,
-        file_hash: fileHash
+        mime_type: file.type || "application/octet-stream"
       },
       onProgress: (bytesUploaded) => {
         onProgress(bytesUploaded);
@@ -5615,7 +5617,7 @@ async function uploadSingleObject(session, endpoint, state) {
       chunk,
       chunkIndex,
       "default",
-      `${session.sessionId}/${chunk.chunkId}`,
+      state.name,
       state.objectId,
       (uploaded) => {
         const prevChunkBytes = state.chunks.filter((c2) => c2 !== chunk && c2.uploaded).reduce((sum, c2) => sum + c2.length, 0);
@@ -5687,4 +5689,4 @@ export {
   ndn_types as n,
   parseSessionTokenClaims as p
 };
-//# sourceMappingURL=ndm_client-2894f957.mjs.map
+//# sourceMappingURL=ndm_client-d52669ab.mjs.map

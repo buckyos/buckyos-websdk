@@ -1499,14 +1499,16 @@ async function uploadChunkViaTus(
             endpoint: `${endpoint}/ndm/v1/uploads`,
             chunkSize: chunkData.length,
             retryDelays: [0, 1000, 3000, 5000],
-            removeFingerprintOnSuccess: true,
-            fingerprint: () => Promise.resolve(`tus-${appId}-${fileHash}-chunk${chunkIndex}-${chunkInfo.chunkId}`),
+            storeFingerprintForResuming: false,
             metadata: {
                 app_id: appId,
                 logical_path: logicalPath,
+                file_name: file.name,
+                file_size: String(file.size),
+                file_hash: fileHash,
                 chunk_index: String(chunkIndex),
                 chunk_hash: chunkInfo.chunkId,
-                file_hash: fileHash,
+                mime_type: file.type || 'application/octet-stream',
             },
             onProgress: (bytesUploaded: number) => {
                 onProgress(bytesUploaded)
@@ -1645,7 +1647,7 @@ async function uploadSingleObject(
             chunk,
             chunkIndex,
             'default',
-            `${session.sessionId}/${chunk.chunkId}`,
+            state.name,
             state.objectId,
             (uploaded) => {
                 // Update byte-level progress
