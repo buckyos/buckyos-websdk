@@ -32,6 +32,7 @@ export interface BuckyOSConfig {
     appId: string;
     defaultProtocol: string;
     runtimeType: RuntimeType;
+    userid?: string | null;
     ownerUserId?: string | null;
     rootDir?: string;
     sessionToken?: string | null;
@@ -100,6 +101,14 @@ export declare class BuckyOSRuntime {
     createAppClientSessionToken(): Promise<string>;
     private loadLocalSigningMaterial;
     private getPrivateKeySearchRoots;
+    private getBuckyOSRootDir;
+    private getBuckyOSEtcDir;
+    private readPemFile;
+    private readNodeIdentityMetadata;
+    private extractDeviceNameFromIdentityPayload;
+    private readDeviceNameFromNodeIdentityPath;
+    private tryLoadDeviceSigningMaterial;
+    private tryLoadUserSigningMaterial;
     private tryResolveDeviceNameFromSearchRoots;
     private tryResolveZoneHostFromSearchRoots;
     private getMySettingsPath;

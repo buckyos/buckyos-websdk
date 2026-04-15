@@ -29,5 +29,6 @@ export const getTaskManagerClient = sdkModule.getTaskManagerClient
 
 export { hashPassword }
 export * from './sdk_core'
+export * from './types'
 export * as ndn from './ndn_types'
 export * as ndm from './ndm_client'

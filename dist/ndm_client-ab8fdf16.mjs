@@ -1938,6 +1938,101 @@ class RepoClient {
     return asBoolean(result, "announce response");
   }
 }
+function isRecord(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function isVerificationMethodArray(value) {
+  return Array.isArray(value);
+}
+function isServiceArray(value) {
+  return value === void 0 || Array.isArray(value);
+}
+function isW3CDIDDocumentBase(value) {
+  if (!isRecord(value)) {
+    return false;
+  }
+  return typeof value["@context"] === "string" && typeof value.id === "string" && isVerificationMethodArray(value.verificationMethod) && Array.isArray(value.authentication) && typeof value.exp === "number" && typeof value.iat === "number" && isServiceArray(value.service);
+}
+function isBuckyOSOwnerConfigDocument(value) {
+  return isW3CDIDDocumentBase(value) && typeof value.name === "string" && typeof value.full_name === "string";
+}
+function isUserDocument(value) {
+  return isBuckyOSOwnerConfigDocument(value);
+}
+function isBuckyOSDeviceMiniDocument(value) {
+  return isRecord(value) && typeof value.n === "string";
+}
+function isBuckyOSDeviceDocument(value) {
+  return isW3CDIDDocumentBase(value) && typeof value.owner === "string" && typeof value.device_type === "string" && typeof value.name === "string";
+}
+function isBuckyOSAgentDocument(value) {
+  return isW3CDIDDocumentBase(value) && typeof value.owner === "string" && isRecord(value.httpServicePorts);
+}
+function isBuckyOSZoneDocument(value) {
+  return isW3CDIDDocumentBase(value) && typeof value.hostname === "string" && typeof value.owner === "string" && Array.isArray(value.oods) && typeof value.boot_jwt === "string";
+}
+function isDIDDocumentBase(value) {
+  return isW3CDIDDocumentBase(value);
+}
+function isOwnerConfigDocument(value) {
+  return isBuckyOSOwnerConfigDocument(value);
+}
+function isDeviceMiniConfig(value) {
+  return isBuckyOSDeviceMiniDocument(value);
+}
+function isDeviceDocument(value) {
+  return isBuckyOSDeviceDocument(value);
+}
+function isAgentDocument(value) {
+  return isBuckyOSAgentDocument(value);
+}
+function isZoneDocument(value) {
+  return isBuckyOSZoneDocument(value);
+}
+function parseW3CDIDDocumentBase(value) {
+  return isW3CDIDDocumentBase(value) ? value : null;
+}
+function parseBuckyOSOwnerConfigDocument(value) {
+  return isBuckyOSOwnerConfigDocument(value) ? value : null;
+}
+function parseOwnerConfigDocument(value) {
+  return parseBuckyOSOwnerConfigDocument(value);
+}
+function parseBuckyOSDeviceMiniDocument(value) {
+  return isBuckyOSDeviceMiniDocument(value) ? value : null;
+}
+function parseDeviceMiniConfig(value) {
+  return parseBuckyOSDeviceMiniDocument(value);
+}
+function parseBuckyOSDIDDocument(value) {
+  if (isBuckyOSOwnerConfigDocument(value)) {
+    return value;
+  }
+  if (isBuckyOSAgentDocument(value)) {
+    return value;
+  }
+  if (isBuckyOSDeviceDocument(value)) {
+    return value;
+  }
+  if (isBuckyOSZoneDocument(value)) {
+    return value;
+  }
+  return null;
+}
+function getDidMethod(did) {
+  if (typeof did !== "string" || !did.startsWith("did:")) {
+    return null;
+  }
+  const parts = did.split(":");
+  return parts.length >= 3 ? parts[1] : null;
+}
+function getDidIdentifier(did) {
+  if (typeof did !== "string" || !did.startsWith("did:")) {
+    return null;
+  }
+  const parts = did.split(":");
+  return parts.length >= 3 ? parts.slice(2).join(":") : null;
+}
 const DEFAULT_NODE_GATEWAY_PORT = 3180;
 const DEFAULT_SESSION_TOKEN_TTL_SECONDS = 15 * 60;
 const DEFAULT_RENEW_INTERVAL_MS = 5e3;
@@ -1957,6 +2052,7 @@ const DEFAULT_CONFIG = {
   appId: "",
   defaultProtocol: "http://",
   runtimeType: "Unknown",
+  userid: null,
   ownerUserId: null,
   rootDir: "",
   sessionToken: null,
@@ -2043,6 +2139,19 @@ function getAppHostPrefix(appId, ownerUserId) {
 function getSessionTokenEnvKey(appFullId, isAppService) {
   const normalized = appFullId.toUpperCase().replace(/-/g, "_");
   return isAppService ? `${normalized}_TOKEN` : `${normalized}_SESSION_TOKEN`;
+}
+function resolveZoneHostFromDid(zoneDid) {
+  const normalized = trimToNull$1(zoneDid);
+  if (!normalized) {
+    return null;
+  }
+  if (normalized.startsWith("did:web:")) {
+    return normalized.slice("did:web:".length).replace(/:/g, ".");
+  }
+  if (normalized.startsWith("did:bns:")) {
+    return normalized.slice("did:bns:".length);
+  }
+  return null;
 }
 function parseAppIdentityFromInstanceConfig(appInstanceConfig) {
   var _a, _b, _c;
@@ -2199,10 +2308,13 @@ function createRuntimeProfile(runtimeType) {
 }
 class BuckyOSRuntime {
   constructor(config) {
+    const normalizedOwnerUserId = trimToNull$1(config.ownerUserId) ?? trimToNull$1(config.userid);
     this.config = {
       ...DEFAULT_CONFIG,
       ...config,
       appId: config.appId,
+      userid: normalizedOwnerUserId,
+      ownerUserId: normalizedOwnerUserId,
       zoneHost: config.zoneHost ?? "",
       defaultProtocol: config.defaultProtocol ?? DEFAULT_CONFIG.defaultProtocol
     };
@@ -2224,10 +2336,13 @@ class BuckyOSRuntime {
     await this.profile.login(this);
   }
   setConfig(config) {
+    const normalizedOwnerUserId = trimToNull$1(config.ownerUserId) ?? trimToNull$1(config.userid);
     this.config = {
       ...DEFAULT_CONFIG,
       ...config,
-      appId: config.appId
+      appId: config.appId,
+      userid: normalizedOwnerUserId,
+      ownerUserId: normalizedOwnerUserId
     };
     this.profile = createRuntimeProfile(this.config.runtimeType);
   }
@@ -2565,45 +2680,38 @@ class BuckyOSRuntime {
     }, claims, material.keyPem);
   }
   async loadLocalSigningMaterial() {
-    const fs = await importNodeModule("node:fs/promises");
+    await importNodeModule("node:fs/promises");
     const path = await importNodeModule("node:path");
-    const env = getProcessEnv();
+    const configuredUserId = this.getOwnerUserId();
+    if (!configuredUserId) {
+      const etcDir = await this.getBuckyOSEtcDir();
+      const deviceName = await this.readDeviceNameFromNodeIdentityPath(path.join(etcDir, "node_identity.json"));
+      if (!deviceName) {
+        throw new Error(`failed to resolve userid from ${path.join(etcDir, "node_identity.json")} device_mini_doc_jwt`);
+      }
+      const keyPem = await this.readPemFile(path.join(etcDir, "node_private_key.pem"));
+      if (!keyPem) {
+        throw new Error(`failed to load node_private_key.pem from ${etcDir}`);
+      }
+      this.config.userid = deviceName;
+      this.config.ownerUserId = deviceName;
+      return {
+        keyPem,
+        issuer: deviceName,
+        subject: deviceName,
+        sourcePath: path.join(etcDir, "node_private_key.pem")
+      };
+    }
     const roots = await this.getPrivateKeySearchRoots();
-    for (const root of roots) {
-      const userKeyPath = root.endsWith(".pem") ? root : path.join(root, "user_private_key.pem");
-      try {
-        const keyPem = (await fs.readFile(userKeyPath, "utf8")).trim();
-        if (keyPem) {
-          return {
-            keyPem,
-            issuer: "root",
-            subject: "root",
-            sourcePath: userKeyPath
-          };
-        }
-      } catch {
-      }
+    const deviceMaterial = await this.tryLoadDeviceSigningMaterial(configuredUserId, roots);
+    if (deviceMaterial) {
+      return deviceMaterial;
     }
-    const deviceName = trimToNull$1(env.BUCKYOS_DEVICE_NAME) ?? await this.tryResolveDeviceNameFromSearchRoots(roots);
-    if (!deviceName) {
-      throw new Error("failed to find user_private_key.pem and no device name is available for node_private_key.pem fallback");
+    const userMaterial = await this.tryLoadUserSigningMaterial(configuredUserId, roots);
+    if (userMaterial) {
+      return userMaterial;
     }
-    for (const root of roots) {
-      const deviceKeyPath = root.endsWith(".pem") ? root : path.join(root, "node_private_key.pem");
-      try {
-        const keyPem = (await fs.readFile(deviceKeyPath, "utf8")).trim();
-        if (keyPem) {
-          return {
-            keyPem,
-            issuer: deviceName,
-            subject: deviceName,
-            sourcePath: deviceKeyPath
-          };
-        }
-      } catch {
-      }
-    }
-    throw new Error(`failed to find private key in AppClient search roots: ${roots.join(", ")}`);
+    throw new Error(`failed to find AppClient private key for userid=${configuredUserId} in search roots: ${roots.join(", ")}`);
   }
   async getPrivateKeySearchRoots() {
     var _a;
@@ -2631,8 +2739,115 @@ class BuckyOSRuntime {
     roots.push(path.join(rootDir, "etc"));
     return Array.from(new Set(roots));
   }
-  async tryResolveDeviceNameFromSearchRoots(roots) {
+  async getBuckyOSRootDir() {
+    const env = getProcessEnv();
+    return trimToNull$1(this.config.rootDir) ?? trimToNull$1(env.BUCKYOS_ROOT) ?? "/opt/buckyos";
+  }
+  async getBuckyOSEtcDir() {
+    const path = await importNodeModule("node:path");
+    return path.join(await this.getBuckyOSRootDir(), "etc");
+  }
+  async readPemFile(filePath) {
     const fs = await importNodeModule("node:fs/promises");
+    try {
+      const keyPem = (await fs.readFile(filePath, "utf8")).trim();
+      return keyPem || null;
+    } catch {
+      return null;
+    }
+  }
+  async readNodeIdentityMetadata(nodeIdentityPath) {
+    const fs = await importNodeModule("node:fs/promises");
+    try {
+      const raw = await fs.readFile(nodeIdentityPath, "utf8");
+      const parsed = JSON.parse(raw);
+      const deviceName = this.extractDeviceNameFromIdentityPayload(parsed);
+      return {
+        deviceName,
+        zoneDid: typeof parsed.zone_did === "string" ? parsed.zone_did.trim() || null : null,
+        zoneName: typeof parsed.zone_name === "string" ? parsed.zone_name.trim() || null : null
+      };
+    } catch {
+      return null;
+    }
+  }
+  extractDeviceNameFromIdentityPayload(payload) {
+    const miniDocJwt = typeof payload.device_mini_doc_jwt === "string" ? payload.device_mini_doc_jwt : null;
+    const miniDocClaims = parseDeviceMiniConfig(parseSessionTokenClaims(miniDocJwt));
+    if (miniDocClaims == null ? void 0 : miniDocClaims.n.trim().length) {
+      return miniDocClaims.n.trim();
+    }
+    const deviceDocJwt = typeof payload.device_doc_jwt === "string" ? payload.device_doc_jwt : null;
+    const deviceDocClaims = parseSessionTokenClaims(deviceDocJwt);
+    for (const claimKey of ["name", "sub"]) {
+      const claimValue = deviceDocClaims == null ? void 0 : deviceDocClaims[claimKey];
+      const candidate = typeof claimValue === "string" ? claimValue.trim() : "";
+      if (candidate) {
+        return candidate;
+      }
+    }
+    return null;
+  }
+  async readDeviceNameFromNodeIdentityPath(nodeIdentityPath) {
+    const metadata = await this.readNodeIdentityMetadata(nodeIdentityPath);
+    return (metadata == null ? void 0 : metadata.deviceName) ?? null;
+  }
+  async tryLoadDeviceSigningMaterial(userId, roots) {
+    const path = await importNodeModule("node:path");
+    const candidateDirs = [
+      await this.getBuckyOSEtcDir(),
+      ...roots.filter((root) => !root.endsWith(".pem"))
+    ];
+    for (const dir of Array.from(new Set(candidateDirs))) {
+      const deviceName = await this.readDeviceNameFromNodeIdentityPath(path.join(dir, "node_identity.json"));
+      if (!deviceName || deviceName !== userId) {
+        continue;
+      }
+      const keyPath = path.join(dir, "node_private_key.pem");
+      const keyPem = await this.readPemFile(keyPath);
+      if (!keyPem) {
+        continue;
+      }
+      return {
+        keyPem,
+        issuer: deviceName,
+        subject: deviceName,
+        sourcePath: keyPath
+      };
+    }
+    return null;
+  }
+  async tryLoadUserSigningMaterial(userId, roots) {
+    var _a;
+    const fs = await importNodeModule("node:fs/promises");
+    const path = await importNodeModule("node:path");
+    for (const root of roots) {
+      const userKeyPath = root.endsWith(".pem") ? root : path.join(root, "user_private_key.pem");
+      const userConfigDir = root.endsWith(".pem") ? path.dirname(root) : root;
+      const userConfigPath = path.join(userConfigDir, "user_config.json");
+      try {
+        const raw = await fs.readFile(userConfigPath, "utf8");
+        const ownerConfig = parseOwnerConfigDocument(JSON.parse(raw));
+        const configUserId = (_a = ownerConfig == null ? void 0 : ownerConfig.name) == null ? void 0 : _a.trim();
+        if (!configUserId || configUserId !== userId) {
+          continue;
+        }
+        const keyPem = await this.readPemFile(userKeyPath);
+        if (!keyPem) {
+          continue;
+        }
+        return {
+          keyPem,
+          issuer: userId,
+          subject: userId,
+          sourcePath: userKeyPath
+        };
+      } catch {
+      }
+    }
+    return null;
+  }
+  async tryResolveDeviceNameFromSearchRoots(roots) {
     const path = await importNodeModule("node:path");
     const env = getProcessEnv();
     const fromEnv = trimToNull$1(env.BUCKYOS_THIS_DEVICE_NAME);
@@ -2654,20 +2869,9 @@ class BuckyOSRuntime {
     }
     for (const root of roots) {
       const nodeIdentityPath = path.join(root, "node_identity.json");
-      try {
-        const raw = await fs.readFile(nodeIdentityPath, "utf8");
-        const parsed = JSON.parse(raw);
-        if (typeof parsed.device_doc_jwt !== "string") {
-          continue;
-        }
-        const claims = parseSessionTokenClaims(parsed.device_doc_jwt);
-        if (typeof (claims == null ? void 0 : claims.name) === "string" && claims.name.trim().length > 0) {
-          return claims.name.trim();
-        }
-        if (typeof (claims == null ? void 0 : claims.sub) === "string" && claims.sub.trim().length > 0) {
-          return claims.sub.trim();
-        }
-      } catch {
+      const deviceName = await this.readDeviceNameFromNodeIdentityPath(nodeIdentityPath);
+      if (deviceName) {
+        return deviceName;
       }
     }
     return null;
@@ -2682,39 +2886,28 @@ class BuckyOSRuntime {
     }
     for (const root of roots) {
       const nodeIdentityPath = path.join(root, "node_identity.json");
-      try {
-        const raw = await fs.readFile(nodeIdentityPath, "utf8");
-        const parsed = JSON.parse(raw);
-        if (typeof parsed.zone_name === "string" && parsed.zone_name.trim().length > 0) {
-          return parsed.zone_name.trim();
-        }
-        if (typeof parsed.zone_did !== "string") {
-          continue;
-        }
-        if (parsed.zone_did.startsWith("did:web:")) {
-          return parsed.zone_did.slice("did:web:".length).replace(/:/g, ".");
-        }
-        if (parsed.zone_did.startsWith("did:bns:")) {
-          return parsed.zone_did.slice("did:bns:".length);
-        }
-      } catch {
+      const metadata = await this.readNodeIdentityMetadata(nodeIdentityPath);
+      if (!metadata) {
+        continue;
       }
+      if (metadata.zoneName) {
+        return metadata.zoneName;
+      }
+      if (!metadata.zoneDid) {
+        continue;
+      }
+      return resolveZoneHostFromDid(metadata.zoneDid);
     }
     for (const root of roots) {
       const userConfigPath = path.join(root, "user_config.json");
       try {
         const raw = await fs.readFile(userConfigPath, "utf8");
-        const parsed = JSON.parse(raw);
-        const zoneDid = typeof parsed.default_zone_did === "string" ? parsed.default_zone_did.trim() : "";
-        if (!zoneDid) {
+        const ownerConfig = parseOwnerConfigDocument(JSON.parse(raw));
+        const zoneHost = resolveZoneHostFromDid(ownerConfig == null ? void 0 : ownerConfig.default_zone_did);
+        if (!zoneHost) {
           continue;
         }
-        if (zoneDid.startsWith("did:web:")) {
-          return zoneDid.slice("did:web:".length).replace(/:/g, ".");
-        }
-        if (zoneDid.startsWith("did:bns:")) {
-          return zoneDid.slice("did:bns:".length);
-        }
+        return zoneHost;
       } catch {
       }
     }
@@ -5817,6 +6010,13 @@ const ndm_client = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.definePr
 export {
   AiccClient as A,
   BS_SERVICE_VERIFY_HUB as B,
+  parseBuckyOSOwnerConfigDocument as C,
+  parseOwnerConfigDocument as D,
+  parseBuckyOSDeviceMiniDocument as E,
+  parseDeviceMiniConfig as F,
+  parseBuckyOSDIDDocument as G,
+  getDidMethod as H,
+  getDidIdentifier as I,
   MsgQueueClient as M,
   RuntimeType as R,
   SystemConfigClient as S,
@@ -5833,7 +6033,21 @@ export {
   hashPassword as h,
   MsgCenterClient as i,
   RepoClient as j,
+  isW3CDIDDocumentBase as k,
+  isBuckyOSOwnerConfigDocument as l,
+  isUserDocument as m,
   ndn_types as n,
-  parseSessionTokenClaims as p
+  isBuckyOSDeviceMiniDocument as o,
+  parseSessionTokenClaims as p,
+  isBuckyOSDeviceDocument as q,
+  isBuckyOSAgentDocument as r,
+  isBuckyOSZoneDocument as s,
+  isDIDDocumentBase as t,
+  isOwnerConfigDocument as u,
+  isDeviceMiniConfig as v,
+  isDeviceDocument as w,
+  isAgentDocument as x,
+  isZoneDocument as y,
+  parseW3CDIDDocumentBase as z
 };
-//# sourceMappingURL=ndm_client-ffd3f93b.mjs.map
+//# sourceMappingURL=ndm_client-ab8fdf16.mjs.map

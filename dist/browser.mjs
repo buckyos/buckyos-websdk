@@ -1,5 +1,5 @@
-import { c as createSDKModule } from "./ndm_client-ffd3f93b.mjs";
-import { A, b, B, f, i, M, j, R, S, T, V, W, g, e, d, h, a, n, p } from "./ndm_client-ffd3f93b.mjs";
+import { c as createSDKModule } from "./ndm_client-ab8fdf16.mjs";
+import { A, b, B, f, i, M, j, R, S, T, V, W, g, e, d, I, H, h, x, r, q, o, l, s, t, w, v, u, m, k, y, a, n, G, E, C, F, D, p, z } from "./ndm_client-ab8fdf16.mjs";
 const sdkModule = createSDKModule("browser");
 const buckyos = sdkModule.buckyos;
 const initBuckyOS = sdkModule.initBuckyOS;
@@ -48,6 +48,8 @@ export {
   getAppSetting,
   getBuckyOSConfig,
   getCurrentWalletUser,
+  I as getDidIdentifier,
+  H as getDidMethod,
   getRuntimeType,
   getServiceRpcClient,
   getSystemConfigClient,
@@ -57,6 +59,19 @@ export {
   getZoneServiceURL,
   h as hashPassword,
   initBuckyOS,
+  x as isAgentDocument,
+  r as isBuckyOSAgentDocument,
+  q as isBuckyOSDeviceDocument,
+  o as isBuckyOSDeviceMiniDocument,
+  l as isBuckyOSOwnerConfigDocument,
+  s as isBuckyOSZoneDocument,
+  t as isDIDDocumentBase,
+  w as isDeviceDocument,
+  v as isDeviceMiniConfig,
+  u as isOwnerConfigDocument,
+  m as isUserDocument,
+  k as isW3CDIDDocumentBase,
+  y as isZoneDocument,
   login,
   loginByBrowserSSO,
   loginByPassword,
@@ -64,7 +79,13 @@ export {
   logout,
   a as ndm,
   n as ndn,
+  G as parseBuckyOSDIDDocument,
+  E as parseBuckyOSDeviceMiniDocument,
+  C as parseBuckyOSOwnerConfigDocument,
+  F as parseDeviceMiniConfig,
+  D as parseOwnerConfigDocument,
   p as parseSessionTokenClaims,
+  z as parseW3CDIDDocumentBase,
   removeEvent,
   setAppSetting,
   walletSignWithActiveDid

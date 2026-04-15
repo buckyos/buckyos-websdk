@@ -7,6 +7,7 @@ import { MsgQueueClient } from './msg_queue_client'
 import { MsgCenterClient } from './msg_center_client'
 import { RepoClient } from './repo_client'
 import { BrowserUserInfo, getBrowserUserInfo, saveBrowserUserInfo } from './account'
+import { parseDeviceMiniConfig, parseOwnerConfigDocument } from './types'
 
 declare const require: undefined | ((name: string) => any)
 
@@ -49,6 +50,7 @@ export interface BuckyOSConfig {
   appId: string
   defaultProtocol: string
   runtimeType: RuntimeType
+  userid?: string | null
   ownerUserId?: string | null
   rootDir?: string
   sessionToken?: string | null
@@ -66,6 +68,7 @@ export const DEFAULT_CONFIG: BuckyOSConfig = {
   appId: '',
   defaultProtocol: 'http://',
   runtimeType: RuntimeType.Unknown,
+  userid: null,
   ownerUserId: null,
   rootDir: '',
   sessionToken: null,
@@ -83,6 +86,12 @@ interface LocalSigningMaterial {
   issuer: string
   subject: string
   sourcePath: string
+}
+
+interface NodeIdentityMetadata {
+  deviceName: string | null
+  zoneDid: string | null
+  zoneName: string | null
 }
 
 function getProcessEnv(): Record<string, string | undefined> {
@@ -181,6 +190,23 @@ function getAppHostPrefix(appId: string, ownerUserId: string | null | undefined)
 function getSessionTokenEnvKey(appFullId: string, isAppService: boolean): string {
   const normalized = appFullId.toUpperCase().replace(/-/g, '_')
   return isAppService ? `${normalized}_TOKEN` : `${normalized}_SESSION_TOKEN`
+}
+
+function resolveZoneHostFromDid(zoneDid: string | null | undefined): string | null {
+  const normalized = trimToNull(zoneDid)
+  if (!normalized) {
+    return null
+  }
+
+  if (normalized.startsWith('did:web:')) {
+    return normalized.slice('did:web:'.length).replace(/:/g, '.')
+  }
+
+  if (normalized.startsWith('did:bns:')) {
+    return normalized.slice('did:bns:'.length)
+  }
+
+  return null
 }
 
 function parseAppIdentityFromInstanceConfig(appInstanceConfig: string): {
@@ -404,10 +430,13 @@ export class BuckyOSRuntime {
   private profile: RuntimeProfile
 
   constructor(config: BuckyOSConfig) {
+    const normalizedOwnerUserId = trimToNull(config.ownerUserId) ?? trimToNull(config.userid)
     this.config = {
       ...DEFAULT_CONFIG,
       ...config,
       appId: config.appId,
+      userid: normalizedOwnerUserId,
+      ownerUserId: normalizedOwnerUserId,
       zoneHost: config.zoneHost ?? '',
       defaultProtocol: config.defaultProtocol ?? DEFAULT_CONFIG.defaultProtocol,
     }
@@ -433,10 +462,13 @@ export class BuckyOSRuntime {
   }
 
   setConfig(config: BuckyOSConfig) {
+    const normalizedOwnerUserId = trimToNull(config.ownerUserId) ?? trimToNull(config.userid)
     this.config = {
       ...DEFAULT_CONFIG,
       ...config,
       appId: config.appId,
+      userid: normalizedOwnerUserId,
+      ownerUserId: normalizedOwnerUserId,
     }
     this.profile = createRuntimeProfile(this.config.runtimeType)
   }
@@ -878,49 +910,41 @@ export class BuckyOSRuntime {
   private async loadLocalSigningMaterial(): Promise<LocalSigningMaterial> {
     const fs = await importNodeModule('node:fs/promises')
     const path = await importNodeModule('node:path')
-    const env = getProcessEnv()
+    const configuredUserId = this.getOwnerUserId()
+    if (!configuredUserId) {
+      const etcDir = await this.getBuckyOSEtcDir()
+      const deviceName = await this.readDeviceNameFromNodeIdentityPath(path.join(etcDir, 'node_identity.json'))
+      if (!deviceName) {
+        throw new Error(`failed to resolve userid from ${path.join(etcDir, 'node_identity.json')} device_mini_doc_jwt`)
+      }
+
+      const keyPem = await this.readPemFile(path.join(etcDir, 'node_private_key.pem'))
+      if (!keyPem) {
+        throw new Error(`failed to load node_private_key.pem from ${etcDir}`)
+      }
+
+      this.config.userid = deviceName
+      this.config.ownerUserId = deviceName
+      return {
+        keyPem,
+        issuer: deviceName,
+        subject: deviceName,
+        sourcePath: path.join(etcDir, 'node_private_key.pem'),
+      }
+    }
 
     const roots = await this.getPrivateKeySearchRoots()
-    for (const root of roots) {
-      const userKeyPath = root.endsWith('.pem') ? root : path.join(root, 'user_private_key.pem')
-      try {
-        const keyPem = (await fs.readFile(userKeyPath, 'utf8')).trim()
-        if (keyPem) {
-          return {
-            keyPem,
-            issuer: 'root',
-            subject: 'root',
-            sourcePath: userKeyPath,
-          }
-        }
-      } catch {
-        // Skip missing key files.
-      }
+    const deviceMaterial = await this.tryLoadDeviceSigningMaterial(configuredUserId, roots)
+    if (deviceMaterial) {
+      return deviceMaterial
     }
 
-    const deviceName = trimToNull(env.BUCKYOS_DEVICE_NAME) ?? await this.tryResolveDeviceNameFromSearchRoots(roots)
-    if (!deviceName) {
-      throw new Error('failed to find user_private_key.pem and no device name is available for node_private_key.pem fallback')
+    const userMaterial = await this.tryLoadUserSigningMaterial(configuredUserId, roots)
+    if (userMaterial) {
+      return userMaterial
     }
 
-    for (const root of roots) {
-      const deviceKeyPath = root.endsWith('.pem') ? root : path.join(root, 'node_private_key.pem')
-      try {
-        const keyPem = (await fs.readFile(deviceKeyPath, 'utf8')).trim()
-        if (keyPem) {
-          return {
-            keyPem,
-            issuer: deviceName,
-            subject: deviceName,
-            sourcePath: deviceKeyPath,
-          }
-        }
-      } catch {
-        // Skip missing key files.
-      }
-    }
-
-    throw new Error(`failed to find private key in AppClient search roots: ${roots.join(', ')}`)
+    throw new Error(`failed to find AppClient private key for userid=${configuredUserId} in search roots: ${roots.join(', ')}`)
   }
 
   private async getPrivateKeySearchRoots(): Promise<string[]> {
@@ -954,8 +978,144 @@ export class BuckyOSRuntime {
     return Array.from(new Set(roots))
   }
 
-  private async tryResolveDeviceNameFromSearchRoots(roots: string[]): Promise<string | null> {
+  private async getBuckyOSRootDir(): Promise<string> {
+    const env = getProcessEnv()
+    return trimToNull(this.config.rootDir) ?? trimToNull(env.BUCKYOS_ROOT) ?? '/opt/buckyos'
+  }
+
+  private async getBuckyOSEtcDir(): Promise<string> {
+    const path = await importNodeModule('node:path')
+    return path.join(await this.getBuckyOSRootDir(), 'etc')
+  }
+
+  private async readPemFile(filePath: string): Promise<string | null> {
     const fs = await importNodeModule('node:fs/promises')
+    try {
+      const keyPem = (await fs.readFile(filePath, 'utf8')).trim()
+      return keyPem || null
+    } catch {
+      return null
+    }
+  }
+
+  private async readNodeIdentityMetadata(nodeIdentityPath: string): Promise<NodeIdentityMetadata | null> {
+    const fs = await importNodeModule('node:fs/promises')
+    try {
+      const raw = await fs.readFile(nodeIdentityPath, 'utf8')
+      const parsed = JSON.parse(raw) as {
+        zone_did?: unknown
+        zone_name?: unknown
+        device_mini_doc_jwt?: unknown
+        device_doc_jwt?: unknown
+      }
+
+      const deviceName = this.extractDeviceNameFromIdentityPayload(parsed)
+      return {
+        deviceName,
+        zoneDid: typeof parsed.zone_did === 'string' ? parsed.zone_did.trim() || null : null,
+        zoneName: typeof parsed.zone_name === 'string' ? parsed.zone_name.trim() || null : null,
+      }
+    } catch {
+      return null
+    }
+  }
+
+  private extractDeviceNameFromIdentityPayload(payload: {
+    device_mini_doc_jwt?: unknown
+    device_doc_jwt?: unknown
+  }): string | null {
+    const miniDocJwt = typeof payload.device_mini_doc_jwt === 'string' ? payload.device_mini_doc_jwt : null
+    const miniDocClaims = parseDeviceMiniConfig(parseSessionTokenClaims(miniDocJwt))
+    if (miniDocClaims?.n.trim().length) {
+      return miniDocClaims.n.trim()
+    }
+
+    const deviceDocJwt = typeof payload.device_doc_jwt === 'string' ? payload.device_doc_jwt : null
+    const deviceDocClaims = parseSessionTokenClaims(deviceDocJwt)
+    for (const claimKey of ['name', 'sub'] as const) {
+      const claimValue = deviceDocClaims?.[claimKey]
+      const candidate = typeof claimValue === 'string' ? claimValue.trim() : ''
+      if (candidate) {
+        return candidate
+      }
+    }
+
+    return null
+  }
+
+  private async readDeviceNameFromNodeIdentityPath(nodeIdentityPath: string): Promise<string | null> {
+    const metadata = await this.readNodeIdentityMetadata(nodeIdentityPath)
+    return metadata?.deviceName ?? null
+  }
+
+  private async tryLoadDeviceSigningMaterial(userId: string, roots: string[]): Promise<LocalSigningMaterial | null> {
+    const path = await importNodeModule('node:path')
+
+    const candidateDirs = [
+      await this.getBuckyOSEtcDir(),
+      ...roots.filter((root) => !root.endsWith('.pem')),
+    ]
+
+    for (const dir of Array.from(new Set(candidateDirs))) {
+      const deviceName = await this.readDeviceNameFromNodeIdentityPath(path.join(dir, 'node_identity.json'))
+      if (!deviceName || deviceName !== userId) {
+        continue
+      }
+
+      const keyPath = path.join(dir, 'node_private_key.pem')
+      const keyPem = await this.readPemFile(keyPath)
+      if (!keyPem) {
+        continue
+      }
+
+      return {
+        keyPem,
+        issuer: deviceName,
+        subject: deviceName,
+        sourcePath: keyPath,
+      }
+    }
+
+    return null
+  }
+
+  private async tryLoadUserSigningMaterial(userId: string, roots: string[]): Promise<LocalSigningMaterial | null> {
+    const fs = await importNodeModule('node:fs/promises')
+    const path = await importNodeModule('node:path')
+
+    for (const root of roots) {
+      const userKeyPath = root.endsWith('.pem') ? root : path.join(root, 'user_private_key.pem')
+      const userConfigDir = root.endsWith('.pem') ? path.dirname(root) : root
+      const userConfigPath = path.join(userConfigDir, 'user_config.json')
+
+      try {
+        const raw = await fs.readFile(userConfigPath, 'utf8')
+        const ownerConfig = parseOwnerConfigDocument(JSON.parse(raw))
+        const configUserId = ownerConfig?.name?.trim()
+        if (!configUserId || configUserId !== userId) {
+          continue
+        }
+
+        const keyPem = await this.readPemFile(userKeyPath)
+        if (!keyPem) {
+          continue
+        }
+
+        return {
+          keyPem,
+          issuer: userId,
+          subject: userId,
+          sourcePath: userKeyPath,
+        }
+      } catch {
+        // Ignore malformed or missing user configs.
+      }
+    }
+
+    return null
+  }
+
+  private async tryResolveDeviceNameFromSearchRoots(roots: string[]): Promise<string | null> {
     const path = await importNodeModule('node:path')
     const env = getProcessEnv()
 
@@ -981,21 +1141,9 @@ export class BuckyOSRuntime {
 
     for (const root of roots) {
       const nodeIdentityPath = path.join(root, 'node_identity.json')
-      try {
-        const raw = await fs.readFile(nodeIdentityPath, 'utf8')
-        const parsed = JSON.parse(raw) as { device_doc_jwt?: unknown }
-        if (typeof parsed.device_doc_jwt !== 'string') {
-          continue
-        }
-        const claims = parseSessionTokenClaims(parsed.device_doc_jwt)
-        if (typeof claims?.name === 'string' && claims.name.trim().length > 0) {
-          return claims.name.trim()
-        }
-        if (typeof claims?.sub === 'string' && claims.sub.trim().length > 0) {
-          return claims.sub.trim()
-        }
-      } catch {
-        // Ignore missing node identity files.
+      const deviceName = await this.readDeviceNameFromNodeIdentityPath(nodeIdentityPath)
+      if (deviceName) {
+        return deviceName
       }
     }
 
@@ -1014,45 +1162,32 @@ export class BuckyOSRuntime {
 
     for (const root of roots) {
       const nodeIdentityPath = path.join(root, 'node_identity.json')
-      try {
-        const raw = await fs.readFile(nodeIdentityPath, 'utf8')
-        const parsed = JSON.parse(raw) as { zone_did?: unknown; zone_name?: unknown }
-
-        if (typeof parsed.zone_name === 'string' && parsed.zone_name.trim().length > 0) {
-          return parsed.zone_name.trim()
-        }
-
-        if (typeof parsed.zone_did !== 'string') {
-          continue
-        }
-
-        if (parsed.zone_did.startsWith('did:web:')) {
-          return parsed.zone_did.slice('did:web:'.length).replace(/:/g, '.')
-        }
-
-        if (parsed.zone_did.startsWith('did:bns:')) {
-          return parsed.zone_did.slice('did:bns:'.length)
-        }
-      } catch {
-        // Ignore missing node identity files.
+      const metadata = await this.readNodeIdentityMetadata(nodeIdentityPath)
+      if (!metadata) {
+        continue
       }
+
+      if (metadata.zoneName) {
+        return metadata.zoneName
+      }
+
+      if (!metadata.zoneDid) {
+        continue
+      }
+
+      return resolveZoneHostFromDid(metadata.zoneDid)
     }
 
     for (const root of roots) {
       const userConfigPath = path.join(root, 'user_config.json')
       try {
         const raw = await fs.readFile(userConfigPath, 'utf8')
-        const parsed = JSON.parse(raw) as { default_zone_did?: unknown }
-        const zoneDid = typeof parsed.default_zone_did === 'string' ? parsed.default_zone_did.trim() : ''
-        if (!zoneDid) {
+        const ownerConfig = parseOwnerConfigDocument(JSON.parse(raw))
+        const zoneHost = resolveZoneHostFromDid(ownerConfig?.default_zone_did)
+        if (!zoneHost) {
           continue
         }
-        if (zoneDid.startsWith('did:web:')) {
-          return zoneDid.slice('did:web:'.length).replace(/:/g, '.')
-        }
-        if (zoneDid.startsWith('did:bns:')) {
-          return zoneDid.slice('did:bns:'.length)
-        }
+        return zoneHost
       } catch {
         // Ignore missing user config files.
       }

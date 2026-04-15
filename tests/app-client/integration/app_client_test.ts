@@ -30,14 +30,7 @@ function sleep(ms: number) {
 describeIntegration('AppClient runtime integration', () => {
   const appId = getEnv('BUCKYOS_TEST_APP_ID', 'buckycli') as string
   const zoneHost = getEnv('BUCKYOS_TEST_ZONE_HOST', 'test.buckyos.io') as string
-  const verifyHubServiceUrl = getEnv(
-    'BUCKYOS_TEST_VERIFY_HUB_URL',
-    getServiceUrl(appId, zoneHost, 'verify-hub'),
-  ) as string
-  const systemConfigServiceUrl = getEnv(
-    'BUCKYOS_TEST_SYSTEM_CONFIG_URL',
-    getServiceUrl(appId, zoneHost, 'system-config'),
-  ) as string
+ 
   const privateKeySearchPaths = [
     getEnv('BUCKYOS_TEST_APP_CLIENT_DIR'),
     '/opt/buckyos/etc/.buckycli',
@@ -64,8 +57,6 @@ describeIntegration('AppClient runtime integration', () => {
       runtimeType: RuntimeType.AppClient,
       zoneHost,
       defaultProtocol: 'https://',
-      verifyHubServiceUrl,
-      systemConfigServiceUrl,
       privateKeySearchPaths,
       autoRenew: false,
     })
