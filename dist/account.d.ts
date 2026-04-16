@@ -1,7 +1,7 @@
 export interface AccountInfo {
     user_name: string;
     user_id: string;
-    user_type: string;
+    user_type?: string;
     session_token: string;
     refresh_token?: string;
 }

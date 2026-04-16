@@ -328,7 +328,7 @@ export class BuckyOSSDK {
         saveBrowserUserInfo({
           user_name: accountInfo.user_name,
           user_id: accountInfo.user_id,
-          user_type: accountInfo.user_type,
+          user_type: normalized.user_type,
         })
       }
       this.currentAccountInfo = accountInfo
@@ -673,11 +673,16 @@ export class BuckyOSSDK {
       : typeof claims?.userid === 'string'
         ? claims.userid
         : this.currentRuntime.getOwnerUserId() ?? 'root'
+    const userType = typeof claims?.user_type === 'string'
+      ? claims.user_type
+      : this.currentRuntime.getConfig().runtimeType === RuntimeType.AppService
+        ? 'service'
+        : undefined
 
     this.currentAccountInfo = {
       user_name: userId,
       user_id: userId,
-      user_type: this.currentRuntime.getConfig().runtimeType === RuntimeType.AppService ? 'service' : 'root',
+      user_type: userType,
       session_token: sessionToken,
       refresh_token: this.currentRuntime.getRefreshToken() ?? undefined,
     }

@@ -91,10 +91,12 @@ async function createAppClientRoot(options: {
 
 describe('AppClient getAccountInfo unit behavior', () => {
   const originalEnv = { ...process.env }
+  const originalFetch = globalThis.fetch
   const rootsToCleanup: string[] = []
 
   afterEach(async () => {
     process.env = { ...originalEnv }
+    globalThis.fetch = originalFetch
     await Promise.all(rootsToCleanup.splice(0).map((root) => rm(root, { recursive: true, force: true })))
   })
 
@@ -126,8 +128,8 @@ describe('AppClient getAccountInfo unit behavior', () => {
     expect(accountInfo).toEqual(expect.objectContaining({
       user_name: 'devtest',
       user_id: 'devtest',
-      user_type: 'root',
     }))
+    expect(accountInfo?.user_type).toBeUndefined()
     expect(claims).toEqual(expect.objectContaining({
       iss: 'devtest',
       sub: 'devtest',
@@ -162,12 +164,72 @@ describe('AppClient getAccountInfo unit behavior', () => {
     expect(accountInfo).toEqual(expect.objectContaining({
       user_name: 'ood1',
       user_id: 'ood1',
-      user_type: 'root',
     }))
+    expect(accountInfo?.user_type).toBeUndefined()
     expect(claims).toEqual(expect.objectContaining({
       iss: 'ood1',
       sub: 'ood1',
       userid: 'ood1',
     }))
+  })
+
+  it('getAccountInfo after AppClient login does not synthesize user_type when token has no user_type claim', async () => {
+    const root = await createAppClientRoot({
+      userId: 'devtest',
+      userConfigZoneDid: 'did:web:test.buckyos.io',
+      withUserKey: true,
+    })
+    rootsToCleanup.push(root)
+
+    const sdk = createSDKModule('node')
+    await sdk.initBuckyOS('buckycli', {
+      appId: 'buckycli',
+      ownerUserId: 'devtest',
+      runtimeType: RuntimeType.AppClient,
+      zoneHost: '',
+      verifyHubServiceUrl: 'http://verify-hub.test/kapi/verify-hub',
+      defaultProtocol: 'https://',
+      privateKeySearchPaths: [root],
+      autoRenew: false,
+    })
+
+    const bootstrapClaims = parseSessionTokenClaims((await sdk.getAccountInfo())?.session_token ?? null)
+    const bootstrapSession = typeof bootstrapClaims?.session === 'number' ? bootstrapClaims.session : 42
+
+    const finalSessionToken = makeJwt({
+      appid: 'buckycli',
+      iss: 'verify-hub',
+      sub: 'devtest',
+      session: bootstrapSession,
+      exp: 2200000000,
+    })
+    const finalRefreshToken = makeJwt({
+      appid: 'buckycli',
+      aud: 'verify-hub',
+      iss: 'verify-hub',
+      sub: 'devtest',
+      session: bootstrapSession,
+      exp: 2200003600,
+    })
+
+    globalThis.fetch = jest.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        result: {
+          session_token: finalSessionToken,
+          refresh_token: finalRefreshToken,
+        },
+      }),
+    })) as unknown as typeof fetch
+
+    const accountInfo = await sdk.login()
+
+    expect(accountInfo).toEqual(expect.objectContaining({
+      user_name: 'devtest',
+      user_id: 'devtest',
+      session_token: finalSessionToken,
+      refresh_token: finalRefreshToken,
+    }))
+    expect(accountInfo?.user_type).toBeUndefined()
   })
 })
