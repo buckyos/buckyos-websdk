@@ -9,6 +9,7 @@ import { AiccClient } from './aicc_client';
 import { MsgQueueClient } from './msg_queue_client';
 import { MsgCenterClient } from './msg_center_client';
 import { RepoClient } from './repo_client';
+import { KEventClient, KEvent, KEventPatternInput, KEventReader, KEventReaderOptions, KEventSubscribeOptions, KEventSubscription } from './kevent_client';
 export declare const WEB3_BRIDGE_HOST = "web3.buckyos.ai";
 export declare const BS_SERVICE_VERIFY_HUB = "verify-hub";
 export declare const BS_SERVICE_TASK_MANAGER = "task-manager";
@@ -19,6 +20,7 @@ export declare function getActiveSessionToken(): Promise<string | null>;
 export declare class BuckyOSSDK {
     private currentRuntime;
     private currentAccountInfo;
+    private currentKEventClient;
     private readonly target;
     constructor(target: SDKTarget);
     initBuckyOS(appid: string, config?: BuckyOSConfig | null): Promise<void>;
@@ -27,6 +29,10 @@ export declare class BuckyOSSDK {
     getAppId(): string | null;
     attachEvent(eventName: string, callback: Function): void;
     removeEvent(cookieId: string): void;
+    getKEventClient(): KEventClient;
+    createEventReader(patterns: KEventPatternInput, options?: KEventReaderOptions): Promise<KEventReader>;
+    create_event_reader(patterns: KEventPatternInput, options?: KEventReaderOptions): Promise<KEventReader>;
+    subscribeKEvent(patterns: KEventPatternInput, callback: (event: KEvent) => void | Promise<void>, options?: KEventSubscribeOptions): Promise<KEventSubscription>;
     getAccountInfo(): Promise<AccountInfo | null>;
     loginByPassword(username: string, password: string): Promise<AccountInfo | null>;
     loginByRuntimeSession(): Promise<AccountInfo | null>;
@@ -61,6 +67,10 @@ export declare function createSDKModule(target: SDKTarget): {
         getBuckyOSConfig: () => BuckyOSConfig | null;
         getRuntimeType: () => RuntimeType;
         getAppId: () => string | null;
+        getKEventClient: () => KEventClient;
+        createEventReader: (patterns: KEventPatternInput, options?: KEventReaderOptions) => Promise<KEventReader>;
+        create_event_reader: (patterns: KEventPatternInput, options?: KEventReaderOptions) => Promise<KEventReader>;
+        subscribeKEvent: (patterns: KEventPatternInput, callback: (event: KEvent) => void | Promise<void>, options?: KEventSubscribeOptions) => Promise<KEventSubscription>;
         attachEvent: (eventName: string, callback: Function) => void;
         removeEvent: (cookieId: string) => void;
         getAccountInfo: () => Promise<AccountInfo | null>;
@@ -90,6 +100,10 @@ export declare function createSDKModule(target: SDKTarget): {
     getBuckyOSConfig: () => BuckyOSConfig | null;
     getRuntimeType: () => RuntimeType;
     getAppId: () => string | null;
+    getKEventClient: () => KEventClient;
+    createEventReader: (patterns: KEventPatternInput, options?: KEventReaderOptions) => Promise<KEventReader>;
+    create_event_reader: (patterns: KEventPatternInput, options?: KEventReaderOptions) => Promise<KEventReader>;
+    subscribeKEvent: (patterns: KEventPatternInput, callback: (event: KEvent) => void | Promise<void>, options?: KEventSubscribeOptions) => Promise<KEventSubscription>;
     attachEvent: (eventName: string, callback: Function) => void;
     removeEvent: (cookieId: string) => void;
     getAccountInfo: () => Promise<AccountInfo | null>;
@@ -123,4 +137,5 @@ export { AiccClient };
 export { MsgQueueClient };
 export { MsgCenterClient };
 export { RepoClient };
+export * from './kevent_client';
 //# sourceMappingURL=sdk_core.d.ts.map

@@ -19,9 +19,11 @@ import {
 } from '../../helpers/test_env'
 import { defineSharedServiceClientSuite } from '../../helpers/service_client_suite'
 
-jest.setTimeout(30000)
+jest.setTimeout(90000)
 
 const describeIntegration = shouldRunIntegrationTests() ? describe : describe.skip
+const keventPattern = getEnv('BUCKYOS_TEST_KEVENT_PATTERN', '/devices/**') as string
+const keventWaitTimeoutMs = Number(getEnv('BUCKYOS_TEST_KEVENT_TIMEOUT_MS', '45000') ?? '45000')
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -110,6 +112,20 @@ describeIntegration('AppClient runtime integration', () => {
       const expectedSubject = (sessionTokenClaims?.sub as string | undefined)
         ?? (sessionTokenClaims?.userid as string | undefined)
       expect(accountUserId).toBe(expectedSubject)
+    })
+
+    it(`receives the DV kevent ${keventPattern}`, async () => {
+      const reader = await buckyosRef.create_event_reader([keventPattern])
+
+      try {
+        const event = await reader.pull_event(keventWaitTimeoutMs)
+        expect(event).not.toBeNull()
+        expect(event?.eventid).toMatch(/^\/devices\/[^/]+\/info$/)
+        expect(typeof event?.source_node).toBe('string')
+        expect(typeof event?.timestamp).toBe('number')
+      } finally {
+        await reader.close()
+      }
     })
   })
 })

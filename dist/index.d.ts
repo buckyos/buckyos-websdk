@@ -5,6 +5,10 @@ export declare const buckyos: {
     getBuckyOSConfig: () => import("./runtime").BuckyOSConfig | null;
     getRuntimeType: () => import("./runtime").RuntimeType;
     getAppId: () => string | null;
+    getKEventClient: () => import("./kevent_client").KEventClient;
+    createEventReader: (patterns: import("./kevent_client").KEventPatternInput, options?: import("./kevent_client").KEventReaderOptions) => Promise<import("./kevent_client").KEventReader>;
+    create_event_reader: (patterns: import("./kevent_client").KEventPatternInput, options?: import("./kevent_client").KEventReaderOptions) => Promise<import("./kevent_client").KEventReader>;
+    subscribeKEvent: (patterns: import("./kevent_client").KEventPatternInput, callback: (event: import("./kevent_client").KEvent) => void | Promise<void>, options?: import("./kevent_client").KEventSubscribeOptions) => Promise<import("./kevent_client").KEventSubscription>;
     attachEvent: (eventName: string, callback: Function) => void;
     removeEvent: (cookieId: string) => void;
     getAccountInfo: () => Promise<import("./account").AccountInfo | null>;
@@ -34,6 +38,10 @@ export declare const initBuckyOS: (appid: string, config?: import("./runtime").B
 export declare const getBuckyOSConfig: () => import("./runtime").BuckyOSConfig | null;
 export declare const getRuntimeType: () => import("./runtime").RuntimeType;
 export declare const getAppId: () => string | null;
+export declare const getKEventClient: () => import("./kevent_client").KEventClient;
+export declare const createEventReader: (patterns: import("./kevent_client").KEventPatternInput, options?: import("./kevent_client").KEventReaderOptions) => Promise<import("./kevent_client").KEventReader>;
+export declare const create_event_reader: (patterns: import("./kevent_client").KEventPatternInput, options?: import("./kevent_client").KEventReaderOptions) => Promise<import("./kevent_client").KEventReader>;
+export declare const subscribeKEvent: (patterns: import("./kevent_client").KEventPatternInput, callback: (event: import("./kevent_client").KEvent) => void | Promise<void>, options?: import("./kevent_client").KEventSubscribeOptions) => Promise<import("./kevent_client").KEventSubscription>;
 export declare const attachEvent: (eventName: string, callback: Function) => void;
 export declare const removeEvent: (cookieId: string) => void;
 export declare const getAccountInfo: () => Promise<import("./account").AccountInfo | null>;

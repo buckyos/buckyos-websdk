@@ -22,6 +22,16 @@ import { AiccClient } from './aicc_client'
 import { MsgQueueClient } from './msg_queue_client'
 import { MsgCenterClient } from './msg_center_client'
 import { RepoClient } from './repo_client'
+import {
+  KEventClient,
+  KEvent,
+  KEventPatternInput,
+  KEventReader,
+  KEventReaderOptions,
+  KEventSubscribeOptions,
+  KEventSubscription,
+  KEventTransportMode,
+} from './kevent_client'
 
 export const WEB3_BRIDGE_HOST = 'web3.buckyos.ai'
 
@@ -184,6 +194,7 @@ export async function getActiveSessionToken(): Promise<string | null> {
 export class BuckyOSSDK {
   private currentRuntime: BuckyOSRuntime | null = null
   private currentAccountInfo: AccountInfo | null = null
+  private currentKEventClient: KEventClient | null = null
   private readonly target: SDKTarget
 
   constructor(target: SDKTarget) {
@@ -212,6 +223,7 @@ export class BuckyOSSDK {
     }
 
     this.currentRuntime?.stopAutoRenew()
+    this.currentKEventClient = null
     this.currentRuntime = new BuckyOSRuntime(finalConfig)
     await this.currentRuntime.initialize()
     setActiveRuntime(this.currentRuntime)
@@ -248,6 +260,51 @@ export class BuckyOSSDK {
   removeEvent(cookieId: string) {
     const ignoredCookieId = cookieId
     void ignoredCookieId
+  }
+
+  getKEventClient(): KEventClient {
+    if (this.currentRuntime == null) {
+      throw new Error('BuckyOS WebSDK is not initialized,call initBuckyOS first')
+    }
+
+    if (this.currentKEventClient) {
+      return this.currentKEventClient
+    }
+
+    const runtimeType = this.currentRuntime.getConfig().runtimeType
+    const mode: KEventTransportMode = runtimeType === RuntimeType.Browser || runtimeType === RuntimeType.AppRuntime
+      ? 'browser'
+      : 'native'
+
+    this.currentKEventClient = new KEventClient({
+      mode,
+      streamUrl: this.currentRuntime.getZoneServiceURL('kevent'),
+      sessionTokenProvider: this.currentRuntime.ensureSessionTokenReady.bind(this.currentRuntime),
+    })
+
+    return this.currentKEventClient
+  }
+
+  async createEventReader(
+    patterns: KEventPatternInput,
+    options: KEventReaderOptions = {},
+  ): Promise<KEventReader> {
+    return this.getKEventClient().createEventReader(patterns, options)
+  }
+
+  async create_event_reader(
+    patterns: KEventPatternInput,
+    options: KEventReaderOptions = {},
+  ): Promise<KEventReader> {
+    return this.createEventReader(patterns, options)
+  }
+
+  async subscribeKEvent(
+    patterns: KEventPatternInput,
+    callback: (event: KEvent) => void | Promise<void>,
+    options: KEventSubscribeOptions = {},
+  ): Promise<KEventSubscription> {
+    return this.getKEventClient().subscribe(patterns, callback, options)
   }
 
   async getAccountInfo(): Promise<AccountInfo | null> {
@@ -411,6 +468,7 @@ export class BuckyOSSDK {
     }
 
     this.currentAccountInfo = null
+    this.currentKEventClient = null
     this.currentRuntime.clearAuthState()
   }
 
@@ -737,6 +795,10 @@ export function createSDKModule(target: SDKTarget) {
     getBuckyOSConfig: sdk.getBuckyOSConfig.bind(sdk),
     getRuntimeType: sdk.getRuntimeType.bind(sdk),
     getAppId: sdk.getAppId.bind(sdk),
+    getKEventClient: sdk.getKEventClient.bind(sdk),
+    createEventReader: sdk.createEventReader.bind(sdk),
+    create_event_reader: sdk.create_event_reader.bind(sdk),
+    subscribeKEvent: sdk.subscribeKEvent.bind(sdk),
     attachEvent: sdk.attachEvent.bind(sdk),
     removeEvent: sdk.removeEvent.bind(sdk),
     getAccountInfo: sdk.getAccountInfo.bind(sdk),
@@ -782,3 +844,4 @@ export { AiccClient }
 export { MsgQueueClient }
 export { MsgCenterClient }
 export { RepoClient }
+export * from './kevent_client'

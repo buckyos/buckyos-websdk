@@ -4,7 +4,7 @@ class RPCError extends Error {
     this.name = "RPCError";
   }
 }
-const defaultFetcher = async (input, init) => {
+const defaultFetcher$1 = async (input, init) => {
   if (typeof window !== "undefined" && typeof window.fetch === "function") {
     return window.fetch(input, init);
   }
@@ -20,7 +20,7 @@ class kRPCClient {
     this.seq = seq ?? Date.now();
     this.sessionToken = token || null;
     this.initToken = token || null;
-    this.fetcher = options.fetcher ?? defaultFetcher;
+    this.fetcher = options.fetcher ?? defaultFetcher$1;
     this.sessionTokenProvider = options.sessionTokenProvider ?? null;
     this.onSessionTokenChanged = options.onSessionTokenChanged ?? null;
   }
@@ -2068,7 +2068,7 @@ function getProcessEnv() {
   const runtimeProcess = globalThis.process;
   return (runtimeProcess == null ? void 0 : runtimeProcess.env) ?? {};
 }
-function hasNodeRuntime() {
+function hasNodeRuntime$1() {
   var _a;
   const runtimeProcess = globalThis.process;
   return Boolean((_a = runtimeProcess == null ? void 0 : runtimeProcess.versions) == null ? void 0 : _a.node);
@@ -2167,8 +2167,8 @@ function parseAppIdentityFromInstanceConfig(appInstanceConfig) {
     return null;
   }
 }
-async function importNodeModule(moduleName) {
-  if (hasNodeRuntime() && typeof require === "function") {
+async function importNodeModule$1(moduleName) {
+  if (hasNodeRuntime$1() && typeof require === "function") {
     return require(moduleName);
   }
   const dynamicImport = Function("name", "return import(name)");
@@ -2499,7 +2499,7 @@ class BuckyOSRuntime {
     }
   }
   resolveNodeIdentityFromEnv() {
-    if (!hasNodeRuntime()) {
+    if (!hasNodeRuntime$1()) {
       return;
     }
     if (this.config.runtimeType !== "AppService") {
@@ -2522,7 +2522,7 @@ class BuckyOSRuntime {
     }
   }
   async resolveZoneHostFromLocalConfig() {
-    if (!hasNodeRuntime()) {
+    if (!hasNodeRuntime$1()) {
       return;
     }
     if (trimToNull$1(this.config.zoneHost)) {
@@ -2658,7 +2658,7 @@ class BuckyOSRuntime {
     throw new Error(`failed to load app-service session token, tried keys: ${uniqueKeys.join(", ")}`);
   }
   async createAppClientSessionToken() {
-    if (!hasNodeRuntime()) {
+    if (!hasNodeRuntime$1()) {
       throw new Error("AppClient mode requires Node.js");
     }
     const material = await this.loadLocalSigningMaterial();
@@ -2680,8 +2680,8 @@ class BuckyOSRuntime {
     }, claims, material.keyPem);
   }
   async loadLocalSigningMaterial() {
-    await importNodeModule("node:fs/promises");
-    const path = await importNodeModule("node:path");
+    await importNodeModule$1("node:fs/promises");
+    const path = await importNodeModule$1("node:path");
     const configuredUserId = this.getOwnerUserId();
     if (!configuredUserId) {
       const etcDir = await this.getBuckyOSEtcDir();
@@ -2716,8 +2716,8 @@ class BuckyOSRuntime {
   async getPrivateKeySearchRoots() {
     var _a;
     const env = getProcessEnv();
-    const path = await importNodeModule("node:path");
-    const os = await importNodeModule("node:os");
+    const path = await importNodeModule$1("node:path");
+    const os = await importNodeModule$1("node:os");
     const roots = [];
     for (const item of this.config.privateKeySearchPaths ?? []) {
       const trimmed = trimToNull$1(item);
@@ -2744,11 +2744,11 @@ class BuckyOSRuntime {
     return trimToNull$1(this.config.rootDir) ?? trimToNull$1(env.BUCKYOS_ROOT) ?? "/opt/buckyos";
   }
   async getBuckyOSEtcDir() {
-    const path = await importNodeModule("node:path");
+    const path = await importNodeModule$1("node:path");
     return path.join(await this.getBuckyOSRootDir(), "etc");
   }
   async readPemFile(filePath) {
-    const fs = await importNodeModule("node:fs/promises");
+    const fs = await importNodeModule$1("node:fs/promises");
     try {
       const keyPem = (await fs.readFile(filePath, "utf8")).trim();
       return keyPem || null;
@@ -2757,7 +2757,7 @@ class BuckyOSRuntime {
     }
   }
   async readNodeIdentityMetadata(nodeIdentityPath) {
-    const fs = await importNodeModule("node:fs/promises");
+    const fs = await importNodeModule$1("node:fs/promises");
     try {
       const raw = await fs.readFile(nodeIdentityPath, "utf8");
       const parsed = JSON.parse(raw);
@@ -2793,7 +2793,7 @@ class BuckyOSRuntime {
     return (metadata == null ? void 0 : metadata.deviceName) ?? null;
   }
   async tryLoadDeviceSigningMaterial(userId, roots) {
-    const path = await importNodeModule("node:path");
+    const path = await importNodeModule$1("node:path");
     const candidateDirs = [
       await this.getBuckyOSEtcDir(),
       ...roots.filter((root) => !root.endsWith(".pem"))
@@ -2819,8 +2819,8 @@ class BuckyOSRuntime {
   }
   async tryLoadUserSigningMaterial(userId, roots) {
     var _a;
-    const fs = await importNodeModule("node:fs/promises");
-    const path = await importNodeModule("node:path");
+    const fs = await importNodeModule$1("node:fs/promises");
+    const path = await importNodeModule$1("node:path");
     for (const root of roots) {
       const userKeyPath = root.endsWith(".pem") ? root : path.join(root, "user_private_key.pem");
       const userConfigDir = root.endsWith(".pem") ? path.dirname(root) : root;
@@ -2848,7 +2848,7 @@ class BuckyOSRuntime {
     return null;
   }
   async tryResolveDeviceNameFromSearchRoots(roots) {
-    const path = await importNodeModule("node:path");
+    const path = await importNodeModule$1("node:path");
     const env = getProcessEnv();
     const fromEnv = trimToNull$1(env.BUCKYOS_THIS_DEVICE_NAME);
     if (fromEnv) {
@@ -2877,8 +2877,8 @@ class BuckyOSRuntime {
     return null;
   }
   async tryResolveZoneHostFromSearchRoots(roots) {
-    const fs = await importNodeModule("node:fs/promises");
-    const path = await importNodeModule("node:path");
+    const fs = await importNodeModule$1("node:fs/promises");
+    const path = await importNodeModule$1("node:path");
     const env = getProcessEnv();
     const fromEnv = trimToNull$1(env.BUCKYOS_ZONE_HOST);
     if (fromEnv) {
@@ -2923,7 +2923,7 @@ class BuckyOSRuntime {
     return trimToNull$1(getProcessEnv()[BUCKYOS_HOST_GATEWAY_ENV]) ?? DEFAULT_DOCKER_HOST_GATEWAY;
   }
   async signJwtWithEd25519(header, payload, privateKeyPem) {
-    const crypto2 = await importNodeModule("node:crypto");
+    const crypto2 = await importNodeModule$1("node:crypto");
     const BufferCtor = ensureBuffer();
     const signingInput = `${base64UrlEncode(JSON.stringify(header))}.${base64UrlEncode(JSON.stringify(payload))}`;
     const signature = crypto2.sign(
@@ -2935,6 +2935,748 @@ class BuckyOSRuntime {
       })
     );
     return `${signingInput}.${base64UrlEncode(signature)}`;
+  }
+}
+const DEFAULT_HTTP_KEEPALIVE_MS = 15e3;
+const DEFAULT_NATIVE_HOST = "127.0.0.1";
+const DEFAULT_NATIVE_PORT = 3183;
+const DEFAULT_NATIVE_CONNECT_TIMEOUT_MS = 5e3;
+const DEFAULT_SUBSCRIBE_RECONNECT_DELAY_MS = 1e3;
+const MAX_NATIVE_FRAME_SIZE = 1024 * 1024;
+class KEventProtocolError extends Error {
+  constructor(code, message) {
+    super(message);
+    this.name = "KEventProtocolError";
+    this.code = code;
+  }
+}
+const defaultFetcher = async (input, init) => {
+  if (typeof fetch !== "function") {
+    throw new Error("fetch is not available in this runtime");
+  }
+  return fetch(input, init);
+};
+function hasNodeRuntime() {
+  var _a;
+  const runtimeProcess = globalThis.process;
+  return Boolean((_a = runtimeProcess == null ? void 0 : runtimeProcess.versions) == null ? void 0 : _a.node);
+}
+async function importNodeModule(moduleName) {
+  if (hasNodeRuntime() && typeof require === "function") {
+    return require(moduleName);
+  }
+  const dynamicImport = Function("name", "return import(name)");
+  return dynamicImport(moduleName);
+}
+function normalizePatterns(patterns) {
+  const normalized = (Array.isArray(patterns) ? patterns : [patterns]).map((pattern) => typeof pattern === "string" ? pattern.trim() : "").filter((pattern) => pattern.length > 0);
+  if (normalized.length === 0) {
+    throw new Error("kevent patterns must not be empty");
+  }
+  for (const pattern of normalized) {
+    if (!pattern.startsWith("/")) {
+      throw new Error(`kevent only supports global patterns: ${pattern}`);
+    }
+  }
+  return normalized;
+}
+function normalizeKeepaliveMs(value) {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    return DEFAULT_HTTP_KEEPALIVE_MS;
+  }
+  return Math.floor(value);
+}
+function buildStreamUrl(baseUrl) {
+  return `${baseUrl.replace(/\/+$/, "")}/stream`;
+}
+function delay(ms, signal) {
+  if (signal == null ? void 0 : signal.aborted) {
+    return Promise.reject(new Error("Operation aborted"));
+  }
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      cleanup();
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timeout);
+      cleanup();
+      reject(new Error("Operation aborted"));
+    };
+    const cleanup = () => {
+      if (signal) {
+        signal.removeEventListener("abort", onAbort);
+      }
+    };
+    if (signal) {
+      signal.addEventListener("abort", onAbort, { once: true });
+    }
+  });
+}
+function generateReaderId() {
+  return `ts_kevent_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+}
+function toErrorMessage(error) {
+  return error instanceof Error ? error.message : String(error);
+}
+function assertDaemonResponseOk(response) {
+  if (response.status === "ok") {
+    return response;
+  }
+  throw new KEventProtocolError(response.code || "INTERNAL", response.message || "Unknown kevent error");
+}
+function validateEvent(event) {
+  if (!event || typeof event !== "object" || Array.isArray(event)) {
+    throw new Error("Invalid kevent event payload");
+  }
+  const candidate = event;
+  if (typeof candidate.eventid !== "string" || typeof candidate.source_node !== "string" || typeof candidate.source_pid !== "number" || typeof candidate.timestamp !== "number") {
+    throw new Error("Invalid kevent event payload");
+  }
+  return {
+    eventid: candidate.eventid,
+    source_node: candidate.source_node,
+    source_pid: candidate.source_pid,
+    ingress_node: typeof candidate.ingress_node === "string" ? candidate.ingress_node : null,
+    timestamp: candidate.timestamp,
+    data: "data" in candidate ? candidate.data : null
+  };
+}
+class AsyncEventQueue {
+  constructor() {
+    this.items = [];
+    this.waiters = [];
+    this.closed = false;
+  }
+  push(item) {
+    if (this.closed) {
+      return;
+    }
+    const waiter = this.waiters.shift();
+    if (waiter) {
+      if (waiter.timeout) {
+        clearTimeout(waiter.timeout);
+      }
+      waiter.resolve(item);
+      return;
+    }
+    this.items.push(item);
+  }
+  async shift(timeoutMs) {
+    if (this.items.length > 0) {
+      return this.items.shift() ?? null;
+    }
+    if (this.closed) {
+      return null;
+    }
+    if (timeoutMs === 0) {
+      return null;
+    }
+    return new Promise((resolve) => {
+      const waiter = {
+        resolve: (value) => {
+          cleanup();
+          resolve(value);
+        },
+        timeout: null
+      };
+      const cleanup = () => {
+        if (waiter.timeout) {
+          clearTimeout(waiter.timeout);
+          waiter.timeout = null;
+        }
+        const index = this.waiters.indexOf(waiter);
+        if (index >= 0) {
+          this.waiters.splice(index, 1);
+        }
+      };
+      if (typeof timeoutMs === "number" && timeoutMs > 0) {
+        waiter.timeout = setTimeout(() => {
+          cleanup();
+          resolve(null);
+        }, timeoutMs);
+      }
+      this.waiters.push(waiter);
+    });
+  }
+  close() {
+    if (this.closed) {
+      return;
+    }
+    this.closed = true;
+    while (this.waiters.length > 0) {
+      const waiter = this.waiters.shift();
+      if (!waiter) {
+        continue;
+      }
+      if (waiter.timeout) {
+        clearTimeout(waiter.timeout);
+      }
+      waiter.resolve(null);
+    }
+  }
+}
+class KEventReader {
+  constructor() {
+    this.queue = new AsyncEventQueue();
+    this.closed = false;
+    this.closePromise = null;
+  }
+  async pullEvent(timeoutMs) {
+    return this.queue.shift(timeoutMs);
+  }
+  async pull_event(timeoutMs) {
+    return this.pullEvent(timeoutMs);
+  }
+  enqueue(event) {
+    this.queue.push(event);
+  }
+  isClosed() {
+    return this.closed;
+  }
+  markClosed() {
+    this.closed = true;
+    this.queue.close();
+  }
+  async close() {
+    if (this.closePromise) {
+      return this.closePromise;
+    }
+    this.markClosed();
+    this.closePromise = this.closeTransport().catch((error) => {
+      console.warn("kevent reader close failed:", error);
+    }).then(() => void 0);
+    return this.closePromise;
+  }
+}
+class BrowserKEventReader extends KEventReader {
+  constructor(streamUrl, patterns, keepaliveMs, fetcher, sessionTokenProvider, signal) {
+    super();
+    this.streamUrl = streamUrl;
+    this.patterns = patterns;
+    this.keepaliveMs = keepaliveMs;
+    this.fetcher = fetcher;
+    this.sessionTokenProvider = sessionTokenProvider;
+    this.streamTask = null;
+    this.controller = new AbortController();
+    this.readyPromise = this.start();
+    if (signal) {
+      if (signal.aborted) {
+        this.controller.abort();
+      } else {
+        signal.addEventListener("abort", () => {
+          this.controller.abort();
+        }, { once: true });
+      }
+    }
+  }
+  async waitUntilReady() {
+    await this.readyPromise;
+  }
+  async start() {
+    const headers = {
+      "Content-Type": "application/json"
+    };
+    if (this.sessionTokenProvider) {
+      const token = await this.sessionTokenProvider();
+      if (typeof token === "string" && token.trim().length > 0) {
+        headers.Authorization = `Bearer ${token.trim()}`;
+      }
+    }
+    const response = await this.fetcher(this.streamUrl, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        patterns: this.patterns,
+        keepalive_ms: this.keepaliveMs
+      }),
+      cache: "no-store",
+      credentials: "include",
+      signal: this.controller.signal
+    });
+    if (!response.ok) {
+      let detail = "";
+      try {
+        detail = await response.text();
+      } catch {
+        detail = "";
+      }
+      throw new Error(`kevent stream request failed: ${response.status}${detail ? ` ${detail}` : ""}`);
+    }
+    if (!response.body) {
+      throw new Error("kevent stream response missing body");
+    }
+    let acked = false;
+    let resolveAck = null;
+    let rejectAck = null;
+    const ackPromise = new Promise((resolve, reject) => {
+      resolveAck = resolve;
+      rejectAck = reject;
+    });
+    this.streamTask = this.consumeStream(response.body, (frame) => {
+      if (frame.type === "ack") {
+        acked = true;
+        resolveAck == null ? void 0 : resolveAck();
+        return;
+      }
+      if (frame.type === "event") {
+        this.enqueue(validateEvent(frame.event));
+        return;
+      }
+      if (frame.type === "error") {
+        const error = new Error(frame.error || "kevent stream error");
+        if (!acked) {
+          rejectAck == null ? void 0 : rejectAck(error);
+        } else {
+          console.warn("kevent stream error:", error.message);
+        }
+      }
+    }).then(() => {
+      if (!acked) {
+        rejectAck == null ? void 0 : rejectAck(new Error("kevent stream closed before ack"));
+      }
+    }).catch((error) => {
+      if (!acked) {
+        rejectAck == null ? void 0 : rejectAck(error instanceof Error ? error : new Error(toErrorMessage(error)));
+        return;
+      }
+      if (!this.controller.signal.aborted) {
+        console.warn("kevent browser stream stopped with error:", error);
+      }
+    }).finally(() => {
+      this.markClosed();
+    });
+    await ackPromise;
+  }
+  async consumeStream(body, onFrame) {
+    const reader = body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    try {
+      while (!this.controller.signal.aborted) {
+        const { value, done } = await reader.read();
+        if (done) {
+          break;
+        }
+        buffer += decoder.decode(value, { stream: true });
+        buffer = this.processFrameBuffer(buffer, onFrame);
+      }
+      buffer += decoder.decode();
+      buffer = this.processFrameBuffer(buffer, onFrame);
+      if (buffer.trim().length > 0) {
+        this.handleFrameLine(buffer, onFrame);
+      }
+    } finally {
+      try {
+        await reader.cancel();
+      } catch {
+      }
+    }
+  }
+  processFrameBuffer(buffer, onFrame) {
+    let cursor = buffer;
+    while (true) {
+      const newlineIndex = cursor.indexOf("\n");
+      if (newlineIndex < 0) {
+        return cursor;
+      }
+      const line = cursor.slice(0, newlineIndex);
+      cursor = cursor.slice(newlineIndex + 1);
+      this.handleFrameLine(line, onFrame);
+    }
+  }
+  handleFrameLine(line, onFrame) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      return;
+    }
+    const frame = JSON.parse(trimmed);
+    onFrame(frame);
+  }
+  async closeTransport() {
+    this.controller.abort();
+    if (this.streamTask) {
+      try {
+        await this.streamTask;
+      } catch (error) {
+        if (!this.controller.signal.aborted) {
+          console.warn("kevent browser stream stopped with error:", error);
+        }
+      }
+    }
+  }
+}
+class NativeKEventProtocolClient {
+  constructor(host, port, connectTimeoutMs, connector) {
+    this.host = host;
+    this.port = port;
+    this.connectTimeoutMs = connectTimeoutMs;
+    this.connector = connector;
+    this.socket = null;
+    this.connectPromise = null;
+    this.closed = false;
+    this.serial = Promise.resolve();
+    this.readBuffer = new Uint8Array(0);
+    this.pending = [];
+  }
+  async call(request) {
+    const task = this.serial.then(() => this.callInternal(request));
+    this.serial = task.then(() => void 0, () => void 0);
+    return task;
+  }
+  async close() {
+    this.closed = true;
+    this.rejectAllPending(new Error("kevent native connection closed"));
+    if (this.socket) {
+      const socket = this.socket;
+      this.socket = null;
+      socket.end();
+    }
+  }
+  async callInternal(request) {
+    if (this.closed) {
+      throw new Error("kevent native connection is closed");
+    }
+    await this.ensureConnected();
+    const socket = this.socket;
+    if (!socket) {
+      throw new Error("kevent native socket is not connected");
+    }
+    const payload = new TextEncoder().encode(JSON.stringify(request));
+    if (payload.length === 0 || payload.length > MAX_NATIVE_FRAME_SIZE) {
+      throw new Error(`invalid kevent native request payload size: ${payload.length}`);
+    }
+    const frame = new Uint8Array(4 + payload.length);
+    const view = new DataView(frame.buffer);
+    view.setUint32(0, payload.length);
+    frame.set(payload, 4);
+    return new Promise((resolve, reject) => {
+      const pendingItem = { resolve, reject };
+      this.pending.push(pendingItem);
+      socket.write(frame, (error) => {
+        if (!error) {
+          return;
+        }
+        const index = this.pending.indexOf(pendingItem);
+        if (index >= 0) {
+          this.pending.splice(index, 1);
+        }
+        reject(error instanceof Error ? error : new Error(toErrorMessage(error)));
+      });
+    });
+  }
+  async ensureConnected() {
+    if (this.socket) {
+      return;
+    }
+    if (!this.connectPromise) {
+      this.connectPromise = this.connect().finally(() => {
+        this.connectPromise = null;
+      });
+    }
+    await this.connectPromise;
+  }
+  async connect() {
+    const socket = await this.connector(this.host, this.port, this.connectTimeoutMs);
+    this.socket = socket;
+    if (typeof socket.setNoDelay === "function") {
+      socket.setNoDelay(true);
+    }
+    socket.on("data", (chunk) => {
+      try {
+        this.handleSocketData(toUint8Array(chunk));
+      } catch (error) {
+        this.handleSocketFailure(error instanceof Error ? error : new Error(toErrorMessage(error)));
+      }
+    });
+    socket.once("end", () => {
+      this.handleSocketFailure(new Error("kevent native socket ended"));
+    });
+    socket.once("close", () => {
+      this.handleSocketFailure(new Error("kevent native socket closed"));
+    });
+    socket.once("error", (error) => {
+      this.handleSocketFailure(error);
+    });
+  }
+  handleSocketData(chunk) {
+    this.readBuffer = concatUint8Arrays(this.readBuffer, chunk);
+    while (this.readBuffer.length >= 4) {
+      const frameLength = new DataView(
+        this.readBuffer.buffer,
+        this.readBuffer.byteOffset,
+        this.readBuffer.byteLength
+      ).getUint32(0);
+      if (frameLength === 0 || frameLength > MAX_NATIVE_FRAME_SIZE) {
+        throw new Error(`invalid kevent native frame length: ${frameLength}`);
+      }
+      if (this.readBuffer.length < 4 + frameLength) {
+        return;
+      }
+      const payloadBytes = this.readBuffer.slice(4, 4 + frameLength);
+      this.readBuffer = this.readBuffer.slice(4 + frameLength);
+      const response = JSON.parse(new TextDecoder().decode(payloadBytes));
+      const pendingItem = this.pending.shift();
+      if (!pendingItem) {
+        continue;
+      }
+      pendingItem.resolve(response);
+    }
+  }
+  handleSocketFailure(error) {
+    if (this.socket) {
+      const socket = this.socket;
+      this.socket = null;
+      try {
+        socket.destroy(error);
+      } catch {
+      }
+    }
+    if (!this.closed) {
+      this.rejectAllPending(error);
+    }
+  }
+  rejectAllPending(error) {
+    while (this.pending.length > 0) {
+      const pendingItem = this.pending.shift();
+      pendingItem == null ? void 0 : pendingItem.reject(error);
+    }
+  }
+}
+class NativeKEventReader extends KEventReader {
+  constructor(client, readerId) {
+    super();
+    this.client = client;
+    this.readerId = readerId;
+  }
+  static async create(patterns, options) {
+    const client = new NativeKEventProtocolClient(
+      options.nativeHost,
+      options.nativePort,
+      options.nativeConnectTimeoutMs,
+      options.nativeConnector
+    );
+    const readerId = generateReaderId();
+    try {
+      const response = await client.call({
+        op: "register_reader",
+        reader_id: readerId,
+        patterns
+      });
+      assertDaemonResponseOk(response);
+      return new NativeKEventReader(client, readerId);
+    } catch (error) {
+      await client.close();
+      throw error;
+    }
+  }
+  async pullEvent(timeoutMs) {
+    if (this.isClosed()) {
+      return null;
+    }
+    const response = await this.client.call({
+      op: "pull_event",
+      reader_id: this.readerId,
+      timeout_ms: typeof timeoutMs === "number" ? Math.max(0, Math.floor(timeoutMs)) : void 0
+    });
+    const ok = assertDaemonResponseOk(response);
+    return ok.event ? validateEvent(ok.event) : null;
+  }
+  async closeTransport() {
+    try {
+      const response = await this.client.call({
+        op: "unregister_reader",
+        reader_id: this.readerId
+      });
+      assertDaemonResponseOk(response);
+    } catch (error) {
+      if (!(error instanceof Error) || !/closed/i.test(error.message)) {
+        console.warn("kevent unregister failed:", error);
+      }
+    } finally {
+      await this.client.close();
+    }
+  }
+}
+async function defaultNativeConnector(host, port, connectTimeoutMs) {
+  if (!hasNodeRuntime()) {
+    throw new Error("native kevent requires Node.js");
+  }
+  const net = await importNodeModule("node:net");
+  return new Promise((resolve, reject) => {
+    const socket = net.createConnection({ host, port });
+    let settled = false;
+    const timeout = setTimeout(() => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      cleanup();
+      try {
+        socket.destroy(new Error(`kevent native connect timeout after ${connectTimeoutMs}ms`));
+      } catch {
+      }
+      reject(new Error(`kevent native connect timeout after ${connectTimeoutMs}ms`));
+    }, connectTimeoutMs);
+    const onConnect = () => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      cleanup();
+      resolve(socket);
+    };
+    const onError = (error) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      cleanup();
+      try {
+        socket.destroy(error);
+      } catch {
+      }
+      reject(error);
+    };
+    const cleanup = () => {
+      clearTimeout(timeout);
+      if (typeof socket.off === "function") {
+        socket.off("connect", onConnect);
+        socket.off("error", onError);
+      } else if (typeof socket.removeListener === "function") {
+        socket.removeListener("connect", onConnect);
+        socket.removeListener("error", onError);
+      }
+    };
+    socket.once("connect", onConnect);
+    socket.once("error", onError);
+  });
+}
+function toUint8Array(value) {
+  if (value instanceof Uint8Array) {
+    return value;
+  }
+  if (value instanceof ArrayBuffer) {
+    return new Uint8Array(value);
+  }
+  throw new Error("Unsupported socket data chunk");
+}
+function concatUint8Arrays(left, right) {
+  const merged = new Uint8Array(left.length + right.length);
+  merged.set(left, 0);
+  merged.set(right, left.length);
+  return merged;
+}
+class KEventClient {
+  constructor(options) {
+    this.mode = options.mode;
+    this.streamUrl = buildStreamUrl(options.streamUrl ?? "/kapi/kevent");
+    this.nativeHost = options.nativeHost ?? DEFAULT_NATIVE_HOST;
+    this.nativePort = options.nativePort ?? DEFAULT_NATIVE_PORT;
+    this.nativeConnectTimeoutMs = options.nativeConnectTimeoutMs ?? DEFAULT_NATIVE_CONNECT_TIMEOUT_MS;
+    this.fetcher = options.fetcher ?? defaultFetcher;
+    this.sessionTokenProvider = options.sessionTokenProvider ?? null;
+    this.nativeConnector = options.nativeConnector ?? defaultNativeConnector;
+  }
+  async createEventReader(patterns, options = {}) {
+    const normalizedPatterns = normalizePatterns(patterns);
+    if (this.mode === "browser") {
+      const reader = new BrowserKEventReader(
+        this.streamUrl,
+        normalizedPatterns,
+        normalizeKeepaliveMs(options.keepaliveMs),
+        this.fetcher,
+        this.sessionTokenProvider,
+        options.signal
+      );
+      try {
+        await reader.waitUntilReady();
+        return reader;
+      } catch (error) {
+        await reader.close();
+        throw error;
+      }
+    }
+    return NativeKEventReader.create(normalizedPatterns, {
+      nativeHost: this.nativeHost,
+      nativePort: this.nativePort,
+      nativeConnectTimeoutMs: this.nativeConnectTimeoutMs,
+      nativeConnector: this.nativeConnector
+    });
+  }
+  async create_event_reader(patterns, options = {}) {
+    return this.createEventReader(patterns, options);
+  }
+  async subscribe(patterns, callback, options = {}) {
+    const normalizedPatterns = normalizePatterns(patterns);
+    const abortController = new AbortController();
+    const reconnectDelayMs = typeof options.reconnectDelayMs === "number" && options.reconnectDelayMs >= 0 ? Math.floor(options.reconnectDelayMs) : DEFAULT_SUBSCRIBE_RECONNECT_DELAY_MS;
+    let currentReader = null;
+    let closed = false;
+    if (options.signal) {
+      if (options.signal.aborted) {
+        abortController.abort();
+        closed = true;
+      } else {
+        options.signal.addEventListener("abort", () => {
+          abortController.abort();
+        }, { once: true });
+      }
+    }
+    const run = (async () => {
+      while (!closed && !abortController.signal.aborted) {
+        try {
+          currentReader = await this.createEventReader(normalizedPatterns, {
+            ...options,
+            signal: abortController.signal
+          });
+          while (!closed && !abortController.signal.aborted) {
+            const event = await currentReader.pullEvent();
+            if (!event) {
+              break;
+            }
+            try {
+              await callback(event);
+            } catch (error) {
+              console.error("kevent callback failed:", error);
+            }
+          }
+        } catch (error) {
+          if (!closed && !abortController.signal.aborted) {
+            console.warn("kevent subscription disconnected, will retry:", error);
+          }
+        } finally {
+          const reader = currentReader;
+          currentReader = null;
+          if (reader) {
+            await reader.close();
+          }
+        }
+        if (closed || abortController.signal.aborted) {
+          break;
+        }
+        try {
+          await delay(reconnectDelayMs, abortController.signal);
+        } catch {
+          break;
+        }
+      }
+    })();
+    return {
+      close: async () => {
+        if (closed) {
+          return;
+        }
+        closed = true;
+        abortController.abort();
+        const reader = currentReader;
+        currentReader = null;
+        if (reader) {
+          await reader.close();
+        }
+        await run.catch(() => void 0);
+      }
+    };
   }
 }
 const WEB3_BRIDGE_HOST = "web3.buckyos.ai";
@@ -3065,6 +3807,7 @@ class BuckyOSSDK {
   constructor(target) {
     this.currentRuntime = null;
     this.currentAccountInfo = null;
+    this.currentKEventClient = null;
     this.target = target;
   }
   async initBuckyOS(appid, config = null) {
@@ -3082,6 +3825,7 @@ class BuckyOSSDK {
       }
     }
     (_a = this.currentRuntime) == null ? void 0 : _a.stopAutoRenew();
+    this.currentKEventClient = null;
     this.currentRuntime = new BuckyOSRuntime(finalConfig);
     await this.currentRuntime.initialize();
     setActiveRuntime(this.currentRuntime);
@@ -3107,6 +3851,31 @@ class BuckyOSSDK {
   attachEvent(eventName, callback) {
   }
   removeEvent(cookieId) {
+  }
+  getKEventClient() {
+    if (this.currentRuntime == null) {
+      throw new Error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
+    }
+    if (this.currentKEventClient) {
+      return this.currentKEventClient;
+    }
+    const runtimeType = this.currentRuntime.getConfig().runtimeType;
+    const mode = runtimeType === RuntimeType.Browser || runtimeType === RuntimeType.AppRuntime ? "browser" : "native";
+    this.currentKEventClient = new KEventClient({
+      mode,
+      streamUrl: this.currentRuntime.getZoneServiceURL("kevent"),
+      sessionTokenProvider: this.currentRuntime.ensureSessionTokenReady.bind(this.currentRuntime)
+    });
+    return this.currentKEventClient;
+  }
+  async createEventReader(patterns, options = {}) {
+    return this.getKEventClient().createEventReader(patterns, options);
+  }
+  async create_event_reader(patterns, options = {}) {
+    return this.createEventReader(patterns, options);
+  }
+  async subscribeKEvent(patterns, callback, options = {}) {
+    return this.getKEventClient().subscribe(patterns, callback, options);
   }
   async getAccountInfo() {
     if (this.currentRuntime == null) {
@@ -3175,7 +3944,7 @@ class BuckyOSSDK {
         saveBrowserUserInfo({
           user_name: accountInfo.user_name,
           user_id: accountInfo.user_id,
-          user_type: accountInfo.user_type
+          user_type: normalized.user_type
         });
       }
       this.currentAccountInfo = accountInfo;
@@ -3245,6 +4014,7 @@ class BuckyOSSDK {
       cleanLocalAccountInfo(appId);
     }
     this.currentAccountInfo = null;
+    this.currentKEventClient = null;
     this.currentRuntime.clearAuthState();
   }
   async getAppSetting(settingName = null) {
@@ -3451,10 +4221,11 @@ class BuckyOSSDK {
     }
     const claims = parseSessionTokenClaims(sessionToken);
     const userId = typeof (claims == null ? void 0 : claims.sub) === "string" ? claims.sub : typeof (claims == null ? void 0 : claims.userid) === "string" ? claims.userid : this.currentRuntime.getOwnerUserId() ?? "root";
+    const userType = typeof (claims == null ? void 0 : claims.user_type) === "string" ? claims.user_type : this.currentRuntime.getConfig().runtimeType === RuntimeType.AppService ? "service" : void 0;
     this.currentAccountInfo = {
       user_name: userId,
       user_id: userId,
-      user_type: this.currentRuntime.getConfig().runtimeType === RuntimeType.AppService ? "service" : "root",
+      user_type: userType,
       session_token: sessionToken,
       refresh_token: this.currentRuntime.getRefreshToken() ?? void 0
     };
@@ -3501,6 +4272,10 @@ function createSDKModule(target) {
     getBuckyOSConfig: sdk.getBuckyOSConfig.bind(sdk),
     getRuntimeType: sdk.getRuntimeType.bind(sdk),
     getAppId: sdk.getAppId.bind(sdk),
+    getKEventClient: sdk.getKEventClient.bind(sdk),
+    createEventReader: sdk.createEventReader.bind(sdk),
+    create_event_reader: sdk.create_event_reader.bind(sdk),
+    subscribeKEvent: sdk.subscribeKEvent.bind(sdk),
     attachEvent: sdk.attachEvent.bind(sdk),
     removeEvent: sdk.removeEvent.bind(sdk),
     getAccountInfo: sdk.getAccountInfo.bind(sdk),
@@ -6010,13 +6785,15 @@ const ndm_client = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.definePr
 export {
   AiccClient as A,
   BS_SERVICE_VERIFY_HUB as B,
-  parseBuckyOSOwnerConfigDocument as C,
-  parseOwnerConfigDocument as D,
-  parseBuckyOSDeviceMiniDocument as E,
-  parseDeviceMiniConfig as F,
-  parseBuckyOSDIDDocument as G,
-  getDidMethod as H,
-  getDidIdentifier as I,
+  parseW3CDIDDocumentBase as C,
+  parseBuckyOSOwnerConfigDocument as D,
+  parseOwnerConfigDocument as E,
+  parseBuckyOSDeviceMiniDocument as F,
+  parseDeviceMiniConfig as G,
+  parseBuckyOSDIDDocument as H,
+  getDidMethod as I,
+  getDidIdentifier as J,
+  KEventReader as K,
   MsgQueueClient as M,
   RuntimeType as R,
   SystemConfigClient as S,
@@ -6033,21 +6810,21 @@ export {
   hashPassword as h,
   MsgCenterClient as i,
   RepoClient as j,
-  isW3CDIDDocumentBase as k,
-  isBuckyOSOwnerConfigDocument as l,
-  isUserDocument as m,
+  KEventClient as k,
+  isW3CDIDDocumentBase as l,
+  isBuckyOSOwnerConfigDocument as m,
   ndn_types as n,
-  isBuckyOSDeviceMiniDocument as o,
+  isUserDocument as o,
   parseSessionTokenClaims as p,
-  isBuckyOSDeviceDocument as q,
-  isBuckyOSAgentDocument as r,
-  isBuckyOSZoneDocument as s,
-  isDIDDocumentBase as t,
-  isOwnerConfigDocument as u,
-  isDeviceMiniConfig as v,
-  isDeviceDocument as w,
-  isAgentDocument as x,
-  isZoneDocument as y,
-  parseW3CDIDDocumentBase as z
+  isBuckyOSDeviceMiniDocument as q,
+  isBuckyOSDeviceDocument as r,
+  isBuckyOSAgentDocument as s,
+  isBuckyOSZoneDocument as t,
+  isDIDDocumentBase as u,
+  isOwnerConfigDocument as v,
+  isDeviceMiniConfig as w,
+  isDeviceDocument as x,
+  isAgentDocument as y,
+  isZoneDocument as z
 };
-//# sourceMappingURL=ndm_client-ab8fdf16.mjs.map
+//# sourceMappingURL=ndm_client-507d653a.mjs.map

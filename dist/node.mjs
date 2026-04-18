@@ -1,11 +1,15 @@
-import { c as createSDKModule } from "./ndm_client-ab8fdf16.mjs";
-import { A, b, B, f, i, M, j, R, S, T, V, W, g, e, d, I, H, h, x, r, q, o, l, s, t, w, v, u, m, k, y, a, n, G, E, C, F, D, p, z } from "./ndm_client-ab8fdf16.mjs";
+import { c as createSDKModule } from "./ndm_client-507d653a.mjs";
+import { A, b, B, f, k, K, i, M, j, R, S, T, V, W, g, e, d, J, I, h, y, s, r, q, m, t, u, x, w, v, o, l, z, a, n, H, F, D, G, E, p, C } from "./ndm_client-507d653a.mjs";
 const sdkModule = createSDKModule("node");
 const buckyos = sdkModule.buckyos;
 const initBuckyOS = sdkModule.initBuckyOS;
 const getBuckyOSConfig = sdkModule.getBuckyOSConfig;
 const getRuntimeType = sdkModule.getRuntimeType;
 const getAppId = sdkModule.getAppId;
+const getKEventClient = sdkModule.getKEventClient;
+const createEventReader = sdkModule.createEventReader;
+const create_event_reader = sdkModule.create_event_reader;
+const subscribeKEvent = sdkModule.subscribeKEvent;
 const attachEvent = sdkModule.attachEvent;
 const removeEvent = sdkModule.removeEvent;
 const getAccountInfo = sdkModule.getAccountInfo;
@@ -29,6 +33,8 @@ export {
   b as BS_SERVICE_TASK_MANAGER,
   B as BS_SERVICE_VERIFY_HUB,
   f as BuckyOSSDK,
+  k as KEventClient,
+  K as KEventReader,
   i as MsgCenterClient,
   M as MsgQueueClient,
   j as RepoClient,
@@ -39,7 +45,9 @@ export {
   W as WEB3_BRIDGE_HOST,
   attachEvent,
   buckyos,
+  createEventReader,
   createSDKModule,
+  create_event_reader,
   getAccountInfo,
   g as getActiveRuntimeType,
   e as getActiveSessionToken,
@@ -48,8 +56,9 @@ export {
   getAppSetting,
   getBuckyOSConfig,
   getCurrentWalletUser,
-  I as getDidIdentifier,
-  H as getDidMethod,
+  J as getDidIdentifier,
+  I as getDidMethod,
+  getKEventClient,
   getRuntimeType,
   getServiceRpcClient,
   getSystemConfigClient,
@@ -59,19 +68,19 @@ export {
   getZoneServiceURL,
   h as hashPassword,
   initBuckyOS,
-  x as isAgentDocument,
-  r as isBuckyOSAgentDocument,
-  q as isBuckyOSDeviceDocument,
-  o as isBuckyOSDeviceMiniDocument,
-  l as isBuckyOSOwnerConfigDocument,
-  s as isBuckyOSZoneDocument,
-  t as isDIDDocumentBase,
-  w as isDeviceDocument,
-  v as isDeviceMiniConfig,
-  u as isOwnerConfigDocument,
-  m as isUserDocument,
-  k as isW3CDIDDocumentBase,
-  y as isZoneDocument,
+  y as isAgentDocument,
+  s as isBuckyOSAgentDocument,
+  r as isBuckyOSDeviceDocument,
+  q as isBuckyOSDeviceMiniDocument,
+  m as isBuckyOSOwnerConfigDocument,
+  t as isBuckyOSZoneDocument,
+  u as isDIDDocumentBase,
+  x as isDeviceDocument,
+  w as isDeviceMiniConfig,
+  v as isOwnerConfigDocument,
+  o as isUserDocument,
+  l as isW3CDIDDocumentBase,
+  z as isZoneDocument,
   login,
   loginByBrowserSSO,
   loginByPassword,
@@ -79,15 +88,16 @@ export {
   logout,
   a as ndm,
   n as ndn,
-  G as parseBuckyOSDIDDocument,
-  E as parseBuckyOSDeviceMiniDocument,
-  C as parseBuckyOSOwnerConfigDocument,
-  F as parseDeviceMiniConfig,
-  D as parseOwnerConfigDocument,
+  H as parseBuckyOSDIDDocument,
+  F as parseBuckyOSDeviceMiniDocument,
+  D as parseBuckyOSOwnerConfigDocument,
+  G as parseDeviceMiniConfig,
+  E as parseOwnerConfigDocument,
   p as parseSessionTokenClaims,
-  z as parseW3CDIDDocumentBase,
+  C as parseW3CDIDDocumentBase,
   removeEvent,
   setAppSetting,
+  subscribeKEvent,
   walletSignWithActiveDid
 };
 //# sourceMappingURL=node.mjs.map
