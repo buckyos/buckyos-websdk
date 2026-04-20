@@ -1,5 +1,5 @@
-import { c as createSDKModule } from "./ndm_proxy-32fcccec.mjs";
-import { E, F, G, A, C, D, z, Z, b, B, f, $, _, i, M, j, R, S, T, V, W, k, y, r, u, o, t, m, q, s, x, w, v, l, Q, K, J, P, O, L, N, I, g, e, d, am, al, h, ad, H, a7, a6, a3, a5, a1, a4, a8, a9, ac, ab, aa, a2, a0, ae, n, a, ak, ai, ag, aj, ah, p, af, U, X, Y } from "./ndm_proxy-32fcccec.mjs";
+import { c as createSDKModule } from "./ndm_proxy-ded421c0.mjs";
+import { E, F, G, A, C, D, z, Z, b, B, f, $, _, i, M, j, R, S, T, V, W, k, y, r, u, o, t, m, q, s, x, w, v, l, Q, K, J, P, O, L, N, I, g, e, d, am, al, h, ad, H, a7, a6, a3, a5, a1, a4, a8, a9, ac, ab, aa, a2, a0, ae, n, a, ak, ai, ag, aj, ah, p, af, U, X, Y } from "./ndm_proxy-ded421c0.mjs";
 import { n as n2, a as a10 } from "./ndn_types-e2a3628e.mjs";
 const sdkModule = createSDKModule("node");
 const buckyos = sdkModule.buckyos;
@@ -23,6 +23,7 @@ const getAppSetting = sdkModule.getAppSetting;
 const setAppSetting = sdkModule.setAppSetting;
 const getCurrentWalletUser = sdkModule.getCurrentWalletUser;
 const walletSignWithActiveDid = sdkModule.walletSignWithActiveDid;
+const openExternalUrl = sdkModule.openExternalUrl;
 const getZoneHostName = sdkModule.getZoneHostName;
 const getZoneServiceURL = sdkModule.getZoneServiceURL;
 const getServiceRpcClient = sdkModule.getServiceRpcClient;
@@ -124,6 +125,7 @@ export {
   n as ndm,
   a as ndm_proxy,
   a10 as ndn,
+  openExternalUrl,
   ak as parseBuckyOSDIDDocument,
   ai as parseBuckyOSDeviceMiniDocument,
   ag as parseBuckyOSOwnerConfigDocument,
