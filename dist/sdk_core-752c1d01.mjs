@@ -2331,6 +2331,17 @@ class BuckyOSSDK {
       return null;
     })();
   }
+  async openExternalUrl(url) {
+    if (typeof window === "undefined") {
+      throw new Error("openExternalUrl is only available in browser runtime");
+    }
+    const buckyApi = window.BuckyApi;
+    if (typeof (buckyApi == null ? void 0 : buckyApi.openExternalUrl) === "function") {
+      await buckyApi.openExternalUrl(url);
+      return;
+    }
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
   getZoneHostName() {
     if (this.currentRuntime == null) {
       console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
@@ -2506,6 +2517,7 @@ function createSDKModule(target) {
     setAppSetting: sdk.setAppSetting.bind(sdk),
     getCurrentWalletUser: sdk.getCurrentWalletUser.bind(sdk),
     walletSignWithActiveDid: sdk.walletSignWithActiveDid.bind(sdk),
+    openExternalUrl: sdk.openExternalUrl.bind(sdk),
     getZoneHostName: sdk.getZoneHostName.bind(sdk),
     getZoneServiceURL: sdk.getZoneServiceURL.bind(sdk),
     getServiceRpcClient: sdk.getServiceRpcClient.bind(sdk),
@@ -2539,4 +2551,4 @@ export {
   hashPassword as h,
   parseSessionTokenClaims as p
 };
-//# sourceMappingURL=sdk_core-ebf96678.mjs.map
+//# sourceMappingURL=sdk_core-752c1d01.mjs.map

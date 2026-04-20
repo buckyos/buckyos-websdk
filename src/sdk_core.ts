@@ -369,6 +369,22 @@ export class BuckyOSSDK {
     })()
   }
 
+  async openExternalUrl(url: string): Promise<void> {
+    if (typeof window === 'undefined') {
+      throw new Error('openExternalUrl is only available in browser runtime')
+    }
+
+    const buckyApi = (window as unknown as {
+      BuckyApi?: { openExternalUrl?: (targetUrl: string) => Promise<unknown> | unknown }
+    }).BuckyApi
+    if (typeof buckyApi?.openExternalUrl === 'function') {
+      await buckyApi.openExternalUrl(url)
+      return
+    }
+
+    window.open(url, '_blank', 'noopener,noreferrer')
+  }
+
   getZoneHostName(): string | null {
     if (this.currentRuntime == null) {
       console.error('BuckyOS WebSDK is not initialized,call initBuckyOS first')
@@ -578,6 +594,7 @@ export function createSDKModule(target: SDKTarget) {
     setAppSetting: sdk.setAppSetting.bind(sdk),
     getCurrentWalletUser: sdk.getCurrentWalletUser.bind(sdk),
     walletSignWithActiveDid: sdk.walletSignWithActiveDid.bind(sdk),
+    openExternalUrl: sdk.openExternalUrl.bind(sdk),
     getZoneHostName: sdk.getZoneHostName.bind(sdk),
     getZoneServiceURL: sdk.getZoneServiceURL.bind(sdk),
     getServiceRpcClient: sdk.getServiceRpcClient.bind(sdk),

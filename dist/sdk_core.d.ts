@@ -34,6 +34,7 @@ export declare class BuckyOSSDK {
     setAppSetting(settingName: string | null | undefined, settingValue: string): Promise<void>;
     getCurrentWalletUser(): Promise<any>;
     walletSignWithActiveDid(payloads: Record<string, unknown>[]): Promise<WalletSignWithActiveDidResult | null>;
+    openExternalUrl(url: string): Promise<void>;
     getZoneHostName(): string | null;
     getZoneServiceURL(serviceName: string): string;
     getServiceRpcClient(serviceName: string): kRPCClient;
@@ -63,6 +64,7 @@ export declare function createSDKModule(target: SDKTarget): {
         setAppSetting: (settingName: string | null | undefined, settingValue: string) => Promise<void>;
         getCurrentWalletUser: () => Promise<any>;
         walletSignWithActiveDid: (payloads: Record<string, unknown>[]) => Promise<WalletSignWithActiveDidResult | null>;
+        openExternalUrl: (url: string) => Promise<void>;
         getZoneHostName: () => string | null;
         getZoneServiceURL: (serviceName: string) => string;
         getServiceRpcClient: (serviceName: string) => kRPCClient;
@@ -87,6 +89,7 @@ export declare function createSDKModule(target: SDKTarget): {
     setAppSetting: (settingName: string | null | undefined, settingValue: string) => Promise<void>;
     getCurrentWalletUser: () => Promise<any>;
     walletSignWithActiveDid: (payloads: Record<string, unknown>[]) => Promise<WalletSignWithActiveDidResult | null>;
+    openExternalUrl: (url: string) => Promise<void>;
     getZoneHostName: () => string | null;
     getZoneServiceURL: (serviceName: string) => string;
     getServiceRpcClient: (serviceName: string) => kRPCClient;

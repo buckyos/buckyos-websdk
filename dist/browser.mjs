@@ -1,5 +1,5 @@
-import { c as createSDKModule } from "./sdk_core-ebf96678.mjs";
-import { b, a, B, d, O, R, S, T, V, W, h, p } from "./sdk_core-ebf96678.mjs";
+import { c as createSDKModule } from "./sdk_core-752c1d01.mjs";
+import { b, a, B, d, O, R, S, T, V, W, h, p } from "./sdk_core-752c1d01.mjs";
 const sdkModule = createSDKModule("browser");
 const buckyos = sdkModule.buckyos;
 const initBuckyOS = sdkModule.initBuckyOS;
@@ -16,6 +16,7 @@ const getAppSetting = sdkModule.getAppSetting;
 const setAppSetting = sdkModule.setAppSetting;
 const getCurrentWalletUser = sdkModule.getCurrentWalletUser;
 const walletSignWithActiveDid = sdkModule.walletSignWithActiveDid;
+const openExternalUrl = sdkModule.openExternalUrl;
 const getZoneHostName = sdkModule.getZoneHostName;
 const getZoneServiceURL = sdkModule.getZoneServiceURL;
 const getServiceRpcClient = sdkModule.getServiceRpcClient;
@@ -55,6 +56,7 @@ export {
   initBuckyOS,
   login,
   logout,
+  openExternalUrl,
   p as parseSessionTokenClaims,
   removeEvent,
   setAppSetting,

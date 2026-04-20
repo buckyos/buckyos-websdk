@@ -15,6 +15,7 @@ export declare const buckyos: {
     setAppSetting: (settingName: string | null | undefined, settingValue: string) => Promise<void>;
     getCurrentWalletUser: () => Promise<any>;
     walletSignWithActiveDid: (payloads: Record<string, unknown>[]) => Promise<import("./sdk_core").WalletSignWithActiveDidResult | null>;
+    openExternalUrl: (url: string) => Promise<void>;
     getZoneHostName: () => string | null;
     getZoneServiceURL: (serviceName: string) => string;
     getServiceRpcClient: (serviceName: string) => import("./krpc_client").kRPCClient;
@@ -39,6 +40,7 @@ export declare const getAppSetting: (settingName?: string | null) => Promise<unk
 export declare const setAppSetting: (settingName: string | null | undefined, settingValue: string) => Promise<void>;
 export declare const getCurrentWalletUser: () => Promise<any>;
 export declare const walletSignWithActiveDid: (payloads: Record<string, unknown>[]) => Promise<import("./sdk_core").WalletSignWithActiveDidResult | null>;
+export declare const openExternalUrl: (url: string) => Promise<void>;
 export declare const getZoneHostName: () => string | null;
 export declare const getZoneServiceURL: (serviceName: string) => string;
 export declare const getServiceRpcClient: (serviceName: string) => import("./krpc_client").kRPCClient;
