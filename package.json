@@ -1,6 +1,6 @@
 {
   "name": "buckyos",
-  "version": "1.5.14",
+  "version": "1.5.15",
   "description": "BuckyOS WebSDK for browser and Node.js environments",
   "main": "dist/index.cjs",
   "module": "dist/index.mjs",
@@ -67,6 +67,7 @@
     "vite": "^4.0.0"
   },
   "dependencies": {
+    "canonicalize": "2.1.0",
     "jssha": "^3.3.1",
     "terser": "^5.36.0",
     "tus-js-client": "^4.2.3",

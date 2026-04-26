@@ -358,6 +358,36 @@ export const NDN_TYPES_TEST_CASES: NdnTypesTestCase[] = [
             t.eq(toCanonicalJsonString(a), '{"a":{"x":0,"y":1},"b":2}')
         },
     },
+    {
+        name: 'toCanonicalJsonString follows RFC 8785 primitive serialization',
+        run(t) {
+            const value = {
+                numbers: [333333333.33333329, 1E30, 4.50, 2e-3, 0.000000000000000000000000001],
+                string: "\u20ac$\u000F\u000aA'\u0042\u0022\u005c\\\\\"/",
+                literals: [null, true, false],
+            }
+            const expected =
+                '{"literals":[null,true,false],"numbers":[333333333.3333333,1e+30,4.5,0.002,1e-27],"string":' +
+                JSON.stringify(value.string) +
+                '}'
+            t.eq(
+                toCanonicalJsonString(value),
+                expected,
+            )
+        },
+    },
+    {
+        name: 'toCanonicalJsonString rejects non-JCS values instead of rewriting them',
+        run(t) {
+            t.throws(() => toCanonicalJsonString({ n: NaN }), 'InvalidData')
+            t.throws(() => toCanonicalJsonString({ n: Infinity }), 'InvalidData')
+            t.throws(() => toCanonicalJsonString({ n: -0 }), 'InvalidData')
+            t.throws(() => toCanonicalJsonString({ bad: undefined }), 'InvalidData')
+            t.throws(() => toCanonicalJsonString({ bad: BigInt(1) }), 'InvalidData')
+            t.throws(() => toCanonicalJsonString([1, , 3]), 'InvalidData')
+            t.throws(() => toCanonicalJsonString('\ud800'), 'InvalidData')
+        },
+    },
 
     // ----- HashMethod / ChunkType -----
     {

@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      canonicalize:
+        specifier: 2.1.0
+        version: 2.1.0
       jssha:
         specifier: ^3.3.1
         version: 3.3.1
@@ -615,6 +618,10 @@ packages:
 
   caniuse-lite@1.0.30001675:
     resolution: {integrity: sha512-/wV1bQwPrkLiQMjaJF5yUMVM/VdRPOCU8QZ+PmG6uW6DvYSrNY1bpwHI/3mOcUosLaJCzYDi5o91IQB51ft6cg==}
+
+  canonicalize@2.1.0:
+    resolution: {integrity: sha512-F705O3xrsUtgt98j7leetNhTWPe+5S72rlL5O4jA1pKqBVQ/dT1O1D6PFxmSXvc0SUOinWS57DKx0I3CHrXJHQ==}
+    hasBin: true
 
   chalk@4.1.2:
     resolution: {integrity: sha512-oKnbhFyRIXpUuez8iBMmyEa4nbj4IOQyuhc/wy9kY7/WVPcwIO9VA668Pu8RkO7+0G76SLROeyw9CpQ061i4mA==}
@@ -2241,6 +2248,8 @@ snapshots:
   camelcase@6.3.0: {}
 
   caniuse-lite@1.0.30001675: {}
+
+  canonicalize@2.1.0: {}
 
   chalk@4.1.2:
     dependencies:

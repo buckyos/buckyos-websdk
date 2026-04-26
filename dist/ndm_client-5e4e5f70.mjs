@@ -1359,11 +1359,117 @@ class SystemConfigClient {
     await this.rpcClient.call("sys_refresh_trust_keys", {});
   }
 }
+const AICC_AI_METHODS = {
+  LLM_CHAT: "llm.chat",
+  LLM_COMPLETION: "llm.completion",
+  EMBEDDING_TEXT: "embedding.text",
+  EMBEDDING_MULTIMODAL: "embedding.multimodal",
+  RERANK: "rerank",
+  IMAGE_TXT2IMG: "image.txt2img",
+  IMAGE_IMG2IMG: "image.img2img",
+  IMAGE_INPAINT: "image.inpaint",
+  IMAGE_UPSCALE: "image.upscale",
+  IMAGE_BG_REMOVE: "image.bg_remove",
+  VISION_OCR: "vision.ocr",
+  VISION_CAPTION: "vision.caption",
+  VISION_DETECT: "vision.detect",
+  VISION_SEGMENT: "vision.segment",
+  AUDIO_TTS: "audio.tts",
+  AUDIO_ASR: "audio.asr",
+  AUDIO_MUSIC: "audio.music",
+  AUDIO_ENHANCE: "audio.enhance",
+  VIDEO_TXT2VIDEO: "video.txt2video",
+  VIDEO_IMG2VIDEO: "video.img2video",
+  VIDEO_VIDEO2VIDEO: "video.video2video",
+  VIDEO_EXTEND: "video.extend",
+  VIDEO_UPSCALE: "video.upscale",
+  AGENT_COMPUTER_USE: "agent.computer_use"
+};
+const AICC_CONTROL_METHODS = {
+  CANCEL: "cancel",
+  RELOAD_SETTINGS: "reload_settings",
+  SERVICE_RELOAD_SETTINGS: "service.reload_settings",
+  QUOTA_QUERY: "quota.query",
+  PROVIDER_LIST: "provider.list",
+  PROVIDER_HEALTH: "provider.health"
+};
+const AI_METHOD_SET = new Set(Object.values(AICC_AI_METHODS));
+const CAPABILITY_SET = /* @__PURE__ */ new Set(["llm", "embedding", "rerank", "image", "vision", "audio", "video", "agent"]);
+const METHOD_STATUS_SET = /* @__PURE__ */ new Set(["succeeded", "running", "failed"]);
+function isAiccAiMethod(method) {
+  return AI_METHOD_SET.has(method);
+}
 function asRecord$2(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new RPCError("Invalid RPC response format");
   }
   return value;
+}
+function rejectDeprecatedRequestFields(request) {
+  const requirements = request.requirements;
+  if ("resp_foramt" in requirements) {
+    throw new RPCError("AiccRequirements.resp_foramt is no longer supported; use resp_format");
+  }
+  const payload = request.payload;
+  for (const key of ["text", "messages", "tool_specs"]) {
+    if (key in payload) {
+      throw new RPCError(`AiccPayload.${key} is no longer supported; put method fields under payload.input_json`);
+    }
+  }
+}
+function normalizeMethodRequest(request) {
+  if (!request.capability || !CAPABILITY_SET.has(request.capability)) {
+    throw new RPCError("AiccMethodRequest.capability is invalid");
+  }
+  if (!request.model || !request.model.alias) {
+    throw new RPCError("AiccMethodRequest.model.alias is required");
+  }
+  if (!request.requirements || typeof request.requirements !== "object") {
+    throw new RPCError("AiccMethodRequest.requirements is required");
+  }
+  if (!request.payload || typeof request.payload !== "object" || Array.isArray(request.payload)) {
+    throw new RPCError("AiccMethodRequest.payload is required");
+  }
+  rejectDeprecatedRequestFields(request);
+  return {
+    ...request,
+    payload: {
+      input_json: request.payload.input_json ?? {},
+      resources: request.payload.resources ?? [],
+      options: request.payload.options ?? {}
+    }
+  };
+}
+function parseMethodResponse(result) {
+  const record = asRecord$2(result);
+  if (typeof record.task_id !== "string") {
+    throw new RPCError("AiccMethodResponse missing task_id");
+  }
+  if (typeof record.status !== "string" || !METHOD_STATUS_SET.has(record.status)) {
+    throw new RPCError("AiccMethodResponse missing or invalid status");
+  }
+  return record;
+}
+function normalizeModel(model) {
+  if (typeof model === "string") {
+    return { alias: model };
+  }
+  return model;
+}
+function buildTypedMethodRequest(capability, request) {
+  return {
+    capability,
+    model: normalizeModel(request.model),
+    requirements: request.requirements ?? {},
+    payload: {
+      input_json: request.input,
+      resources: request.resources ?? [],
+      options: request.options ?? {}
+    },
+    policy: request.policy,
+    idempotency_key: request.idempotency_key,
+    task_options: request.task_options
+  };
 }
 class AiccClient {
   constructor(rpcClient) {
@@ -1372,33 +1478,119 @@ class AiccClient {
   setSeq(seq) {
     this.rpcClient.setSeq(seq);
   }
-  async complete(request) {
-    if (!request.capability) {
-      throw new RPCError("AiccCompleteRequest.capability is required");
+  async callMethod(method, request) {
+    if (!isAiccAiMethod(method)) {
+      throw new RPCError(`Unknown AICC AI method: ${method}`);
     }
-    if (!request.model || !request.model.alias) {
-      throw new RPCError("AiccCompleteRequest.model.alias is required");
-    }
-    const result = await this.rpcClient.call("complete", request);
-    const record = asRecord$2(result);
-    if (typeof record.task_id !== "string") {
-      throw new RPCError("AiccCompleteResponse missing task_id");
-    }
-    if (typeof record.status !== "string") {
-      throw new RPCError("AiccCompleteResponse missing status");
-    }
-    return record;
+    const normalizedRequest = normalizeMethodRequest(request);
+    const result = await this.rpcClient.call(method, normalizedRequest);
+    return parseMethodResponse(result);
+  }
+  async llmChat(request) {
+    return this.callMethod(AICC_AI_METHODS.LLM_CHAT, buildTypedMethodRequest("llm", request));
+  }
+  async llmCompletion(request) {
+    return this.callMethod(AICC_AI_METHODS.LLM_COMPLETION, buildTypedMethodRequest("llm", request));
+  }
+  async embeddingText(request) {
+    return this.callMethod(AICC_AI_METHODS.EMBEDDING_TEXT, buildTypedMethodRequest("embedding", request));
+  }
+  async embeddingMultimodal(request) {
+    return this.callMethod(
+      AICC_AI_METHODS.EMBEDDING_MULTIMODAL,
+      buildTypedMethodRequest("embedding", request)
+    );
+  }
+  async rerank(request) {
+    return this.callMethod(AICC_AI_METHODS.RERANK, buildTypedMethodRequest("rerank", request));
+  }
+  async imageTxt2img(request) {
+    return this.callMethod(AICC_AI_METHODS.IMAGE_TXT2IMG, buildTypedMethodRequest("image", request));
+  }
+  async imageImg2img(request) {
+    return this.callMethod(AICC_AI_METHODS.IMAGE_IMG2IMG, buildTypedMethodRequest("image", request));
+  }
+  async imageInpaint(request) {
+    return this.callMethod(AICC_AI_METHODS.IMAGE_INPAINT, buildTypedMethodRequest("image", request));
+  }
+  async imageUpscale(request) {
+    return this.callMethod(AICC_AI_METHODS.IMAGE_UPSCALE, buildTypedMethodRequest("image", request));
+  }
+  async imageBgRemove(request) {
+    return this.callMethod(AICC_AI_METHODS.IMAGE_BG_REMOVE, buildTypedMethodRequest("image", request));
+  }
+  async visionOcr(request) {
+    return this.callMethod(AICC_AI_METHODS.VISION_OCR, buildTypedMethodRequest("vision", request));
+  }
+  async visionCaption(request) {
+    return this.callMethod(AICC_AI_METHODS.VISION_CAPTION, buildTypedMethodRequest("vision", request));
+  }
+  async visionDetect(request) {
+    return this.callMethod(AICC_AI_METHODS.VISION_DETECT, buildTypedMethodRequest("vision", request));
+  }
+  async visionSegment(request) {
+    return this.callMethod(AICC_AI_METHODS.VISION_SEGMENT, buildTypedMethodRequest("vision", request));
+  }
+  async audioTts(request) {
+    return this.callMethod(AICC_AI_METHODS.AUDIO_TTS, buildTypedMethodRequest("audio", request));
+  }
+  async audioAsr(request) {
+    return this.callMethod(AICC_AI_METHODS.AUDIO_ASR, buildTypedMethodRequest("audio", request));
+  }
+  async audioMusic(request) {
+    return this.callMethod(AICC_AI_METHODS.AUDIO_MUSIC, buildTypedMethodRequest("audio", request));
+  }
+  async audioEnhance(request) {
+    return this.callMethod(AICC_AI_METHODS.AUDIO_ENHANCE, buildTypedMethodRequest("audio", request));
+  }
+  async videoTxt2video(request) {
+    return this.callMethod(AICC_AI_METHODS.VIDEO_TXT2VIDEO, buildTypedMethodRequest("video", request));
+  }
+  async videoImg2video(request) {
+    return this.callMethod(AICC_AI_METHODS.VIDEO_IMG2VIDEO, buildTypedMethodRequest("video", request));
+  }
+  async videoVideo2video(request) {
+    return this.callMethod(AICC_AI_METHODS.VIDEO_VIDEO2VIDEO, buildTypedMethodRequest("video", request));
+  }
+  async videoExtend(request) {
+    return this.callMethod(AICC_AI_METHODS.VIDEO_EXTEND, buildTypedMethodRequest("video", request));
+  }
+  async videoUpscale(request) {
+    return this.callMethod(AICC_AI_METHODS.VIDEO_UPSCALE, buildTypedMethodRequest("video", request));
+  }
+  async agentComputerUse(request) {
+    return this.callMethod(AICC_AI_METHODS.AGENT_COMPUTER_USE, buildTypedMethodRequest("agent", request));
   }
   async cancel(taskId) {
     if (!taskId) {
       throw new RPCError("AiccClient.cancel requires a non-empty task_id");
     }
-    const result = await this.rpcClient.call("cancel", { task_id: taskId });
+    const result = await this.rpcClient.call(AICC_CONTROL_METHODS.CANCEL, { task_id: taskId });
     const record = asRecord$2(result);
     if (typeof record.task_id !== "string" || typeof record.accepted !== "boolean") {
       throw new RPCError("Invalid cancel response");
     }
     return { task_id: record.task_id, accepted: record.accepted };
+  }
+  async reloadSettings() {
+    return this.rpcClient.call(AICC_CONTROL_METHODS.RELOAD_SETTINGS, {});
+  }
+  async serviceReloadSettings() {
+    return this.rpcClient.call(AICC_CONTROL_METHODS.SERVICE_RELOAD_SETTINGS, {});
+  }
+  async queryQuota(request) {
+    const result = await this.rpcClient.call(AICC_CONTROL_METHODS.QUOTA_QUERY, request);
+    const record = asRecord$2(result);
+    if (!record.quota || typeof record.quota !== "object" || Array.isArray(record.quota)) {
+      throw new RPCError("Invalid quota.query response");
+    }
+    return record;
+  }
+  async listProviders(request = {}) {
+    return this.rpcClient.call(AICC_CONTROL_METHODS.PROVIDER_LIST, request);
+  }
+  async providerHealth(request) {
+    return this.rpcClient.call(AICC_CONTROL_METHODS.PROVIDER_HEALTH, request);
   }
 }
 const DEFAULT_QUEUE_CONFIG = {
@@ -4309,6 +4501,41 @@ function createSDKModule(target) {
     }
   };
 }
+var commonjsGlobal = typeof globalThis !== "undefined" ? globalThis : typeof window !== "undefined" ? window : typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : {};
+function getDefaultExportFromCjs(x2) {
+  return x2 && x2.__esModule && Object.prototype.hasOwnProperty.call(x2, "default") ? x2["default"] : x2;
+}
+var canonicalize = function serialize(object) {
+  if (typeof object === "number" && isNaN(object)) {
+    throw new Error("NaN is not allowed");
+  }
+  if (typeof object === "number" && !isFinite(object)) {
+    throw new Error("Infinity is not allowed");
+  }
+  if (object === null || typeof object !== "object") {
+    return JSON.stringify(object);
+  }
+  if (object.toJSON instanceof Function) {
+    return serialize(object.toJSON());
+  }
+  if (Array.isArray(object)) {
+    const values2 = object.reduce((t2, cv, ci) => {
+      const comma = ci === 0 ? "" : ",";
+      const value = cv === void 0 || typeof cv === "symbol" ? null : cv;
+      return `${t2}${comma}${serialize(value)}`;
+    }, "");
+    return `[${values2}]`;
+  }
+  const values = Object.keys(object).sort().reduce((t2, cv) => {
+    if (object[cv] === void 0 || typeof object[cv] === "symbol") {
+      return t2;
+    }
+    const comma = t2.length === 0 ? "" : ",";
+    return `${t2}${comma}${serialize(cv)}:${serialize(object[cv])}`;
+  }, "");
+  return `{${values}}`;
+};
+const canonicalize$1 = /* @__PURE__ */ getDefaultExportFromCjs(canonicalize);
 class NdnError extends Error {
   constructor(kind, message) {
     super(`${kind}: ${message}`);
@@ -4450,20 +4677,79 @@ function sha256Utf8(text) {
   sha.update(text);
   return sha.getHash("UINT8ARRAY");
 }
+function ensureValidJcsString(value) {
+  for (let i2 = 0; i2 < value.length; i2++) {
+    const code = value.charCodeAt(i2);
+    if (code < 55296 || code > 57343)
+      continue;
+    if (code <= 56319) {
+      const next = value.charCodeAt(i2 + 1);
+      if (i2 + 1 < value.length && next >= 56320 && next <= 57343) {
+        i2++;
+        continue;
+      }
+    }
+    throw new NdnError("InvalidData", "JSON string contains lone surrogate");
+  }
+}
+function assertValidJcsPrimitive(value) {
+  switch (typeof value) {
+    case "string":
+      ensureValidJcsString(value);
+      return;
+    case "number":
+      if (!Number.isFinite(value)) {
+        throw new NdnError("InvalidData", "JSON number MUST be finite for JCS");
+      }
+      if (Object.is(value, -0)) {
+        throw new NdnError("InvalidData", "JSON number MUST NOT be negative zero for JCS");
+      }
+      return;
+    case "boolean":
+      return;
+    case "undefined":
+      throw new NdnError("InvalidData", "undefined is not a valid JSON value");
+    case "bigint":
+      throw new NdnError("InvalidData", "bigint is not a valid JSON value");
+    case "function":
+      throw new NdnError("InvalidData", "function is not a valid JSON value");
+    case "symbol":
+      throw new NdnError("InvalidData", "symbol is not a valid JSON value");
+    case "object":
+      if (value === null)
+        return;
+      return;
+  }
+}
 function canonicalizeJson(value) {
+  assertValidJcsPrimitive(value);
   if (value === null || typeof value !== "object")
     return value;
-  if (Array.isArray(value))
-    return value.map(canonicalizeJson);
+  if (Array.isArray(value)) {
+    const result2 = new Array(value.length);
+    for (let i2 = 0; i2 < value.length; i2++) {
+      if (!Object.prototype.hasOwnProperty.call(value, i2)) {
+        throw new NdnError("InvalidData", "sparse arrays are not valid JSON values");
+      }
+      result2[i2] = canonicalizeJson(value[i2]);
+    }
+    return result2;
+  }
   const keys = Object.keys(value).sort();
   const result = {};
   for (const k2 of keys) {
+    ensureValidJcsString(k2);
     result[k2] = canonicalizeJson(value[k2]);
   }
   return result;
 }
 function toCanonicalJsonString(value) {
-  return JSON.stringify(canonicalizeJson(value));
+  const normalized = canonicalizeJson(value);
+  const result = canonicalize$1(normalized);
+  if (result === void 0) {
+    throw new NdnError("InvalidData", "failed to canonicalize JSON value");
+  }
+  return result;
 }
 const DEFAULT_HASH_METHOD = "sha256";
 const HashMethod = {
@@ -6612,7 +6898,7 @@ async function uploadChunkViaTus(endpoint, file, chunkInfo, chunkIndex, appId, f
   const logicalPath = `${appId}/${chunkInfo.chunkId}`;
   let tusModule;
   try {
-    tusModule = await import("./tus_client-abe54758.mjs");
+    tusModule = await import("./tus_client-8d5da4a6.mjs");
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new NdmError("UPLOAD_FAILED", `Failed to load tus-js-client: ${message}`);
@@ -6794,7 +7080,9 @@ export {
   getDidMethod as I,
   getDidIdentifier as J,
   KEventReader as K,
+  getDefaultExportFromCjs as L,
   MsgQueueClient as M,
+  commonjsGlobal as N,
   RuntimeType as R,
   SystemConfigClient as S,
   TaskManagerClient as T,
@@ -6827,4 +7115,4 @@ export {
   isAgentDocument as y,
   isZoneDocument as z
 };
-//# sourceMappingURL=ndm_client-507d653a.mjs.map
+//# sourceMappingURL=ndm_client-5e4e5f70.mjs.map

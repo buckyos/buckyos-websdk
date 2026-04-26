@@ -1,3 +1,4 @@
+import { L as getDefaultExportFromCjs, N as commonjsGlobal } from "./ndm_client-5e4e5f70.mjs";
 function _typeof$8(o) {
   "@babel/helpers - typeof";
   return _typeof$8 = "function" == typeof Symbol && "symbol" == typeof Symbol.iterator ? function(o2) {
@@ -401,10 +402,6 @@ const gBase64 = {
   extendUint8Array,
   extendBuiltins
 };
-var commonjsGlobal = typeof globalThis !== "undefined" ? globalThis : typeof window !== "undefined" ? window : typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : {};
-function getDefaultExportFromCjs(x) {
-  return x && x.__esModule && Object.prototype.hasOwnProperty.call(x, "default") ? x["default"] : x;
-}
 var requiresPort = function required(port2, protocol) {
   protocol = protocol.split(":")[0];
   port2 = +port2;
@@ -3179,4 +3176,4 @@ export {
   enableDebugLog,
   isSupported
 };
-//# sourceMappingURL=tus_client-abe54758.mjs.map
+//# sourceMappingURL=tus_client-8d5da4a6.mjs.map

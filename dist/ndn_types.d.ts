@@ -34,9 +34,8 @@ export declare function varintDecode(bytes: Uint8Array, offset?: number): [numbe
 export declare function sha256Bytes(data: Uint8Array): Uint8Array;
 export declare function sha256Utf8(text: string): Uint8Array;
 /**
- * Recursively sort object keys (BTreeMap-like). Arrays preserve order.
- * This matches the `stabilize_json` helper in ndn-lib so that the resulting
- * JSON string (and thus the SHA-256-derived ObjId) is deterministic.
+ * Recursively sort object keys (BTreeMap-like) while validating that the
+ * value is representable as I-JSON/JCS input. Arrays preserve order.
  */
 export declare function canonicalizeJson(value: any): any;
 export declare function toCanonicalJsonString(value: any): string;
