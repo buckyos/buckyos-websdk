@@ -6207,7 +6207,7 @@ function defaultStoreFetcher(input, init) {
   }
   throw new Error("fetch is not available in this runtime");
 }
-function normalizeEndpoint(endpoint) {
+function normalizeEndpoint$1(endpoint) {
   return endpoint.replace(/\/+$/, "");
 }
 function isChunkQuickHash(quickHash) {
@@ -6230,11 +6230,11 @@ function ensureStoreApiSupportedRuntime() {
 }
 function resolveStoreEndpoint(options) {
   if (options == null ? void 0 : options.endpoint) {
-    return normalizeEndpoint(options.endpoint);
+    return normalizeEndpoint$1(options.endpoint);
   }
   const activeOrigin = getActiveZoneGatewayOrigin();
   if (activeOrigin) {
-    return normalizeEndpoint(activeOrigin);
+    return normalizeEndpoint$1(activeOrigin);
   }
   throw new NdmError(
     "STORE_API_ENDPOINT_REQUIRED",
@@ -6326,76 +6326,76 @@ async function lookupObject(request, options) {
   }
   return response;
 }
-async function getObject(request, options) {
+async function getObject$1(request, options) {
   return callStoreApi("get_object", request, options);
 }
-async function openObject(request, options) {
+async function openObject$1(request, options) {
   return callStoreApi("open_object", request, options);
 }
-async function getDirChild(request, options) {
+async function getDirChild$1(request, options) {
   return callStoreApi("get_dir_child", request, options);
 }
-async function isObjectStored(request, options) {
+async function isObjectStored$1(request, options) {
   return callStoreApi("is_object_stored", request, options);
 }
-async function isObjectExist(request, options) {
+async function isObjectExist$1(request, options) {
   return callStoreApi("is_object_exist", request, options);
 }
-async function queryObjectById(request, options) {
+async function queryObjectById$1(request, options) {
   return callStoreApi("query_object_by_id", request, options);
 }
-async function putObject(request, options) {
+async function putObject$1(request, options) {
   return callStoreApi("put_object", request, options);
 }
-async function removeObject(request, options) {
+async function removeObject$1(request, options) {
   return callStoreApi("remove_object", request, options);
 }
-async function haveChunk(request, options) {
+async function haveChunk$1(request, options) {
   return callStoreApi("have_chunk", request, options);
 }
-async function queryChunkState(request, options) {
+async function queryChunkState$1(request, options) {
   return callStoreApi("query_chunk_state", request, options);
 }
-async function removeChunk(request, options) {
+async function removeChunk$1(request, options) {
   return callStoreApi("remove_chunk", request, options);
 }
-async function addChunkBySameAs(request, options) {
+async function addChunkBySameAs$1(request, options) {
   return callStoreApi("add_chunk_by_same_as", request, options);
 }
-async function applyEdge(request, options) {
+async function applyEdge$1(request, options) {
   return callStoreApi("apply_edge", request, options);
 }
-async function pin(request, options) {
+async function pin$1(request, options) {
   return callStoreApi("pin", request, options);
 }
-async function unpin(request, options) {
+async function unpin$1(request, options) {
   return callStoreApi("unpin", request, options);
 }
-async function unpinOwner(request, options) {
+async function unpinOwner$1(request, options) {
   return callStoreApi("unpin_owner", request, options);
 }
-async function fsAcquire(request, options) {
+async function fsAcquire$1(request, options) {
   return callStoreApi("fs_acquire", request, options);
 }
-async function fsRelease(request, options) {
+async function fsRelease$1(request, options) {
   return callStoreApi("fs_release", request, options);
 }
-async function fsReleaseInode(request, options) {
+async function fsReleaseInode$1(request, options) {
   return callStoreApi("fs_release_inode", request, options);
 }
-async function fsAnchorState(request, options) {
+async function fsAnchorState$1(request, options) {
   return callStoreApi("fs_anchor_state", request, options);
 }
-async function forcedGcUntil(request, options) {
+async function forcedGcUntil$1(request, options) {
   return callStoreApi("forced_gc_until", request, options);
 }
-async function outboxCount(options) {
+async function outboxCount$1(options) {
   return callStoreApi("outbox_count", {}, options);
 }
-async function debugDumpExpandState(request, options) {
+async function debugDumpExpandState$1(request, options) {
   return callStoreApi("debug_dump_expand_state", request, options);
 }
-async function anchorState(request, options) {
+async function anchorState$1(request, options) {
   return callStoreApi("anchor_state", request, options);
 }
 async function materializeFile(file, chunkSize = DEFAULT_CHUNK_SIZE) {
@@ -6479,10 +6479,10 @@ function resolveImportLookupEndpoint() {
   var _a;
   const activeOrigin = getActiveZoneGatewayOrigin();
   if (activeOrigin) {
-    return normalizeEndpoint(activeOrigin);
+    return normalizeEndpoint$1(activeOrigin);
   }
   if (typeof window !== "undefined" && ((_a = window.location) == null ? void 0 : _a.origin)) {
-    return normalizeEndpoint(window.location.origin);
+    return normalizeEndpoint$1(window.location.origin);
   }
   return void 0;
 }
@@ -6898,7 +6898,7 @@ async function uploadChunkViaTus(endpoint, file, chunkInfo, chunkIndex, appId, f
   const logicalPath = `${appId}/${chunkInfo.chunkId}`;
   let tusModule;
   try {
-    tusModule = await import("./tus_client-8d5da4a6.mjs");
+    tusModule = await import("./tus_client-fe4d8dcc.mjs");
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new NdmError("UPLOAD_FAILED", `Failed to load tus-js-client: ${message}`);
@@ -7035,84 +7035,635 @@ const ndm_client = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.definePr
   __proto__: null,
   NdmError,
   NdmStoreApiError,
+  addChunkBySameAs: addChunkBySameAs$1,
+  anchorState: anchorState$1,
+  applyEdge: applyEdge$1,
+  calculateQcidFromFile,
+  debugDumpExpandState: debugDumpExpandState$1,
+  forcedGcUntil: forcedGcUntil$1,
+  fsAcquire: fsAcquire$1,
+  fsAnchorState: fsAnchorState$1,
+  fsRelease: fsRelease$1,
+  fsReleaseInode: fsReleaseInode$1,
+  getDirChild: getDirChild$1,
+  getImportProvider,
+  getImportSessionStatus,
+  getObject: getObject$1,
+  getUploadProgress,
+  haveChunk: haveChunk$1,
+  isObjectExist: isObjectExist$1,
+  isObjectStored: isObjectStored$1,
+  lookupObject,
+  openObject: openObject$1,
+  outboxCount: outboxCount$1,
+  pickupAndImport,
+  pin: pin$1,
+  putObject: putObject$1,
+  queryChunkState: queryChunkState$1,
+  queryObjectById: queryObjectById$1,
+  removeChunk: removeChunk$1,
+  removeObject: removeObject$1,
+  setImportProvider,
+  startUpload,
+  unpin: unpin$1,
+  unpinOwner: unpinOwner$1
+}, Symbol.toStringTag, { value: "Module" }));
+const NDM_PROXY_V1_PATH = "/ndm/proxy/v1";
+class NdmProxyApiError extends Error {
+  constructor(status, errorCode, message, responseBody) {
+    super(message ?? `NDM proxy request failed with status ${status}`);
+    this.name = "NdmProxyApiError";
+    this.status = status;
+    this.errorCode = errorCode;
+    this.responseBody = responseBody;
+  }
+}
+class NdmProxyError extends Error {
+  constructor(code, message) {
+    super(message ?? code);
+    this.name = "NdmProxyError";
+    this.code = code;
+  }
+}
+function defaultProxyFetcher(input, init) {
+  if (typeof window !== "undefined" && typeof window.fetch === "function") {
+    return window.fetch(input, init);
+  }
+  if (typeof globalThis !== "undefined" && typeof globalThis.fetch === "function") {
+    return globalThis.fetch(input, init);
+  }
+  throw new Error("fetch is not available in this runtime");
+}
+function normalizeEndpoint(endpoint) {
+  return endpoint.replace(/\/+$/, "");
+}
+function ensureProxyApiSupportedRuntime() {
+  const runtimeType = getActiveRuntimeType();
+  if (runtimeType === RuntimeType.Browser || runtimeType === RuntimeType.AppRuntime) {
+    throw new NdmProxyError(
+      "PROXY_API_NOT_SUPPORTED_IN_RUNTIME",
+      "NDM proxy APIs are not available in Browser/AppRuntime; use ndm_client for browser import/upload flows"
+    );
+  }
+}
+function resolveProxyEndpoint(options) {
+  if (options == null ? void 0 : options.endpoint) {
+    return normalizeEndpoint(options.endpoint);
+  }
+  const activeOrigin = getActiveZoneGatewayOrigin();
+  if (activeOrigin) {
+    return normalizeEndpoint(activeOrigin);
+  }
+  throw new NdmProxyError(
+    "PROXY_API_ENDPOINT_REQUIRED",
+    "NDM proxy endpoint is unknown; pass options.endpoint or call initBuckyOS first"
+  );
+}
+async function buildHeaders(options, baseHeaders) {
+  const sessionToken = (options == null ? void 0 : options.sessionToken) !== void 0 ? options.sessionToken : await getActiveSessionToken();
+  const headers = {
+    ...baseHeaders,
+    ...(options == null ? void 0 : options.headers) ?? {}
+  };
+  if (sessionToken && !headers.Authorization) {
+    headers.Authorization = `Bearer ${sessionToken}`;
+  }
+  return headers;
+}
+async function parseErrorResponse(response) {
+  const contentType = response.headers.get("content-type") ?? "";
+  const isJsonResponse = contentType.includes("application/json");
+  const responseBody = isJsonResponse ? await response.json() : await response.text();
+  const errorBody = responseBody && typeof responseBody === "object" && !Array.isArray(responseBody) ? responseBody : null;
+  throw new NdmProxyApiError(
+    response.status,
+    errorBody == null ? void 0 : errorBody.error,
+    (errorBody == null ? void 0 : errorBody.message) ?? (typeof responseBody === "string" && responseBody.length > 0 ? responseBody : `NDM proxy request failed with status ${response.status}`),
+    responseBody
+  );
+}
+async function callProxyRpc(methodName, requestBody, options) {
+  var _a;
+  ensureProxyApiSupportedRuntime();
+  const endpoint = resolveProxyEndpoint(options);
+  const fetcher = (options == null ? void 0 : options.fetcher) ?? defaultProxyFetcher;
+  const headers = await buildHeaders(options, {
+    Accept: "application/json",
+    "Content-Type": "application/json"
+  });
+  const response = await fetcher(`${endpoint}${NDM_PROXY_V1_PATH}/rpc/${methodName}`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(requestBody),
+    credentials: (options == null ? void 0 : options.credentials) ?? "include"
+  });
+  if (!response.ok) {
+    return parseErrorResponse(response);
+  }
+  if (response.status === 204) {
+    await ((_a = response.body) == null ? void 0 : _a.cancel());
+    return void 0;
+  }
+  const contentType = response.headers.get("content-type") ?? "";
+  if (!contentType.includes("application/json")) {
+    const text = await response.text();
+    throw new NdmProxyApiError(
+      response.status,
+      "invalid_data",
+      text.length > 0 ? text : "NDM proxy JSON RPC returned a non-JSON response",
+      text
+    );
+  }
+  return await response.json();
+}
+function parseNullableNumberHeader(headers, name) {
+  const value = headers.get(name);
+  if (value === null || value.trim() === "") {
+    return null;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+async function postProxyRead(path, requestBody, options) {
+  ensureProxyApiSupportedRuntime();
+  const endpoint = resolveProxyEndpoint(options);
+  const fetcher = (options == null ? void 0 : options.fetcher) ?? defaultProxyFetcher;
+  const headers = await buildHeaders(options, {
+    Accept: "application/octet-stream",
+    "Content-Type": "application/json"
+  });
+  const response = await fetcher(`${endpoint}${NDM_PROXY_V1_PATH}${path}`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(requestBody),
+    credentials: (options == null ? void 0 : options.credentials) ?? "include"
+  });
+  if (!response.ok) {
+    return parseErrorResponse(response);
+  }
+  return {
+    response,
+    body: response.body,
+    totalSize: parseNullableNumberHeader(response.headers, "NDM-Total-Size"),
+    resolvedObjectId: response.headers.get("NDM-Resolved-Object-ID") ?? void 0,
+    readerKind: response.headers.get("NDM-Reader-Kind") ?? void 0,
+    contentLength: parseNullableNumberHeader(response.headers, "Content-Length"),
+    offset: parseNullableNumberHeader(response.headers, "NDM-Offset")
+  };
+}
+async function readResponseBytes(result) {
+  const buffer = await result.response.arrayBuffer();
+  return new Uint8Array(buffer);
+}
+function bodyLength(body) {
+  if (body instanceof Uint8Array) {
+    return body.byteLength;
+  }
+  if (body instanceof ArrayBuffer) {
+    return body.byteLength;
+  }
+  if (typeof Blob !== "undefined" && body instanceof Blob) {
+    return body.size;
+  }
+  if (typeof body === "string") {
+    return new TextEncoder().encode(body).byteLength;
+  }
+  return null;
+}
+function chunkWritePath(chunkId) {
+  return `${NDM_PROXY_V1_PATH}/write/chunk/${encodeURIComponent(chunkId)}`;
+}
+class NdmProxyRpcClient {
+  constructor(options) {
+    this.options = options;
+  }
+  getObject(request, options) {
+    return getObject(request, { ...this.options, ...options });
+  }
+  openObject(request, options) {
+    return openObject(request, { ...this.options, ...options });
+  }
+  getDirChild(request, options) {
+    return getDirChild(request, { ...this.options, ...options });
+  }
+  isObjectStored(request, options) {
+    return isObjectStored(request, { ...this.options, ...options });
+  }
+  isObjectExist(request, options) {
+    return isObjectExist(request, { ...this.options, ...options });
+  }
+  queryObjectById(request, options) {
+    return queryObjectById(request, { ...this.options, ...options });
+  }
+  putObject(request, options) {
+    return putObject(request, { ...this.options, ...options });
+  }
+  removeObject(request, options) {
+    return removeObject(request, { ...this.options, ...options });
+  }
+  haveChunk(request, options) {
+    return haveChunk(request, { ...this.options, ...options });
+  }
+  queryChunkState(request, options) {
+    return queryChunkState(request, { ...this.options, ...options });
+  }
+  removeChunk(request, options) {
+    return removeChunk(request, { ...this.options, ...options });
+  }
+  addChunkBySameAs(request, options) {
+    return addChunkBySameAs(request, { ...this.options, ...options });
+  }
+  applyEdge(request, options) {
+    return applyEdge(request, { ...this.options, ...options });
+  }
+  pin(request, options) {
+    return pin(request, { ...this.options, ...options });
+  }
+  unpin(request, options) {
+    return unpin(request, { ...this.options, ...options });
+  }
+  unpinOwner(request, options) {
+    return unpinOwner(request, { ...this.options, ...options });
+  }
+  fsAcquire(request, options) {
+    return fsAcquire(request, { ...this.options, ...options });
+  }
+  fsRelease(request, options) {
+    return fsRelease(request, { ...this.options, ...options });
+  }
+  fsReleaseInode(request, options) {
+    return fsReleaseInode(request, { ...this.options, ...options });
+  }
+  fsAnchorState(request, options) {
+    return fsAnchorState(request, { ...this.options, ...options });
+  }
+  forcedGcUntil(request, options) {
+    return forcedGcUntil(request, { ...this.options, ...options });
+  }
+  outboxCount(options) {
+    return outboxCount({ ...this.options, ...options });
+  }
+  debugDumpExpandState(request, options) {
+    return debugDumpExpandState(request, { ...this.options, ...options });
+  }
+  anchorState(request, options) {
+    return anchorState(request, { ...this.options, ...options });
+  }
+}
+class NdmProxyReaderClient {
+  constructor(options) {
+    this.options = options;
+  }
+  openChunkReader(request, options) {
+    return openChunkReader(request, { ...this.options, ...options });
+  }
+  getChunkData(request, options) {
+    return getChunkData(request, { ...this.options, ...options });
+  }
+  getChunkPiece(request, options) {
+    return getChunkPiece(request, { ...this.options, ...options });
+  }
+  openChunkListReader(request, options) {
+    return openChunkListReader(request, { ...this.options, ...options });
+  }
+  openReader(request, options) {
+    return openReader(request, { ...this.options, ...options });
+  }
+}
+class NdmProxyWriterClient {
+  constructor(options) {
+    this.options = options;
+  }
+  putChunkByReader(chunkId, body, options) {
+    return putChunkByReader(chunkId, body, { ...this.options, ...options });
+  }
+  putChunk(chunkId, data, options) {
+    return putChunk(chunkId, data, { ...this.options, ...options });
+  }
+}
+class NdmProxyClient {
+  constructor(options) {
+    this.options = options;
+    this.rpc = new NdmProxyRpcClient(options);
+    this.reader = new NdmProxyReaderClient(options);
+    this.writer = new NdmProxyWriterClient(options);
+  }
+  getObject(request, options) {
+    return this.rpc.getObject(request, options);
+  }
+  openObject(request, options) {
+    return this.rpc.openObject(request, options);
+  }
+  getDirChild(request, options) {
+    return this.rpc.getDirChild(request, options);
+  }
+  isObjectStored(request, options) {
+    return this.rpc.isObjectStored(request, options);
+  }
+  isObjectExist(request, options) {
+    return this.rpc.isObjectExist(request, options);
+  }
+  queryObjectById(request, options) {
+    return this.rpc.queryObjectById(request, options);
+  }
+  putObject(request, options) {
+    return this.rpc.putObject(request, options);
+  }
+  removeObject(request, options) {
+    return this.rpc.removeObject(request, options);
+  }
+  haveChunk(request, options) {
+    return this.rpc.haveChunk(request, options);
+  }
+  queryChunkState(request, options) {
+    return this.rpc.queryChunkState(request, options);
+  }
+  removeChunk(request, options) {
+    return this.rpc.removeChunk(request, options);
+  }
+  addChunkBySameAs(request, options) {
+    return this.rpc.addChunkBySameAs(request, options);
+  }
+  applyEdge(request, options) {
+    return this.rpc.applyEdge(request, options);
+  }
+  pin(request, options) {
+    return this.rpc.pin(request, options);
+  }
+  unpin(request, options) {
+    return this.rpc.unpin(request, options);
+  }
+  unpinOwner(request, options) {
+    return this.rpc.unpinOwner(request, options);
+  }
+  fsAcquire(request, options) {
+    return this.rpc.fsAcquire(request, options);
+  }
+  fsRelease(request, options) {
+    return this.rpc.fsRelease(request, options);
+  }
+  fsReleaseInode(request, options) {
+    return this.rpc.fsReleaseInode(request, options);
+  }
+  fsAnchorState(request, options) {
+    return this.rpc.fsAnchorState(request, options);
+  }
+  forcedGcUntil(request, options) {
+    return this.rpc.forcedGcUntil(request, options);
+  }
+  outboxCount(options) {
+    return this.rpc.outboxCount(options);
+  }
+  debugDumpExpandState(request, options) {
+    return this.rpc.debugDumpExpandState(request, options);
+  }
+  anchorState(request, options) {
+    return this.rpc.anchorState(request, options);
+  }
+  openChunkReader(request, options) {
+    return this.reader.openChunkReader(request, options);
+  }
+  getChunkData(request, options) {
+    return this.reader.getChunkData(request, options);
+  }
+  getChunkPiece(request, options) {
+    return this.reader.getChunkPiece(request, options);
+  }
+  openChunkListReader(request, options) {
+    return this.reader.openChunkListReader(request, options);
+  }
+  openReader(request, options) {
+    return this.reader.openReader(request, options);
+  }
+  putChunkByReader(chunkId, body, options) {
+    return this.writer.putChunkByReader(chunkId, body, options);
+  }
+  putChunk(chunkId, data, options) {
+    return this.writer.putChunk(chunkId, data, options);
+  }
+  withOptions(options) {
+    return new NdmProxyClient({ ...this.options, ...options });
+  }
+}
+function createNdmProxyClient(options) {
+  return new NdmProxyClient(options);
+}
+async function getObject(request, options) {
+  return callProxyRpc("get_object", request, options);
+}
+async function openObject(request, options) {
+  return callProxyRpc("open_object", request, options);
+}
+async function getDirChild(request, options) {
+  return callProxyRpc("get_dir_child", request, options);
+}
+async function isObjectStored(request, options) {
+  return callProxyRpc("is_object_stored", request, options);
+}
+async function isObjectExist(request, options) {
+  return callProxyRpc("is_object_exist", request, options);
+}
+async function queryObjectById(request, options) {
+  return callProxyRpc("query_object_by_id", request, options);
+}
+async function putObject(request, options) {
+  return callProxyRpc("put_object", request, options);
+}
+async function removeObject(request, options) {
+  return callProxyRpc("remove_object", request, options);
+}
+async function haveChunk(request, options) {
+  return callProxyRpc("have_chunk", request, options);
+}
+async function queryChunkState(request, options) {
+  return callProxyRpc("query_chunk_state", request, options);
+}
+async function removeChunk(request, options) {
+  return callProxyRpc("remove_chunk", request, options);
+}
+async function addChunkBySameAs(request, options) {
+  return callProxyRpc("add_chunk_by_same_as", request, options);
+}
+async function applyEdge(request, options) {
+  return callProxyRpc("apply_edge", request, options);
+}
+async function pin(request, options) {
+  return callProxyRpc("pin", request, options);
+}
+async function unpin(request, options) {
+  return callProxyRpc("unpin", request, options);
+}
+async function unpinOwner(request, options) {
+  return callProxyRpc("unpin_owner", request, options);
+}
+async function fsAcquire(request, options) {
+  return callProxyRpc("fs_acquire", request, options);
+}
+async function fsRelease(request, options) {
+  return callProxyRpc("fs_release", request, options);
+}
+async function fsReleaseInode(request, options) {
+  return callProxyRpc("fs_release_inode", request, options);
+}
+async function fsAnchorState(request, options) {
+  return callProxyRpc("fs_anchor_state", request, options);
+}
+async function forcedGcUntil(request, options) {
+  return callProxyRpc("forced_gc_until", request, options);
+}
+async function outboxCount(options) {
+  return callProxyRpc("outbox_count", {}, options);
+}
+async function debugDumpExpandState(request, options) {
+  return callProxyRpc("debug_dump_expand_state", request, options);
+}
+async function anchorState(request, options) {
+  return callProxyRpc("anchor_state", request, options);
+}
+async function openChunkReader(request, options) {
+  return postProxyRead("/read/chunk/open", request, options);
+}
+async function getChunkData(request, options) {
+  return readResponseBytes(await postProxyRead("/read/chunk/data", request, options));
+}
+async function getChunkPiece(request, options) {
+  return readResponseBytes(await postProxyRead("/read/chunk/piece", request, options));
+}
+async function openChunkListReader(request, options) {
+  return postProxyRead("/read/chunklist/open", request, options);
+}
+async function openReader(request, options) {
+  return postProxyRead("/read/object/open", request, options);
+}
+async function putChunkByReader(chunkId, body, options) {
+  var _a;
+  ensureProxyApiSupportedRuntime();
+  const endpoint = resolveProxyEndpoint(options);
+  const fetcher = (options == null ? void 0 : options.fetcher) ?? defaultProxyFetcher;
+  const inferredSize = bodyLength(body);
+  const chunkSize = (options == null ? void 0 : options.chunkSize) ?? inferredSize;
+  if (chunkSize === null) {
+    throw new NdmProxyError(
+      "PROXY_API_CHUNK_SIZE_REQUIRED",
+      "chunkSize is required when the request body length cannot be inferred"
+    );
+  }
+  const headers = await buildHeaders(options, {
+    Accept: "application/json",
+    "Content-Type": "application/octet-stream",
+    "Content-Length": String(chunkSize),
+    "NDM-Chunk-Size": String(chunkSize)
+  });
+  const response = await fetcher(`${endpoint}${chunkWritePath(chunkId)}`, {
+    method: "PUT",
+    headers,
+    body,
+    credentials: (options == null ? void 0 : options.credentials) ?? "include"
+  });
+  if (!response.ok) {
+    return parseErrorResponse(response);
+  }
+  await ((_a = response.body) == null ? void 0 : _a.cancel());
+  return {
+    chunkSize: parseNullableNumberHeader(response.headers, "NDM-Chunk-Size"),
+    outcome: response.headers.get("NDM-Chunk-Write-Outcome") ?? void 0,
+    chunkObjectId: response.headers.get("NDM-Chunk-Object-ID") ?? void 0
+  };
+}
+async function putChunk(chunkId, data, options) {
+  return putChunkByReader(chunkId, data, {
+    ...options,
+    chunkSize: (options == null ? void 0 : options.chunkSize) ?? data.byteLength
+  });
+}
+const ndm_proxy = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
+  __proto__: null,
+  NDM_PROXY_V1_PATH,
+  NdmProxyApiError,
+  NdmProxyClient,
+  NdmProxyError,
+  NdmProxyReaderClient,
+  NdmProxyRpcClient,
+  NdmProxyWriterClient,
   addChunkBySameAs,
   anchorState,
   applyEdge,
-  calculateQcidFromFile,
+  createNdmProxyClient,
   debugDumpExpandState,
   forcedGcUntil,
   fsAcquire,
   fsAnchorState,
   fsRelease,
   fsReleaseInode,
+  getChunkData,
+  getChunkPiece,
   getDirChild,
-  getImportProvider,
-  getImportSessionStatus,
   getObject,
-  getUploadProgress,
   haveChunk,
   isObjectExist,
   isObjectStored,
-  lookupObject,
+  openChunkListReader,
+  openChunkReader,
   openObject,
+  openReader,
   outboxCount,
-  pickupAndImport,
   pin,
+  putChunk,
+  putChunkByReader,
   putObject,
   queryChunkState,
   queryObjectById,
   removeChunk,
   removeObject,
-  setImportProvider,
-  startUpload,
   unpin,
   unpinOwner
 }, Symbol.toStringTag, { value: "Module" }));
 export {
   AiccClient as A,
   BS_SERVICE_VERIFY_HUB as B,
-  parseW3CDIDDocumentBase as C,
-  parseBuckyOSOwnerConfigDocument as D,
-  parseOwnerConfigDocument as E,
-  parseBuckyOSDeviceMiniDocument as F,
-  parseDeviceMiniConfig as G,
-  parseBuckyOSDIDDocument as H,
-  getDidMethod as I,
-  getDidIdentifier as J,
+  isZoneDocument as C,
+  parseW3CDIDDocumentBase as D,
+  parseBuckyOSOwnerConfigDocument as E,
+  parseOwnerConfigDocument as F,
+  parseBuckyOSDeviceMiniDocument as G,
+  parseDeviceMiniConfig as H,
+  parseBuckyOSDIDDocument as I,
+  getDidMethod as J,
   KEventReader as K,
-  getDefaultExportFromCjs as L,
+  getDidIdentifier as L,
   MsgQueueClient as M,
-  commonjsGlobal as N,
+  getDefaultExportFromCjs as N,
+  commonjsGlobal as O,
   RuntimeType as R,
   SystemConfigClient as S,
   TaskManagerClient as T,
   VerifyHubClient as V,
   WEB3_BRIDGE_HOST as W,
   ndm_client as a,
-  BS_SERVICE_TASK_MANAGER as b,
+  ndm_proxy as b,
   createSDKModule as c,
-  getActiveZoneGatewayOrigin as d,
-  getActiveSessionToken as e,
-  BuckyOSSDK as f,
+  BS_SERVICE_TASK_MANAGER as d,
+  getActiveZoneGatewayOrigin as e,
+  getActiveSessionToken as f,
   getActiveRuntimeType as g,
   hashPassword as h,
-  MsgCenterClient as i,
-  RepoClient as j,
-  KEventClient as k,
-  isW3CDIDDocumentBase as l,
-  isBuckyOSOwnerConfigDocument as m,
+  BuckyOSSDK as i,
+  MsgCenterClient as j,
+  RepoClient as k,
+  KEventClient as l,
+  isW3CDIDDocumentBase as m,
   ndn_types as n,
-  isUserDocument as o,
+  isBuckyOSOwnerConfigDocument as o,
   parseSessionTokenClaims as p,
-  isBuckyOSDeviceMiniDocument as q,
-  isBuckyOSDeviceDocument as r,
-  isBuckyOSAgentDocument as s,
-  isBuckyOSZoneDocument as t,
-  isDIDDocumentBase as u,
-  isOwnerConfigDocument as v,
-  isDeviceMiniConfig as w,
-  isDeviceDocument as x,
-  isAgentDocument as y,
-  isZoneDocument as z
+  isUserDocument as q,
+  isBuckyOSDeviceMiniDocument as r,
+  isBuckyOSDeviceDocument as s,
+  isBuckyOSAgentDocument as t,
+  isBuckyOSZoneDocument as u,
+  isDIDDocumentBase as v,
+  isOwnerConfigDocument as w,
+  isDeviceMiniConfig as x,
+  isDeviceDocument as y,
+  isAgentDocument as z
 };
-//# sourceMappingURL=ndm_client-5e4e5f70.mjs.map
+//# sourceMappingURL=ndm_proxy-6494c8e7.mjs.map

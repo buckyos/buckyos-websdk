@@ -69,4 +69,5 @@ export * from './sdk_core';
 export * from './types';
 export * as ndn from './ndn_types';
 export * as ndm from './ndm_client';
+export * as ndm_proxy from './ndm_proxy';
 //# sourceMappingURL=index.d.ts.map
