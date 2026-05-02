@@ -2322,12 +2322,6 @@ function normalizeServicePath(serviceName) {
 function getFullAppId(appId, ownerUserId) {
   return `${ownerUserId}-${appId}`;
 }
-function getAppHostPrefix(appId, ownerUserId) {
-  if (!ownerUserId) {
-    return appId;
-  }
-  return `${appId}-${ownerUserId}`;
-}
 function getSessionTokenEnvKey(appFullId, isAppService) {
   const normalized = appFullId.toUpperCase().replace(/-/g, "_");
   return isAppService ? `${normalized}_TOKEN` : `${normalized}_SESSION_TOKEN`;
@@ -2422,13 +2416,12 @@ class AppClientRuntimeProfile extends ManagedSessionRuntimeProfile {
     await super.initialize(runtime);
     await runtime.ensureAppClientSessionToken();
   }
-  getScopedAppZoneServiceURL(runtime, servicePath) {
+  getZoneGatewayServiceURL(runtime, servicePath) {
     const zoneHost = trimToNull$1(runtime.getZoneHostName());
     if (!zoneHost) {
       throw new Error("zoneHost is required in AppClient mode");
     }
-    const appHostPrefix = getAppHostPrefix(runtime.getAppId(), runtime.getOwnerUserId());
-    return `${runtime.getDefaultProtocol()}${appHostPrefix}.${zoneHost}/kapi/${servicePath}`;
+    return `${runtime.getDefaultProtocol()}${zoneHost}/kapi/${servicePath}`;
   }
   getZoneSystemConfigURL(runtime) {
     const zoneHost = trimToNull$1(runtime.getZoneHostName());
@@ -2438,7 +2431,7 @@ class AppClientRuntimeProfile extends ManagedSessionRuntimeProfile {
     return `${runtime.getDefaultProtocol()}${zoneHost}/kapi/system_config`;
   }
   getZoneServiceURL(runtime, servicePath) {
-    return this.getScopedAppZoneServiceURL(runtime, servicePath);
+    return this.getZoneGatewayServiceURL(runtime, servicePath);
   }
   getSystemConfigServiceURL(runtime) {
     return this.getZoneSystemConfigURL(runtime);
@@ -6898,7 +6891,7 @@ async function uploadChunkViaTus(endpoint, file, chunkInfo, chunkIndex, appId, f
   const logicalPath = `${appId}/${chunkInfo.chunkId}`;
   let tusModule;
   try {
-    tusModule = await import("./tus_client-fe4d8dcc.mjs");
+    tusModule = await import("./tus_client-2de1a2d9.mjs");
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new NdmError("UPLOAD_FAILED", `Failed to load tus-js-client: ${message}`);
@@ -7666,4 +7659,4 @@ export {
   isDeviceDocument as y,
   isAgentDocument as z
 };
-//# sourceMappingURL=ndm_proxy-6494c8e7.mjs.map
+//# sourceMappingURL=ndm_proxy-6e091df9.mjs.map

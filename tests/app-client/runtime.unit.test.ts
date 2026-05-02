@@ -275,7 +275,7 @@ describe('runtime unit behavior', () => {
     await expect(runtime.initialize()).rejects.toThrow('failed to find AppClient private key for userid=bob')
   })
 
-  it('AppClient service URL helpers use the app host prefix and zone host', () => {
+  it('AppClient service URL helpers use the zone host directly', () => {
     const runtime = new BuckyOSRuntime({
       appId: 'demo-app',
       ownerUserId: 'devtest',
@@ -286,10 +286,10 @@ describe('runtime unit behavior', () => {
     })
 
     expect(runtime.getZoneServiceURL('verify-hub')).toBe(
-      'https://demo-app-devtest.test.buckyos.io/kapi/verify-hub',
+      'https://test.buckyos.io/kapi/verify-hub',
     )
     expect(runtime.getZoneServiceURL('task-manager')).toBe(
-      'https://demo-app-devtest.test.buckyos.io/kapi/task-manager',
+      'https://test.buckyos.io/kapi/task-manager',
     )
     expect(runtime.getSystemConfigServiceURL()).toBe(
       'https://test.buckyos.io/kapi/system_config',

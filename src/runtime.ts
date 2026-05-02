@@ -180,13 +180,6 @@ function getFullAppId(appId: string, ownerUserId: string): string {
   return `${ownerUserId}-${appId}`
 }
 
-function getAppHostPrefix(appId: string, ownerUserId: string | null | undefined): string {
-  if (!ownerUserId) {
-    return appId
-  }
-  return `${appId}-${ownerUserId}`
-}
-
 function getSessionTokenEnvKey(appFullId: string, isAppService: boolean): string {
   const normalized = appFullId.toUpperCase().replace(/-/g, '_')
   return isAppService ? `${normalized}_TOKEN` : `${normalized}_SESSION_TOKEN`
@@ -329,13 +322,12 @@ class AppClientRuntimeProfile extends ManagedSessionRuntimeProfile {
     await runtime.ensureAppClientSessionToken()
   }
 
-  getScopedAppZoneServiceURL(runtime: BuckyOSRuntime, servicePath: string): string {
+  getZoneGatewayServiceURL(runtime: BuckyOSRuntime, servicePath: string): string {
     const zoneHost = trimToNull(runtime.getZoneHostName())
     if (!zoneHost) {
       throw new Error('zoneHost is required in AppClient mode')
     }
-    const appHostPrefix = getAppHostPrefix(runtime.getAppId(), runtime.getOwnerUserId())
-    return `${runtime.getDefaultProtocol()}${appHostPrefix}.${zoneHost}/kapi/${servicePath}`
+    return `${runtime.getDefaultProtocol()}${zoneHost}/kapi/${servicePath}`
   }
 
   getZoneSystemConfigURL(runtime: BuckyOSRuntime): string {
@@ -347,7 +339,7 @@ class AppClientRuntimeProfile extends ManagedSessionRuntimeProfile {
   }
 
   getZoneServiceURL(runtime: BuckyOSRuntime, servicePath: string): string {
-    return this.getScopedAppZoneServiceURL(runtime, servicePath)
+    return this.getZoneGatewayServiceURL(runtime, servicePath)
   }
 
   getSystemConfigServiceURL(runtime: BuckyOSRuntime): string {
