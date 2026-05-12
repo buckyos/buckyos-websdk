@@ -2382,6 +2382,7 @@ const DEFAULT_NODE_GATEWAY_PORT = 3180;
 const DEFAULT_SESSION_TOKEN_TTL_SECONDS = 15 * 60;
 const DEFAULT_RENEW_INTERVAL_MS = 5e3;
 const BUCKYOS_HOST_GATEWAY_ENV = "BUCKYOS_HOST_GATEWAY";
+const BUCKYOS_APPCLIENT_SESSION_TOKEN_ENV = "BUCKYOS_APPCLIENT_SESSION_TOKEN";
 const DEFAULT_DOCKER_HOST_GATEWAY = "host.docker.internal";
 var RuntimeType = /* @__PURE__ */ ((RuntimeType2) => {
   RuntimeType2["Browser"] = "Browser";
@@ -2833,6 +2834,9 @@ class BuckyOSRuntime {
   }
   async ensureAppClientSessionToken() {
     if (!this.sessionToken) {
+      this.sessionToken = this.loadAppClientSessionTokenFromEnv();
+    }
+    if (!this.sessionToken) {
       this.sessionToken = await this.createAppClientSessionToken();
     }
   }
@@ -2994,6 +2998,9 @@ class BuckyOSRuntime {
       }
     }
     throw new Error(`failed to load app-service session token, tried keys: ${uniqueKeys.join(", ")}`);
+  }
+  loadAppClientSessionTokenFromEnv() {
+    return trimToNull$1(getProcessEnv()[BUCKYOS_APPCLIENT_SESSION_TOKEN_ENV]);
   }
   async createAppClientSessionToken() {
     if (!hasNodeRuntime$1()) {
@@ -7044,7 +7051,7 @@ async function uploadChunkViaTus(endpoint, file, chunkInfo, chunkIndex, appId, f
   const logicalPath = `${appId}/${chunkInfo.chunkId}`;
   let tusModule;
   try {
-    tusModule = await import("./tus_client-63c79e06.mjs");
+    tusModule = await import("./tus_client-aac64f76.mjs");
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new NdmError("UPLOAD_FAILED", `Failed to load tus-js-client: ${message}`);
@@ -7827,4 +7834,4 @@ export {
   aiccEstimateMessageTextLen as y,
   validateAiccMessage as z
 };
-//# sourceMappingURL=ndm_proxy-4a4b9565.mjs.map
+//# sourceMappingURL=ndm_proxy-20abe498.mjs.map

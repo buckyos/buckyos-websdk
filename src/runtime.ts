@@ -15,6 +15,7 @@ const DEFAULT_NODE_GATEWAY_PORT = 3180
 const DEFAULT_SESSION_TOKEN_TTL_SECONDS = 15 * 60
 const DEFAULT_RENEW_INTERVAL_MS = 5_000
 const BUCKYOS_HOST_GATEWAY_ENV = 'BUCKYOS_HOST_GATEWAY'
+const BUCKYOS_APPCLIENT_SESSION_TOKEN_ENV = 'BUCKYOS_APPCLIENT_SESSION_TOKEN'
 const DEFAULT_DOCKER_HOST_GATEWAY = 'host.docker.internal'
 
 interface BrowserSSORefreshResponse {
@@ -654,6 +655,10 @@ export class BuckyOSRuntime {
 
   async ensureAppClientSessionToken(): Promise<void> {
     if (!this.sessionToken) {
+      this.sessionToken = this.loadAppClientSessionTokenFromEnv()
+    }
+
+    if (!this.sessionToken) {
       this.sessionToken = await this.createAppClientSessionToken()
     }
   }
@@ -872,6 +877,10 @@ export class BuckyOSRuntime {
     }
 
     throw new Error(`failed to load app-service session token, tried keys: ${uniqueKeys.join(', ')}`)
+  }
+
+  private loadAppClientSessionTokenFromEnv(): string | null {
+    return trimToNull(getProcessEnv()[BUCKYOS_APPCLIENT_SESSION_TOKEN_ENV])
   }
 
   async createAppClientSessionToken(): Promise<string> {

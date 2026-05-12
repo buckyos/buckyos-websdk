@@ -98,6 +98,7 @@ export declare class BuckyOSRuntime {
     private needsRenew;
     startAutoRenewIfNeeded(): void;
     private loadAppServiceSessionTokenFromEnv;
+    private loadAppClientSessionTokenFromEnv;
     createAppClientSessionToken(): Promise<string>;
     private loadLocalSigningMaterial;
     private getPrivateKeySearchRoots;

@@ -139,6 +139,59 @@ describe('runtime unit behavior', () => {
     }))
   })
 
+  it('AppClient initialize prefers BUCKYOS_APPCLIENT_SESSION_TOKEN before local signing material', async () => {
+    process.env.BUCKYOS_APPCLIENT_SESSION_TOKEN = makeJwt({
+      appid: 'buckycli',
+      iss: 'verify-hub',
+      sub: 'alice',
+      exp: 2200000000,
+    })
+
+    const runtime = new BuckyOSRuntime({
+      appId: 'buckycli',
+      userid: 'alice',
+      runtimeType: RuntimeType.AppClient,
+      zoneHost: 'test.buckyos.io',
+      defaultProtocol: 'https://',
+      autoRenew: false,
+    })
+
+    await runtime.initialize()
+
+    expect(runtime.getSessionToken()).toBe(process.env.BUCKYOS_APPCLIENT_SESSION_TOKEN)
+  })
+
+  it('AppClient ignores an empty BUCKYOS_APPCLIENT_SESSION_TOKEN and falls back to local signing material', async () => {
+    process.env.BUCKYOS_APPCLIENT_SESSION_TOKEN = '   '
+
+    const root = await createAppClientRoot({
+      userId: 'alice',
+      userConfigZoneDid: 'did:web:test.buckyos.io',
+      withUserKey: true,
+    })
+    rootsToCleanup.push(root)
+
+    const runtime = new BuckyOSRuntime({
+      appId: 'buckycli',
+      userid: 'alice',
+      runtimeType: RuntimeType.AppClient,
+      zoneHost: '',
+      defaultProtocol: 'https://',
+      privateKeySearchPaths: [root],
+      autoRenew: false,
+    })
+
+    await runtime.initialize()
+    const claims = parseSessionTokenClaims(runtime.getSessionToken())
+
+    expect(runtime.getSessionToken()).not.toBe(process.env.BUCKYOS_APPCLIENT_SESSION_TOKEN)
+    expect(claims).toEqual(expect.objectContaining({
+      appid: 'buckycli',
+      iss: 'alice',
+      sub: 'alice',
+    }))
+  })
+
   it('AppClient without ownerUserId falls back to BUCKYOS_ROOT/etc node key and device name', async () => {
     const root = await createAppClientRoot({
       zoneName: 'test.buckyos.io',
