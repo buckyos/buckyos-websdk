@@ -133,7 +133,7 @@ export { parseSessionTokenClaims };
 export { VerifyHubClient };
 export { SystemConfigClient };
 export { TaskManagerClient };
-export { AiccClient };
+export * from './aicc_client';
 export { MsgQueueClient };
 export { MsgCenterClient };
 export { RepoClient };

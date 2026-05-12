@@ -1,5 +1,12 @@
 import { kRPCClient } from '../src/krpc_client'
-import { AICC_AI_METHODS, AiccClient } from '../src/aicc_client'
+import {
+  AICC_AI_METHODS,
+  AiccClient,
+  aiccMessageFirstText,
+  aiccMessageTextContent,
+  aiccRenderMessageForDebug,
+  aiccTextMessage,
+} from '../src/aicc_client'
 
 function makeResponse(body: unknown, seq: number = 1) {
   return {
@@ -34,7 +41,7 @@ describe('AiccClient', () => {
     const response = await client.llmChat({
       model: 'llm.plan.default',
       input: {
-        messages: [{ role: 'user', content: 'hello' }],
+        messages: [aiccTextMessage('user', 'hello')],
         tools: [
           {
             type: 'function',
@@ -71,7 +78,7 @@ describe('AiccClient', () => {
         requirements: { must_features: ['tool_calling', 'json_output'] },
         payload: {
           input_json: {
-            messages: [{ role: 'user', content: 'hello' }],
+            messages: [{ role: 'user', content: [{ type: 'text', text: 'hello' }] }],
             tools: [
               {
                 type: 'function',
@@ -132,6 +139,81 @@ describe('AiccClient', () => {
     expect(fetcher).not.toHaveBeenCalled()
   })
 
+  it('provides helpers for text content-block messages', () => {
+    const message = {
+      role: 'assistant' as const,
+      content: [
+        { type: 'thinking' as const, summary: 'checking' },
+        { type: 'text' as const, text: 'hello' },
+        { type: 'tool_use' as const, name: 'get_weather', call_id: 'call-1', args: { city: 'Seattle' } },
+      ],
+    }
+
+    expect(aiccTextMessage('system', 'be concise')).toEqual({
+      role: 'system',
+      content: [{ type: 'text', text: 'be concise' }],
+    })
+    expect(aiccMessageTextContent(message)).toBe('hello')
+    expect(aiccMessageFirstText(message)).toBe('hello')
+    expect(aiccRenderMessageForDebug(message)).toBe('checkinghello[tool_use name=get_weather call_id=call-1]')
+  })
+
+  it('rejects llm.chat messages with invalid role and content-block combinations', async () => {
+    const fetcher = jest.fn()
+    const rpcClient = new kRPCClient('/kapi/aicc/', null, 1, { fetcher })
+    const client = new AiccClient(rpcClient)
+
+    await expect(
+      client.llmChat({
+        model: 'llm.plan.default',
+        input: {
+          messages: [
+            {
+              role: 'user',
+              content: [{ type: 'tool_use', name: 'get_weather', call_id: 'call-1', args: {} }],
+            },
+          ],
+        },
+      }),
+    ).rejects.toThrow('role user cannot contain tool_use content')
+
+    await expect(
+      client.llmChat({
+        model: 'llm.plan.default',
+        input: {
+          messages: [
+            {
+              role: 'tool',
+              content: [{ type: 'tool_result', call_id: 'call-1', content: [] }],
+            },
+          ],
+        },
+      }),
+    ).rejects.toThrow('tool_result requires non-empty content')
+
+    await expect(
+      client.llmChat({
+        model: 'llm.plan.default',
+        input: {
+          messages: [
+            {
+              role: 'tool',
+              content: [
+                {
+                  type: 'tool_result',
+                  call_id: 'call-1',
+                  content: [{ type: 'tool_use', name: 'nested_tool', call_id: 'call-2', args: {} } as never],
+                },
+              ],
+            },
+          ],
+        },
+      }),
+    ).rejects.toThrow('AiccToolResultContent type is invalid')
+
+    expect(fetcher).not.toHaveBeenCalled()
+  })
+
   it('callMethod forwards the AI method and canonical payload shape', async () => {
     const fetcher = jest.fn().mockResolvedValue(makeResponse({
       task_id: 'task-001',
@@ -161,7 +243,7 @@ describe('AiccClient', () => {
       },
       payload: {
         input_json: {
-          messages: [{ role: 'user', content: 'summarize this commit' }],
+          messages: [aiccTextMessage('user', 'summarize this commit')],
           temperature: 0.3,
         },
         resources: [
@@ -197,7 +279,7 @@ describe('AiccClient', () => {
         },
         payload: {
           input_json: {
-            messages: [{ role: 'user', content: 'summarize this commit' }],
+            messages: [{ role: 'user', content: [{ type: 'text', text: 'summarize this commit' }] }],
             temperature: 0.3,
           },
           resources: [
@@ -359,7 +441,7 @@ describe('AiccClient', () => {
         capability: 'llm',
         model: { alias: 'm' },
         requirements: {},
-        payload: {},
+        payload: { input_json: { messages: [aiccTextMessage('user', 'hello')] } },
       }),
     ).rejects.toThrow('AiccMethodResponse missing task_id')
   })

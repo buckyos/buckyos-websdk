@@ -85,14 +85,25 @@ export interface AiccResourceNamedObject {
 
 export type AiccResourceRef = AiccResourceUrl | AiccResourceBase64 | AiccResourceNamedObject
 
-export type AiccContentPart =
+export type AiccAiRole = 'system' | 'user' | 'assistant' | 'tool' | 'developer'
+
+export type AiccToolResultContent =
   | { type: 'text'; text: string }
-  | { type: 'resource'; resource: AiccResourceRef }
-  | Record<string, unknown>
+  | { type: 'image'; source: AiccResourceRef }
+  | { type: 'document'; source: AiccResourceRef; title?: string | null }
+
+export type AiccContent =
+  | { type: 'text'; text: string }
+  | { type: 'image'; source: AiccResourceRef }
+  | { type: 'document'; source: AiccResourceRef; title?: string | null }
+  | { type: 'tool_use'; call_id: string; name: string; args: Record<string, unknown> }
+  | { type: 'tool_result'; call_id: string; content: AiccToolResultContent[]; is_error?: boolean }
+  | { type: 'thinking'; summary?: string | null; text?: string | null; provider_metadata?: unknown }
+  | { type: 'provider_state'; provider: string; value: unknown }
 
 export interface AiccMessage {
-  role: string
-  content: string | AiccContentPart[]
+  role: AiccAiRole
+  content: AiccContent[]
 }
 
 export interface AiccToolSpec {
@@ -713,9 +724,153 @@ export type AiccAgentComputerUseResponse = AiccTypedMethodResponse<AiccAgentComp
 const AI_METHOD_SET = new Set<string>(Object.values(AICC_AI_METHODS))
 const CAPABILITY_SET = new Set<string>(['llm', 'embedding', 'rerank', 'image', 'vision', 'audio', 'video', 'agent'])
 const METHOD_STATUS_SET = new Set<string>(['succeeded', 'running', 'failed'])
+const AI_ROLE_SET = new Set<string>(['system', 'user', 'assistant', 'tool', 'developer'])
+const NON_TEXT_BLOCK_ESTIMATED_LEN = 256
 
 export function isAiccAiMethod(method: string): method is AiccAiMethod {
   return AI_METHOD_SET.has(method)
+}
+
+export function aiccTextMessage(role: AiccAiRole, text: string): AiccMessage {
+  return { role, content: [{ type: 'text', text }] }
+}
+
+export function aiccMessageTextContent(message: AiccMessage): string {
+  return message.content
+    .filter((block): block is Extract<AiccContent, { type: 'text' }> => block.type === 'text')
+    .map((block) => block.text)
+    .join('')
+}
+
+export function aiccMessageFirstText(message: AiccMessage): string | undefined {
+  return message.content.find((block): block is Extract<AiccContent, { type: 'text' }> => block.type === 'text')?.text
+}
+
+export function aiccRenderMessageForDebug(message: AiccMessage): string {
+  return message.content.map(renderAiccContentForDebug).join('')
+}
+
+export function aiccEstimateMessageTextLen(message: AiccMessage): number {
+  return message.content.reduce((total, block) => {
+    if (block.type === 'text') {
+      return total + block.text.length
+    }
+    if (block.type === 'thinking') {
+      return total + (block.summary?.length ?? 0) + (block.text?.length ?? 0)
+    }
+    return total + NON_TEXT_BLOCK_ESTIMATED_LEN
+  }, 0)
+}
+
+export function validateAiccMessage(message: AiccMessage): void {
+  if (!message || typeof message !== 'object' || Array.isArray(message)) {
+    throw new RPCError('AiccMessage must be an object')
+  }
+  if (!AI_ROLE_SET.has(message.role)) {
+    throw new RPCError(`AiccMessage.role is invalid: ${String(message.role)}`)
+  }
+  if (!Array.isArray(message.content)) {
+    throw new RPCError('AiccMessage.content must be an array of content blocks')
+  }
+
+  for (const block of message.content) {
+    validateAiccContentBlockForRole(message.role, block)
+  }
+}
+
+export function validateAiccMessages(messages: AiccMessage[]): void {
+  if (!Array.isArray(messages)) {
+    throw new RPCError('AiccLlmChatInput.messages must be an array')
+  }
+  for (const message of messages) {
+    validateAiccMessage(message)
+  }
+}
+
+function renderAiccContentForDebug(block: AiccContent): string {
+  switch (block.type) {
+    case 'text':
+      return block.text
+    case 'image':
+      return '[image]'
+    case 'document':
+      return block.title ? `[document title=${block.title}]` : '[document]'
+    case 'tool_use':
+      return `[tool_use name=${block.name} call_id=${block.call_id}]`
+    case 'tool_result':
+      return `[tool_result call_id=${block.call_id}${block.is_error ? ' is_error=true' : ''}]`
+    case 'thinking':
+      return block.text ?? block.summary ?? '[thinking]'
+    case 'provider_state':
+      return `[provider_state provider=${block.provider}]`
+  }
+}
+
+function validateAiccContentBlockForRole(role: AiccAiRole, block: AiccContent): void {
+  if (!block || typeof block !== 'object' || !('type' in block) || typeof block.type !== 'string') {
+    throw new RPCError(`AiccMessage contains an invalid content block for role ${role}`)
+  }
+
+  if (!isBlockAllowedForRole(role, block.type)) {
+    throw new RPCError(`AiccMessage role ${role} cannot contain ${block.type} content`)
+  }
+
+  if ((block.type === 'tool_use' || block.type === 'tool_result') && !block.call_id) {
+    throw new RPCError(`AiccContent.${block.type} requires call_id`)
+  }
+  if (block.type === 'tool_use' && !block.name) {
+    throw new RPCError('AiccContent.tool_use requires name')
+  }
+  if (block.type === 'tool_result' && (!Array.isArray(block.content) || block.content.length === 0)) {
+    throw new RPCError('AiccContent.tool_result requires non-empty content')
+  }
+  if (block.type === 'tool_result') {
+    for (const item of block.content) {
+      validateAiccToolResultContent(item)
+    }
+  }
+  if (block.type === 'provider_state' && !block.provider) {
+    throw new RPCError('AiccContent.provider_state requires provider')
+  }
+}
+
+function validateAiccToolResultContent(content: AiccToolResultContent): void {
+  if (!content || typeof content !== 'object' || Array.isArray(content)) {
+    throw new RPCError('AiccToolResultContent must be an object')
+  }
+  switch (content.type) {
+    case 'text':
+      if (typeof content.text !== 'string') {
+        throw new RPCError('AiccToolResultContent.text requires text')
+      }
+      return
+    case 'image':
+      if (!content.source) {
+        throw new RPCError('AiccToolResultContent.image requires source')
+      }
+      return
+    case 'document':
+      if (!content.source) {
+        throw new RPCError('AiccToolResultContent.document requires source')
+      }
+      return
+    default:
+      throw new RPCError(`AiccToolResultContent type is invalid: ${String((content as { type?: unknown }).type)}`)
+  }
+}
+
+function isBlockAllowedForRole(role: AiccAiRole, blockType: string): boolean {
+  switch (role) {
+    case 'system':
+    case 'developer':
+      return blockType === 'text'
+    case 'user':
+      return blockType === 'text' || blockType === 'image' || blockType === 'document'
+    case 'assistant':
+      return blockType === 'text' || blockType === 'tool_use' || blockType === 'thinking' || blockType === 'provider_state'
+    case 'tool':
+      return blockType === 'tool_result'
+  }
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -763,6 +918,15 @@ function normalizeMethodRequest(request: AiccMethodRequest): AiccMethodRequest {
       options: request.payload.options ?? {},
     },
   }
+}
+
+function validateLlmChatPayload(request: AiccMethodRequest): void {
+  const input = request.payload.input_json
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    throw new RPCError('AiccLlmChatInput must be an object')
+  }
+  const messages = (input as { messages?: unknown }).messages
+  validateAiccMessages(messages as AiccMessage[])
 }
 
 function parseMethodResponse(result: unknown): AiccMethodResponse {
@@ -818,6 +982,9 @@ export class AiccClient {
       throw new RPCError(`Unknown AICC AI method: ${method}`)
     }
     const normalizedRequest = normalizeMethodRequest(request)
+    if (method === AICC_AI_METHODS.LLM_CHAT) {
+      validateLlmChatPayload(normalizedRequest)
+    }
     const result = await this.rpcClient.call<unknown, AiccMethodRequest>(method, normalizedRequest)
     return parseMethodResponse(result)
   }

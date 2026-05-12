@@ -1359,6 +1359,10 @@ class SystemConfigClient {
     await this.rpcClient.call("sys_refresh_trust_keys", {});
   }
 }
+const AICC_SERVICE_NAME = "aicc";
+const AICC_SERVICE_UNIQUE_ID = "aicc";
+const AICC_SERVICE_SERVICE_NAME = AICC_SERVICE_NAME;
+const AICC_SERVICE_SERVICE_PORT = 4040;
 const AICC_AI_METHODS = {
   LLM_CHAT: "llm.chat",
   LLM_COMPLETION: "llm.completion",
@@ -1393,11 +1397,149 @@ const AICC_CONTROL_METHODS = {
   PROVIDER_LIST: "provider.list",
   PROVIDER_HEALTH: "provider.health"
 };
+const AICC_FEATURES = {
+  PLAN: "plan",
+  TOOL_CALLING: "tool_calling",
+  JSON_OUTPUT: "json_output",
+  WEB_SEARCH: "web_search",
+  VISION: "vision",
+  ASR: "asr",
+  VIDEO_UNDERSTAND: "video_understand"
+};
 const AI_METHOD_SET = new Set(Object.values(AICC_AI_METHODS));
 const CAPABILITY_SET = /* @__PURE__ */ new Set(["llm", "embedding", "rerank", "image", "vision", "audio", "video", "agent"]);
 const METHOD_STATUS_SET = /* @__PURE__ */ new Set(["succeeded", "running", "failed"]);
+const AI_ROLE_SET = /* @__PURE__ */ new Set(["system", "user", "assistant", "tool", "developer"]);
+const NON_TEXT_BLOCK_ESTIMATED_LEN = 256;
 function isAiccAiMethod(method) {
   return AI_METHOD_SET.has(method);
+}
+function aiccTextMessage(role, text) {
+  return { role, content: [{ type: "text", text }] };
+}
+function aiccMessageTextContent(message) {
+  return message.content.filter((block) => block.type === "text").map((block) => block.text).join("");
+}
+function aiccMessageFirstText(message) {
+  var _a;
+  return (_a = message.content.find((block) => block.type === "text")) == null ? void 0 : _a.text;
+}
+function aiccRenderMessageForDebug(message) {
+  return message.content.map(renderAiccContentForDebug).join("");
+}
+function aiccEstimateMessageTextLen(message) {
+  return message.content.reduce((total, block) => {
+    var _a, _b;
+    if (block.type === "text") {
+      return total + block.text.length;
+    }
+    if (block.type === "thinking") {
+      return total + (((_a = block.summary) == null ? void 0 : _a.length) ?? 0) + (((_b = block.text) == null ? void 0 : _b.length) ?? 0);
+    }
+    return total + NON_TEXT_BLOCK_ESTIMATED_LEN;
+  }, 0);
+}
+function validateAiccMessage(message) {
+  if (!message || typeof message !== "object" || Array.isArray(message)) {
+    throw new RPCError("AiccMessage must be an object");
+  }
+  if (!AI_ROLE_SET.has(message.role)) {
+    throw new RPCError(`AiccMessage.role is invalid: ${String(message.role)}`);
+  }
+  if (!Array.isArray(message.content)) {
+    throw new RPCError("AiccMessage.content must be an array of content blocks");
+  }
+  for (const block of message.content) {
+    validateAiccContentBlockForRole(message.role, block);
+  }
+}
+function validateAiccMessages(messages) {
+  if (!Array.isArray(messages)) {
+    throw new RPCError("AiccLlmChatInput.messages must be an array");
+  }
+  for (const message of messages) {
+    validateAiccMessage(message);
+  }
+}
+function renderAiccContentForDebug(block) {
+  switch (block.type) {
+    case "text":
+      return block.text;
+    case "image":
+      return "[image]";
+    case "document":
+      return block.title ? `[document title=${block.title}]` : "[document]";
+    case "tool_use":
+      return `[tool_use name=${block.name} call_id=${block.call_id}]`;
+    case "tool_result":
+      return `[tool_result call_id=${block.call_id}${block.is_error ? " is_error=true" : ""}]`;
+    case "thinking":
+      return block.text ?? block.summary ?? "[thinking]";
+    case "provider_state":
+      return `[provider_state provider=${block.provider}]`;
+  }
+}
+function validateAiccContentBlockForRole(role, block) {
+  if (!block || typeof block !== "object" || !("type" in block) || typeof block.type !== "string") {
+    throw new RPCError(`AiccMessage contains an invalid content block for role ${role}`);
+  }
+  if (!isBlockAllowedForRole(role, block.type)) {
+    throw new RPCError(`AiccMessage role ${role} cannot contain ${block.type} content`);
+  }
+  if ((block.type === "tool_use" || block.type === "tool_result") && !block.call_id) {
+    throw new RPCError(`AiccContent.${block.type} requires call_id`);
+  }
+  if (block.type === "tool_use" && !block.name) {
+    throw new RPCError("AiccContent.tool_use requires name");
+  }
+  if (block.type === "tool_result" && (!Array.isArray(block.content) || block.content.length === 0)) {
+    throw new RPCError("AiccContent.tool_result requires non-empty content");
+  }
+  if (block.type === "tool_result") {
+    for (const item of block.content) {
+      validateAiccToolResultContent(item);
+    }
+  }
+  if (block.type === "provider_state" && !block.provider) {
+    throw new RPCError("AiccContent.provider_state requires provider");
+  }
+}
+function validateAiccToolResultContent(content) {
+  if (!content || typeof content !== "object" || Array.isArray(content)) {
+    throw new RPCError("AiccToolResultContent must be an object");
+  }
+  switch (content.type) {
+    case "text":
+      if (typeof content.text !== "string") {
+        throw new RPCError("AiccToolResultContent.text requires text");
+      }
+      return;
+    case "image":
+      if (!content.source) {
+        throw new RPCError("AiccToolResultContent.image requires source");
+      }
+      return;
+    case "document":
+      if (!content.source) {
+        throw new RPCError("AiccToolResultContent.document requires source");
+      }
+      return;
+    default:
+      throw new RPCError(`AiccToolResultContent type is invalid: ${String(content.type)}`);
+  }
+}
+function isBlockAllowedForRole(role, blockType) {
+  switch (role) {
+    case "system":
+    case "developer":
+      return blockType === "text";
+    case "user":
+      return blockType === "text" || blockType === "image" || blockType === "document";
+    case "assistant":
+      return blockType === "text" || blockType === "tool_use" || blockType === "thinking" || blockType === "provider_state";
+    case "tool":
+      return blockType === "tool_result";
+  }
 }
 function asRecord$2(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -1439,6 +1581,14 @@ function normalizeMethodRequest(request) {
       options: request.payload.options ?? {}
     }
   };
+}
+function validateLlmChatPayload(request) {
+  const input = request.payload.input_json;
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    throw new RPCError("AiccLlmChatInput must be an object");
+  }
+  const messages = input.messages;
+  validateAiccMessages(messages);
 }
 function parseMethodResponse(result) {
   const record = asRecord$2(result);
@@ -1483,6 +1633,9 @@ class AiccClient {
       throw new RPCError(`Unknown AICC AI method: ${method}`);
     }
     const normalizedRequest = normalizeMethodRequest(request);
+    if (method === AICC_AI_METHODS.LLM_CHAT) {
+      validateLlmChatPayload(normalizedRequest);
+    }
     const result = await this.rpcClient.call(method, normalizedRequest);
     return parseMethodResponse(result);
   }
@@ -6891,7 +7044,7 @@ async function uploadChunkViaTus(endpoint, file, chunkInfo, chunkIndex, appId, f
   const logicalPath = `${appId}/${chunkInfo.chunkId}`;
   let tusModule;
   try {
-    tusModule = await import("./tus_client-2de1a2d9.mjs");
+    tusModule = await import("./tus_client-63c79e06.mjs");
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new NdmError("UPLOAD_FAILED", `Failed to load tus-js-client: ${message}`);
@@ -7612,27 +7765,42 @@ const ndm_proxy = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.definePro
   unpinOwner
 }, Symbol.toStringTag, { value: "Module" }));
 export {
-  AiccClient as A,
+  parseOwnerConfigDocument as $,
+  AICC_SERVICE_NAME as A,
   BS_SERVICE_VERIFY_HUB as B,
-  isZoneDocument as C,
-  parseW3CDIDDocumentBase as D,
-  parseBuckyOSOwnerConfigDocument as E,
-  parseOwnerConfigDocument as F,
-  parseBuckyOSDeviceMiniDocument as G,
-  parseDeviceMiniConfig as H,
-  parseBuckyOSDIDDocument as I,
-  getDidMethod as J,
+  validateAiccMessages as C,
+  AiccClient as D,
+  KEventClient as E,
+  isW3CDIDDocumentBase as F,
+  isBuckyOSOwnerConfigDocument as G,
+  isUserDocument as H,
+  isBuckyOSDeviceMiniDocument as I,
+  isBuckyOSDeviceDocument as J,
   KEventReader as K,
-  getDidIdentifier as L,
+  isBuckyOSAgentDocument as L,
   MsgQueueClient as M,
-  getDefaultExportFromCjs as N,
-  commonjsGlobal as O,
+  isBuckyOSZoneDocument as N,
+  isDIDDocumentBase as O,
+  isOwnerConfigDocument as P,
+  isDeviceMiniConfig as Q,
   RuntimeType as R,
   SystemConfigClient as S,
   TaskManagerClient as T,
+  isDeviceDocument as U,
   VerifyHubClient as V,
   WEB3_BRIDGE_HOST as W,
+  isAgentDocument as X,
+  isZoneDocument as Y,
+  parseW3CDIDDocumentBase as Z,
+  parseBuckyOSOwnerConfigDocument as _,
   ndm_client as a,
+  parseBuckyOSDeviceMiniDocument as a0,
+  parseDeviceMiniConfig as a1,
+  parseBuckyOSDIDDocument as a2,
+  getDidMethod as a3,
+  getDidIdentifier as a4,
+  getDefaultExportFromCjs as a5,
+  commonjsGlobal as a6,
   ndm_proxy as b,
   createSDKModule as c,
   BS_SERVICE_TASK_MANAGER as d,
@@ -7643,20 +7811,20 @@ export {
   BuckyOSSDK as i,
   MsgCenterClient as j,
   RepoClient as k,
-  KEventClient as l,
-  isW3CDIDDocumentBase as m,
+  AICC_SERVICE_UNIQUE_ID as l,
+  AICC_SERVICE_SERVICE_NAME as m,
   ndn_types as n,
-  isBuckyOSOwnerConfigDocument as o,
+  AICC_SERVICE_SERVICE_PORT as o,
   parseSessionTokenClaims as p,
-  isUserDocument as q,
-  isBuckyOSDeviceMiniDocument as r,
-  isBuckyOSDeviceDocument as s,
-  isBuckyOSAgentDocument as t,
-  isBuckyOSZoneDocument as u,
-  isDIDDocumentBase as v,
-  isOwnerConfigDocument as w,
-  isDeviceMiniConfig as x,
-  isDeviceDocument as y,
-  isAgentDocument as z
+  AICC_AI_METHODS as q,
+  AICC_CONTROL_METHODS as r,
+  AICC_FEATURES as s,
+  isAiccAiMethod as t,
+  aiccTextMessage as u,
+  aiccMessageTextContent as v,
+  aiccMessageFirstText as w,
+  aiccRenderMessageForDebug as x,
+  aiccEstimateMessageTextLen as y,
+  validateAiccMessage as z
 };
-//# sourceMappingURL=ndm_proxy-6e091df9.mjs.map
+//# sourceMappingURL=ndm_proxy-4a4b9565.mjs.map

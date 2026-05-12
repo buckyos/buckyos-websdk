@@ -68,16 +68,51 @@ export interface AiccResourceNamedObject {
     obj_id: string;
 }
 export type AiccResourceRef = AiccResourceUrl | AiccResourceBase64 | AiccResourceNamedObject;
-export type AiccContentPart = {
+export type AiccAiRole = 'system' | 'user' | 'assistant' | 'tool' | 'developer';
+export type AiccToolResultContent = {
     type: 'text';
     text: string;
 } | {
-    type: 'resource';
-    resource: AiccResourceRef;
-} | Record<string, unknown>;
+    type: 'image';
+    source: AiccResourceRef;
+} | {
+    type: 'document';
+    source: AiccResourceRef;
+    title?: string | null;
+};
+export type AiccContent = {
+    type: 'text';
+    text: string;
+} | {
+    type: 'image';
+    source: AiccResourceRef;
+} | {
+    type: 'document';
+    source: AiccResourceRef;
+    title?: string | null;
+} | {
+    type: 'tool_use';
+    call_id: string;
+    name: string;
+    args: Record<string, unknown>;
+} | {
+    type: 'tool_result';
+    call_id: string;
+    content: AiccToolResultContent[];
+    is_error?: boolean;
+} | {
+    type: 'thinking';
+    summary?: string | null;
+    text?: string | null;
+    provider_metadata?: unknown;
+} | {
+    type: 'provider_state';
+    provider: string;
+    value: unknown;
+};
 export interface AiccMessage {
-    role: string;
-    content: string | AiccContentPart[];
+    role: AiccAiRole;
+    content: AiccContent[];
 }
 export interface AiccToolSpec {
     name: string;
@@ -643,6 +678,13 @@ export interface AiccAgentComputerUseExtra {
 }
 export type AiccAgentComputerUseResponse = AiccTypedMethodResponse<AiccAgentComputerUseExtra>;
 export declare function isAiccAiMethod(method: string): method is AiccAiMethod;
+export declare function aiccTextMessage(role: AiccAiRole, text: string): AiccMessage;
+export declare function aiccMessageTextContent(message: AiccMessage): string;
+export declare function aiccMessageFirstText(message: AiccMessage): string | undefined;
+export declare function aiccRenderMessageForDebug(message: AiccMessage): string;
+export declare function aiccEstimateMessageTextLen(message: AiccMessage): number;
+export declare function validateAiccMessage(message: AiccMessage): void;
+export declare function validateAiccMessages(messages: AiccMessage[]): void;
 export declare class AiccClient {
     private rpcClient;
     constructor(rpcClient: kRPCClient);
