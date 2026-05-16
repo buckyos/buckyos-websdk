@@ -1424,6 +1424,36 @@ function aiccMessageFirstText(message) {
   var _a;
   return (_a = message.content.find((block) => block.type === "text")) == null ? void 0 : _a.text;
 }
+function aiccResponseTextContent(response) {
+  return aiccMessageTextContent(response.message);
+}
+function aiccResponseToolCalls(response) {
+  return response.message.content.filter((block) => block.type === "tool_use").map((block) => ({
+    name: block.name,
+    args: block.args,
+    call_id: block.call_id
+  }));
+}
+function aiccResponseArtifacts(response) {
+  const artifacts = [];
+  response.message.content.forEach((block, index) => {
+    if (block.type === "image") {
+      artifacts.push({
+        name: `image_${index + 1}`,
+        resource: block.source,
+        mime: aiccResourceRefMime(block.source)
+      });
+    }
+    if (block.type === "document") {
+      artifacts.push({
+        name: block.title ?? `document_${index + 1}`,
+        resource: block.source,
+        mime: aiccResourceRefMime(block.source)
+      });
+    }
+  });
+  return artifacts;
+}
 function aiccRenderMessageForDebug(message) {
   return message.content.map(renderAiccContentForDebug).join("");
 }
@@ -1461,6 +1491,21 @@ function validateAiccMessages(messages) {
     validateAiccMessage(message);
   }
 }
+function validateAiccResponse(response) {
+  const record = asRecord$2(response);
+  for (const key of ["text", "tool_calls", "artifacts"]) {
+    if (key in record) {
+      throw new RPCError(`AiccResponse.${key} is no longer supported; use AiccResponse.message`);
+    }
+  }
+  if (!record.message) {
+    throw new RPCError("AiccResponse.message is required");
+  }
+  validateAiccMessage(record.message);
+  if (record.message.role !== "assistant") {
+    throw new RPCError("AiccResponse.message.role must be assistant");
+  }
+}
 function renderAiccContentForDebug(block) {
   switch (block.type) {
     case "text":
@@ -1477,6 +1522,16 @@ function renderAiccContentForDebug(block) {
       return block.text ?? block.summary ?? "[thinking]";
     case "provider_state":
       return `[provider_state provider=${block.provider}]`;
+  }
+}
+function aiccResourceRefMime(resource) {
+  switch (resource.kind) {
+    case "url":
+      return resource.mime_hint ?? null;
+    case "base64":
+      return resource.mime;
+    case "named_object":
+      return null;
   }
 }
 function validateAiccContentBlockForRole(role, block) {
@@ -1536,7 +1591,7 @@ function isBlockAllowedForRole(role, blockType) {
     case "user":
       return blockType === "text" || blockType === "image" || blockType === "document";
     case "assistant":
-      return blockType === "text" || blockType === "tool_use" || blockType === "thinking" || blockType === "provider_state";
+      return blockType === "text" || blockType === "image" || blockType === "document" || blockType === "tool_use" || blockType === "thinking" || blockType === "provider_state";
     case "tool":
       return blockType === "tool_result";
   }
@@ -1597,6 +1652,9 @@ function parseMethodResponse(result) {
   }
   if (typeof record.status !== "string" || !METHOD_STATUS_SET.has(record.status)) {
     throw new RPCError("AiccMethodResponse missing or invalid status");
+  }
+  if (record.result != null) {
+    validateAiccResponse(record.result);
   }
   return record;
 }
@@ -7051,7 +7109,7 @@ async function uploadChunkViaTus(endpoint, file, chunkInfo, chunkIndex, appId, f
   const logicalPath = `${appId}/${chunkInfo.chunkId}`;
   let tusModule;
   try {
-    tusModule = await import("./tus_client-aac64f76.mjs");
+    tusModule = await import("./tus_client-fada3beb.mjs");
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new NdmError("UPLOAD_FAILED", `Failed to load tus-js-client: ${message}`);
@@ -7772,42 +7830,46 @@ const ndm_proxy = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.definePro
   unpinOwner
 }, Symbol.toStringTag, { value: "Module" }));
 export {
-  parseOwnerConfigDocument as $,
+  isAgentDocument as $,
   AICC_SERVICE_NAME as A,
   BS_SERVICE_VERIFY_HUB as B,
-  validateAiccMessages as C,
-  AiccClient as D,
-  KEventClient as E,
-  isW3CDIDDocumentBase as F,
-  isBuckyOSOwnerConfigDocument as G,
-  isUserDocument as H,
-  isBuckyOSDeviceMiniDocument as I,
-  isBuckyOSDeviceDocument as J,
+  aiccRenderMessageForDebug as C,
+  aiccEstimateMessageTextLen as D,
+  validateAiccMessage as E,
+  validateAiccMessages as F,
+  validateAiccResponse as G,
+  AiccClient as H,
+  KEventClient as I,
+  isW3CDIDDocumentBase as J,
   KEventReader as K,
-  isBuckyOSAgentDocument as L,
+  isBuckyOSOwnerConfigDocument as L,
   MsgQueueClient as M,
-  isBuckyOSZoneDocument as N,
-  isDIDDocumentBase as O,
-  isOwnerConfigDocument as P,
-  isDeviceMiniConfig as Q,
+  isUserDocument as N,
+  isBuckyOSDeviceMiniDocument as O,
+  isBuckyOSDeviceDocument as P,
+  isBuckyOSAgentDocument as Q,
   RuntimeType as R,
   SystemConfigClient as S,
   TaskManagerClient as T,
-  isDeviceDocument as U,
+  isBuckyOSZoneDocument as U,
   VerifyHubClient as V,
   WEB3_BRIDGE_HOST as W,
-  isAgentDocument as X,
-  isZoneDocument as Y,
-  parseW3CDIDDocumentBase as Z,
-  parseBuckyOSOwnerConfigDocument as _,
+  isDIDDocumentBase as X,
+  isOwnerConfigDocument as Y,
+  isDeviceMiniConfig as Z,
+  isDeviceDocument as _,
   ndm_client as a,
-  parseBuckyOSDeviceMiniDocument as a0,
-  parseDeviceMiniConfig as a1,
-  parseBuckyOSDIDDocument as a2,
-  getDidMethod as a3,
-  getDidIdentifier as a4,
-  getDefaultExportFromCjs as a5,
-  commonjsGlobal as a6,
+  isZoneDocument as a0,
+  parseW3CDIDDocumentBase as a1,
+  parseBuckyOSOwnerConfigDocument as a2,
+  parseOwnerConfigDocument as a3,
+  parseBuckyOSDeviceMiniDocument as a4,
+  parseDeviceMiniConfig as a5,
+  parseBuckyOSDIDDocument as a6,
+  getDidMethod as a7,
+  getDidIdentifier as a8,
+  getDefaultExportFromCjs as a9,
+  commonjsGlobal as aa,
   ndm_proxy as b,
   createSDKModule as c,
   BS_SERVICE_TASK_MANAGER as d,
@@ -7830,8 +7892,8 @@ export {
   aiccTextMessage as u,
   aiccMessageTextContent as v,
   aiccMessageFirstText as w,
-  aiccRenderMessageForDebug as x,
-  aiccEstimateMessageTextLen as y,
-  validateAiccMessage as z
+  aiccResponseTextContent as x,
+  aiccResponseToolCalls as y,
+  aiccResponseArtifacts as z
 };
-//# sourceMappingURL=ndm_proxy-20abe498.mjs.map
+//# sourceMappingURL=ndm_proxy-b041b938.mjs.map

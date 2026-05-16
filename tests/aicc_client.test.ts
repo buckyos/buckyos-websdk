@@ -4,6 +4,9 @@ import {
   AiccClient,
   aiccMessageFirstText,
   aiccMessageTextContent,
+  aiccResponseArtifacts,
+  aiccResponseTextContent,
+  aiccResponseToolCalls,
   aiccRenderMessageForDebug,
   aiccTextMessage,
 } from '../src/aicc_client'
@@ -25,7 +28,7 @@ describe('AiccClient', () => {
       task_id: 'task-chat',
       status: 'succeeded',
       result: {
-        text: 'hello',
+        message: { role: 'assistant', content: [{ type: 'text', text: 'hello' }] },
         extra: {
           route_trace: {
             attempts: [],
@@ -70,6 +73,7 @@ describe('AiccClient', () => {
     })
 
     expect(response.result?.extra?.route_trace?.final_model).toBe('llm.plan.default@mock')
+    expect(response.result && aiccResponseTextContent(response.result)).toBe('hello')
     expect(JSON.parse((fetcher.mock.calls[0][1] as RequestInit).body as string)).toEqual({
       method: 'llm.chat',
       params: {
@@ -158,6 +162,37 @@ describe('AiccClient', () => {
     expect(aiccRenderMessageForDebug(message)).toBe('checkinghello[tool_use name=get_weather call_id=call-1]')
   })
 
+  it('provides derived AiResponse views for text, tool calls, and artifacts', () => {
+    const response = {
+      message: {
+        role: 'assistant' as const,
+        content: [
+          { type: 'text' as const, text: 'hello' },
+          { type: 'tool_use' as const, name: 'get_weather', call_id: 'call-1', args: { city: 'Seattle' } },
+          { type: 'image' as const, source: { kind: 'url' as const, url: 'https://example.com/a.png', mime_hint: 'image/png' } },
+          { type: 'document' as const, source: { kind: 'base64' as const, mime: 'text/plain', data_base64: 'aGVsbG8=' }, title: 'note.txt' },
+        ],
+      },
+    }
+
+    expect(aiccResponseTextContent(response)).toBe('hello')
+    expect(aiccResponseToolCalls(response)).toEqual([
+      { name: 'get_weather', call_id: 'call-1', args: { city: 'Seattle' } },
+    ])
+    expect(aiccResponseArtifacts(response)).toEqual([
+      {
+        name: 'image_3',
+        resource: { kind: 'url', url: 'https://example.com/a.png', mime_hint: 'image/png' },
+        mime: 'image/png',
+      },
+      {
+        name: 'note.txt',
+        resource: { kind: 'base64', mime: 'text/plain', data_base64: 'aGVsbG8=' },
+        mime: 'text/plain',
+      },
+    ])
+  })
+
   it('rejects llm.chat messages with invalid role and content-block combinations', async () => {
     const fetcher = jest.fn()
     const rpcClient = new kRPCClient('/kapi/aicc/', null, 1, { fetcher })
@@ -219,10 +254,11 @@ describe('AiccClient', () => {
       task_id: 'task-001',
       status: 'succeeded',
       result: {
-        text: 'mock',
+        message: { role: 'assistant', content: [{ type: 'text', text: 'mock' }] },
         usage: {
-          tokens: { input: 4, output: 8, total: 12 },
-          request_units: 1,
+          input_tokens: 4,
+          output_tokens: 8,
+          total_tokens: 12,
         },
         cost: { amount: 0.001, currency: 'USD' },
         finish_reason: 'stop',
@@ -262,7 +298,7 @@ describe('AiccClient', () => {
 
     expect(response.task_id).toBe('task-001')
     expect(response.status).toBe('succeeded')
-    expect(response.result?.usage?.tokens?.total).toBe(12)
+    expect(response.result?.usage?.total_tokens).toBe(12)
     expect(response.event_ref).toBe('task://task-001/events')
 
     expect(fetcher).toHaveBeenCalledTimes(1)
@@ -444,5 +480,27 @@ describe('AiccClient', () => {
         payload: { input_json: { messages: [aiccTextMessage('user', 'hello')] } },
       }),
     ).rejects.toThrow('AiccMethodResponse missing task_id')
+  })
+
+  it('rejects deprecated result fields', async () => {
+    const fetcher = jest.fn().mockResolvedValue(makeResponse({
+      task_id: 'task-legacy',
+      status: 'succeeded',
+      result: {
+        message: { role: 'assistant', content: [{ type: 'text', text: 'hello' }] },
+        text: 'legacy',
+      },
+    }, 1))
+    const rpcClient = new kRPCClient('/kapi/aicc/', null, 1, { fetcher })
+    const client = new AiccClient(rpcClient)
+
+    await expect(
+      client.callMethod(AICC_AI_METHODS.LLM_CHAT, {
+        capability: 'llm',
+        model: { alias: 'm' },
+        requirements: {},
+        payload: { input_json: { messages: [aiccTextMessage('user', 'hello')] } },
+      }),
+    ).rejects.toThrow('AiccResponse.text is no longer supported')
   })
 })

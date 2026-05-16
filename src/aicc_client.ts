@@ -153,24 +153,10 @@ export interface AiccMethodRequest {
   task_options?: AiccTaskOptions | null
 }
 
-export interface AiccTokenUsage {
-  input?: number
-  output?: number
-  total?: number
-  cached?: number
-  reasoning?: number
-}
-
-export interface AiccMediaUsage {
-  audio_seconds?: number
-  video_seconds?: number
-  image_count?: number
-}
-
 export interface AiccUsage {
-  tokens?: AiccTokenUsage
-  media?: AiccMediaUsage
-  request_units?: number
+  input_tokens?: number | null
+  output_tokens?: number | null
+  total_tokens?: number | null
 }
 
 export interface AiccCost {
@@ -191,11 +177,9 @@ export interface AiccToolCall {
   call_id: string
 }
 
-export interface AiccResponseSummary {
-  text?: string
-  tool_calls?: AiccToolCall[]
-  artifacts?: AiccArtifact[]
-  usage?: AiccUsage
+export interface AiccResponse {
+  message: AiccMessage
+  usage?: AiccUsage | null
   cost?: AiccCost
   finish_reason?: string
   provider_task_ref?: string | null
@@ -205,7 +189,7 @@ export interface AiccResponseSummary {
 export interface AiccMethodResponse {
   task_id: string
   status: AiccMethodStatus
-  result?: AiccResponseSummary | null
+  result?: AiccResponse | null
   event_ref?: string | null
 }
 
@@ -251,12 +235,12 @@ export interface AiccTypedMethodCall<TInput> {
   task_options?: AiccTaskOptions | null
 }
 
-export type AiccTypedResponseSummary<TExtra = unknown> = Omit<AiccResponseSummary, 'extra'> & {
+export type AiccTypedResponse<TExtra = unknown> = Omit<AiccResponse, 'extra'> & {
   extra?: TExtra
 }
 
 export type AiccTypedMethodResponse<TExtra = unknown> = Omit<AiccMethodResponse, 'result'> & {
-  result?: AiccTypedResponseSummary<TExtra> | null
+  result?: AiccTypedResponse<TExtra> | null
 }
 
 export interface AiccGenerationOutputOptions {
@@ -746,6 +730,41 @@ export function aiccMessageFirstText(message: AiccMessage): string | undefined {
   return message.content.find((block): block is Extract<AiccContent, { type: 'text' }> => block.type === 'text')?.text
 }
 
+export function aiccResponseTextContent(response: AiccResponse): string {
+  return aiccMessageTextContent(response.message)
+}
+
+export function aiccResponseToolCalls(response: AiccResponse): AiccToolCall[] {
+  return response.message.content
+    .filter((block): block is Extract<AiccContent, { type: 'tool_use' }> => block.type === 'tool_use')
+    .map((block) => ({
+      name: block.name,
+      args: block.args,
+      call_id: block.call_id,
+    }))
+}
+
+export function aiccResponseArtifacts(response: AiccResponse): AiccArtifact[] {
+  const artifacts: AiccArtifact[] = []
+  response.message.content.forEach((block, index) => {
+    if (block.type === 'image') {
+      artifacts.push({
+        name: `image_${index + 1}`,
+        resource: block.source,
+        mime: aiccResourceRefMime(block.source),
+      })
+    }
+    if (block.type === 'document') {
+      artifacts.push({
+        name: block.title ?? `document_${index + 1}`,
+        resource: block.source,
+        mime: aiccResourceRefMime(block.source),
+      })
+    }
+  })
+  return artifacts
+}
+
 export function aiccRenderMessageForDebug(message: AiccMessage): string {
   return message.content.map(renderAiccContentForDebug).join('')
 }
@@ -787,6 +806,22 @@ export function validateAiccMessages(messages: AiccMessage[]): void {
   }
 }
 
+export function validateAiccResponse(response: AiccResponse): void {
+  const record = asRecord(response)
+  for (const key of ['text', 'tool_calls', 'artifacts']) {
+    if (key in record) {
+      throw new RPCError(`AiccResponse.${key} is no longer supported; use AiccResponse.message`)
+    }
+  }
+  if (!record.message) {
+    throw new RPCError('AiccResponse.message is required')
+  }
+  validateAiccMessage(record.message as AiccMessage)
+  if ((record.message as AiccMessage).role !== 'assistant') {
+    throw new RPCError('AiccResponse.message.role must be assistant')
+  }
+}
+
 function renderAiccContentForDebug(block: AiccContent): string {
   switch (block.type) {
     case 'text':
@@ -803,6 +838,17 @@ function renderAiccContentForDebug(block: AiccContent): string {
       return block.text ?? block.summary ?? '[thinking]'
     case 'provider_state':
       return `[provider_state provider=${block.provider}]`
+  }
+}
+
+function aiccResourceRefMime(resource: AiccResourceRef): string | null {
+  switch (resource.kind) {
+    case 'url':
+      return resource.mime_hint ?? null
+    case 'base64':
+      return resource.mime
+    case 'named_object':
+      return null
   }
 }
 
@@ -867,7 +913,14 @@ function isBlockAllowedForRole(role: AiccAiRole, blockType: string): boolean {
     case 'user':
       return blockType === 'text' || blockType === 'image' || blockType === 'document'
     case 'assistant':
-      return blockType === 'text' || blockType === 'tool_use' || blockType === 'thinking' || blockType === 'provider_state'
+      return (
+        blockType === 'text' ||
+        blockType === 'image' ||
+        blockType === 'document' ||
+        blockType === 'tool_use' ||
+        blockType === 'thinking' ||
+        blockType === 'provider_state'
+      )
     case 'tool':
       return blockType === 'tool_result'
   }
@@ -936,6 +989,9 @@ function parseMethodResponse(result: unknown): AiccMethodResponse {
   }
   if (typeof record.status !== 'string' || !METHOD_STATUS_SET.has(record.status)) {
     throw new RPCError('AiccMethodResponse missing or invalid status')
+  }
+  if (record.result != null) {
+    validateAiccResponse(record.result as AiccResponse)
   }
   return record as unknown as AiccMethodResponse
 }

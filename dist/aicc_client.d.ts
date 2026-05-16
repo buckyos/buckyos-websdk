@@ -154,22 +154,10 @@ export interface AiccMethodRequest {
     idempotency_key?: string | null;
     task_options?: AiccTaskOptions | null;
 }
-export interface AiccTokenUsage {
-    input?: number;
-    output?: number;
-    total?: number;
-    cached?: number;
-    reasoning?: number;
-}
-export interface AiccMediaUsage {
-    audio_seconds?: number;
-    video_seconds?: number;
-    image_count?: number;
-}
 export interface AiccUsage {
-    tokens?: AiccTokenUsage;
-    media?: AiccMediaUsage;
-    request_units?: number;
+    input_tokens?: number | null;
+    output_tokens?: number | null;
+    total_tokens?: number | null;
 }
 export interface AiccCost {
     amount: number;
@@ -186,11 +174,9 @@ export interface AiccToolCall {
     args: Record<string, unknown>;
     call_id: string;
 }
-export interface AiccResponseSummary {
-    text?: string;
-    tool_calls?: AiccToolCall[];
-    artifacts?: AiccArtifact[];
-    usage?: AiccUsage;
+export interface AiccResponse {
+    message: AiccMessage;
+    usage?: AiccUsage | null;
     cost?: AiccCost;
     finish_reason?: string;
     provider_task_ref?: string | null;
@@ -199,7 +185,7 @@ export interface AiccResponseSummary {
 export interface AiccMethodResponse {
     task_id: string;
     status: AiccMethodStatus;
-    result?: AiccResponseSummary | null;
+    result?: AiccResponse | null;
     event_ref?: string | null;
 }
 export interface AiccCancelResponse {
@@ -237,11 +223,11 @@ export interface AiccTypedMethodCall<TInput> {
     idempotency_key?: string | null;
     task_options?: AiccTaskOptions | null;
 }
-export type AiccTypedResponseSummary<TExtra = unknown> = Omit<AiccResponseSummary, 'extra'> & {
+export type AiccTypedResponse<TExtra = unknown> = Omit<AiccResponse, 'extra'> & {
     extra?: TExtra;
 };
 export type AiccTypedMethodResponse<TExtra = unknown> = Omit<AiccMethodResponse, 'result'> & {
-    result?: AiccTypedResponseSummary<TExtra> | null;
+    result?: AiccTypedResponse<TExtra> | null;
 };
 export interface AiccGenerationOutputOptions {
     media_type?: string;
@@ -681,10 +667,14 @@ export declare function isAiccAiMethod(method: string): method is AiccAiMethod;
 export declare function aiccTextMessage(role: AiccAiRole, text: string): AiccMessage;
 export declare function aiccMessageTextContent(message: AiccMessage): string;
 export declare function aiccMessageFirstText(message: AiccMessage): string | undefined;
+export declare function aiccResponseTextContent(response: AiccResponse): string;
+export declare function aiccResponseToolCalls(response: AiccResponse): AiccToolCall[];
+export declare function aiccResponseArtifacts(response: AiccResponse): AiccArtifact[];
 export declare function aiccRenderMessageForDebug(message: AiccMessage): string;
 export declare function aiccEstimateMessageTextLen(message: AiccMessage): number;
 export declare function validateAiccMessage(message: AiccMessage): void;
 export declare function validateAiccMessages(messages: AiccMessage[]): void;
+export declare function validateAiccResponse(response: AiccResponse): void;
 export declare class AiccClient {
     private rpcClient;
     constructor(rpcClient: kRPCClient);
