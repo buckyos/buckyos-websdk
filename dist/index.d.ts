@@ -27,6 +27,7 @@ export declare const buckyos: {
     getVerifyHubClient: () => import("./verify-hub-client").VerifyHubClient;
     getSystemConfigClient: () => import("./system_config_client").SystemConfigClient;
     getTaskManagerClient: () => import("./task_mgr_client").TaskManagerClient;
+    getWorkflowClient: () => import("./workflow_client").WorkflowClient;
     getAiccClient: () => import("./aicc_client").AiccClient;
     getMsgQueueClient: () => import("./msg_queue_client").MsgQueueClient;
     getMsgCenterClient: () => import("./msg_center_client").MsgCenterClient;
@@ -60,6 +61,7 @@ export declare const getServiceRpcClient: (serviceName: string) => import("./krp
 export declare const getVerifyHubClient: () => import("./verify-hub-client").VerifyHubClient;
 export declare const getSystemConfigClient: () => import("./system_config_client").SystemConfigClient;
 export declare const getTaskManagerClient: () => import("./task_mgr_client").TaskManagerClient;
+export declare const getWorkflowClient: () => import("./workflow_client").WorkflowClient;
 export declare const getAiccClient: () => import("./aicc_client").AiccClient;
 export declare const getMsgQueueClient: () => import("./msg_queue_client").MsgQueueClient;
 export declare const getMsgCenterClient: () => import("./msg_center_client").MsgCenterClient;

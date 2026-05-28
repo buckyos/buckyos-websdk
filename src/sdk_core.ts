@@ -17,6 +17,7 @@ import {
 } from './runtime'
 import { VerifyHubClient } from './verify-hub-client'
 import { TaskManagerClient } from './task_mgr_client'
+import { WorkflowClient } from './workflow_client'
 import { SystemConfigClient } from './system_config_client'
 import { AiccClient } from './aicc_client'
 import { MsgQueueClient } from './msg_queue_client'
@@ -578,6 +579,14 @@ export class BuckyOSSDK {
     return this.currentRuntime.getTaskManagerClient()
   }
 
+  getWorkflowClient(): WorkflowClient {
+    if (this.currentRuntime == null) {
+      console.error('BuckyOS WebSDK is not initialized,call initBuckyOS first')
+      throw new Error('BuckyOS WebSDK is not initialized,call initBuckyOS first')
+    }
+    return this.currentRuntime.getWorkflowClient()
+  }
+
   getAiccClient(): AiccClient {
     if (this.currentRuntime == null) {
       throw new Error('BuckyOS WebSDK is not initialized,call initBuckyOS first')
@@ -817,6 +826,7 @@ export function createSDKModule(target: SDKTarget) {
     getVerifyHubClient: sdk.getVerifyHubClient.bind(sdk),
     getSystemConfigClient: sdk.getSystemConfigClient.bind(sdk),
     getTaskManagerClient: sdk.getTaskManagerClient.bind(sdk),
+    getWorkflowClient: sdk.getWorkflowClient.bind(sdk),
     getAiccClient: sdk.getAiccClient.bind(sdk),
     getMsgQueueClient: sdk.getMsgQueueClient.bind(sdk),
     getMsgCenterClient: sdk.getMsgCenterClient.bind(sdk),
@@ -840,6 +850,7 @@ export { parseSessionTokenClaims }
 export { VerifyHubClient }
 export { SystemConfigClient }
 export { TaskManagerClient }
+export * from './workflow_client'
 export * from './aicc_client'
 export { MsgQueueClient }
 export { MsgCenterClient }

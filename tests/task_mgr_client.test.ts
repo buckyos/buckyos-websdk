@@ -17,10 +17,12 @@ function makeTask(overrides: Record<string, unknown> = {}) {
     id: 1,
     user_id: 'did:bns:test-user',
     app_id: 'test-app',
+    session_id: 'session-1',
     parent_id: null,
     root_id: '1',
     name: 'test task',
     task_type: 'publish',
+    runner: '',
     status: 'Pending',
     progress: 0,
     message: null,
@@ -53,6 +55,8 @@ describe('TaskManagerClient', () => {
       options: {
         parent_id: 3,
         root_id: '3',
+        session_id: 'session-1',
+        runner: 'workflow',
         priority: 5,
       },
     })
@@ -64,12 +68,14 @@ describe('TaskManagerClient', () => {
       params: {
         name: 'publish package',
         task_type: 'publish',
+        runner: 'workflow',
         data: { pkg: 'abc' },
         parent_id: 3,
         root_id: '3',
         priority: 5,
         user_id: 'did:bns:u1',
         app_id: 'pkg-app',
+        session_id: 'session-1',
         app_name: 'pkg-app',
       },
       sys: [9],
@@ -105,7 +111,7 @@ describe('TaskManagerClient', () => {
       'https://example.com/pkg.tgz',
       'did:bns:u1',
       'pkg-app',
-      { root_id: '10', priority: 2 },
+      { root_id: '10', session_id: 'download-session', runner: 'repo', priority: 2 },
       'obj-1',
       { checksum: 'sha256' },
     )
@@ -120,9 +126,11 @@ describe('TaskManagerClient', () => {
         parent_id: undefined,
         permissions: undefined,
         root_id: '10',
+        runner: 'repo',
         priority: 2,
         user_id: 'did:bns:u1',
         app_id: 'pkg-app',
+        session_id: 'download-session',
         app_name: 'pkg-app',
       },
       sys: [31],
@@ -159,7 +167,9 @@ describe('TaskManagerClient', () => {
     const wrappedTasks = await wrappedClient.listTasks({
       filter: {
         app_id: 'test-app',
+        session_id: 'session-50',
         status: TaskStatus.Paused,
+        runner: 'workflow',
         root_id: '50',
       },
       sourceUserId: 'did:bns:source-user',
@@ -173,7 +183,9 @@ describe('TaskManagerClient', () => {
       method: 'list_tasks',
       params: {
         app_id: 'test-app',
+        session_id: 'session-50',
         task_type: undefined,
+        runner: 'workflow',
         status: 'Paused',
         parent_id: undefined,
         root_id: '50',
@@ -240,6 +252,28 @@ describe('TaskManagerClient', () => {
     const client = new TaskManagerClient(rpcClient)
 
     await expect(client.resumeLastPausedTask()).rejects.toThrow('No paused tasks found')
+  })
+
+  it('deleteTasksBySession sends expected payload and returns deleted count', async () => {
+    const fetcher = jest.fn().mockResolvedValue(makeResponse({ deleted_count: 3 }, 88))
+
+    const rpcClient = new kRPCClient('/kapi/task-manager/', null, 88, { fetcher: fetcher })
+    const client = new TaskManagerClient(rpcClient)
+    const deletedCount = await client.deleteTasksBySession('session-1', {
+      sourceUserId: 'did:bns:u1',
+      sourceAppId: 'test-app',
+    })
+
+    expect(deletedCount).toBe(3)
+    expect(JSON.parse((fetcher.mock.calls[0][1] as RequestInit).body as string)).toEqual({
+      method: 'delete_tasks_by_session',
+      params: {
+        session_id: 'session-1',
+        source_user_id: 'did:bns:u1',
+        source_app_id: 'test-app',
+      },
+      sys: [88],
+    })
   })
 
   it('waitForTaskEndWithInterval validates poll interval', async () => {

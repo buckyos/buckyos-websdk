@@ -30,6 +30,7 @@ export const getServiceRpcClient = sdkModule.getServiceRpcClient
 export const getVerifyHubClient = sdkModule.getVerifyHubClient
 export const getSystemConfigClient = sdkModule.getSystemConfigClient
 export const getTaskManagerClient = sdkModule.getTaskManagerClient
+export const getWorkflowClient = sdkModule.getWorkflowClient
 export const getAiccClient = sdkModule.getAiccClient
 export const getMsgQueueClient = sdkModule.getMsgQueueClient
 export const getMsgCenterClient = sdkModule.getMsgCenterClient

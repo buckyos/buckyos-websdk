@@ -30,6 +30,7 @@ export const getServiceRpcClient = sdkModule.getServiceRpcClient
 export const getVerifyHubClient = sdkModule.getVerifyHubClient
 export const getSystemConfigClient = sdkModule.getSystemConfigClient
 export const getTaskManagerClient = sdkModule.getTaskManagerClient
+export const getWorkflowClient = sdkModule.getWorkflowClient
 
 export { hashPassword }
 export * from './sdk_core'

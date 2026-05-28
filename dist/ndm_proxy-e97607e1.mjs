@@ -979,14 +979,14 @@ function isTerminalTaskStatus(status) {
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
-function asRecord$3(value) {
+function asRecord$4(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new RPCError("Invalid RPC response format");
   }
   return value;
 }
 function parseTask(value) {
-  const record = asRecord$3(value);
+  const record = asRecord$4(value);
   const id = record.id;
   const status = record.status;
   if (typeof id !== "number") {
@@ -1010,7 +1010,7 @@ function parseTaskListResult(value) {
   if (Array.isArray(value)) {
     return parseTasks(value);
   }
-  const parsed = asRecord$3(value);
+  const parsed = asRecord$4(value);
   if ("tasks" in parsed) {
     return parseTasks(parsed.tasks);
   }
@@ -1028,6 +1028,7 @@ class TaskManagerClient {
     const req = {
       name: params.name,
       task_type: params.taskType,
+      runner: options.runner ?? "",
       data: params.data,
       permissions: options.permissions,
       parent_id: options.parent_id,
@@ -1035,10 +1036,11 @@ class TaskManagerClient {
       priority: options.priority,
       user_id: params.userId,
       app_id: params.appId,
+      session_id: options.session_id,
       app_name: params.appId || void 0
     };
     const result = await this.rpcClient.call("create_task", req);
-    const parsed = asRecord$3(result);
+    const parsed = asRecord$4(result);
     if ("task" in parsed) {
       return parseTask(parsed.task);
     }
@@ -1051,7 +1053,7 @@ class TaskManagerClient {
   async getTask(id) {
     const req = { id };
     const result = await this.rpcClient.call("get_task", req);
-    const parsed = asRecord$3(result);
+    const parsed = asRecord$4(result);
     if ("task" in parsed) {
       return parseTask(parsed.task);
     }
@@ -1076,7 +1078,9 @@ class TaskManagerClient {
     const filter = params.filter ?? {};
     const req = {
       app_id: filter.app_id,
+      session_id: filter.session_id,
       task_type: filter.task_type,
+      runner: filter.runner,
       status: filter.status,
       parent_id: filter.parent_id,
       root_id: filter.root_id,
@@ -1089,6 +1093,7 @@ class TaskManagerClient {
   async listTasksByTimeRange(params) {
     const req = {
       app_id: params.appId,
+      session_id: params.sessionId,
       task_type: params.taskType,
       source_user_id: params.sourceUserId,
       source_app_id: params.sourceAppId,
@@ -1141,6 +1146,20 @@ class TaskManagerClient {
     const req = { id };
     await this.rpcClient.call("delete_task", req);
   }
+  async deleteTasksBySession(sessionId, options = {}) {
+    const req = {
+      session_id: sessionId,
+      source_user_id: options.sourceUserId,
+      source_app_id: options.sourceAppId
+    };
+    const result = await this.rpcClient.call("delete_tasks_by_session", req);
+    const parsed = asRecord$4(result);
+    const deletedCount = parsed.deleted_count;
+    if (typeof deletedCount !== "number") {
+      throw new RPCError("Expected DeleteTasksResult response");
+    }
+    return deletedCount;
+  }
   async createDownloadTask(downloadUrl, userId, appId, options = {}, objid, downloadOptions) {
     const req = {
       download_url: downloadUrl,
@@ -1149,13 +1168,15 @@ class TaskManagerClient {
       parent_id: options.parent_id,
       permissions: options.permissions,
       root_id: options.root_id,
+      runner: options.runner,
       priority: options.priority,
       user_id: userId,
       app_id: appId,
+      session_id: options.session_id,
       app_name: appId || void 0
     };
     const result = await this.rpcClient.call("create_download_task", req);
-    const parsed = asRecord$3(result);
+    const parsed = asRecord$4(result);
     const taskId = parsed.task_id;
     if (typeof taskId !== "number") {
       throw new RPCError("Expected CreateDownloadTaskResult response");
@@ -1225,6 +1246,236 @@ class TaskManagerClient {
       throw new RPCError("No paused tasks found");
     }
     await this.resumeTask(lastPausedTask.id);
+  }
+}
+const WORKFLOW_SERVICE_NAME = "workflow";
+var WorkflowStepType = /* @__PURE__ */ ((WorkflowStepType2) => {
+  WorkflowStepType2["Autonomous"] = "autonomous";
+  WorkflowStepType2["HumanConfirm"] = "human_confirm";
+  WorkflowStepType2["HumanRequired"] = "human_required";
+  return WorkflowStepType2;
+})(WorkflowStepType || {});
+var WorkflowOutputMode = /* @__PURE__ */ ((WorkflowOutputMode2) => {
+  WorkflowOutputMode2["Single"] = "single";
+  WorkflowOutputMode2["FiniteSeekable"] = "finite_seekable";
+  WorkflowOutputMode2["FiniteSequential"] = "finite_sequential";
+  return WorkflowOutputMode2;
+})(WorkflowOutputMode || {});
+var WorkflowJoinMode = /* @__PURE__ */ ((WorkflowJoinMode2) => {
+  WorkflowJoinMode2["All"] = "all";
+  WorkflowJoinMode2["Any"] = "any";
+  WorkflowJoinMode2["NOfM"] = "n_of_m";
+  return WorkflowJoinMode2;
+})(WorkflowJoinMode || {});
+var WorkflowRetryFallback = /* @__PURE__ */ ((WorkflowRetryFallback2) => {
+  WorkflowRetryFallback2["Human"] = "human";
+  WorkflowRetryFallback2["Abort"] = "abort";
+  return WorkflowRetryFallback2;
+})(WorkflowRetryFallback || {});
+var WorkflowDefinitionStatus = /* @__PURE__ */ ((WorkflowDefinitionStatus2) => {
+  WorkflowDefinitionStatus2["Draft"] = "draft";
+  WorkflowDefinitionStatus2["Active"] = "active";
+  WorkflowDefinitionStatus2["Archived"] = "archived";
+  return WorkflowDefinitionStatus2;
+})(WorkflowDefinitionStatus || {});
+var WorkflowRunStatus = /* @__PURE__ */ ((WorkflowRunStatus2) => {
+  WorkflowRunStatus2["Created"] = "created";
+  WorkflowRunStatus2["Running"] = "running";
+  WorkflowRunStatus2["WaitingHuman"] = "waiting_human";
+  WorkflowRunStatus2["Completed"] = "completed";
+  WorkflowRunStatus2["Failed"] = "failed";
+  WorkflowRunStatus2["Paused"] = "paused";
+  WorkflowRunStatus2["Aborted"] = "aborted";
+  WorkflowRunStatus2["BudgetExhausted"] = "budget_exhausted";
+  return WorkflowRunStatus2;
+})(WorkflowRunStatus || {});
+var WorkflowNodeRunState = /* @__PURE__ */ ((WorkflowNodeRunState2) => {
+  WorkflowNodeRunState2["Pending"] = "pending";
+  WorkflowNodeRunState2["Ready"] = "ready";
+  WorkflowNodeRunState2["Running"] = "running";
+  WorkflowNodeRunState2["Completed"] = "completed";
+  WorkflowNodeRunState2["Failed"] = "failed";
+  WorkflowNodeRunState2["Retrying"] = "retrying";
+  WorkflowNodeRunState2["WaitingHuman"] = "waiting_human";
+  WorkflowNodeRunState2["Skipped"] = "skipped";
+  WorkflowNodeRunState2["Aborted"] = "aborted";
+  WorkflowNodeRunState2["Cancelled"] = "cancelled";
+  return WorkflowNodeRunState2;
+})(WorkflowNodeRunState || {});
+var WorkflowHumanActionKind = /* @__PURE__ */ ((WorkflowHumanActionKind2) => {
+  WorkflowHumanActionKind2["Approve"] = "approve";
+  WorkflowHumanActionKind2["Modify"] = "modify";
+  WorkflowHumanActionKind2["Reject"] = "reject";
+  WorkflowHumanActionKind2["Retry"] = "retry";
+  WorkflowHumanActionKind2["Skip"] = "skip";
+  WorkflowHumanActionKind2["Abort"] = "abort";
+  WorkflowHumanActionKind2["Rollback"] = "rollback";
+  return WorkflowHumanActionKind2;
+})(WorkflowHumanActionKind || {});
+var WorkflowScheduledTaskStatus = /* @__PURE__ */ ((WorkflowScheduledTaskStatus2) => {
+  WorkflowScheduledTaskStatus2["Enabled"] = "enabled";
+  WorkflowScheduledTaskStatus2["Paused"] = "paused";
+  WorkflowScheduledTaskStatus2["Archived"] = "archived";
+  WorkflowScheduledTaskStatus2["Error"] = "error";
+  return WorkflowScheduledTaskStatus2;
+})(WorkflowScheduledTaskStatus || {});
+var WorkflowScheduledTaskMisfirePolicy = /* @__PURE__ */ ((WorkflowScheduledTaskMisfirePolicy2) => {
+  WorkflowScheduledTaskMisfirePolicy2["Skip"] = "skip";
+  WorkflowScheduledTaskMisfirePolicy2["RunOnce"] = "run_once";
+  WorkflowScheduledTaskMisfirePolicy2["CatchUp"] = "catch_up";
+  WorkflowScheduledTaskMisfirePolicy2["Manual"] = "manual";
+  return WorkflowScheduledTaskMisfirePolicy2;
+})(WorkflowScheduledTaskMisfirePolicy || {});
+var WorkflowScheduledTaskFireStatus = /* @__PURE__ */ ((WorkflowScheduledTaskFireStatus2) => {
+  WorkflowScheduledTaskFireStatus2["Created"] = "created";
+  WorkflowScheduledTaskFireStatus2["TaskCreated"] = "task_created";
+  WorkflowScheduledTaskFireStatus2["Skipped"] = "skipped";
+  WorkflowScheduledTaskFireStatus2["Failed"] = "failed";
+  return WorkflowScheduledTaskFireStatus2;
+})(WorkflowScheduledTaskFireStatus || {});
+function asRecord$3(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new RPCError("Invalid workflow RPC response format");
+  }
+  return value;
+}
+function requiredField(record, field) {
+  if (!(field in record)) {
+    throw new RPCError(`Expected ${field} in workflow response`);
+  }
+  return record[field];
+}
+class WorkflowClient {
+  constructor(rpcClient) {
+    this.rpcClient = rpcClient;
+  }
+  setSeq(seq) {
+    this.rpcClient.setSeq(seq);
+  }
+  async callOk(method, params) {
+    const result = await this.rpcClient.call(method, params);
+    const parsed = asRecord$3(result);
+    if (parsed.ok === true) {
+      return parsed;
+    }
+    const message = typeof parsed.message === "string" ? parsed.message : typeof parsed.error === "string" ? parsed.error : "workflow request failed";
+    throw new RPCError(message);
+  }
+  async submitDefinition(request) {
+    const result = await this.callOk("submit_definition", request);
+    return {
+      workflow_id: requiredField(result, "workflow_id"),
+      version: requiredField(result, "version"),
+      analysis: requiredField(result, "analysis"),
+      definition: requiredField(result, "definition")
+    };
+  }
+  async getDefinition(workflowId) {
+    const result = await this.callOk("get_definition", { workflow_id: workflowId });
+    return requiredField(result, "definition");
+  }
+  async listDefinitions(request = {}) {
+    const result = await this.callOk("list_definitions", request);
+    return requiredField(result, "definitions");
+  }
+  async archiveDefinition(workflowId) {
+    const result = await this.callOk("archive_definition", { workflow_id: workflowId });
+    return requiredField(result, "status");
+  }
+  async dryRun(definition) {
+    const result = await this.callOk("dry_run", { definition });
+    return {
+      analysis: requiredField(result, "analysis"),
+      graph: requiredField(result, "graph")
+    };
+  }
+  async createRun(request) {
+    return await this.callOk("create_run", request);
+  }
+  async startRun(runId) {
+    return await this.callOk("start_run", { run_id: runId });
+  }
+  async tickRun(runId) {
+    return await this.callOk("tick_run", { run_id: runId });
+  }
+  async getRunGraph(runId) {
+    return await this.callOk("get_run_graph", { run_id: runId });
+  }
+  async listRuns(request = {}) {
+    const result = await this.callOk("list_runs", request);
+    return requiredField(result, "runs");
+  }
+  async submitStepOutput(request) {
+    return await this.callOk("submit_step_output", request);
+  }
+  async reportStepProgress(request) {
+    return await this.callOk("report_step_progress", request);
+  }
+  async requestHuman(request) {
+    return await this.callOk("request_human", request);
+  }
+  async submitAmendment(request) {
+    const result = await this.callOk("submit_amendment", request);
+    return requiredField(result, "amendment");
+  }
+  async approveAmendment(request) {
+    const result = await this.callOk("approve_amendment", request);
+    return {
+      amendment: requiredField(result, "amendment"),
+      plan_version: requiredField(result, "plan_version")
+    };
+  }
+  async rejectAmendment(request) {
+    const result = await this.callOk("reject_amendment", request);
+    return {
+      amendment: requiredField(result, "amendment"),
+      plan_version: requiredField(result, "plan_version")
+    };
+  }
+  async getHistory(request) {
+    return await this.callOk("get_history", request);
+  }
+  async subscribeEvents(request) {
+    return await this.callOk("subscribe_events", request);
+  }
+  async createScheduledTask(request) {
+    const result = await this.callOk("create_scheduled_task", request);
+    return requiredField(result, "schedule");
+  }
+  async updateScheduledTask(request) {
+    const result = await this.callOk("update_scheduled_task", request);
+    return requiredField(result, "schedule");
+  }
+  async getScheduledTask(scheduleId) {
+    const result = await this.callOk("get_scheduled_task", { schedule_id: scheduleId });
+    return requiredField(result, "schedule");
+  }
+  async listScheduledTasks(request = {}) {
+    const result = await this.callOk("list_scheduled_tasks", request);
+    return requiredField(result, "schedules");
+  }
+  async pauseScheduledTask(scheduleId) {
+    const result = await this.callOk("pause_scheduled_task", { schedule_id: scheduleId });
+    return requiredField(result, "schedule");
+  }
+  async resumeScheduledTask(scheduleId) {
+    const result = await this.callOk("resume_scheduled_task", { schedule_id: scheduleId });
+    return requiredField(result, "schedule");
+  }
+  async archiveScheduledTask(scheduleId) {
+    const result = await this.callOk("archive_scheduled_task", { schedule_id: scheduleId });
+    return requiredField(result, "schedule");
+  }
+  async runScheduledTaskNow(request) {
+    const result = await this.callOk("run_scheduled_task_now", request);
+    return requiredField(result, "fire");
+  }
+  async getScheduledTaskHistory(request) {
+    const result = await this.callOk("get_scheduled_task_history", request);
+    return requiredField(result, "fires");
+  }
+  async validateScheduledTask(request) {
+    return await this.callOk("validate_scheduled_task", request);
   }
 }
 const CONFIG_CACHE_TIME_SECONDS = 10;
@@ -2825,6 +3076,10 @@ class BuckyOSRuntime {
   getTaskManagerClient() {
     const rpcClient = this.getServiceRpcClient("task-manager");
     return new TaskManagerClient(rpcClient);
+  }
+  getWorkflowClient() {
+    const rpcClient = this.getServiceRpcClient("workflow");
+    return new WorkflowClient(rpcClient);
   }
   getAiccClient() {
     return new AiccClient(this.getServiceRpcClient("aicc"));
@@ -4507,6 +4762,13 @@ class BuckyOSSDK {
     }
     return this.currentRuntime.getTaskManagerClient();
   }
+  getWorkflowClient() {
+    if (this.currentRuntime == null) {
+      console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
+      throw new Error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
+    }
+    return this.currentRuntime.getWorkflowClient();
+  }
   getAiccClient() {
     if (this.currentRuntime == null) {
       throw new Error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
@@ -4697,6 +4959,7 @@ function createSDKModule(target) {
     getVerifyHubClient: sdk.getVerifyHubClient.bind(sdk),
     getSystemConfigClient: sdk.getSystemConfigClient.bind(sdk),
     getTaskManagerClient: sdk.getTaskManagerClient.bind(sdk),
+    getWorkflowClient: sdk.getWorkflowClient.bind(sdk),
     getAiccClient: sdk.getAiccClient.bind(sdk),
     getMsgQueueClient: sdk.getMsgQueueClient.bind(sdk),
     getMsgCenterClient: sdk.getMsgCenterClient.bind(sdk),
@@ -7109,7 +7372,7 @@ async function uploadChunkViaTus(endpoint, file, chunkInfo, chunkIndex, appId, f
   const logicalPath = `${appId}/${chunkInfo.chunkId}`;
   let tusModule;
   try {
-    tusModule = await import("./tus_client-fada3beb.mjs");
+    tusModule = await import("./tus_client-cc36ee55.mjs");
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new NdmError("UPLOAD_FAILED", `Failed to load tus-js-client: ${message}`);
@@ -7830,46 +8093,59 @@ const ndm_proxy = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.definePro
   unpinOwner
 }, Symbol.toStringTag, { value: "Module" }));
 export {
-  isAgentDocument as $,
+  KEventReader as $,
   AICC_SERVICE_NAME as A,
   BS_SERVICE_VERIFY_HUB as B,
-  aiccRenderMessageForDebug as C,
-  aiccEstimateMessageTextLen as D,
-  validateAiccMessage as E,
-  validateAiccMessages as F,
-  validateAiccResponse as G,
-  AiccClient as H,
-  KEventClient as I,
-  isW3CDIDDocumentBase as J,
-  KEventReader as K,
-  isBuckyOSOwnerConfigDocument as L,
+  AICC_SERVICE_UNIQUE_ID as C,
+  AICC_SERVICE_SERVICE_NAME as D,
+  AICC_SERVICE_SERVICE_PORT as E,
+  AICC_AI_METHODS as F,
+  AICC_CONTROL_METHODS as G,
+  AICC_FEATURES as H,
+  isAiccAiMethod as I,
+  aiccTextMessage as J,
+  aiccMessageTextContent as K,
+  aiccMessageFirstText as L,
   MsgQueueClient as M,
-  isUserDocument as N,
-  isBuckyOSDeviceMiniDocument as O,
-  isBuckyOSDeviceDocument as P,
-  isBuckyOSAgentDocument as Q,
+  aiccResponseTextContent as N,
+  aiccResponseToolCalls as O,
+  aiccResponseArtifacts as P,
+  aiccRenderMessageForDebug as Q,
   RuntimeType as R,
   SystemConfigClient as S,
   TaskManagerClient as T,
-  isBuckyOSZoneDocument as U,
+  aiccEstimateMessageTextLen as U,
   VerifyHubClient as V,
   WEB3_BRIDGE_HOST as W,
-  isDIDDocumentBase as X,
-  isOwnerConfigDocument as Y,
-  isDeviceMiniConfig as Z,
-  isDeviceDocument as _,
+  validateAiccMessage as X,
+  validateAiccMessages as Y,
+  validateAiccResponse as Z,
+  AiccClient as _,
   ndm_client as a,
-  isZoneDocument as a0,
-  parseW3CDIDDocumentBase as a1,
-  parseBuckyOSOwnerConfigDocument as a2,
-  parseOwnerConfigDocument as a3,
-  parseBuckyOSDeviceMiniDocument as a4,
-  parseDeviceMiniConfig as a5,
-  parseBuckyOSDIDDocument as a6,
-  getDidMethod as a7,
-  getDidIdentifier as a8,
-  getDefaultExportFromCjs as a9,
-  commonjsGlobal as aa,
+  KEventClient as a0,
+  isW3CDIDDocumentBase as a1,
+  isBuckyOSOwnerConfigDocument as a2,
+  isUserDocument as a3,
+  isBuckyOSDeviceMiniDocument as a4,
+  isBuckyOSDeviceDocument as a5,
+  isBuckyOSAgentDocument as a6,
+  isBuckyOSZoneDocument as a7,
+  isDIDDocumentBase as a8,
+  isOwnerConfigDocument as a9,
+  isDeviceMiniConfig as aa,
+  isDeviceDocument as ab,
+  isAgentDocument as ac,
+  isZoneDocument as ad,
+  parseW3CDIDDocumentBase as ae,
+  parseBuckyOSOwnerConfigDocument as af,
+  parseOwnerConfigDocument as ag,
+  parseBuckyOSDeviceMiniDocument as ah,
+  parseDeviceMiniConfig as ai,
+  parseBuckyOSDIDDocument as aj,
+  getDidMethod as ak,
+  getDidIdentifier as al,
+  getDefaultExportFromCjs as am,
+  commonjsGlobal as an,
   ndm_proxy as b,
   createSDKModule as c,
   BS_SERVICE_TASK_MANAGER as d,
@@ -7880,20 +8156,20 @@ export {
   BuckyOSSDK as i,
   MsgCenterClient as j,
   RepoClient as k,
-  AICC_SERVICE_UNIQUE_ID as l,
-  AICC_SERVICE_SERVICE_NAME as m,
+  WORKFLOW_SERVICE_NAME as l,
+  WorkflowStepType as m,
   ndn_types as n,
-  AICC_SERVICE_SERVICE_PORT as o,
+  WorkflowOutputMode as o,
   parseSessionTokenClaims as p,
-  AICC_AI_METHODS as q,
-  AICC_CONTROL_METHODS as r,
-  AICC_FEATURES as s,
-  isAiccAiMethod as t,
-  aiccTextMessage as u,
-  aiccMessageTextContent as v,
-  aiccMessageFirstText as w,
-  aiccResponseTextContent as x,
-  aiccResponseToolCalls as y,
-  aiccResponseArtifacts as z
+  WorkflowJoinMode as q,
+  WorkflowRetryFallback as r,
+  WorkflowDefinitionStatus as s,
+  WorkflowRunStatus as t,
+  WorkflowNodeRunState as u,
+  WorkflowHumanActionKind as v,
+  WorkflowScheduledTaskStatus as w,
+  WorkflowScheduledTaskMisfirePolicy as x,
+  WorkflowScheduledTaskFireStatus as y,
+  WorkflowClient as z
 };
-//# sourceMappingURL=ndm_proxy-b041b938.mjs.map
+//# sourceMappingURL=ndm_proxy-e97607e1.mjs.map

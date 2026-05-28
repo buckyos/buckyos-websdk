@@ -32,10 +32,12 @@ export interface Task {
   id: number
   user_id: string
   app_id: string
+  session_id: string
   parent_id: number | null
   root_id: string
   name: string
   task_type: string
+  runner: string
   status: TaskStatus
   progress: number
   message: string | null
@@ -49,12 +51,16 @@ export interface CreateTaskOptions {
   permissions?: TaskPermissions
   parent_id?: number
   root_id?: string
+  session_id?: string
+  runner?: string
   priority?: number
 }
 
 export interface TaskFilter {
   app_id?: string
+  session_id?: string
   task_type?: string
+  runner?: string
   status?: TaskStatus
   parent_id?: number
   root_id?: string
@@ -85,6 +91,7 @@ export interface ListTasksParams {
 
 export interface ListTasksByTimeRangeParams {
   appId?: string
+  sessionId?: string
   taskType?: string
   sourceUserId?: string
   sourceAppId?: string
@@ -113,6 +120,7 @@ interface ListTasksResult {
 interface TaskManagerCreateTaskReq {
   name: string
   task_type: string
+  runner: string
   data?: unknown
   permissions?: TaskPermissions
   parent_id?: number
@@ -120,6 +128,7 @@ interface TaskManagerCreateTaskReq {
   priority?: number
   user_id: string
   app_id: string
+  session_id?: string
   app_name?: string
 }
 
@@ -130,9 +139,11 @@ interface TaskManagerCreateDownloadTaskReq {
   parent_id?: number
   permissions?: TaskPermissions
   root_id?: string
+  runner?: string
   priority?: number
   user_id: string
   app_id: string
+  session_id?: string
   app_name?: string
 }
 
@@ -142,7 +153,9 @@ interface TaskManagerGetTaskReq {
 
 interface TaskManagerListTasksReq {
   app_id?: string
+  session_id?: string
   task_type?: string
+  runner?: string
   status?: TaskStatus
   parent_id?: number
   root_id?: string
@@ -152,6 +165,7 @@ interface TaskManagerListTasksReq {
 
 interface TaskManagerListTasksByTimeRangeReq {
   app_id?: string
+  session_id?: string
   task_type?: string
   source_user_id?: string
   source_app_id?: string
@@ -199,6 +213,16 @@ interface TaskManagerUpdateTaskDataReq {
 
 interface TaskManagerDeleteTaskReq {
   id: number
+}
+
+interface TaskManagerDeleteTasksBySessionReq {
+  session_id: string
+  source_user_id?: string
+  source_app_id?: string
+}
+
+interface DeleteTasksResult {
+  deleted_count: number
 }
 
 export function parseTaskStatus(status: string): TaskStatus {
@@ -292,6 +316,7 @@ export class TaskManagerClient {
     const req: TaskManagerCreateTaskReq = {
       name: params.name,
       task_type: params.taskType,
+      runner: options.runner ?? '',
       data: params.data,
       permissions: options.permissions,
       parent_id: options.parent_id,
@@ -299,6 +324,7 @@ export class TaskManagerClient {
       priority: options.priority,
       user_id: params.userId,
       app_id: params.appId,
+      session_id: options.session_id,
       app_name: params.appId || undefined,
     }
 
@@ -352,7 +378,9 @@ export class TaskManagerClient {
     const filter = params.filter ?? {}
     const req: TaskManagerListTasksReq = {
       app_id: filter.app_id,
+      session_id: filter.session_id,
       task_type: filter.task_type,
+      runner: filter.runner,
       status: filter.status,
       parent_id: filter.parent_id,
       root_id: filter.root_id,
@@ -367,6 +395,7 @@ export class TaskManagerClient {
   async listTasksByTimeRange(params: ListTasksByTimeRangeParams): Promise<Task[]> {
     const req: TaskManagerListTasksByTimeRangeReq = {
       app_id: params.appId,
+      session_id: params.sessionId,
       task_type: params.taskType,
       source_user_id: params.sourceUserId,
       source_app_id: params.sourceAppId,
@@ -430,6 +459,21 @@ export class TaskManagerClient {
     await this.rpcClient.call<unknown, TaskManagerDeleteTaskReq>('delete_task', req)
   }
 
+  async deleteTasksBySession(sessionId: string, options: PauseResumeOptions = {}): Promise<number> {
+    const req: TaskManagerDeleteTasksBySessionReq = {
+      session_id: sessionId,
+      source_user_id: options.sourceUserId,
+      source_app_id: options.sourceAppId,
+    }
+    const result = await this.rpcClient.call<unknown, TaskManagerDeleteTasksBySessionReq>('delete_tasks_by_session', req)
+    const parsed = asRecord(result)
+    const deletedCount = parsed.deleted_count
+    if (typeof deletedCount !== 'number') {
+      throw new RPCError('Expected DeleteTasksResult response')
+    }
+    return deletedCount
+  }
+
   async createDownloadTask(
     downloadUrl: string,
     userId: string,
@@ -445,9 +489,11 @@ export class TaskManagerClient {
       parent_id: options.parent_id,
       permissions: options.permissions,
       root_id: options.root_id,
+      runner: options.runner,
       priority: options.priority,
       user_id: userId,
       app_id: appId,
+      session_id: options.session_id,
       app_name: appId || undefined,
     }
 
@@ -509,4 +555,4 @@ export class TaskManagerClient {
   }
 }
 
-export type { CreateTaskResult, GetTaskResult, ListTasksResult }
+export type { CreateTaskResult, GetTaskResult, ListTasksResult, DeleteTasksResult }

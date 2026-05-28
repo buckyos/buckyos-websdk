@@ -23,10 +23,12 @@ export interface Task {
     id: number;
     user_id: string;
     app_id: string;
+    session_id: string;
     parent_id: number | null;
     root_id: string;
     name: string;
     task_type: string;
+    runner: string;
     status: TaskStatus;
     progress: number;
     message: string | null;
@@ -39,11 +41,15 @@ export interface CreateTaskOptions {
     permissions?: TaskPermissions;
     parent_id?: number;
     root_id?: string;
+    session_id?: string;
+    runner?: string;
     priority?: number;
 }
 export interface TaskFilter {
     app_id?: string;
+    session_id?: string;
     task_type?: string;
+    runner?: string;
     status?: TaskStatus;
     parent_id?: number;
     root_id?: string;
@@ -70,6 +76,7 @@ export interface ListTasksParams {
 }
 export interface ListTasksByTimeRangeParams {
     appId?: string;
+    sessionId?: string;
     taskType?: string;
     sourceUserId?: string;
     sourceAppId?: string;
@@ -89,6 +96,9 @@ interface GetTaskResult {
 }
 interface ListTasksResult {
     tasks: Task[];
+}
+interface DeleteTasksResult {
+    deleted_count: number;
 }
 export declare function parseTaskStatus(status: string): TaskStatus;
 export declare function isTerminalTaskStatus(status: TaskStatus): boolean;
@@ -110,6 +120,7 @@ export declare class TaskManagerClient {
     updateTaskError(id: number, errorMessage: string): Promise<void>;
     updateTaskData(id: number, data: unknown): Promise<void>;
     deleteTask(id: number): Promise<void>;
+    deleteTasksBySession(sessionId: string, options?: PauseResumeOptions): Promise<number>;
     createDownloadTask(downloadUrl: string, userId: string, appId: string, options?: CreateTaskOptions, objid?: string, downloadOptions?: unknown): Promise<number>;
     pauseTask(id: number): Promise<void>;
     resumeTask(id: number): Promise<void>;
@@ -119,5 +130,5 @@ export declare class TaskManagerClient {
     pauseAllRunningTasks(options?: PauseResumeOptions): Promise<void>;
     resumeLastPausedTask(options?: PauseResumeOptions): Promise<void>;
 }
-export type { CreateTaskResult, GetTaskResult, ListTasksResult };
+export type { CreateTaskResult, GetTaskResult, ListTasksResult, DeleteTasksResult };
 //# sourceMappingURL=task_mgr_client.d.ts.map

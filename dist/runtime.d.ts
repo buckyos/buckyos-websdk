@@ -1,6 +1,7 @@
 import { kRPCClient } from './krpc_client';
 import { VerifyHubClient } from './verify-hub-client';
 import { TaskManagerClient } from './task_mgr_client';
+import { WorkflowClient } from './workflow_client';
 import { SystemConfigClient } from './system_config_client';
 import { AiccClient } from './aicc_client';
 import { MsgQueueClient } from './msg_queue_client';
@@ -77,6 +78,7 @@ export declare class BuckyOSRuntime {
     getSystemConfigClient(): SystemConfigClient;
     getVerifyHubClient(): VerifyHubClient;
     getTaskManagerClient(): TaskManagerClient;
+    getWorkflowClient(): WorkflowClient;
     getAiccClient(): AiccClient;
     getMsgQueueClient(): MsgQueueClient;
     getMsgCenterClient(): MsgCenterClient;
