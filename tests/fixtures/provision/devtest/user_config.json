@@ -1,0 +1,33 @@
+{
+  "@context": [
+    "https://www.w3.org/ns/did/v1",
+    "https://buckyos.org/ns/owner/v1"
+  ],
+  "id": "did:bns:devtest",
+  "verificationMethod": [
+    {
+      "type": "Ed25519VerificationKey2020",
+      "id": "#main_key",
+      "controller": "did:bns:devtest",
+      "publicKeyJwk": {
+        "kty": "OKP",
+        "crv": "Ed25519",
+        "x": "T4Quc1L6Ogu4N2tTKOvneV1yYnBcmhP89B_RsuFsJZ8"
+      }
+    }
+  ],
+  "authentication": [
+    "#main_key"
+  ],
+  "assertion_method": [
+    "#main_key"
+  ],
+  "capabilityInvocation": [
+    "#main_key"
+  ],
+  "exp": 2096663657,
+  "iat": 1781303657,
+  "version_seq": 0,
+  "name": "devtest",
+  "full_name": "devtest"
+}

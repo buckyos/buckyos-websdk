@@ -1,5 +1,12 @@
 export type DID = string;
 export type JwkLike = Record<string, unknown>;
+export type DIDContext = string | string[];
+export interface Ed25519Jwk {
+    kty: string;
+    crv: string;
+    x: string;
+    [key: string]: unknown;
+}
 export interface W3CVerificationMethod {
     type: string;
     id: string;
@@ -14,29 +21,39 @@ export interface W3CService {
     [key: string]: unknown;
 }
 export interface W3CDIDDocumentBase {
-    '@context': string;
+    '@context': DIDContext;
     id: DID;
     verificationMethod: W3CVerificationMethod[];
     authentication: string[];
     assertionMethod?: string[];
     assertion_method?: string[];
+    capabilityInvocation?: string[];
     service?: W3CService[];
     exp: number;
     iat: number;
+    version_seq?: number;
+    keyScope?: Record<string, string[]>;
     [key: string]: unknown;
 }
 export type W3CDIDDocument = W3CDIDDocumentBase;
+export interface OwnerWallet {
+    type: string;
+    address: string;
+}
 export interface BuckyOSOwnerConfigDocument extends W3CDIDDocumentBase {
     name: string;
     full_name: string;
     meta?: unknown;
     default_zone_did?: DID;
+    mini_version_seq?: number;
+    valid_iat?: number;
+    wallets?: Record<string, OwnerWallet>;
 }
 export interface BuckyOSDeviceMiniDocument {
     n: string;
-    x?: string;
+    x: string;
     p?: number;
-    exp?: number;
+    exp: number;
     [key: string]: unknown;
 }
 export interface BuckyOSDeviceDocument extends W3CDIDDocumentBase {
@@ -68,15 +85,40 @@ export interface BuckyOSAgentDocument extends W3CDIDDocumentBase {
     public_description?: string;
     httpServicePorts: BuckyOSAgentHttpServicePorts;
 }
+export interface BuckyOSVerifyHubInfo {
+    public_key: Ed25519Jwk;
+}
 export interface BuckyOSZoneDocument extends W3CDIDDocumentBase {
     hostname: string;
     owner: DID;
-    oods: unknown[];
+    oods: string[];
     boot_jwt: string;
     devices?: Record<string, BuckyOSDeviceDocument>;
     sn?: string;
     docker_repo_base_url?: string;
-    verify_hub_info?: Record<string, unknown>;
+    verify_hub_info?: BuckyOSVerifyHubInfo;
+}
+export interface BuckyOSZoneBootConfig {
+    id?: DID;
+    oods: string[];
+    sn?: string;
+    exp: number;
+    owner?: DID;
+    owner_key?: Ed25519Jwk;
+    [key: string]: unknown;
+}
+export interface BuckyOSNodeIdentityConfig {
+    zone_did: DID;
+    owner_public_key: Ed25519Jwk;
+    owner_did: DID;
+    device_doc_jwt: string;
+    device_mini_doc_jwt: string;
+    zone_iat: number;
+}
+export interface BuckyOSZoneTxtRecord {
+    boot_config_jwt: string;
+    device_mini_doc_jwt: string;
+    pkx: string;
 }
 export type BuckyOSDIDDocument = BuckyOSOwnerConfigDocument | BuckyOSAgentDocument | BuckyOSDeviceDocument | BuckyOSZoneDocument;
 export type VerificationMethodNode = W3CVerificationMethod;
@@ -94,6 +136,8 @@ export declare function isW3CDIDDocumentBase(value: unknown): value is W3CDIDDoc
 export declare function isBuckyOSOwnerConfigDocument(value: unknown): value is BuckyOSOwnerConfigDocument;
 export declare function isUserDocument(value: unknown): value is UserDocument;
 export declare function isBuckyOSDeviceMiniDocument(value: unknown): value is BuckyOSDeviceMiniDocument;
+export declare function isBuckyOSZoneBootConfig(value: unknown): value is BuckyOSZoneBootConfig;
+export declare function isBuckyOSNodeIdentityConfig(value: unknown): value is BuckyOSNodeIdentityConfig;
 export declare function isBuckyOSDeviceDocument(value: unknown): value is BuckyOSDeviceDocument;
 export declare function isBuckyOSAgentDocument(value: unknown): value is BuckyOSAgentDocument;
 export declare function isBuckyOSZoneDocument(value: unknown): value is BuckyOSZoneDocument;

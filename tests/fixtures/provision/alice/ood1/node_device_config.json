@@ -1,0 +1,35 @@
+{
+  "@context": [
+    "https://www.w3.org/ns/did/v1",
+    "https://buckyos.org/ns/device/v1"
+  ],
+  "id": "did:dev:E1oQDYqzyX4ysrNgTJ5DAVaMgA3By8XpBa0e6r2gBqQ",
+  "verificationMethod": [
+    {
+      "type": "Ed25519VerificationKey2020",
+      "id": "#main_key",
+      "controller": "did:dev:E1oQDYqzyX4ysrNgTJ5DAVaMgA3By8XpBa0e6r2gBqQ",
+      "publicKeyJwk": {
+        "kty": "OKP",
+        "crv": "Ed25519",
+        "x": "E1oQDYqzyX4ysrNgTJ5DAVaMgA3By8XpBa0e6r2gBqQ"
+      }
+    }
+  ],
+  "authentication": [
+    "#main_key"
+  ],
+  "assertion_method": [
+    "#main_key"
+  ],
+  "capabilityInvocation": [
+    "#main_key"
+  ],
+  "exp": 1938983657,
+  "iat": 1781303657,
+  "version_seq": 0,
+  "zone_did": "did:bns:alice",
+  "owner": "did:bns:alice",
+  "device_type": "ood",
+  "name": "ood1"
+}

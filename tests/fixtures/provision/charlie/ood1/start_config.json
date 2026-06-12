@@ -1,0 +1,22 @@
+{
+  "BUCKYOS_ROOT": "/opt/buckyos",
+  "admin_password_hash": "o8XyToejrbCYou84h/VkF4Tht0BeQQbuX3XKG+8+GQ4=",
+  "device_private_key": "-----BEGIN PRIVATE KEY-----\nMC4CAQAwBQYDK2VwBCIEIMe0Q/tl7DWbu3SIQE8vnDxO8YQMIivAlCgKiNUfjcWU\n-----END PRIVATE KEY-----",
+  "device_public_key": {
+    "crv": "Ed25519",
+    "kty": "OKP",
+    "x": "PY9uu16H74QYVRjstVxdWdAsgkoy10-74fvQhx4ddek"
+  },
+  "friend_passcode": "sdfsdfsdf",
+  "gateway_type": "PortForward",
+  "guest_access": true,
+  "ood_jwt": "eyJhbGciOiJFZERTQSJ9.eyJAY29udGV4dCI6WyJodHRwczovL3d3dy53My5vcmcvbnMvZGlkL3YxIiwiaHR0cHM6Ly9idWNreW9zLm9yZy9ucy9kZXZpY2UvdjEiXSwiaWQiOiJkaWQ6ZGV2OlBZOXV1MTZINzRRWVZSanN0VnhkV2RBc2drb3kxMC03NGZ2UWh4NGRkZWsiLCJ2ZXJpZmljYXRpb25NZXRob2QiOlt7InR5cGUiOiJFZDI1NTE5VmVyaWZpY2F0aW9uS2V5MjAyMCIsImlkIjoiI21haW5fa2V5IiwiY29udHJvbGxlciI6ImRpZDpkZXY6UFk5dXUxNkg3NFFZVlJqc3RWeGRXZEFzZ2tveTEwLTc0ZnZRaHg0ZGRlayIsInB1YmxpY0tleUp3ayI6eyJrdHkiOiJPS1AiLCJjcnYiOiJFZDI1NTE5IiwieCI6IlBZOXV1MTZINzRRWVZSanN0VnhkV2RBc2drb3kxMC03NGZ2UWh4NGRkZWsifX1dLCJhdXRoZW50aWNhdGlvbiI6WyIjbWFpbl9rZXkiXSwiYXNzZXJ0aW9uX21ldGhvZCI6WyIjbWFpbl9rZXkiXSwiY2FwYWJpbGl0eUludm9jYXRpb24iOlsiI21haW5fa2V5Il0sImV4cCI6MTkzODk4MzY1NywiaWF0IjoxNzgxMzAzNjU3LCJ2ZXJzaW9uX3NlcSI6MCwiem9uZV9kaWQiOiJkaWQ6d2ViOmNoYXJsaWUubWUiLCJvd25lciI6ImRpZDpibnM6Y2hhcmxpZSIsImRldmljZV90eXBlIjoib29kIiwibmFtZSI6Im9vZDEiLCJuZXRfaWQiOiJwb3J0bWFwIn0.yXAS5NDtrkjs8ZyFuxg3-bkfAVId0TFZyGCyleMdc0bbz-9GGlcnDrvxOgGQOsidICwC8dB0w9w-gvbK4uQJBg",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMC4CAQAwBQYDK2VwBCIEICLjVTK81RKQ1aPtSLKFx/Fl33+WbxgqCpPCBFlqlBQX\n-----END PRIVATE KEY-----",
+  "public_key": {
+    "crv": "Ed25519",
+    "kty": "OKP",
+    "x": "cuFY7qeU1q96O1K5RRbXo7GXGR78szB-gmmkBXDMscE"
+  },
+  "user_name": "charlie",
+  "zone_name": "charlie.me"
+}

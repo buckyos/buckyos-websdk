@@ -1,6 +1,18 @@
 export type DID = string
 export type JwkLike = Record<string, unknown>
 
+// Mirrors Rust name-lib DIDContext: "@context" is either the DID core context
+// string or an array starting with it (serde: string-or-array untagged enum).
+export type DIDContext = string | string[]
+
+// Ed25519 public key JWK, aligned with Rust jsonwebtoken::jwk::Jwk output.
+export interface Ed25519Jwk {
+  kty: string
+  crv: string
+  x: string
+  [key: string]: unknown
+}
+
 export interface W3CVerificationMethod {
   type: string
   id: string
@@ -17,32 +29,44 @@ export interface W3CService {
 }
 
 export interface W3CDIDDocumentBase {
-  '@context': string
+  '@context': DIDContext
   id: DID
   verificationMethod: W3CVerificationMethod[]
   authentication: string[]
   assertionMethod?: string[]
   assertion_method?: string[]
+  capabilityInvocation?: string[]
   service?: W3CService[]
   exp: number
   iat: number
+  version_seq?: number
+  keyScope?: Record<string, string[]>
   [key: string]: unknown
 }
 
 export type W3CDIDDocument = W3CDIDDocumentBase
+
+export interface OwnerWallet {
+  type: string
+  address: string
+}
 
 export interface BuckyOSOwnerConfigDocument extends W3CDIDDocumentBase {
   name: string
   full_name: string
   meta?: unknown
   default_zone_did?: DID
+  mini_version_seq?: number
+  valid_iat?: number
+  wallets?: Record<string, OwnerWallet>
 }
 
+// Mirrors Rust name-lib DeviceMiniConfig: {"n", "x", "p"?, "exp"}.
 export interface BuckyOSDeviceMiniDocument {
   n: string
-  x?: string
+  x: string
   p?: number
-  exp?: number
+  exp: number
   [key: string]: unknown
 }
 
@@ -79,15 +103,49 @@ export interface BuckyOSAgentDocument extends W3CDIDDocumentBase {
   httpServicePorts: BuckyOSAgentHttpServicePorts
 }
 
+export interface BuckyOSVerifyHubInfo {
+  public_key: Ed25519Jwk
+}
+
 export interface BuckyOSZoneDocument extends W3CDIDDocumentBase {
   hostname: string
   owner: DID
-  oods: unknown[]
+  // OOD description strings, e.g. "ood1", "ood1@wan", "ood1:192.168.1.2@lan1"
+  oods: string[]
   boot_jwt: string
   devices?: Record<string, BuckyOSDeviceDocument>
   sn?: string
   docker_repo_base_url?: string
-  verify_hub_info?: Record<string, unknown>
+  verify_hub_info?: BuckyOSVerifyHubInfo
+}
+
+// Mirrors Rust name-lib ZoneBootConfig (the payload stored in the zone DNS
+// TXT record / boot JWT). owner_key is stored separately in TXT records.
+export interface BuckyOSZoneBootConfig {
+  id?: DID
+  oods: string[]
+  sn?: string
+  exp: number
+  owner?: DID
+  owner_key?: Ed25519Jwk
+  [key: string]: unknown
+}
+
+// Mirrors Rust name-lib NodeIdentityConfig (node_identity.json).
+export interface BuckyOSNodeIdentityConfig {
+  zone_did: DID
+  owner_public_key: Ed25519Jwk
+  owner_did: DID
+  device_doc_jwt: string
+  device_mini_doc_jwt: string
+  zone_iat: number
+}
+
+// Mirrors Rust buckyos-api ZoneTxtRecord (zone_txt_record.json).
+export interface BuckyOSZoneTxtRecord {
+  boot_config_jwt: string
+  device_mini_doc_jwt: string
+  pkx: string
 }
 
 export type BuckyOSDIDDocument =
@@ -121,12 +179,19 @@ function isServiceArray(value: unknown): value is W3CService[] {
   return value === undefined || Array.isArray(value)
 }
 
+function isDIDContext(value: unknown): value is DIDContext {
+  if (typeof value === 'string') {
+    return true
+  }
+  return Array.isArray(value) && value.every(item => typeof item === 'string')
+}
+
 export function isW3CDIDDocumentBase(value: unknown): value is W3CDIDDocumentBase {
   if (!isRecord(value)) {
     return false
   }
 
-  return typeof value['@context'] === 'string'
+  return isDIDContext(value['@context'])
     && typeof value.id === 'string'
     && isVerificationMethodArray(value.verificationMethod)
     && Array.isArray(value.authentication)
@@ -146,7 +211,27 @@ export function isUserDocument(value: unknown): value is UserDocument {
 }
 
 export function isBuckyOSDeviceMiniDocument(value: unknown): value is BuckyOSDeviceMiniDocument {
-  return isRecord(value) && typeof value.n === 'string'
+  return isRecord(value)
+    && typeof value.n === 'string'
+    && typeof value.x === 'string'
+    && typeof value.exp === 'number'
+}
+
+export function isBuckyOSZoneBootConfig(value: unknown): value is BuckyOSZoneBootConfig {
+  return isRecord(value)
+    && Array.isArray(value.oods)
+    && value.oods.every(item => typeof item === 'string')
+    && typeof value.exp === 'number'
+}
+
+export function isBuckyOSNodeIdentityConfig(value: unknown): value is BuckyOSNodeIdentityConfig {
+  return isRecord(value)
+    && typeof value.zone_did === 'string'
+    && isRecord(value.owner_public_key)
+    && typeof value.owner_did === 'string'
+    && typeof value.device_doc_jwt === 'string'
+    && typeof value.device_mini_doc_jwt === 'string'
+    && typeof value.zone_iat === 'number'
 }
 
 export function isBuckyOSDeviceDocument(value: unknown): value is BuckyOSDeviceDocument {

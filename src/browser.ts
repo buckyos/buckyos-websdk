@@ -35,6 +35,7 @@ export const getWorkflowClient = sdkModule.getWorkflowClient
 export { hashPassword }
 export * from './sdk_core'
 export * from './types'
+export * as namelib from './namelib'
 export * as ndn from './ndn_types'
 export * as ndm from './ndm_client'
 export * as ndm_proxy from './ndm_proxy'

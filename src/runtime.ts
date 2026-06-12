@@ -8,7 +8,7 @@ import { MsgQueueClient } from './msg_queue_client'
 import { MsgCenterClient } from './msg_center_client'
 import { RepoClient } from './repo_client'
 import { BrowserUserInfo, getBrowserUserInfo, saveBrowserUserInfo } from './account'
-import { parseDeviceMiniConfig, parseOwnerConfigDocument } from './types'
+import { parseOwnerConfigDocument } from './types'
 
 declare const require: undefined | ((name: string) => any)
 
@@ -1032,9 +1032,12 @@ export class BuckyOSRuntime {
     device_doc_jwt?: unknown
   }): string | null {
     const miniDocJwt = typeof payload.device_mini_doc_jwt === 'string' ? payload.device_mini_doc_jwt : null
-    const miniDocClaims = parseDeviceMiniConfig(parseSessionTokenClaims(miniDocJwt))
-    if (miniDocClaims?.n.trim().length) {
-      return miniDocClaims.n.trim()
+    // Lenient extraction: unlike the full DeviceMiniConfig shape ({n,x,exp}),
+    // here any JWT that carries an "n" claim is enough to learn the device name.
+    const miniDocClaims = parseSessionTokenClaims(miniDocJwt)
+    const miniDocName = typeof miniDocClaims?.n === 'string' ? miniDocClaims.n.trim() : ''
+    if (miniDocName) {
+      return miniDocName
     }
 
     const deviceDocJwt = typeof payload.device_doc_jwt === 'string' ? payload.device_doc_jwt : null

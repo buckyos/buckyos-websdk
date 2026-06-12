@@ -1,0 +1,9 @@
+{
+  "metaobjid": "pkg:535eb20e20ed685054563f42a23c37dd1624ecc05b7e84d567f1c45983627396",
+  "pkg_name": "nightly-apple-aarch64.node-daemon",
+  "author": "did:bns:buckyos",
+  "author_pk": "",
+  "version": "0.4.1",
+  "version_int": 4398063288320,
+  "tag": null
+}

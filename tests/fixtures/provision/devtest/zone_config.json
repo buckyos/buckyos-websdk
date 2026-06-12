@@ -1,0 +1,44 @@
+{
+  "@context": [
+    "https://www.w3.org/ns/did/v1",
+    "https://buckyos.org/ns/zone/v1"
+  ],
+  "id": "did:web:test.buckyos.io",
+  "verificationMethod": [
+    {
+      "type": "Ed25519VerificationKey2020",
+      "id": "#main_key",
+      "controller": "did:bns:devtest",
+      "publicKeyJwk": {
+        "kty": "OKP",
+        "crv": "Ed25519",
+        "x": "T4Quc1L6Ogu4N2tTKOvneV1yYnBcmhP89B_RsuFsJZ8"
+      }
+    }
+  ],
+  "authentication": [
+    "#main_key"
+  ],
+  "assertionMethod": [
+    "#main_key"
+  ],
+  "capabilityInvocation": [
+    "#main_key"
+  ],
+  "service": [
+    {
+      "id": "did:web:test.buckyos.io#lastDoc",
+      "type": "DIDDoc",
+      "serviceEndpoint": "https://test.buckyos.io/resolve/this_zone"
+    }
+  ],
+  "exp": 2058838939,
+  "iat": 1901158939,
+  "version_seq": 0,
+  "hostname": "test.buckyos.io",
+  "owner": "did:undefined:undefined",
+  "oods": [
+    "ood1@wan"
+  ],
+  "boot_jwt": "eyJhbGciOiJFZERTQSJ9.eyJpZCI6ImRpZDp3ZWI6dGVzdC5idWNreW9zLmlvIiwib29kcyI6WyJvb2QxQHdhbiJdLCJleHAiOjIwNTg4Mzg5Mzl9.OuBt6jLyGB31VXHxVuioTx46iTkkMOvMF6z5NYYLh6o3xMRPwQVd7_euDvFrZQ5m9hYs1ergVeO9uzlanFZ_AA"
+}

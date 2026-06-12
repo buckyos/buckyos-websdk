@@ -1,0 +1,25 @@
+{
+  "author": "did:bns:buckyos",
+  "categories": [
+    "service"
+  ],
+  "create_time": 1781303657,
+  "description": {
+    "detail": {
+      "en": "Message Center"
+    }
+  },
+  "install_config_tips": {
+    "data_mount_point": [],
+    "local_cache_mount_point": [],
+    "rdb_instances": {},
+    "service_ports": {}
+  },
+  "last_update_time": 1781303657,
+  "name": "msg-center",
+  "owner": "did:bns:buckyos",
+  "pkg_list": {},
+  "selector_type": "single",
+  "show_name": "Message Center",
+  "version": "0.7.0"
+}

@@ -1,0 +1,22 @@
+{
+  "BUCKYOS_ROOT": "/opt/buckyos",
+  "admin_password_hash": "o8XyToejrbCYou84h/VkF4Tht0BeQQbuX3XKG+8+GQ4=",
+  "device_private_key": "-----BEGIN PRIVATE KEY-----\nMC4CAQAwBQYDK2VwBCIEIGhyUJ3/YgIrLZxSGG7o1bgiWcyETZKjTBoGagNdpxVy\n-----END PRIVATE KEY-----",
+  "device_public_key": {
+    "crv": "Ed25519",
+    "kty": "OKP",
+    "x": "E1oQDYqzyX4ysrNgTJ5DAVaMgA3By8XpBa0e6r2gBqQ"
+  },
+  "friend_passcode": "sdfsdfsdf",
+  "gateway_type": "PortForward",
+  "guest_access": true,
+  "ood_jwt": "eyJhbGciOiJFZERTQSJ9.eyJAY29udGV4dCI6WyJodHRwczovL3d3dy53My5vcmcvbnMvZGlkL3YxIiwiaHR0cHM6Ly9idWNreW9zLm9yZy9ucy9kZXZpY2UvdjEiXSwiaWQiOiJkaWQ6ZGV2OkUxb1FEWXF6eVg0eXNyTmdUSjVEQVZhTWdBM0J5OFhwQmEwZTZyMmdCcVEiLCJ2ZXJpZmljYXRpb25NZXRob2QiOlt7InR5cGUiOiJFZDI1NTE5VmVyaWZpY2F0aW9uS2V5MjAyMCIsImlkIjoiI21haW5fa2V5IiwiY29udHJvbGxlciI6ImRpZDpkZXY6RTFvUURZcXp5WDR5c3JOZ1RKNURBVmFNZ0EzQnk4WHBCYTBlNnIyZ0JxUSIsInB1YmxpY0tleUp3ayI6eyJrdHkiOiJPS1AiLCJjcnYiOiJFZDI1NTE5IiwieCI6IkUxb1FEWXF6eVg0eXNyTmdUSjVEQVZhTWdBM0J5OFhwQmEwZTZyMmdCcVEifX1dLCJhdXRoZW50aWNhdGlvbiI6WyIjbWFpbl9rZXkiXSwiYXNzZXJ0aW9uX21ldGhvZCI6WyIjbWFpbl9rZXkiXSwiY2FwYWJpbGl0eUludm9jYXRpb24iOlsiI21haW5fa2V5Il0sImV4cCI6MTkzODk4MzY1NywiaWF0IjoxNzgxMzAzNjU3LCJ2ZXJzaW9uX3NlcSI6MCwiem9uZV9kaWQiOiJkaWQ6Ym5zOmFsaWNlIiwib3duZXIiOiJkaWQ6Ym5zOmFsaWNlIiwiZGV2aWNlX3R5cGUiOiJvb2QiLCJuYW1lIjoib29kMSJ9.w9iNqbqsPcv2v6rRBxoa40xJ_gROl5XPZ6ypMsSHYXYK4VpuK7XsbVp0i2K2VFXhe8sQr1HlglnLeQ8HOD4ZBQ",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMC4CAQAwBQYDK2VwBCIEIKH6oJdebg+xxICY7Z1vm84qMkSzm6Wk0ic88DGR90aq\n-----END PRIVATE KEY-----",
+  "public_key": {
+    "crv": "Ed25519",
+    "kty": "OKP",
+    "x": "uh7RD37tflN65CrcJSUQ3vGnyU4vmC7_M8IkEEOHnds"
+  },
+  "user_name": "alice",
+  "zone_name": "alice.bns.did"
+}

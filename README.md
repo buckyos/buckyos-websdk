@@ -103,6 +103,43 @@ authClient主要靠系统的内置verify_hub服务来完成功能，其基本逻
 
 因为会工作在http环境，因此会用明文发送jwt.
 
+## namelib 与 provision（身份文档构造）
+
+SDK 自带 Rust `name-lib` 的 TS 镜像（`namelib`，universal 导出），以及
+`buckycli` 构造侧命令的 TS 镜像（`buckyos/provision`，**node-only**，要求
+Node >= 22.13 或 Deno >= 2.2，依赖 `node:sqlite`）。格式与 Rust 端逐字节对齐
+（Ed25519 PKCS8 PEM / JWK / EdDSA JWT），由 golden fixture 单测保障
+（`tests/fixtures/provision/`）。
+
+### Quickstart：keygen → createUserEnv → createNodeConfigs
+
+```ts
+import { namelib } from 'buckyos'
+import { createUserEnv, createNodeConfigs, createSnConfigs } from 'buckyos/provision'
+
+// 1. 生成 Ed25519 身份密钥（私钥 PKCS8 PEM + 公钥 JWK）
+const { privateKeyPem, publicKeyJwk } = await namelib.generateEd25519KeyPair()
+
+// 2. 构造用户/zone 环境（user_config.json、zone_config.json、zone TXT record 等）
+await createUserEnv({
+  username: 'alice',
+  hostname: 'alice.bns.did',
+  oodName: 'ood1',
+  snBaseHost: 'devtests.org',
+  outputDir: '/tmp/alice-env',
+})
+
+// 3. 构造节点身份（node_identity.json、device_mini_config.jwt、start_config.json）
+await createNodeConfigs({ deviceName: 'ood1', envDir: '/tmp/alice-env' })
+```
+
+其它能力：`createSnConfigs` / `registerUserToSn` / `registerDeviceToSn`（SN 侧）、
+`setPkgMeta` / `MetaIndexDb`（pkg meta 索引库）、`buildDidDocs`（内核服务 did docs）、
+`createCa` / `createCertFromCa`（TLS 证书，替代 Python CertManager）。
+
+注意：`buckyos/provision` 导出的 `DEV_TEST_KEYS` 是**仅供本地开发**的公开测试密钥
+（与 Rust TestKeys 一致），严禁用于真实激活流程；浏览器 bundle 不包含 provision。
+
 ## 构建与发布
 
 ### 本地构建

@@ -1,3 +1,7 @@
 node_modules/
 test-results/
 dist-tests/
+
+# provision golden fixtures: JSON/PEM/JWT/sqlite 全部需要提交（测试对照基准），
+# 仅排除 buckycli 生成时的 stdout 留档（含本机路径）
+tests/fixtures/provision/**/*.log

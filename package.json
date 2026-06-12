@@ -1,6 +1,6 @@
 {
   "name": "buckyos",
-  "version": "1.6.4",
+  "version": "1.7.1",
   "description": "BuckyOS WebSDK for browser and Node.js environments",
   "main": "dist/index.cjs",
   "module": "dist/index.mjs",
@@ -32,6 +32,14 @@
       "import": "./dist/node.mjs",
       "require": "./dist/node.cjs",
       "default": "./dist/node.mjs"
+    },
+    "./provision": {
+      "types": "./dist/provision.d.ts",
+      "node": {
+        "import": "./dist/provision.mjs",
+        "require": "./dist/provision.cjs"
+      },
+      "default": "./dist/provision.mjs"
     },
     "./package.json": "./package.json"
   },
@@ -67,6 +75,7 @@
     "vite": "^4.0.0"
   },
   "dependencies": {
+    "@peculiar/x509": "^1.14.3",
     "canonicalize": "2.1.0",
     "jssha": "^3.3.1",
     "terser": "^5.36.0",

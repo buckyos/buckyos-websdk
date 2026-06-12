@@ -1,0 +1,18 @@
+{
+  "name": "nightly-apple-aarch64.node-daemon",
+  "author": "did:bns:buckyos",
+  "owner": "did:bns:buckyos",
+  "create_time": 1781300000,
+  "last_update_time": 1781300000,
+  "exp": 1875908000,
+  "size": 0,
+  "content": "",
+  "version": "0.4.1",
+  "meta": {
+    "description": {
+      "detail": {
+        "en": "node-daemon dev mode package meta"
+      }
+    }
+  }
+}
