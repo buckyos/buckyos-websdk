@@ -1,7 +1,9 @@
 import * as fs from 'fs'
 import * as path from 'path'
 import * as os from 'os'
+import * as x509 from '@peculiar/x509'
 import { execFileSync } from 'child_process'
+import { webcrypto } from 'crypto'
 import { createSecureContext } from 'tls'
 
 import { createCa, ensureCa, createCertFromCa } from '../src/cert'
@@ -19,6 +21,34 @@ function opensslAvailable(): boolean {
   } catch {
     return false
   }
+}
+
+async function writeInvalidCaWithoutBasicConstraints(dir: string, name: string): Promise<string> {
+  x509.cryptoProvider.set(webcrypto as unknown as Crypto)
+  fs.mkdirSync(dir, { recursive: true })
+
+  const keys = await webcrypto.subtle.generateKey({
+    name: 'RSASSA-PKCS1-v1_5',
+    hash: 'SHA-256',
+    publicExponent: new Uint8Array([1, 0, 1]),
+    modulusLength: 2048,
+  }, true, ['sign', 'verify'])
+
+  const cert = await x509.X509CertificateGenerator.createSelfSigned({
+    serialNumber: '01020304',
+    name: `CN=${name}`,
+    notBefore: new Date(),
+    notAfter: new Date(Date.now() + 24 * 3600 * 1000),
+    signingAlgorithm: { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
+    keys: keys as unknown as CryptoKeyPair,
+  })
+
+  const caCertPath = path.join(dir, `${name}_ca_cert.pem`)
+  const caKeyPath = path.join(dir, `${name}_ca_key.pem`)
+  const keyDer = await webcrypto.subtle.exportKey('pkcs8', keys.privateKey)
+  fs.writeFileSync(caCertPath, cert.toString('pem'))
+  fs.writeFileSync(caKeyPath, x509.PemConverter.encode(keyDer, 'PRIVATE KEY'))
+  return caCertPath
 }
 
 let consoleSpy: jest.SpyInstance
@@ -46,6 +76,29 @@ describe('cert (T3.1, replaces python CertManager)', () => {
     const before = fs.readFileSync(path.join(caDir, 'buckyos_test_ca_ca_cert.pem'), 'utf8')
     const { caCertPath } = await ensureCa(caDir, 'buckyos_test_ca')
     expect(fs.readFileSync(caCertPath, 'utf8')).toBe(before)
+  })
+
+  test('ensureCa regenerates an existing certificate that is not a valid CA', async () => {
+    const invalidCaDir = tmpDir('cert-invalid-ca-')
+    const caCertPath = await writeInvalidCaWithoutBasicConstraints(invalidCaDir, 'legacy')
+    const before = fs.readFileSync(caCertPath, 'utf8')
+
+    const { caCertPath: regeneratedCaCertPath } = await ensureCa(invalidCaDir, 'legacy')
+    const after = fs.readFileSync(regeneratedCaCertPath, 'utf8')
+    expect(after).not.toBe(before)
+
+    const caCert = new x509.X509Certificate(after)
+    const basicConstraints = caCert.extensions.find(
+      (extension): extension is x509.BasicConstraintsExtension => extension instanceof x509.BasicConstraintsExtension,
+    )
+    expect(basicConstraints?.ca).toBe(true)
+
+    const outDir = tmpDir('cert-regenerated-out-')
+    const { certPath } = await createCertFromCa(invalidCaDir, zone, outDir)
+    if (opensslAvailable()) {
+      const verify = execFileSync('openssl', ['verify', '-CAfile', regeneratedCaCertPath, certPath]).toString()
+      expect(verify).toContain('OK')
+    }
   })
 
   test('createCertFromCa issues a SAN cert signed by the CA', async () => {

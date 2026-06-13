@@ -113,6 +113,32 @@ function derTlv(tag: number, value: Uint8Array): Uint8Array {
   return result
 }
 
+function getCaValidationFailure(cert: x509.X509Certificate): string | undefined {
+  const basicConstraints = cert.extensions.find(
+    (extension): extension is x509.BasicConstraintsExtension => extension instanceof x509.BasicConstraintsExtension,
+  )
+  if (!basicConstraints?.ca) {
+    return 'missing basicConstraints CA:TRUE'
+  }
+
+  const keyUsages = cert.extensions.find(
+    (extension): extension is x509.KeyUsagesExtension => extension instanceof x509.KeyUsagesExtension,
+  )
+  if (keyUsages && (keyUsages.usages & x509.KeyUsageFlags.keyCertSign) === 0) {
+    return 'keyUsage does not allow certificate signing'
+  }
+
+  return undefined
+}
+
+function getCaPemValidationFailure(pem: string): string | undefined {
+  try {
+    return getCaValidationFailure(new x509.X509Certificate(pem))
+  } catch (error) {
+    return error instanceof Error ? `cannot parse CA certificate: ${error.message}` : 'cannot parse CA certificate'
+  }
+}
+
 export interface CreateCaResult {
   caCertPath: string
   caKeyPath: string
@@ -163,6 +189,11 @@ export async function ensureCa(caDir: string, name = 'devtest'): Promise<CreateC
   const caCertPath = path.join(caDir, `${name}_ca_cert.pem`)
   const caKeyPath = path.join(caDir, `${name}_ca_key.pem`)
   if (fs.existsSync(caCertPath) && fs.existsSync(caKeyPath)) {
+    const validationFailure = getCaPemValidationFailure(fs.readFileSync(caCertPath, 'utf8'))
+    if (validationFailure) {
+      console.log(`Existing CA at ${caCertPath} is invalid (${validationFailure}); regenerating`)
+      return createCa(caDir, name)
+    }
     console.log(`Use existing CA at: ${caCertPath}`)
     return { caCertPath, caKeyPath }
   }
@@ -206,6 +237,10 @@ export async function createCertFromCa(
 
   const { caCertPath, caKeyPath } = findCaFiles(caDir)
   const caCert = new x509.X509Certificate(fs.readFileSync(caCertPath, 'utf8'))
+  const validationFailure = getCaValidationFailure(caCert)
+  if (validationFailure) {
+    throw new Error(`Invalid CA certificate at ${caCertPath}: ${validationFailure}`)
+  }
   const caKey = await importRsaPrivateKeyPem(fs.readFileSync(caKeyPath, 'utf8'))
 
   const dnsNames = hostnames && hostnames.length > 0 ? hostnames : [hostname]
