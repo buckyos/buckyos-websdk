@@ -13542,7 +13542,7 @@ function findCaFiles(caDir) {
   }
   return { caCertPath, caKeyPath };
 }
-async function issueX509CertFromCa(caDir, dnsNames, uriSans = [], usage = "server", exportPrivateKey = true) {
+async function issueX509CertFromCa(caDir, dnsNames, uriSans = [], usage = "server") {
   const fs = requireNode$1("node:fs");
   const crypto2 = getCrypto();
   cryptoProvider.set(crypto2);
@@ -13590,7 +13590,7 @@ async function issueX509CertFromCa(caDir, dnsNames, uriSans = [], usage = "serve
   return {
     cert,
     certPem: cert.toString("pem"),
-    privateKeyPem: exportPrivateKey ? await exportPrivateKeyPem(keys.privateKey) : void 0,
+    privateKeyPem: await exportPrivateKeyPem(keys.privateKey),
     caCertPem,
     publicKeyFingerprint
   };
@@ -13605,9 +13605,6 @@ async function createCertFromCa(caDir, hostname, targetDir, hostnames) {
   const certPath = path.join(targetDir, `${safeHostname}.crt`);
   const keyPath = path.join(targetDir, `${safeHostname}.key`);
   const issued = await issueX509CertFromCa(caDir, dnsNames);
-  if (!issued.privateKeyPem) {
-    throw new Error("Internal error: private key export was disabled for legacy certificate output");
-  }
   fs.writeFileSync(keyPath, issued.privateKeyPem);
   fs.writeFileSync(certPath, issued.certPem);
   console.log(`Certificate created: ${certPath}`);
@@ -13730,11 +13727,13 @@ async function createIdentityCertFromCa(caDir, didOrHostname, rootsInput, option
   const dnsNames = options.hostnames && options.hostnames.length > 0 ? options.hostnames : [x509DnsNameForDid(did)];
   const uriSans = options.uriSans ?? [did.toString()];
   fs.mkdirSync(publicDir, { recursive: true, mode: 493 });
-  const issued = await issueX509CertFromCa(caDir, dnsNames, uriSans, usage, false);
+  fs.mkdirSync(securityDir, { recursive: true, mode: 448 });
+  const issued = await issueX509CertFromCa(caDir, dnsNames, uriSans, usage);
   const certPem = normalizePem(issued.certPem);
   const caPem = normalizePem(issued.caCertPem);
   const chainPem = caPem;
   const fullchainPem = `${certPem}${chainPem}`;
+  writeFileAtomicSync(paths.privateKey, issued.privateKeyPem, 384);
   writeFileAtomicSync(paths.cert, certPem, 420);
   writeFileAtomicSync(paths.chain, chainPem, 420);
   writeFileAtomicSync(paths.fullchain, fullchainPem, 420);
@@ -13750,6 +13749,7 @@ async function createIdentityCertFromCa(caDir, didOrHostname, rootsInput, option
     chainPath: paths.chain,
     fullchainPath: paths.fullchain,
     caPath: paths.ca,
+    keyPath: paths.privateKey,
     metadataPath: paths.metadata
   };
 }

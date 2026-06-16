@@ -207,6 +207,7 @@ describe('cert (T3.1, replaces python CertManager)', () => {
     expect(result.rawHostUri).toBe('example.com/user/alice')
     expect(result.dirName).toBe('example.com%2Fuser%2Falice')
     expect(result.fullchainPath).toBe(path.join(publicRoot, 'example.com%2Fuser%2Falice', 'server.fullchain.pem'))
+    expect(result.keyPath).toBe(path.join(securityRoot, 'example.com%2Fuser%2Falice', 'server.private.pem'))
 
     for (const filePath of [
       result.paths.cert,
@@ -214,13 +215,17 @@ describe('cert (T3.1, replaces python CertManager)', () => {
       result.paths.fullchain,
       result.paths.ca,
       result.paths.metadata,
+      result.paths.privateKey,
     ]) {
       expect(fs.existsSync(filePath)).toBe(true)
     }
     expect(fs.existsSync(result.paths.keyref)).toBe(false)
-    expect(fs.existsSync(result.paths.privateKey)).toBe(false)
-    expect(fs.existsSync(path.join(securityRoot, result.dirName))).toBe(false)
     expect(fs.existsSync(path.join(publicRoot, result.dirName, 'server.private.pem'))).toBe(false)
+
+    expect(() => createSecureContext({
+      cert: fs.readFileSync(result.paths.fullchain, 'utf8'),
+      key: fs.readFileSync(result.paths.privateKey, 'utf8'),
+    })).not.toThrow()
 
     const metadata = JSON.parse(fs.readFileSync(result.paths.metadata, 'utf8'))
     expect(metadata).toMatchObject({
