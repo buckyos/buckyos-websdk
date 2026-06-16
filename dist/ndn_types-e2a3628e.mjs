@@ -1068,6 +1068,11 @@ class DID {
     }
     return `${realId}.${this.method}.did`;
   }
+  toRawHostUri() {
+    const hostname = this.toRawHostName();
+    const path = this.getPathFromId();
+    return path ? `${hostname}/${path}` : hostname;
+  }
   toHostNameByBridge(bridgeBaseHostname) {
     const realId = this.id.split(":")[0];
     if (this.method === "web") {
@@ -3182,4 +3187,4 @@ export {
   getDefaultExportFromCjs as y,
   zoneConfigInitByBootConfig as z
 };
-//# sourceMappingURL=ndn_types-5ce8dc42.mjs.map
+//# sourceMappingURL=ndn_types-e2a3628e.mjs.map

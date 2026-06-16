@@ -53,6 +53,7 @@ export declare class DID {
     getEd25519AuthKey(): Uint8Array | null;
     getAuthKeyJwk(): Ed25519Jwk | null;
     toRawHostName(): string;
+    toRawHostUri(): string;
     toHostNameByBridge(bridgeBaseHostname: string): string;
     toHostName(): string;
     toHostUri(): string;

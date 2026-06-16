@@ -1,8 +1,8 @@
 import { DID } from './namelib';
 import { DevTestKeyPair } from './dev_test_keys';
 import { BuckyOSZoneTxtRecord } from './types';
-export { createCa, ensureCa, createCertFromCa } from './cert';
-export type { CreateCaResult, CreateCertResult } from './cert';
+export { IdentityRoots, IDENTITY_MATERIALS, IDENTITY_USAGES, createCa, createCertFromCa, createIdentityCertFromCa, didWebDocumentUrl, encodeIdentityDirName, ensureCa, identityDirName, identityFileName, identityRawHostUri, } from './cert';
+export type { CreateCaResult, CreateCertResult, CreateIdentityCertFromCaOptions, CreateIdentityCertResult, IdentityDirMatch, IdentityMatchType, IdentityMaterial, IdentityRootsOptions, IdentityUsage, X509PathMatch, X509Paths, } from './cert';
 export { DEV_TEST_KEYS, getDevTestKeyPairById } from './dev_test_keys';
 export type { DevTestKeyPair } from './dev_test_keys';
 export declare const PROVISION_BASE_TIME = 1743478939;

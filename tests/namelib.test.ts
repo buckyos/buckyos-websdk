@@ -133,6 +133,13 @@ describe('DID (mirror of did.rs unit tests)', () => {
     expect(DID.fromStr('did:bns:alice').toRawHostName()).toBe('alice.bns.did')
     expect(DID.fromStr('did:web:test.buckyos.io').toRawHostName()).toBe('test.buckyos.io')
   })
+
+  test('to_raw_host_uri keeps DID method raw host semantics', () => {
+    setKnownWeb3BridgeConfig({ bns: 'web3.buckyos.io' })
+
+    expect(DID.fromStr('did:web:example.com:user:alice').toRawHostUri()).toBe('example.com/user/alice')
+    expect(DID.fromStr('did:bns:app1.waterflier').toRawHostUri()).toBe('app1.waterflier.bns.did')
+  })
 })
 
 describe('OODDescriptionString (mirror of zone.rs)', () => {

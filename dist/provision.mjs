@@ -5,7 +5,7 @@ var __publicField = (obj, key, value) => {
   return value;
 };
 var _a;
-import { c as commonjsGlobal, b as DID, d as createJwkByX, e as newOwnerConfig, p as parseOODDescription, o as oodDescriptionToString, f as newZoneBootConfig, g as newZoneConfig, i as encodeZoneBootConfig, z as zoneConfigInitByBootConfig, j as newDeviceMiniConfig, k as deviceMiniConfigToJwt, l as newDeviceConfigByJwk, m as encodeDeviceConfig, q as newDeviceMiniConfigByDeviceConfig, r as newNodeIdentityConfig, t as newDeviceConfigByMiniConfig, v as verifyJwtEdDSA, u as buckyosGetUnixTimestamp, w as buildNamedObjectByJson, x as decodeJwtClaimWithoutVerify } from "./ndn_types-5ce8dc42.mjs";
+import { c as commonjsGlobal, b as DID, d as createJwkByX, e as newOwnerConfig, p as parseOODDescription, o as oodDescriptionToString, f as newZoneBootConfig, g as newZoneConfig, i as encodeZoneBootConfig, z as zoneConfigInitByBootConfig, j as newDeviceMiniConfig, k as deviceMiniConfigToJwt, l as newDeviceConfigByJwk, m as encodeDeviceConfig, q as newDeviceMiniConfigByDeviceConfig, r as newNodeIdentityConfig, t as newDeviceConfigByMiniConfig, v as verifyJwtEdDSA, u as buckyosGetUnixTimestamp, w as buildNamedObjectByJson, x as decodeJwtClaimWithoutVerify } from "./ndn_types-e2a3628e.mjs";
 function keyPair(privateKeyBase64, publicKeyX) {
   return {
     privateKeyPem: `-----BEGIN PRIVATE KEY-----
@@ -13152,6 +13152,31 @@ const SERVER_SIGNING_ALG = {
 };
 const CA_VALIDITY_DAYS = 3650;
 const CERT_VALIDITY_DAYS = 365;
+const DEFAULT_BUCKYOS_ROOT = "/opt/buckyos";
+const KEYREF_SCHEMA = "buckyos.identity.keyref.v1";
+const X509_METADATA_SCHEMA = "buckyos.identity.x509.metadata.v1";
+const IDENTITY_USAGES = [
+  "server",
+  "client",
+  "authentication",
+  "assertion",
+  "key-agreement",
+  "capability"
+];
+const IDENTITY_MATERIALS = [
+  "did-json",
+  "did-meta",
+  "cert",
+  "chain",
+  "fullchain",
+  "ca",
+  "public",
+  "csr",
+  "meta",
+  "private",
+  "keyref",
+  "verification-method"
+];
 function randomSerialNumber() {
   const bytes = new Uint8Array(16);
   getCrypto().getRandomValues(bytes);
@@ -13165,6 +13190,221 @@ function daysFromNow(days) {
 async function exportPrivateKeyPem(key) {
   const der = new Uint8Array(await getCrypto().subtle.exportKey("pkcs8", key));
   return PemConverter.encode(der, "PRIVATE KEY");
+}
+function bytesToHex(bytes) {
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+async function sha256Fingerprint(bytes) {
+  const digest = await getCrypto().subtle.digest("SHA-256", bytes);
+  return `sha256:${bytesToHex(new Uint8Array(digest))}`;
+}
+function encodeUtf8(value) {
+  if (typeof TextEncoder !== "undefined") {
+    return new TextEncoder().encode(value);
+  }
+  const buffer = requireNode$1("node:buffer").Buffer;
+  return new Uint8Array(buffer.from(value, "utf8"));
+}
+function encodeIdentityDirName(rawHostUri) {
+  const keep = (byte) => byte >= 65 && byte <= 90 || byte >= 97 && byte <= 122 || byte >= 48 && byte <= 57 || byte === 46 || byte === 95 || byte === 45;
+  let encoded = "";
+  for (const byte of encodeUtf8(rawHostUri)) {
+    if (keep(byte)) {
+      encoded += String.fromCharCode(byte);
+    } else {
+      encoded += `%${byte.toString(16).toUpperCase().padStart(2, "0")}`;
+    }
+  }
+  if (!encoded || encoded === "." || encoded === ".." || /[\\/]/.test(encoded) || encoded.includes("\0")) {
+    throw new Error(`Invalid encoded identity directory name for raw host URI: ${rawHostUri}`);
+  }
+  return encoded;
+}
+function normalizeWildcardInput(didOrHostname) {
+  if (didOrHostname.startsWith("did:web:*.")) {
+    return `did:web:_.${didOrHostname.slice("did:web:*.".length)}`;
+  }
+  if (didOrHostname.startsWith("*.")) {
+    return `_.${didOrHostname.slice(2)}`;
+  }
+  return didOrHostname;
+}
+function canonicalIdentityDid(didOrHostname) {
+  const trimmed = didOrHostname.trim();
+  if (!trimmed) {
+    throw new Error("identity DID or hostname is empty");
+  }
+  return DID.fromStr(normalizeWildcardInput(trimmed));
+}
+function identityRawHostUri(didOrHostname) {
+  return canonicalIdentityDid(didOrHostname).toRawHostUri();
+}
+function identityDirName(didOrHostname) {
+  return encodeIdentityDirName(identityRawHostUri(didOrHostname));
+}
+function didWebDocumentUrl(didOrHostname) {
+  const did = canonicalIdentityDid(didOrHostname);
+  if (did.method !== "web") {
+    return null;
+  }
+  const host = did.toRawHostName();
+  const pathFromId = did.getPathFromId();
+  if (pathFromId) {
+    return `https://${host}/${pathFromId}/did.json`;
+  }
+  return `https://${host}/.well-known/did.json`;
+}
+function assertIdentityUsage(usage) {
+  if (!IDENTITY_USAGES.includes(usage)) {
+    throw new Error(`Unsupported identity usage: ${usage}`);
+  }
+}
+function assertIdentityMaterial(material) {
+  if (!IDENTITY_MATERIALS.includes(material)) {
+    throw new Error(`Unsupported identity material: ${material}`);
+  }
+}
+function identityFileName(usage, material) {
+  assertIdentityUsage(usage);
+  assertIdentityMaterial(material);
+  switch (material) {
+    case "did-json":
+      return "did.json";
+    case "did-meta":
+      return "did.meta.json";
+    case "cert":
+      return `${usage}.cert.pem`;
+    case "chain":
+      return `${usage}.chain.pem`;
+    case "fullchain":
+      return `${usage}.fullchain.pem`;
+    case "ca":
+      return `${usage}.ca.pem`;
+    case "public":
+      return usage === "server" || usage === "client" ? `${usage}.public.pem` : `${usage}.public.jwk`;
+    case "csr":
+      return `${usage}.csr.pem`;
+    case "meta":
+      return `${usage}.meta.json`;
+    case "private":
+      return `${usage}.private.pem`;
+    case "keyref":
+      return `${usage}.keyref.json`;
+    case "verification-method":
+      return `${usage}.verification-method.json`;
+  }
+}
+function getProcessEnv() {
+  const runtimeProcess = globalThis.process;
+  return (runtimeProcess == null ? void 0 : runtimeProcess.env) ?? {};
+}
+function trimToNull(value) {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+function x509PathsForDirs(publicDir, securityDir, usage) {
+  const path = requireNode$1("node:path");
+  return {
+    cert: path.join(publicDir, identityFileName(usage, "cert")),
+    chain: path.join(publicDir, identityFileName(usage, "chain")),
+    fullchain: path.join(publicDir, identityFileName(usage, "fullchain")),
+    ca: path.join(publicDir, identityFileName(usage, "ca")),
+    metadata: path.join(publicDir, identityFileName(usage, "meta")),
+    keyref: path.join(securityDir, identityFileName(usage, "keyref")),
+    privateKey: path.join(securityDir, identityFileName(usage, "private"))
+  };
+}
+class IdentityRoots {
+  constructor(publicRoot, securityRoot) {
+    const path = requireNode$1("node:path");
+    this.publicRoot = path.resolve(publicRoot);
+    this.securityRoot = path.resolve(securityRoot);
+  }
+  static fromEnvOrBuckyosRoot(options = {}) {
+    const path = requireNode$1("node:path");
+    const env = getProcessEnv();
+    const buckyosRoot = trimToNull(options.buckyosRoot) ?? trimToNull(env.BUCKYOS_ROOT) ?? DEFAULT_BUCKYOS_ROOT;
+    const publicRoot = trimToNull(options.publicRoot) ?? trimToNull(env.BUCKYOS_IDENTITY_ROOT) ?? path.join(buckyosRoot, "local", "identity");
+    const securityRoot = trimToNull(options.securityRoot) ?? trimToNull(env.BUCKYOS_SECURITY_ROOT) ?? path.join(buckyosRoot, "security");
+    return new IdentityRoots(publicRoot, securityRoot);
+  }
+  rawHostUri(didOrHostname) {
+    return identityRawHostUri(didOrHostname);
+  }
+  dirName(didOrHostname) {
+    return identityDirName(didOrHostname);
+  }
+  publicDir(didOrHostname) {
+    const path = requireNode$1("node:path");
+    return path.join(this.publicRoot, this.dirName(didOrHostname));
+  }
+  securityDir(didOrHostname) {
+    const path = requireNode$1("node:path");
+    return path.join(this.securityRoot, this.dirName(didOrHostname));
+  }
+  publicFile(didOrHostname, usage, material) {
+    const path = requireNode$1("node:path");
+    return path.join(this.publicDir(didOrHostname), identityFileName(usage, material));
+  }
+  securityFile(didOrHostname, usage, material) {
+    const path = requireNode$1("node:path");
+    return path.join(this.securityDir(didOrHostname), identityFileName(usage, material));
+  }
+  x509Paths(didOrHostname, usage = "server") {
+    return x509PathsForDirs(this.publicDir(didOrHostname), this.securityDir(didOrHostname), usage);
+  }
+  identityDirMatch(didOrHostname) {
+    const rawHostUri = this.rawHostUri(didOrHostname);
+    const dirName = encodeIdentityDirName(rawHostUri);
+    return {
+      type: rawHostUri.startsWith("_.") ? "wildcard" : "exact",
+      rawHostUri,
+      dirName,
+      publicDir: this.publicDir(didOrHostname),
+      securityDir: this.securityDir(didOrHostname),
+      ...rawHostUri.startsWith("_.") ? { hostPattern: `*.${rawHostUri.slice(2)}` } : { host: rawHostUri }
+    };
+  }
+  findX509Paths(didOrHostname, usage = "server") {
+    const fs = requireNode$1("node:fs");
+    const exact = this.identityDirMatch(didOrHostname);
+    const exactPaths = x509PathsForDirs(exact.publicDir, exact.securityDir, usage);
+    if (fs.existsSync(exactPaths.fullchain) || fs.existsSync(exactPaths.cert)) {
+      return { match: exact, paths: exactPaths };
+    }
+    const did = canonicalIdentityDid(didOrHostname);
+    if (did.method !== "web") {
+      return null;
+    }
+    const host = did.toRawHostName();
+    const labels = host.split(".");
+    if (labels.length < 3) {
+      return null;
+    }
+    const wildcardHost = `_.${labels.slice(1).join(".")}`;
+    const wildcardDirName = encodeIdentityDirName(wildcardHost);
+    const path = requireNode$1("node:path");
+    const publicDir = path.join(this.publicRoot, wildcardDirName);
+    const securityDir = path.join(this.securityRoot, wildcardDirName);
+    const wildcardPaths = x509PathsForDirs(publicDir, securityDir, usage);
+    if (!fs.existsSync(wildcardPaths.fullchain) && !fs.existsSync(wildcardPaths.cert)) {
+      return null;
+    }
+    return {
+      match: {
+        type: "wildcard",
+        rawHostUri: wildcardHost,
+        dirName: wildcardDirName,
+        publicDir,
+        securityDir,
+        hostPattern: `*.${labels.slice(1).join(".")}`
+      },
+      paths: wildcardPaths
+    };
+  }
 }
 async function importRsaPrivateKeyPem(pem) {
   const crypto2 = getCrypto();
@@ -13303,25 +13543,29 @@ function findCaFiles(caDir) {
   }
   return { caCertPath, caKeyPath };
 }
-async function createCertFromCa(caDir, hostname, targetDir, hostnames) {
+async function issueX509CertFromCa(caDir, dnsNames, uriSans = [], usage = "server") {
   const fs = requireNode$1("node:fs");
-  const path = requireNode$1("node:path");
   const crypto2 = getCrypto();
   cryptoProvider.set(crypto2);
   const { caCertPath, caKeyPath } = findCaFiles(caDir);
-  const caCert = new X509Certificate(fs.readFileSync(caCertPath, "utf8"));
+  const caCertPem = fs.readFileSync(caCertPath, "utf8");
+  const caCert = new X509Certificate(caCertPem);
   const validationFailure = getCaValidationFailure(caCert);
   if (validationFailure) {
     throw new Error(`Invalid CA certificate at ${caCertPath}: ${validationFailure}`);
   }
   const caKey = await importRsaPrivateKeyPem(fs.readFileSync(caKeyPath, "utf8"));
-  const dnsNames = hostnames && hostnames.length > 0 ? hostnames : [hostname];
   const commonName = dnsNames[0];
-  const safeHostname = commonName.replace(/\*/g, "wildcard").replace(/\./g, "_");
-  fs.mkdirSync(targetDir, { recursive: true });
-  const certPath = path.join(targetDir, `${safeHostname}.crt`);
-  const keyPath = path.join(targetDir, `${safeHostname}.key`);
+  if (!commonName) {
+    throw new Error("At least one DNS SAN is required when creating an X.509 certificate");
+  }
   const keys = await crypto2.subtle.generateKey(SERVER_SIGNING_ALG, true, ["sign", "verify"]);
+  const spki = new Uint8Array(await crypto2.subtle.exportKey("spki", keys.publicKey));
+  const publicKeyFingerprint = await sha256Fingerprint(spki);
+  const sanNames = [
+    ...dnsNames.map((dns) => ({ type: "dns", value: dns })),
+    ...uriSans.map((uri) => ({ type: "url", value: uri }))
+  ];
   const cert = await X509CertificateGenerator.create({
     serialNumber: randomSerialNumber(),
     subject: `CN=${commonName}`,
@@ -13336,16 +13580,201 @@ async function createCertFromCa(caDir, hostname, targetDir, hostnames) {
         KeyUsageFlags.digitalSignature | KeyUsageFlags.keyEncipherment,
         true
       ),
-      new ExtendedKeyUsageExtension([ExtendedKeyUsage2.serverAuth]),
-      new SubjectAlternativeNameExtension(dnsNames.map((dns) => ({ type: "dns", value: dns }))),
+      new ExtendedKeyUsageExtension([
+        usage === "client" ? ExtendedKeyUsage2.clientAuth : ExtendedKeyUsage2.serverAuth
+      ]),
+      new SubjectAlternativeNameExtension(sanNames),
       await SubjectKeyIdentifierExtension.create(keys.publicKey),
       await AuthorityKeyIdentifierExtension.create(caCert)
     ]
   });
-  fs.writeFileSync(keyPath, await exportPrivateKeyPem(keys.privateKey));
-  fs.writeFileSync(certPath, cert.toString("pem"));
+  return {
+    cert,
+    certPem: cert.toString("pem"),
+    privateKeyPem: await exportPrivateKeyPem(keys.privateKey),
+    caCert,
+    caCertPem,
+    caCertPath,
+    publicKeyFingerprint
+  };
+}
+async function createCertFromCa(caDir, hostname, targetDir, hostnames) {
+  const fs = requireNode$1("node:fs");
+  const path = requireNode$1("node:path");
+  const dnsNames = hostnames && hostnames.length > 0 ? hostnames : [hostname];
+  const commonName = dnsNames[0];
+  const safeHostname = commonName.replace(/\*/g, "wildcard").replace(/\./g, "_");
+  fs.mkdirSync(targetDir, { recursive: true });
+  const certPath = path.join(targetDir, `${safeHostname}.crt`);
+  const keyPath = path.join(targetDir, `${safeHostname}.key`);
+  const issued = await issueX509CertFromCa(caDir, dnsNames);
+  fs.writeFileSync(keyPath, issued.privateKeyPem);
+  fs.writeFileSync(certPath, issued.certPem);
   console.log(`Certificate created: ${certPath}`);
   return { certPath, keyPath };
+}
+function normalizePem(pem) {
+  return `${pem.trimEnd()}
+`;
+}
+function writeFileAtomicSync(filePath, content, mode) {
+  const fs = requireNode$1("node:fs");
+  const path = requireNode$1("node:path");
+  const dir = path.dirname(filePath);
+  const tempPath = path.join(dir, `.${path.basename(filePath)}.${Date.now()}.${Math.random().toString(16).slice(2)}.tmp`);
+  try {
+    fs.writeFileSync(tempPath, content, mode === void 0 ? void 0 : { mode });
+    try {
+      const fd = fs.openSync(tempPath, "r");
+      try {
+        fs.fsyncSync(fd);
+      } finally {
+        fs.closeSync(fd);
+      }
+    } catch {
+    }
+    fs.renameSync(tempPath, filePath);
+  } catch (error) {
+    try {
+      if (fs.existsSync(tempPath)) {
+        fs.unlinkSync(tempPath);
+      }
+    } catch {
+    }
+    throw error;
+  }
+}
+function writeJsonAtomicSync(filePath, value, mode) {
+  writeFileAtomicSync(filePath, `${JSON.stringify(value, null, 2)}
+`, mode);
+}
+function resolveIdentityRoots(roots) {
+  return roots instanceof IdentityRoots ? roots : IdentityRoots.fromEnvOrBuckyosRoot(roots);
+}
+function x509DnsNameForDid(did) {
+  const rawHostName = did.toRawHostName();
+  if (rawHostName.startsWith("_.")) {
+    return `*.${rawHostName.slice(2)}`;
+  }
+  return rawHostName;
+}
+function getSubjectAlternativeNames(cert) {
+  const sanExtension = cert.extensions.find(
+    (extension) => extension instanceof SubjectAlternativeNameExtension
+  );
+  const names2 = (sanExtension == null ? void 0 : sanExtension.names.toJSON()) ?? [];
+  return {
+    dns: names2.filter((name) => name.type === "dns").map((name) => name.value),
+    uri: names2.filter((name) => name.type === "url").map((name) => name.value)
+  };
+}
+async function certificateFingerprint(cert) {
+  const thumbprint = await cert.getThumbprint("SHA-256", getCrypto());
+  return `sha256:${bytesToHex(new Uint8Array(thumbprint))}`;
+}
+function buildDidBinding(did) {
+  if (did.method !== "web" || did.toRawHostName().startsWith("_.")) {
+    return void 0;
+  }
+  const didString = did.toString();
+  return {
+    type: "did-web-domain",
+    did: didString,
+    web_origin: `https://${did.toRawHostName()}`,
+    did_document_url: didWebDocumentUrl(didString)
+  };
+}
+async function buildX509Metadata(did, usage, paths, rawHostUri, dirName, issued) {
+  const san = getSubjectAlternativeNames(issued.cert);
+  const certFingerprint = await certificateFingerprint(issued.cert);
+  const isWildcard = rawHostUri.startsWith("_.");
+  const updatedAt = (/* @__PURE__ */ new Date()).toISOString();
+  return {
+    schema: X509_METADATA_SCHEMA,
+    did: did.toString(),
+    raw_host_uri: rawHostUri,
+    dir_name: dirName,
+    usage,
+    match: isWildcard ? { type: "wildcard", host_pattern: `*.${rawHostUri.slice(2)}` } : { type: "exact", host: rawHostUri },
+    certificate: {
+      serial_number: issued.cert.serialNumber,
+      issuer: issued.cert.issuer,
+      subject: issued.cert.subject,
+      not_before: issued.cert.notBefore.toISOString(),
+      not_after: issued.cert.notAfter.toISOString(),
+      fingerprint_sha256: certFingerprint,
+      public_key_fingerprint: issued.publicKeyFingerprint
+    },
+    san,
+    paths: {
+      cert: identityFileName(usage, "cert"),
+      chain: identityFileName(usage, "chain"),
+      fullchain: identityFileName(usage, "fullchain"),
+      ca: identityFileName(usage, "ca"),
+      key_ref: paths.keyref
+    },
+    did_binding: buildDidBinding(did),
+    updated_at: updatedAt,
+    generation: `${updatedAt.replace(/[-:.]/g, "")}-${certFingerprint}`
+  };
+}
+function buildFileKeyRef(did, usage, privateKeyPath, publicKeyFingerprint) {
+  return {
+    schema: KEYREF_SCHEMA,
+    kind: "key",
+    did: did.toString(),
+    usage,
+    algorithm: "RSA-2048",
+    public_key_fingerprint: publicKeyFingerprint,
+    mode: "file",
+    exportable: true,
+    ref: {
+      type: "file",
+      path: privateKeyPath,
+      format: "pkcs8-pem"
+    }
+  };
+}
+async function createIdentityCertFromCa(caDir, didOrHostname, rootsInput, options = {}) {
+  const fs = requireNode$1("node:fs");
+  const roots = resolveIdentityRoots(rootsInput);
+  const usage = options.usage ?? "server";
+  const did = canonicalIdentityDid(didOrHostname);
+  const rawHostUri = did.toRawHostUri();
+  const dirName = encodeIdentityDirName(rawHostUri);
+  const publicDir = roots.publicDir(did.toString());
+  const securityDir = roots.securityDir(did.toString());
+  const paths = x509PathsForDirs(publicDir, securityDir, usage);
+  const dnsNames = options.hostnames && options.hostnames.length > 0 ? options.hostnames : [x509DnsNameForDid(did)];
+  const uriSans = options.uriSans ?? [did.toString()];
+  fs.mkdirSync(publicDir, { recursive: true, mode: 493 });
+  fs.mkdirSync(securityDir, { recursive: true, mode: 448 });
+  const issued = await issueX509CertFromCa(caDir, dnsNames, uriSans, usage);
+  const certPem = normalizePem(issued.certPem);
+  const caPem = normalizePem(issued.caCertPem);
+  const chainPem = caPem;
+  const fullchainPem = `${certPem}${chainPem}`;
+  writeFileAtomicSync(paths.privateKey, issued.privateKeyPem, 384);
+  writeJsonAtomicSync(paths.keyref, buildFileKeyRef(did, usage, paths.privateKey, issued.publicKeyFingerprint), 384);
+  writeFileAtomicSync(paths.cert, certPem, 420);
+  writeFileAtomicSync(paths.chain, chainPem, 420);
+  writeFileAtomicSync(paths.fullchain, fullchainPem, 420);
+  writeFileAtomicSync(paths.ca, caPem, 420);
+  writeJsonAtomicSync(paths.metadata, await buildX509Metadata(did, usage, paths, rawHostUri, dirName, issued), 420);
+  console.log(`Identity certificate created: ${paths.fullchain}`);
+  return {
+    did: did.toString(),
+    rawHostUri,
+    dirName,
+    paths,
+    certPath: paths.cert,
+    chainPath: paths.chain,
+    fullchainPath: paths.fullchain,
+    caPath: paths.ca,
+    keyPath: paths.privateKey,
+    keyRefPath: paths.keyref,
+    metadataPath: paths.metadata
+  };
 }
 const PROVISION_BASE_TIME = 1743478939;
 const DEFAULT_EXP_YEARS = 10;
@@ -14025,6 +14454,9 @@ function buildDidDocs(outputDir, options) {
 export {
   DEV_TEST_KEYS,
   DevSnDb,
+  IDENTITY_MATERIALS,
+  IDENTITY_USAGES,
+  IdentityRoots,
   KERNEL_SERVICE_DOC_VERSION,
   MetaIndexDb,
   PROVISION_BASE_TIME,
@@ -14034,11 +14466,17 @@ export {
   calcPkgMetaObjId,
   createCa,
   createCertFromCa,
+  createIdentityCertFromCa,
   createNodeConfigs,
   createSnConfigs,
   createUserEnv,
+  didWebDocumentUrl,
+  encodeIdentityDirName,
   ensureCa,
   getDevTestKeyPairById,
+  identityDirName,
+  identityFileName,
+  identityRawHostUri,
   normalizePackageMetaForObjId,
   registerDeviceToSn,
   registerUserToSn,

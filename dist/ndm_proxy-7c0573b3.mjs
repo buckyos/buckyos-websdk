@@ -1,4 +1,4 @@
-import { h as ht, O as ObjId, C as ChunkId, F as FileObject, s as sha256Bytes, D as DirObject, S as SimpleChunkList } from "./ndn_types-5ce8dc42.mjs";
+import { h as ht, O as ObjId, C as ChunkId, F as FileObject, s as sha256Bytes, D as DirObject, S as SimpleChunkList } from "./ndn_types-e2a3628e.mjs";
 class RPCError extends Error {
   constructor(message) {
     super(message);
@@ -5205,7 +5205,7 @@ async function uploadChunkViaTus(endpoint, file, chunkInfo, chunkIndex, appId, f
   const logicalPath = `${appId}/${chunkInfo.chunkId}`;
   let tusModule;
   try {
-    tusModule = await import("./tus_client-c875fe92.mjs");
+    tusModule = await import("./tus_client-9c79e84d.mjs");
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new NdmError("UPLOAD_FAILED", `Failed to load tus-js-client: ${message}`);
@@ -6004,4 +6004,4 @@ export {
   WorkflowClient as y,
   AICC_SERVICE_UNIQUE_ID as z
 };
-//# sourceMappingURL=ndm_proxy-31453c27.mjs.map
+//# sourceMappingURL=ndm_proxy-7c0573b3.mjs.map

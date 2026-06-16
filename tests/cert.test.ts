@@ -6,7 +6,18 @@ import { execFileSync } from 'child_process'
 import { webcrypto } from 'crypto'
 import { createSecureContext } from 'tls'
 
-import { createCa, ensureCa, createCertFromCa } from '../src/cert'
+import {
+  IdentityRoots,
+  createCa,
+  createCertFromCa,
+  createIdentityCertFromCa,
+  didWebDocumentUrl,
+  encodeIdentityDirName,
+  ensureCa,
+  identityDirName,
+  identityFileName,
+  identityRawHostUri,
+} from '../src/cert'
 
 jest.setTimeout(60000)
 
@@ -63,6 +74,61 @@ describe('cert (T3.1, replaces python CertManager)', () => {
   const caDir = tmpDir('cert-ca-')
   const certDir = tmpDir('cert-out-')
   const zone = 'test.buckyos.io'
+
+  test('identity path helpers follow encoded raw host URI convention', () => {
+    const roots = new IdentityRoots('/buckyos/local/identity', '/buckyos/security')
+
+    expect(identityRawHostUri('did:web:example.com:user:alice')).toBe('example.com/user/alice')
+    expect(encodeIdentityDirName('example.com/user/alice')).toBe('example.com%2Fuser%2Falice')
+    expect(identityDirName('did:web:example.com:user:alice')).toBe('example.com%2Fuser%2Falice')
+    expect(identityRawHostUri('did:bns:waterflier')).toBe('waterflier.bns.did')
+    expect(identityDirName('*.example.com')).toBe('_.example.com')
+    expect(didWebDocumentUrl('did:web:example.com:user:alice')).toBe('https://example.com/user/alice/did.json')
+    expect(identityFileName('server', 'fullchain')).toBe('server.fullchain.pem')
+    expect(identityFileName('authentication', 'public')).toBe('authentication.public.jwk')
+
+    const paths = roots.x509Paths('did:web:example.com:user:alice')
+    expect(paths.fullchain).toBe(path.join('/buckyos/local/identity', 'example.com%2Fuser%2Falice', 'server.fullchain.pem'))
+    expect(paths.privateKey).toBe(path.join('/buckyos/security', 'example.com%2Fuser%2Falice', 'server.private.pem'))
+  })
+
+  test('IdentityRoots resolves explicit roots, env roots, and BUCKYOS_ROOT defaults', () => {
+    const before = {
+      BUCKYOS_IDENTITY_ROOT: process.env.BUCKYOS_IDENTITY_ROOT,
+      BUCKYOS_SECURITY_ROOT: process.env.BUCKYOS_SECURITY_ROOT,
+      BUCKYOS_ROOT: process.env.BUCKYOS_ROOT,
+    }
+    try {
+      delete process.env.BUCKYOS_IDENTITY_ROOT
+      delete process.env.BUCKYOS_SECURITY_ROOT
+      process.env.BUCKYOS_ROOT = '/tmp/buckyos'
+
+      let roots = IdentityRoots.fromEnvOrBuckyosRoot()
+      expect(roots.publicRoot).toBe(path.resolve('/tmp/buckyos/local/identity'))
+      expect(roots.securityRoot).toBe(path.resolve('/tmp/buckyos/security'))
+
+      process.env.BUCKYOS_IDENTITY_ROOT = '/tmp/public-identities'
+      process.env.BUCKYOS_SECURITY_ROOT = '/tmp/secure-identities'
+      roots = IdentityRoots.fromEnvOrBuckyosRoot()
+      expect(roots.publicRoot).toBe(path.resolve('/tmp/public-identities'))
+      expect(roots.securityRoot).toBe(path.resolve('/tmp/secure-identities'))
+
+      roots = IdentityRoots.fromEnvOrBuckyosRoot({
+        publicRoot: '/explicit/public',
+        securityRoot: '/explicit/security',
+      })
+      expect(roots.publicRoot).toBe(path.resolve('/explicit/public'))
+      expect(roots.securityRoot).toBe(path.resolve('/explicit/security'))
+    } finally {
+      for (const [key, value] of Object.entries(before)) {
+        if (value === undefined) {
+          delete process.env[key]
+        } else {
+          process.env[key] = value
+        }
+      }
+    }
+  })
 
   test('createCa writes {name}_ca_cert.pem / {name}_ca_key.pem', async () => {
     const { caCertPath, caKeyPath } = await createCa(caDir, 'buckyos_test_ca')
@@ -128,6 +194,121 @@ describe('cert (T3.1, replaces python CertManager)', () => {
       'verify', '-CAfile', path.join(caDir, 'buckyos_test_ca_ca_cert.pem'), certPath,
     ]).toString()
     expect(verify).toContain('OK')
+  })
+
+  test('createIdentityCertFromCa installs server materials using identity path protocol', async () => {
+    const publicRoot = tmpDir('identity-public-')
+    const securityRoot = tmpDir('identity-security-')
+    const roots = new IdentityRoots(publicRoot, securityRoot)
+    const did = 'did:web:example.com:user:alice'
+
+    const result = await createIdentityCertFromCa(caDir, did, roots)
+    expect(result.did).toBe(did)
+    expect(result.rawHostUri).toBe('example.com/user/alice')
+    expect(result.dirName).toBe('example.com%2Fuser%2Falice')
+    expect(result.fullchainPath).toBe(path.join(publicRoot, 'example.com%2Fuser%2Falice', 'server.fullchain.pem'))
+    expect(result.keyPath).toBe(path.join(securityRoot, 'example.com%2Fuser%2Falice', 'server.private.pem'))
+
+    for (const filePath of [
+      result.paths.cert,
+      result.paths.chain,
+      result.paths.fullchain,
+      result.paths.ca,
+      result.paths.metadata,
+      result.paths.keyref,
+      result.paths.privateKey,
+    ]) {
+      expect(fs.existsSync(filePath)).toBe(true)
+    }
+    expect(fs.existsSync(path.join(publicRoot, result.dirName, 'server.private.pem'))).toBe(false)
+
+    expect(() => createSecureContext({
+      cert: fs.readFileSync(result.paths.fullchain, 'utf8'),
+      key: fs.readFileSync(result.paths.privateKey, 'utf8'),
+    })).not.toThrow()
+
+    const keyref = JSON.parse(fs.readFileSync(result.paths.keyref, 'utf8'))
+    expect(keyref).toMatchObject({
+      schema: 'buckyos.identity.keyref.v1',
+      kind: 'key',
+      did,
+      usage: 'server',
+      algorithm: 'RSA-2048',
+      mode: 'file',
+      exportable: true,
+      ref: {
+        type: 'file',
+        path: result.paths.privateKey,
+        format: 'pkcs8-pem',
+      },
+    })
+    expect(keyref.public_key_fingerprint).toMatch(/^sha256:[0-9a-f]{64}$/)
+
+    const metadata = JSON.parse(fs.readFileSync(result.paths.metadata, 'utf8'))
+    expect(metadata).toMatchObject({
+      schema: 'buckyos.identity.x509.metadata.v1',
+      did,
+      raw_host_uri: 'example.com/user/alice',
+      dir_name: 'example.com%2Fuser%2Falice',
+      usage: 'server',
+      match: { type: 'exact', host: 'example.com/user/alice' },
+      san: {
+        dns: ['example.com'],
+        uri: [did],
+      },
+      paths: {
+        cert: 'server.cert.pem',
+        chain: 'server.chain.pem',
+        fullchain: 'server.fullchain.pem',
+        ca: 'server.ca.pem',
+        key_ref: result.paths.keyref,
+      },
+      did_binding: {
+        type: 'did-web-domain',
+        did,
+        web_origin: 'https://example.com',
+        did_document_url: 'https://example.com/user/alice/did.json',
+      },
+    })
+    expect(metadata.certificate.not_after).toEqual(expect.any(String))
+    expect(metadata.certificate.fingerprint_sha256).toMatch(/^sha256:[0-9a-f]{64}$/)
+    expect(metadata.certificate.public_key_fingerprint).toBe(keyref.public_key_fingerprint)
+
+    if (opensslAvailable()) {
+      const verify = execFileSync('openssl', [
+        'verify', '-CAfile', result.paths.ca, result.paths.cert,
+      ]).toString()
+      expect(verify).toContain('OK')
+
+      const text = execFileSync('openssl', ['x509', '-in', result.paths.cert, '-text', '-noout']).toString()
+      expect(text).toContain('DNS:example.com')
+      expect(text).toContain(`URI:${did}`)
+    }
+  })
+
+  test('findX509Paths prefers exact identity dir before wildcard dir', () => {
+    const publicRoot = tmpDir('identity-match-public-')
+    const securityRoot = tmpDir('identity-match-security-')
+    const roots = new IdentityRoots(publicRoot, securityRoot)
+    const wildcardFullchain = roots.publicFile('*.example.com', 'server', 'fullchain')
+    fs.mkdirSync(path.dirname(wildcardFullchain), { recursive: true })
+    fs.writeFileSync(wildcardFullchain, 'wildcard')
+
+    let match = roots.findX509Paths('api.example.com')
+    expect(match?.match.type).toBe('wildcard')
+    expect(match?.match.rawHostUri).toBe('_.example.com')
+    expect(match?.paths.fullchain).toBe(wildcardFullchain)
+
+    expect(roots.findX509Paths('example.com')).toBeNull()
+    expect(roots.findX509Paths('a.b.example.com')).toBeNull()
+
+    const exactFullchain = roots.publicFile('api.example.com', 'server', 'fullchain')
+    fs.mkdirSync(path.dirname(exactFullchain), { recursive: true })
+    fs.writeFileSync(exactFullchain, 'exact')
+
+    match = roots.findX509Paths('api.example.com')
+    expect(match?.match.type).toBe('exact')
+    expect(match?.paths.fullchain).toBe(exactFullchain)
   })
 
   test('wildcard primary hostname maps to a safe filename', async () => {

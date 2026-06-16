@@ -44,8 +44,33 @@ import {
 } from './types'
 
 // TLS CA / certificate generation (Phase 3, replaces python CertManager)
-export { createCa, ensureCa, createCertFromCa } from './cert'
-export type { CreateCaResult, CreateCertResult } from './cert'
+export {
+  IdentityRoots,
+  IDENTITY_MATERIALS,
+  IDENTITY_USAGES,
+  createCa,
+  createCertFromCa,
+  createIdentityCertFromCa,
+  didWebDocumentUrl,
+  encodeIdentityDirName,
+  ensureCa,
+  identityDirName,
+  identityFileName,
+  identityRawHostUri,
+} from './cert'
+export type {
+  CreateCaResult,
+  CreateCertResult,
+  CreateIdentityCertFromCaOptions,
+  CreateIdentityCertResult,
+  IdentityDirMatch,
+  IdentityMatchType,
+  IdentityMaterial,
+  IdentityRootsOptions,
+  IdentityUsage,
+  X509PathMatch,
+  X509Paths,
+} from './cert'
 
 // Dev-only preset keys (mirror of Rust TestKeys); never use in production.
 export { DEV_TEST_KEYS, getDevTestKeyPairById } from './dev_test_keys'

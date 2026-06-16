@@ -530,6 +530,12 @@ export class DID {
     return `${realId}.${this.method}.did`
   }
 
+  toRawHostUri(): string {
+    const hostname = this.toRawHostName()
+    const path = this.getPathFromId()
+    return path ? `${hostname}/${path}` : hostname
+  }
+
   toHostNameByBridge(bridgeBaseHostname: string): string {
     const realId = this.id.split(':')[0]
     if (this.method === 'web') {

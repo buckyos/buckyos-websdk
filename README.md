@@ -135,7 +135,10 @@ await createNodeConfigs({ deviceName: 'ood1', envDir: '/tmp/alice-env' })
 
 其它能力：`createSnConfigs` / `registerUserToSn` / `registerDeviceToSn`（SN 侧）、
 `setPkgMeta` / `MetaIndexDb`（pkg meta 索引库）、`buildDidDocs`（内核服务 did docs）、
-`createCa` / `createCertFromCa`（TLS 证书，替代 Python CertManager）。
+`createCa` / `createCertFromCa`（旧 CertManager 兼容 TLS 证书），以及
+`IdentityRoots` / `createIdentityCertFromCa`（按 identity path 协议写入
+`$BUCKYOS_IDENTITY_ROOT/{encoded raw host URI}/server.*` 与
+`$BUCKYOS_SECURITY_ROOT/{encoded raw host URI}/server.keyref.json`）。
 
 注意：`buckyos/provision` 导出的 `DEV_TEST_KEYS` 是**仅供本地开发**的公开测试密钥
 （与 Rust TestKeys 一致），严禁用于真实激活流程；浏览器 bundle 不包含 provision。
