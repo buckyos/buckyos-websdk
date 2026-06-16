@@ -60,7 +60,6 @@ const SERVER_SIGNING_ALG: RsaHashedKeyGenParams = {
 const CA_VALIDITY_DAYS = 3650
 const CERT_VALIDITY_DAYS = 365
 const DEFAULT_BUCKYOS_ROOT = '/opt/buckyos'
-const KEYREF_SCHEMA = 'buckyos.identity.keyref.v1'
 const X509_METADATA_SCHEMA = 'buckyos.identity.x509.metadata.v1'
 
 export const IDENTITY_USAGES = [
@@ -139,8 +138,6 @@ export interface CreateIdentityCertResult {
   chainPath: string
   fullchainPath: string
   caPath: string
-  keyPath: string
-  keyRefPath: string
   metadataPath: string
 }
 
@@ -567,10 +564,8 @@ function findCaFiles(caDir: string): { caCertPath: string; caKeyPath: string } {
 interface IssuedX509Cert {
   cert: x509.X509Certificate
   certPem: string
-  privateKeyPem: string
-  caCert: x509.X509Certificate
+  privateKeyPem?: string
   caCertPem: string
-  caCertPath: string
   publicKeyFingerprint: string
 }
 
@@ -579,6 +574,7 @@ async function issueX509CertFromCa(
   dnsNames: string[],
   uriSans: string[] = [],
   usage: Extract<IdentityUsage, 'server' | 'client'> = 'server',
+  exportPrivateKey = true,
 ): Promise<IssuedX509Cert> {
   const fs = requireNode('node:fs')
   const crypto = getCrypto()
@@ -631,10 +627,8 @@ async function issueX509CertFromCa(
   return {
     cert,
     certPem: cert.toString('pem'),
-    privateKeyPem: await exportPrivateKeyPem(keys.privateKey),
-    caCert,
+    privateKeyPem: exportPrivateKey ? await exportPrivateKeyPem(keys.privateKey) : undefined,
     caCertPem,
-    caCertPath,
     publicKeyFingerprint,
   }
 }
@@ -663,6 +657,9 @@ export async function createCertFromCa(
   const keyPath = path.join(targetDir, `${safeHostname}.key`)
 
   const issued = await issueX509CertFromCa(caDir, dnsNames)
+  if (!issued.privateKeyPem) {
+    throw new Error('Internal error: private key export was disabled for legacy certificate output')
+  }
   fs.writeFileSync(keyPath, issued.privateKeyPem)
   fs.writeFileSync(certPath, issued.certPem)
   console.log(`Certificate created: ${certPath}`)
@@ -752,7 +749,6 @@ function buildDidBinding(did: DID): Record<string, unknown> | undefined {
 async function buildX509Metadata(
   did: DID,
   usage: IdentityUsage,
-  paths: X509Paths,
   rawHostUri: string,
   dirName: string,
   issued: IssuedX509Cert,
@@ -785,34 +781,10 @@ async function buildX509Metadata(
       chain: identityFileName(usage, 'chain'),
       fullchain: identityFileName(usage, 'fullchain'),
       ca: identityFileName(usage, 'ca'),
-      key_ref: paths.keyref,
     },
     did_binding: buildDidBinding(did),
     updated_at: updatedAt,
     generation: `${updatedAt.replace(/[-:.]/g, '')}-${certFingerprint}`,
-  }
-}
-
-function buildFileKeyRef(
-  did: DID,
-  usage: IdentityUsage,
-  privateKeyPath: string,
-  publicKeyFingerprint: string,
-): Record<string, unknown> {
-  return {
-    schema: KEYREF_SCHEMA,
-    kind: 'key',
-    did: did.toString(),
-    usage,
-    algorithm: 'RSA-2048',
-    public_key_fingerprint: publicKeyFingerprint,
-    mode: 'file',
-    exportable: true,
-    ref: {
-      type: 'file',
-      path: privateKeyPath,
-      format: 'pkcs8-pem',
-    },
   }
 }
 
@@ -837,21 +809,18 @@ export async function createIdentityCertFromCa(
   const uriSans = options.uriSans ?? [did.toString()]
 
   fs.mkdirSync(publicDir, { recursive: true, mode: 0o755 })
-  fs.mkdirSync(securityDir, { recursive: true, mode: 0o700 })
 
-  const issued = await issueX509CertFromCa(caDir, dnsNames, uriSans, usage)
+  const issued = await issueX509CertFromCa(caDir, dnsNames, uriSans, usage, false)
   const certPem = normalizePem(issued.certPem)
   const caPem = normalizePem(issued.caCertPem)
   const chainPem = caPem
   const fullchainPem = `${certPem}${chainPem}`
 
-  writeFileAtomicSync(paths.privateKey, issued.privateKeyPem, 0o600)
-  writeJsonAtomicSync(paths.keyref, buildFileKeyRef(did, usage, paths.privateKey, issued.publicKeyFingerprint), 0o600)
   writeFileAtomicSync(paths.cert, certPem, 0o644)
   writeFileAtomicSync(paths.chain, chainPem, 0o644)
   writeFileAtomicSync(paths.fullchain, fullchainPem, 0o644)
   writeFileAtomicSync(paths.ca, caPem, 0o644)
-  writeJsonAtomicSync(paths.metadata, await buildX509Metadata(did, usage, paths, rawHostUri, dirName, issued), 0o644)
+  writeJsonAtomicSync(paths.metadata, await buildX509Metadata(did, usage, rawHostUri, dirName, issued), 0o644)
 
   console.log(`Identity certificate created: ${paths.fullchain}`)
   return {
@@ -863,8 +832,6 @@ export async function createIdentityCertFromCa(
     chainPath: paths.chain,
     fullchainPath: paths.fullchain,
     caPath: paths.ca,
-    keyPath: paths.privateKey,
-    keyRefPath: paths.keyref,
     metadataPath: paths.metadata,
   }
 }

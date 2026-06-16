@@ -44,8 +44,6 @@ export interface CreateIdentityCertResult {
     chainPath: string;
     fullchainPath: string;
     caPath: string;
-    keyPath: string;
-    keyRefPath: string;
     metadataPath: string;
 }
 export declare function encodeIdentityDirName(rawHostUri: string): string;

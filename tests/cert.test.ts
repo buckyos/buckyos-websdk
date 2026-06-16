@@ -207,7 +207,6 @@ describe('cert (T3.1, replaces python CertManager)', () => {
     expect(result.rawHostUri).toBe('example.com/user/alice')
     expect(result.dirName).toBe('example.com%2Fuser%2Falice')
     expect(result.fullchainPath).toBe(path.join(publicRoot, 'example.com%2Fuser%2Falice', 'server.fullchain.pem'))
-    expect(result.keyPath).toBe(path.join(securityRoot, 'example.com%2Fuser%2Falice', 'server.private.pem'))
 
     for (const filePath of [
       result.paths.cert,
@@ -215,34 +214,13 @@ describe('cert (T3.1, replaces python CertManager)', () => {
       result.paths.fullchain,
       result.paths.ca,
       result.paths.metadata,
-      result.paths.keyref,
-      result.paths.privateKey,
     ]) {
       expect(fs.existsSync(filePath)).toBe(true)
     }
+    expect(fs.existsSync(result.paths.keyref)).toBe(false)
+    expect(fs.existsSync(result.paths.privateKey)).toBe(false)
+    expect(fs.existsSync(path.join(securityRoot, result.dirName))).toBe(false)
     expect(fs.existsSync(path.join(publicRoot, result.dirName, 'server.private.pem'))).toBe(false)
-
-    expect(() => createSecureContext({
-      cert: fs.readFileSync(result.paths.fullchain, 'utf8'),
-      key: fs.readFileSync(result.paths.privateKey, 'utf8'),
-    })).not.toThrow()
-
-    const keyref = JSON.parse(fs.readFileSync(result.paths.keyref, 'utf8'))
-    expect(keyref).toMatchObject({
-      schema: 'buckyos.identity.keyref.v1',
-      kind: 'key',
-      did,
-      usage: 'server',
-      algorithm: 'RSA-2048',
-      mode: 'file',
-      exportable: true,
-      ref: {
-        type: 'file',
-        path: result.paths.privateKey,
-        format: 'pkcs8-pem',
-      },
-    })
-    expect(keyref.public_key_fingerprint).toMatch(/^sha256:[0-9a-f]{64}$/)
 
     const metadata = JSON.parse(fs.readFileSync(result.paths.metadata, 'utf8'))
     expect(metadata).toMatchObject({
@@ -261,7 +239,6 @@ describe('cert (T3.1, replaces python CertManager)', () => {
         chain: 'server.chain.pem',
         fullchain: 'server.fullchain.pem',
         ca: 'server.ca.pem',
-        key_ref: result.paths.keyref,
       },
       did_binding: {
         type: 'did-web-domain',
@@ -272,7 +249,8 @@ describe('cert (T3.1, replaces python CertManager)', () => {
     })
     expect(metadata.certificate.not_after).toEqual(expect.any(String))
     expect(metadata.certificate.fingerprint_sha256).toMatch(/^sha256:[0-9a-f]{64}$/)
-    expect(metadata.certificate.public_key_fingerprint).toBe(keyref.public_key_fingerprint)
+    expect(metadata.certificate.public_key_fingerprint).toMatch(/^sha256:[0-9a-f]{64}$/)
+    expect(metadata.paths).not.toHaveProperty('key_ref')
 
     if (opensslAvailable()) {
       const verify = execFileSync('openssl', [
