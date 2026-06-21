@@ -2588,6 +2588,27 @@ class BuckyOSRuntime {
     }
     return hasBrowserStorage() ? getBrowserUserInfo() : null;
   }
+  async logoutBrowserSSO() {
+    if (this.config.runtimeType !== "Browser" && this.config.runtimeType !== "AppRuntime") {
+      return;
+    }
+    if (!hasFetchRuntime()) {
+      return;
+    }
+    try {
+      const response = await fetch("/sso_logout", {
+        method: "POST",
+        credentials: "include",
+        cache: "no-store",
+        keepalive: true
+      });
+      if (!response.ok) {
+        console.warn("BuckyOS browser sso_logout failed:", response.status);
+      }
+    } catch (error) {
+      console.warn("BuckyOS browser sso_logout failed:", error);
+    }
+  }
   async refreshBrowserSessionToken() {
     if (!hasFetchRuntime()) {
       return this.sessionToken;
@@ -4026,6 +4047,9 @@ class BuckyOSSDK {
     if (appId == null) {
       console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
       return;
+    }
+    if (cleanAccountInfo) {
+      void this.currentRuntime.logoutBrowserSSO();
     }
     if (cleanAccountInfo && isBrowserStorageAvailable()) {
       cleanLocalAccountInfo(appId);
@@ -6020,4 +6044,4 @@ export {
   WorkflowClient as y,
   AICC_SERVICE_UNIQUE_ID as z
 };
-//# sourceMappingURL=ndm_proxy-ded421c0.mjs.map
+//# sourceMappingURL=ndm_proxy-07ca9fa9.mjs.map

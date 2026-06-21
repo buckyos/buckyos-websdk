@@ -96,6 +96,7 @@ export declare class BuckyOSRuntime {
     private ensureBrowserSessionToken;
     private normalizeBrowserUserInfo;
     refreshBrowserSession(): Promise<BrowserUserInfo | null>;
+    logoutBrowserSSO(): Promise<void>;
     private refreshBrowserSessionToken;
     private needsRenew;
     startAutoRenewIfNeeded(): void;

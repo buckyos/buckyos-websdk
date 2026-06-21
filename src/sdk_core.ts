@@ -469,6 +469,10 @@ export class BuckyOSSDK {
       return
     }
 
+    if (cleanAccountInfo) {
+      void this.currentRuntime.logoutBrowserSSO()
+    }
+
     if (cleanAccountInfo && isBrowserStorageAvailable()) {
       cleanLocalAccountInfo(appId)
     }

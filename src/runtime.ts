@@ -780,6 +780,31 @@ export class BuckyOSRuntime {
       : null
   }
 
+  async logoutBrowserSSO(): Promise<void> {
+    if (this.config.runtimeType !== RuntimeType.Browser && this.config.runtimeType !== RuntimeType.AppRuntime) {
+      return
+    }
+
+    if (!hasFetchRuntime()) {
+      return
+    }
+
+    try {
+      const response = await fetch('/sso_logout', {
+        method: 'POST',
+        credentials: 'include',
+        cache: 'no-store',
+        keepalive: true,
+      })
+
+      if (!response.ok) {
+        console.warn('BuckyOS browser sso_logout failed:', response.status)
+      }
+    } catch (error) {
+      console.warn('BuckyOS browser sso_logout failed:', error)
+    }
+  }
+
   private async refreshBrowserSessionToken(): Promise<string | null> {
     if (!hasFetchRuntime()) {
       return this.sessionToken
