@@ -24,6 +24,9 @@ declare class RPCError extends Error {
 type Fetcher = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 type SessionTokenProvider = () => Promise<string | null | undefined> | string | null | undefined;
 type SessionTokenListener = (token: string | null) => void;
+interface KRPCCallOptions {
+    sessionToken?: string | null;
+}
 interface KRPCClientOptions {
     fetcher?: Fetcher;
     sessionTokenProvider?: SessionTokenProvider;
@@ -38,16 +41,20 @@ declare class kRPCClient {
     private fetcher;
     private sessionTokenProvider;
     private onSessionTokenChanged;
+    private sessionTokenOverride;
     constructor(url: string, token?: string | null, seq?: number | null, options?: KRPCClientOptions);
-    call<TResult, TParams>(method: string, params: TParams): Promise<TResult>;
+    call<TResult, TParams>(method: string, params: TParams, options?: KRPCCallOptions): Promise<TResult>;
+    callWithSessionToken<TResult, TParams>(sessionToken: string | null, method: string, params: TParams): Promise<TResult>;
     setSeq(seq: number): void;
     resetSessionToken(): void;
     setSessionToken(token: string | null): void;
     getSessionToken(): string | null;
     private buildRequest;
     private parseSys;
+    private hasCallSessionToken;
+    private prepareSessionToken;
     private _call;
 }
 export { kRPCClient, RPCProtocolType, RPCError };
-export type { KRPCRequest, KRPCResponse, KRPCSys, KRPCClientOptions };
+export type { KRPCRequest, KRPCResponse, KRPCSys, KRPCCallOptions, KRPCClientOptions };
 //# sourceMappingURL=krpc_client.d.ts.map

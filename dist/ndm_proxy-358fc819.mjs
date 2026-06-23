@@ -24,24 +24,30 @@ class kRPCClient {
     this.fetcher = options.fetcher ?? defaultFetcher$1;
     this.sessionTokenProvider = options.sessionTokenProvider ?? null;
     this.onSessionTokenChanged = options.onSessionTokenChanged ?? null;
+    this.sessionTokenOverride = void 0;
   }
-  async call(method, params) {
-    return this._call(method, params);
+  async call(method, params, options = {}) {
+    return this._call(method, params, options);
+  }
+  async callWithSessionToken(sessionToken, method, params) {
+    return this._call(method, params, { sessionToken });
   }
   setSeq(seq) {
     this.seq = seq;
   }
   resetSessionToken() {
     this.sessionToken = this.initToken;
+    this.sessionTokenOverride = void 0;
   }
   setSessionToken(token) {
-    this.sessionToken = token;
+    this.sessionToken = token || null;
+    this.sessionTokenOverride = token || null;
   }
   getSessionToken() {
     return this.sessionToken;
   }
-  buildRequest(method, params, seq) {
-    const sys = this.sessionToken ? [seq, this.sessionToken] : [seq];
+  buildRequest(method, params, seq, sessionToken) {
+    const sys = sessionToken ? [seq, sessionToken] : [seq];
     return {
       method,
       params,
@@ -74,16 +80,41 @@ class kRPCClient {
     }
     return null;
   }
-  async _call(method, params) {
+  hasCallSessionToken(options) {
+    return Object.prototype.hasOwnProperty.call(options, "sessionToken");
+  }
+  async prepareSessionToken(options) {
+    if (this.hasCallSessionToken(options)) {
+      return {
+        sessionToken: options.sessionToken || null,
+        isTemporary: true,
+        isOverride: false
+      };
+    }
+    if (this.sessionTokenOverride !== void 0) {
+      return {
+        sessionToken: this.sessionTokenOverride,
+        isTemporary: false,
+        isOverride: true
+      };
+    }
     if (this.sessionTokenProvider) {
       const preparedToken = await this.sessionTokenProvider();
       if (preparedToken !== void 0) {
         this.sessionToken = preparedToken || null;
       }
     }
+    return {
+      sessionToken: this.sessionToken,
+      isTemporary: false,
+      isOverride: false
+    };
+  }
+  async _call(method, params, options) {
+    const preparedSession = await this.prepareSessionToken(options);
     const currentSeq = this.seq;
     this.seq += 1;
-    const requestBody = this.buildRequest(method, params, currentSeq);
+    const requestBody = this.buildRequest(method, params, currentSeq, preparedSession.sessionToken);
     try {
       const response = await this.fetcher(this.serverUrl, {
         method: "POST",
@@ -98,9 +129,15 @@ class kRPCClient {
       const rpcResponse = await response.json();
       const updatedToken = this.parseSys(rpcResponse.sys, currentSeq);
       if (updatedToken) {
-        this.sessionToken = updatedToken;
-        if (this.onSessionTokenChanged) {
-          this.onSessionTokenChanged(updatedToken);
+        if (preparedSession.isOverride) {
+          this.sessionToken = updatedToken;
+          this.sessionTokenOverride = updatedToken;
+        } else if (preparedSession.isTemporary) {
+        } else {
+          this.sessionToken = updatedToken;
+          if (this.onSessionTokenChanged) {
+            this.onSessionTokenChanged(updatedToken);
+          }
         }
       }
       if ("error" in rpcResponse && rpcResponse.error) {
@@ -6044,4 +6081,4 @@ export {
   WorkflowClient as y,
   AICC_SERVICE_UNIQUE_ID as z
 };
-//# sourceMappingURL=ndm_proxy-07ca9fa9.mjs.map
+//# sourceMappingURL=ndm_proxy-358fc819.mjs.map

@@ -35,6 +35,10 @@ type Fetcher = (input: RequestInfo | URL, init?: RequestInit) => Promise<Respons
 type SessionTokenProvider = () => Promise<string | null | undefined> | string | null | undefined
 type SessionTokenListener = (token: string | null) => void
 
+interface KRPCCallOptions {
+  sessionToken?: string | null
+}
+
 interface KRPCClientOptions {
   fetcher?: Fetcher
   sessionTokenProvider?: SessionTokenProvider
@@ -62,6 +66,7 @@ class kRPCClient {
   private fetcher: Fetcher
   private sessionTokenProvider: SessionTokenProvider | null
   private onSessionTokenChanged: SessionTokenListener | null
+  private sessionTokenOverride: string | null | undefined
 
   constructor(url: string, token: string | null = null, seq: number | null = null, options: KRPCClientOptions = {}) {
     this.serverUrl = url
@@ -72,10 +77,19 @@ class kRPCClient {
     this.fetcher = options.fetcher ?? defaultFetcher
     this.sessionTokenProvider = options.sessionTokenProvider ?? null
     this.onSessionTokenChanged = options.onSessionTokenChanged ?? null
+    this.sessionTokenOverride = undefined
   }
 
-  async call<TResult, TParams>(method: string, params: TParams): Promise<TResult> {
-    return this._call<TResult, TParams>(method, params)
+  async call<TResult, TParams>(method: string, params: TParams, options: KRPCCallOptions = {}): Promise<TResult> {
+    return this._call<TResult, TParams>(method, params, options)
+  }
+
+  async callWithSessionToken<TResult, TParams>(
+    sessionToken: string | null,
+    method: string,
+    params: TParams,
+  ): Promise<TResult> {
+    return this._call<TResult, TParams>(method, params, { sessionToken })
   }
 
   setSeq(seq: number) {
@@ -84,18 +98,25 @@ class kRPCClient {
 
   resetSessionToken() {
     this.sessionToken = this.initToken
+    this.sessionTokenOverride = undefined
   }
 
   setSessionToken(token: string | null) {
-    this.sessionToken = token
+    this.sessionToken = token || null
+    this.sessionTokenOverride = token || null
   }
 
   getSessionToken(): string | null {
     return this.sessionToken
   }
 
-  private buildRequest<TParams>(method: string, params: TParams, seq: number): KRPCRequest<TParams> {
-    const sys: KRPCSys = this.sessionToken ? [seq, this.sessionToken] : [seq]
+  private buildRequest<TParams>(
+    method: string,
+    params: TParams,
+    seq: number,
+    sessionToken: string | null,
+  ): KRPCRequest<TParams> {
+    const sys: KRPCSys = sessionToken ? [seq, sessionToken] : [seq]
     return {
       method,
       params,
@@ -135,7 +156,31 @@ class kRPCClient {
     return null
   }
 
-  private async _call<TResult, TParams>(method: string, params: TParams): Promise<TResult> {
+  private hasCallSessionToken(options: KRPCCallOptions): boolean {
+    return Object.prototype.hasOwnProperty.call(options, 'sessionToken')
+  }
+
+  private async prepareSessionToken(options: KRPCCallOptions): Promise<{
+    sessionToken: string | null
+    isTemporary: boolean
+    isOverride: boolean
+  }> {
+    if (this.hasCallSessionToken(options)) {
+      return {
+        sessionToken: options.sessionToken || null,
+        isTemporary: true,
+        isOverride: false,
+      }
+    }
+
+    if (this.sessionTokenOverride !== undefined) {
+      return {
+        sessionToken: this.sessionTokenOverride,
+        isTemporary: false,
+        isOverride: true,
+      }
+    }
+
     if (this.sessionTokenProvider) {
       const preparedToken = await this.sessionTokenProvider()
       if (preparedToken !== undefined) {
@@ -143,9 +188,22 @@ class kRPCClient {
       }
     }
 
+    return {
+      sessionToken: this.sessionToken,
+      isTemporary: false,
+      isOverride: false,
+    }
+  }
+
+  private async _call<TResult, TParams>(
+    method: string,
+    params: TParams,
+    options: KRPCCallOptions,
+  ): Promise<TResult> {
+    const preparedSession = await this.prepareSessionToken(options)
     const currentSeq = this.seq
     this.seq += 1
-    const requestBody = this.buildRequest(method, params, currentSeq)
+    const requestBody = this.buildRequest(method, params, currentSeq, preparedSession.sessionToken)
 
     try {
       const response = await this.fetcher(this.serverUrl, {
@@ -164,9 +222,16 @@ class kRPCClient {
 
       const updatedToken = this.parseSys(rpcResponse.sys, currentSeq)
       if (updatedToken) {
-        this.sessionToken = updatedToken
-        if (this.onSessionTokenChanged) {
-          this.onSessionTokenChanged(updatedToken)
+        if (preparedSession.isOverride) {
+          this.sessionToken = updatedToken
+          this.sessionTokenOverride = updatedToken
+        } else if (preparedSession.isTemporary) {
+          // Per-call temporary tokens must not replace the managed client token.
+        } else {
+          this.sessionToken = updatedToken
+          if (this.onSessionTokenChanged) {
+            this.onSessionTokenChanged(updatedToken)
+          }
         }
       }
 
@@ -190,4 +255,4 @@ class kRPCClient {
 }
 
 export { kRPCClient, RPCProtocolType, RPCError }
-export type { KRPCRequest, KRPCResponse, KRPCSys, KRPCClientOptions }
+export type { KRPCRequest, KRPCResponse, KRPCSys, KRPCCallOptions, KRPCClientOptions }

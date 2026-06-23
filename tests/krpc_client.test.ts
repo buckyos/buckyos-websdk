@@ -43,6 +43,132 @@ describe('kRPCClient', () => {
     })
   })
 
+  it('uses per-call session token without mutating the managed token', async () => {
+    const fetcher = jest.fn()
+      .mockResolvedValueOnce(makeResponse({
+        result: { ok: true },
+        sys: [10, 'response-token'],
+      }))
+      .mockResolvedValueOnce(makeResponse({
+        result: { ok: true },
+        sys: [11],
+      }))
+    const sessionTokenProvider = jest.fn().mockReturnValue('provider-token')
+    const onSessionTokenChanged = jest.fn()
+
+    const client = new kRPCClient('/kapi/test/', 'init-token', 10, {
+      fetcher: fetcher,
+      sessionTokenProvider,
+      onSessionTokenChanged,
+    })
+
+    await client.call('test', {}, { sessionToken: 'temporary-token' })
+
+    expect(sessionTokenProvider).not.toHaveBeenCalled()
+    expect(onSessionTokenChanged).not.toHaveBeenCalled()
+    expect(client.getSessionToken()).toBe('init-token')
+    expect(JSON.parse((fetcher.mock.calls[0][1] as RequestInit).body as string)).toEqual({
+      method: 'test',
+      params: {},
+      sys: [10, 'temporary-token'],
+    })
+
+    await client.call('next', {})
+
+    expect(sessionTokenProvider).toHaveBeenCalledTimes(1)
+    expect(JSON.parse((fetcher.mock.calls[1][1] as RequestInit).body as string)).toEqual({
+      method: 'next',
+      params: {},
+      sys: [11, 'provider-token'],
+    })
+  })
+
+  it('supports callWithSessionToken as a per-call convenience wrapper', async () => {
+    const fetcher = jest.fn().mockResolvedValue(makeResponse({
+      result: { ok: true },
+      sys: [3],
+    }))
+    const sessionTokenProvider = jest.fn().mockReturnValue('provider-token')
+
+    const client = new kRPCClient('/kapi/test/', null, 3, {
+      fetcher: fetcher,
+      sessionTokenProvider,
+    })
+
+    await client.callWithSessionToken('temporary-token', 'test', {})
+
+    expect(sessionTokenProvider).not.toHaveBeenCalled()
+    expect(JSON.parse((fetcher.mock.calls[0][1] as RequestInit).body as string)).toEqual({
+      method: 'test',
+      params: {},
+      sys: [3, 'temporary-token'],
+    })
+  })
+
+  it('keeps explicitly set session token ahead of provider until reset', async () => {
+    const fetcher = jest.fn()
+      .mockResolvedValueOnce(makeResponse({
+        result: { ok: true },
+        sys: [20, 'updated-override-token'],
+      }))
+      .mockResolvedValueOnce(makeResponse({
+        result: { ok: true },
+        sys: [21],
+      }))
+    const sessionTokenProvider = jest.fn().mockReturnValue('provider-token')
+    const onSessionTokenChanged = jest.fn()
+
+    const client = new kRPCClient('/kapi/test/', 'init-token', 20, {
+      fetcher: fetcher,
+      sessionTokenProvider,
+      onSessionTokenChanged,
+    })
+
+    client.setSessionToken('override-token')
+    await client.call('test', {})
+
+    expect(sessionTokenProvider).not.toHaveBeenCalled()
+    expect(onSessionTokenChanged).not.toHaveBeenCalled()
+    expect(client.getSessionToken()).toBe('updated-override-token')
+    expect(JSON.parse((fetcher.mock.calls[0][1] as RequestInit).body as string)).toEqual({
+      method: 'test',
+      params: {},
+      sys: [20, 'override-token'],
+    })
+
+    client.resetSessionToken()
+    await client.call('next', {})
+
+    expect(sessionTokenProvider).toHaveBeenCalledTimes(1)
+    expect(JSON.parse((fetcher.mock.calls[1][1] as RequestInit).body as string)).toEqual({
+      method: 'next',
+      params: {},
+      sys: [21, 'provider-token'],
+    })
+  })
+
+  it('allows per-call session token null to omit token even when provider exists', async () => {
+    const fetcher = jest.fn().mockResolvedValue(makeResponse({
+      result: { ok: true },
+      sys: [7],
+    }))
+    const sessionTokenProvider = jest.fn().mockReturnValue('provider-token')
+
+    const client = new kRPCClient('/kapi/test/', 'init-token', 7, {
+      fetcher: fetcher,
+      sessionTokenProvider,
+    })
+
+    await client.call('test', {}, { sessionToken: null })
+
+    expect(sessionTokenProvider).not.toHaveBeenCalled()
+    expect(JSON.parse((fetcher.mock.calls[0][1] as RequestInit).body as string)).toEqual({
+      method: 'test',
+      params: {},
+      sys: [7],
+    })
+  })
+
   it('throws on seq mismatch', async () => {
     const fetcher = jest.fn().mockResolvedValue(makeResponse({
       result: { ok: true },
