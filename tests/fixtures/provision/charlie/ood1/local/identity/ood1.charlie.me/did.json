@@ -3,16 +3,16 @@
     "https://www.w3.org/ns/did/v1",
     "https://buckyos.org/ns/device/v1"
   ],
-  "id": "did:dev:gubVIszw-u_d5PVTh-oc8CKAhM9C-ne5G_yUK5BDaXc",
+  "id": "did:web:ood1.charlie.me",
   "verificationMethod": [
     {
       "type": "Ed25519VerificationKey2020",
       "id": "#main_key",
-      "controller": "did:dev:gubVIszw-u_d5PVTh-oc8CKAhM9C-ne5G_yUK5BDaXc",
+      "controller": "did:web:ood1.charlie.me",
       "publicKeyJwk": {
         "kty": "OKP",
         "crv": "Ed25519",
-        "x": "gubVIszw-u_d5PVTh-oc8CKAhM9C-ne5G_yUK5BDaXc"
+        "x": "PY9uu16H74QYVRjstVxdWdAsgkoy10-74fvQhx4ddek"
       }
     }
   ],
@@ -25,12 +25,12 @@
   "capabilityInvocation": [
     "#main_key"
   ],
-  "exp": 1938983657,
-  "iat": 1781303657,
+  "exp": 1940952891,
+  "iat": 1783272891,
   "version_seq": 0,
-  "zone_did": "did:web:test.buckyos.io",
-  "owner": "did:bns:devtest",
+  "zone_did": "did:web:charlie.me",
+  "owner": "did:bns:charlie",
   "device_type": "ood",
   "name": "ood1",
-  "net_id": "wan"
+  "net_id": "portmap"
 }

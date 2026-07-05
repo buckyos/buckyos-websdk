@@ -25,9 +25,9 @@
   "capabilityInvocation": [
     "#main_key"
   ],
-  "exp": 2096663657,
-  "iat": 1781303657,
+  "exp": 2098632891,
+  "iat": 1783272891,
   "version_seq": 0,
   "name": "alice",
-  "full_name": "alice"
+  "display_name": "alice"
 }

@@ -653,6 +653,105 @@ class ht {
     return this.P.getHMAC(t2, n2);
   }
 }
+const DID_OBJECT_SERVICE_TYPE = "DIDObjectService";
+const DID_OBJECT_SERVICE_ID = "#did-object";
+const NODE_IDENTITY_SCHEMA_V2 = "buckyos.node_identity.v2";
+function isRecord(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function isVerificationMethodArray(value) {
+  return Array.isArray(value);
+}
+function isServiceArray(value) {
+  return value === void 0 || Array.isArray(value);
+}
+function isDIDContext(value) {
+  if (typeof value === "string") {
+    return true;
+  }
+  return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+function isW3CDIDDocumentBase(value) {
+  if (!isRecord(value)) {
+    return false;
+  }
+  return isDIDContext(value["@context"]) && typeof value.id === "string" && isVerificationMethodArray(value.verificationMethod) && Array.isArray(value.authentication) && typeof value.exp === "number" && typeof value.iat === "number" && isServiceArray(value.service);
+}
+function isBuckyOSOwnerDocument(value) {
+  return isW3CDIDDocumentBase(value) && typeof value.name === "string" && (typeof value.display_name === "string" || typeof value.displayName === "string" || typeof value.full_name === "string");
+}
+function isBuckyOSDeviceMiniDocument(value) {
+  return isRecord(value) && typeof value.n === "string" && typeof value.x === "string" && typeof value.exp === "number";
+}
+function isBuckyOSZoneBootDocument(value) {
+  return isRecord(value) && Array.isArray(value.oods) && value.oods.every((item) => typeof item === "string") && typeof value.exp === "number";
+}
+function isBuckyOSNodeIdentityConfig(value) {
+  return isRecord(value) && typeof value.zone_did === "string" && isRecord(value.owner_public_key) && typeof value.owner_did === "string" && typeof value.device_doc_jwt === "string" && typeof value.device_mini_doc_jwt === "string" && typeof value.zone_iat === "number";
+}
+function isBuckyOSLocalNodeIdentityConfig(value) {
+  return isRecord(value) && value.schema === NODE_IDENTITY_SCHEMA_V2 && typeof value.zone_did === "string" && typeof value.owner_did === "string" && isRecord(value.owner_public_key) && typeof value.device_name === "string" && typeof value.device_did === "string" && typeof value.zone_iat === "number";
+}
+function isBuckyOSDeviceDocument(value) {
+  return isW3CDIDDocumentBase(value) && typeof value.owner === "string" && typeof value.device_type === "string" && typeof value.name === "string";
+}
+function isBuckyOSAgentDocument(value) {
+  return isW3CDIDDocumentBase(value) && typeof value.owner === "string" && isRecord(value.httpServicePorts);
+}
+function isBuckyOSZoneDocument(value) {
+  return isW3CDIDDocumentBase(value) && typeof value.hostname === "string" && typeof value.owner === "string" && Array.isArray(value.oods) && typeof value.boot_jwt === "string";
+}
+function isBuckyOSDIDObjectCard(value) {
+  if (!isRecord(value) || !isDIDContext(value["@context"]) || typeof value.id !== "string") {
+    return false;
+  }
+  const services = value.service;
+  return Array.isArray(services) && services.some((service) => isRecord(service) && service.type === DID_OBJECT_SERVICE_TYPE);
+}
+function isBuckyOSZoneConfig(value) {
+  return isRecord(value) && typeof value.zone_document === "string";
+}
+function parseW3CDIDDocumentBase(value) {
+  return isW3CDIDDocumentBase(value) ? value : null;
+}
+function parseBuckyOSOwnerDocument(value) {
+  return isBuckyOSOwnerDocument(value) ? value : null;
+}
+function parseBuckyOSDeviceMiniDocument(value) {
+  return isBuckyOSDeviceMiniDocument(value) ? value : null;
+}
+function parseBuckyOSDIDDocument(value) {
+  if (isBuckyOSOwnerDocument(value)) {
+    return value;
+  }
+  if (isBuckyOSAgentDocument(value)) {
+    return value;
+  }
+  if (isBuckyOSDeviceDocument(value)) {
+    return value;
+  }
+  if (isBuckyOSZoneDocument(value)) {
+    return value;
+  }
+  if (isBuckyOSDIDObjectCard(value)) {
+    return value;
+  }
+  return null;
+}
+function getDidMethod(did) {
+  if (typeof did !== "string" || !did.startsWith("did:")) {
+    return null;
+  }
+  const parts = did.split(":");
+  return parts.length >= 3 ? parts[1] : null;
+}
+function getDidIdentifier(did) {
+  if (typeof did !== "string" || !did.startsWith("did:")) {
+    return null;
+  }
+  const parts = did.split(":");
+  return parts.length >= 3 ? parts.slice(2).join(":") : null;
+}
 const DID_CORE_CONTEXT = "https://www.w3.org/ns/did/v1";
 const BUCKYOS_CONTEXT_BASE = "https://buckyos.org/ns";
 const DID_DOC_AUTHKEY = "#auth-key";
@@ -1041,12 +1140,64 @@ class DID {
   toString() {
     return `did:${this.method}:${this.id}`;
   }
+  isNamedObjId() {
+    return this.method === "dev";
+  }
   getPathFromId() {
     const parts = this.id.split(":");
     if (parts.length > 1) {
       return parts.slice(1).join("/");
     }
     return null;
+  }
+  // Mirrors Rust DID::upper_did: strip the left-most name label to get the
+  // parent DID. Ports (%3A-encoded) and path segments do not take part in the
+  // name hierarchy. Returns null when the parent is not independently
+  // resolvable (top-level domain, IP address, first-level bns name, key DIDs).
+  upperDid() {
+    const name = (this.id.split(":")[0] ?? "").split("%")[0] ?? "";
+    switch (this.method) {
+      case "web": {
+        if (isValidIpAddress(name)) {
+          return null;
+        }
+        const dotIndex = name.indexOf(".");
+        if (dotIndex < 0) {
+          return null;
+        }
+        const upper = name.slice(dotIndex + 1);
+        if (!upper.includes(".")) {
+          return null;
+        }
+        return new DID("web", upper);
+      }
+      case "bns": {
+        const dotIndex = name.indexOf(".");
+        if (dotIndex < 0) {
+          return null;
+        }
+        return new DID("bns", name.slice(dotIndex + 1));
+      }
+      default:
+        return null;
+    }
+  }
+  // Mirrors Rust DID::to_filename: percent-encode the raw host uri so it is a
+  // safe single-path-component file name.
+  toFilename() {
+    const HEX = "0123456789ABCDEF";
+    const rawHostUri = this.toRawHostUri();
+    const bytes = utf8Encode$1(rawHostUri);
+    let filename = "";
+    for (const byte of bytes) {
+      const ch = String.fromCharCode(byte);
+      if (/[A-Za-z0-9._-]/.test(ch)) {
+        filename += ch;
+      } else {
+        filename += `%${HEX[byte >> 4]}${HEX[byte & 15]}`;
+      }
+    }
+    return filename;
   }
   // For did:dev the id is the base64url Ed25519 public key.
   getEd25519AuthKey() {
@@ -1189,7 +1340,7 @@ function pruneUndefined(obj) {
 function asDid(value) {
   return value instanceof DID ? value : DID.fromStr(value);
 }
-function newOwnerConfig(params) {
+function newOwnerDocument(params) {
   const did = asDid(params.did);
   const now = params.now ?? buckyosGetUnixTimestamp();
   const didStr = did.toString();
@@ -1211,21 +1362,101 @@ function newOwnerConfig(params) {
     iat: now,
     version_seq: 0,
     name: params.name,
-    full_name: params.fullName
+    display_name: params.displayName
   };
 }
-function setOwnerDefaultZoneDid(ownerConfig, defaultZoneDid) {
-  const zoneDid = asDid(defaultZoneDid);
-  ownerConfig.default_zone_did = zoneDid.toString();
-  const services = ownerConfig.service ?? [];
-  services.push({
-    id: `${ownerConfig.id}#lastDoc`,
-    type: "DIDDoc",
-    serviceEndpoint: `https://${zoneDid.toHostName()}/resolve/${ownerConfig.id}`
-  });
-  ownerConfig.service = services;
+function newOwnerDocumentByPkx(pkx, hostname) {
+  const parts = pkx.split(":");
+  if (parts.length === 0 || !parts[0]) {
+    throw new Error("namelib: invalid pkx: empty x");
+  }
+  const x2 = parts[0];
+  if (!/^[A-Za-z0-9_-]+$/.test(x2)) {
+    throw new Error("namelib: invalid pkx: x must be base64url");
+  }
+  if (base64UrlDecodeToBytes(x2).length !== 32) {
+    throw new Error(`namelib: invalid pkx: x length must be 32 bytes`);
+  }
+  const jwk = createJwkByX(x2);
+  if (parts.length === 1) {
+    const ownerDid = DID.fromStr(hostname);
+    const ownerName = ownerDid.id;
+    return newOwnerDocument({
+      did: ownerDid,
+      name: ownerName,
+      displayName: `${ownerName}@${hostname}`,
+      publicKeyJwk: jwk
+    });
+  }
+  if (parts.length >= 3) {
+    const ownerName = parts[2];
+    return newOwnerDocument({
+      did: new DID(parts[1], parts[2]),
+      name: ownerName,
+      displayName: `${ownerName}@${hostname}`,
+      publicKeyJwk: jwk
+    });
+  }
+  throw new Error(`namelib: invalid pkx: ${pkx}`);
 }
-function newZoneConfig(params) {
+function ownerDocumentSetDefaultZoneDid(ownerDoc, defaultZoneDid) {
+  const zoneDid = asDid(defaultZoneDid);
+  const zoneDidStr = zoneDid.toString();
+  const bindedZoneList = (ownerDoc.binded_zone_list ?? []).filter((did) => did !== zoneDidStr);
+  bindedZoneList.unshift(zoneDidStr);
+  ownerDoc.binded_zone_list = bindedZoneList;
+  const lastDocServiceId = `${ownerDoc.id}#lastDoc`;
+  const services = (ownerDoc.service ?? []).filter((service) => service.id !== lastDocServiceId);
+  services.push({
+    id: lastDocServiceId,
+    type: "DIDDoc",
+    serviceEndpoint: `https://${zoneDid.toHostName()}/resolve/${ownerDoc.id}`
+  });
+  ownerDoc.service = services;
+}
+function ownerDocumentGetDefaultZoneDid(ownerDoc) {
+  var _a;
+  return ((_a = ownerDoc.binded_zone_list) == null ? void 0 : _a[0]) ?? null;
+}
+function ownerDocumentIsBoundToZone(ownerDoc, zoneDid) {
+  const zoneDidStr = asDid(zoneDid).toString();
+  return (ownerDoc.binded_zone_list ?? []).includes(zoneDidStr);
+}
+function ownerDocumentGetHistoricalKeys(ownerDoc) {
+  return ownerDoc.verificationMethod.filter((method) => method.id !== "#main_key").map((method) => [method.id, method.publicKeyJwk]);
+}
+function ownerDocumentValidateJwtRevocation(ownerDoc, docType, doc) {
+  if (ownerDoc.mini_version_seq === void 0 && ownerDoc.valid_iat === void 0) {
+    return;
+  }
+  if (doc.type !== "jwt") {
+    return;
+  }
+  const docValue = encodedDocumentToJsonValue(doc);
+  if (ownerDoc.mini_version_seq !== void 0) {
+    const versionSeq = typeof (docValue == null ? void 0 : docValue.version_seq) === "number" ? docValue.version_seq : void 0;
+    if (versionSeq === void 0) {
+      throw new Error(`namelib: ${docType} JWT missing version_seq required by owner revocation policy`);
+    }
+    if (versionSeq <= ownerDoc.mini_version_seq) {
+      throw new Error(
+        `namelib: ${docType} JWT version_seq ${versionSeq} is not greater than owner mini_version_seq ${ownerDoc.mini_version_seq}`
+      );
+    }
+  }
+  if (ownerDoc.valid_iat !== void 0) {
+    const iat = typeof (docValue == null ? void 0 : docValue.iat) === "number" ? docValue.iat : void 0;
+    if (iat === void 0) {
+      throw new Error(`namelib: ${docType} JWT missing iat required by owner revocation policy`);
+    }
+    if (iat <= ownerDoc.valid_iat) {
+      throw new Error(
+        `namelib: ${docType} JWT iat ${iat} is not greater than owner valid_iat ${ownerDoc.valid_iat}`
+      );
+    }
+  }
+}
+function newZoneDocument(params) {
   const id = asDid(params.id);
   const ownerDid = asDid(params.ownerDid);
   const now = params.now ?? buckyosGetUnixTimestamp();
@@ -1260,24 +1491,36 @@ function newZoneConfig(params) {
     boot_jwt: ""
   };
 }
-function zoneConfigInitByBootConfig(zoneConfig, bootConfig, bootJwt) {
-  zoneConfig.boot_jwt = bootJwt;
-  zoneConfig.id = bootConfig.id ?? zoneConfig.id;
-  zoneConfig.oods = [...bootConfig.oods];
-  if (bootConfig.sn !== void 0) {
-    zoneConfig.sn = bootConfig.sn;
+function zoneDocumentInitByBootDocument(zoneDoc, bootDoc, bootJwt) {
+  zoneDoc.boot_jwt = bootJwt;
+  zoneDoc.id = bootDoc.id ?? zoneDoc.id;
+  zoneDoc.oods = [...bootDoc.oods];
+  if (bootDoc.sn !== void 0) {
+    zoneDoc.sn = bootDoc.sn;
   } else {
-    delete zoneConfig.sn;
+    delete zoneDoc.sn;
   }
-  zoneConfig.exp = bootConfig.exp;
-  zoneConfig.iat = bootConfig.exp - DEFAULT_EXPIRE_TIME;
-  zoneConfig.version_seq = 0;
-  zoneConfig.owner = bootConfig.owner ?? DID.undefined().toString();
-  if (bootConfig.owner_key !== void 0) {
-    zoneConfig.verificationMethod[0].publicKeyJwk = bootConfig.owner_key;
+  zoneDoc.exp = bootDoc.exp;
+  zoneDoc.iat = bootDoc.exp - DEFAULT_EXPIRE_TIME;
+  zoneDoc.version_seq = 0;
+  zoneDoc.owner = bootDoc.owner ?? DID.undefined().toString();
+  if (bootDoc.owner_key !== void 0) {
+    zoneDoc.verificationMethod[0].publicKeyJwk = bootDoc.owner_key;
   }
 }
-function newZoneBootConfig(params) {
+function zoneDocumentGetDefaultGateway(zoneDoc) {
+  for (const oodString of zoneDoc.oods) {
+    const ood = parseOODDescription(oodString);
+    if (oodNodeTypeIsGateway(ood.nodeType)) {
+      return ood.name;
+    }
+  }
+  return null;
+}
+function zoneDocumentGetSnApiUrl(zoneDoc) {
+  return zoneDoc.sn !== void 0 ? `https://${zoneDoc.sn}/kapi/sn` : null;
+}
+function newZoneBootDocument(params) {
   return pruneUndefined({
     id: params.id !== void 0 ? asDid(params.id).toString() : void 0,
     oods: [...params.oods],
@@ -1287,29 +1530,38 @@ function newZoneBootConfig(params) {
     owner_key: params.ownerKey
   });
 }
-async function encodeZoneBootConfig(bootConfig, ownerPrivateKeyPem) {
-  const { id, oods, sn, exp, owner, owner_key, ...extra } = bootConfig;
+async function encodeZoneBootDocument(bootDoc, ownerPrivateKeyPem) {
+  const { id, oods, sn, exp, owner, owner_key, ...extra } = bootDoc;
   const payload = pruneUndefined({ id, oods, sn, exp, owner, ...extra, owner_key });
   return signJwtEdDSA(payload, ownerPrivateKeyPem);
 }
-async function decodeZoneBootConfig(jwt, publicKeyJwk) {
+async function decodeZoneBootDocument(jwt, publicKeyJwk) {
   const payload = publicKeyJwk ? await verifyJwtEdDSA(jwt, publicKeyJwk) : decodeJwtClaimWithoutVerify(jwt);
   return payload;
 }
-function zoneBootConfigToZoneConfig(bootConfig, bootJwt) {
-  if (!bootConfig.id || !bootConfig.owner_key) {
-    throw new Error("namelib: zone boot config needs id and owner_key to build zone config");
+function zoneBootDocumentGetGatewayName(bootDoc) {
+  for (const oodString of bootDoc.oods) {
+    const ood = parseOODDescription(oodString);
+    if (oodNodeTypeIsGateway(ood.nodeType)) {
+      return ood.name;
+    }
   }
-  const ownerDid = bootConfig.owner ? DID.fromStr(bootConfig.owner) : DID.undefined();
-  const zoneConfig = newZoneConfig({
-    id: bootConfig.id,
-    ownerDid,
-    publicKeyJwk: bootConfig.owner_key
-  });
-  zoneConfigInitByBootConfig(zoneConfig, bootConfig, bootJwt);
-  return zoneConfig;
+  return "";
 }
-function newDeviceConfig(params) {
+function zoneBootDocumentToZoneDocument(bootDoc, bootJwt) {
+  if (!bootDoc.id || !bootDoc.owner_key) {
+    throw new Error("namelib: zone boot document needs id and owner_key to build zone document");
+  }
+  const ownerDid = bootDoc.owner ? DID.fromStr(bootDoc.owner) : DID.undefined();
+  const zoneDoc = newZoneDocument({
+    id: bootDoc.id,
+    ownerDid,
+    publicKeyJwk: bootDoc.owner_key
+  });
+  zoneDocumentInitByBootDocument(zoneDoc, bootDoc, bootJwt);
+  return zoneDoc;
+}
+function newDeviceDocument(params) {
   const now = params.now ?? buckyosGetUnixTimestamp();
   const did = `did:dev:${params.pkx}`;
   return {
@@ -1334,12 +1586,12 @@ function newDeviceConfig(params) {
     name: params.name
   };
 }
-function newDeviceConfigByJwk(name, publicKeyJwk, now) {
-  return newDeviceConfig({ name, pkx: getXFromJwk(publicKeyJwk), now });
+function newDeviceDocumentByJwk(name, publicKeyJwk, now) {
+  return newDeviceDocument({ name, pkx: getXFromJwk(publicKeyJwk), now });
 }
-function newDeviceConfigByMiniConfig(miniConfigJwt, miniConfig, zoneDid, ownerDid) {
-  const did = `did:dev:${miniConfig.x}`;
-  const config = {
+function newDeviceDocumentByMiniDocument(miniDocJwt, miniDoc, zoneDid, ownerDid) {
+  const did = `did:dev:${miniDoc.x}`;
+  const deviceDoc = {
     "@context": buckyosContext("device"),
     id: did,
     verificationMethod: [
@@ -1347,33 +1599,33 @@ function newDeviceConfigByMiniConfig(miniConfigJwt, miniConfig, zoneDid, ownerDi
         type: "Ed25519VerificationKey2020",
         id: "#main_key",
         controller: did,
-        publicKeyJwk: createJwkByX(miniConfig.x)
+        publicKeyJwk: createJwkByX(miniDoc.x)
       }
     ],
     authentication: ["#main_key"],
     assertion_method: ["#main_key"],
     capabilityInvocation: ["#main_key"],
-    exp: miniConfig.exp,
-    iat: miniConfig.exp - DEFAULT_EXPIRE_TIME,
+    exp: miniDoc.exp,
+    iat: miniDoc.exp - DEFAULT_EXPIRE_TIME,
     version_seq: 0,
     zone_did: asDid(zoneDid).toString(),
     owner: asDid(ownerDid).toString(),
     device_type: "ood",
-    device_mini_config_jwt: miniConfigJwt,
-    name: miniConfig.n
+    device_mini_document_jwt: miniDocJwt,
+    name: miniDoc.n
   };
-  if (miniConfig.p !== void 0) {
-    config.rtcp_port = miniConfig.p;
+  if (miniDoc.p !== void 0) {
+    deviceDoc.rtcp_port = miniDoc.p;
   }
-  return config;
+  return deviceDoc;
 }
-async function encodeDeviceConfig(deviceConfig, ownerPrivateKeyPem) {
-  if (deviceConfig.version_seq === void 0) {
-    throw new Error("namelib: DeviceConfig version_seq is required when encoding as JWT");
+async function encodeDeviceDocument(deviceDoc, ownerPrivateKeyPem) {
+  if (deviceDoc.version_seq === void 0) {
+    throw new Error("namelib: DeviceDocument version_seq is required when encoding as JWT");
   }
-  return signJwtEdDSA(deviceConfigPayload(deviceConfig), ownerPrivateKeyPem);
+  return signJwtEdDSA(deviceDocumentPayload(deviceDoc), ownerPrivateKeyPem);
 }
-function deviceConfigPayload(config) {
+function deviceDocumentPayload(doc) {
   const {
     "@context": context,
     id,
@@ -1386,10 +1638,11 @@ function deviceConfigPayload(config) {
     iat,
     version_seq,
     keyScope,
+    "buckyos:scopes": buckyosScopes,
     zone_did,
     owner,
     device_type,
-    device_mini_config_jwt,
+    device_mini_document_jwt,
     name,
     rtcp_port,
     ips,
@@ -1398,7 +1651,8 @@ function deviceConfigPayload(config) {
     support_container,
     capbilities,
     ...extra
-  } = config;
+  } = doc;
+  const keyScopeValue = keyScope ?? buckyosScopes;
   return pruneUndefined({
     "@context": context,
     id,
@@ -1411,11 +1665,11 @@ function deviceConfigPayload(config) {
     iat,
     version_seq,
     ...extra,
-    keyScope: keyScope && Object.keys(keyScope).length > 0 ? keyScope : void 0,
+    keyScope: keyScopeValue && Object.keys(keyScopeValue).length > 0 ? keyScopeValue : void 0,
     zone_did,
     owner,
     device_type,
-    device_mini_config_jwt,
+    device_mini_document_jwt,
     name,
     rtcp_port,
     ips: ips && ips.length > 0 ? ips : void 0,
@@ -1425,14 +1679,14 @@ function deviceConfigPayload(config) {
     capbilities: capbilities && Object.keys(capbilities).length > 0 ? capbilities : void 0
   });
 }
-async function decodeDeviceConfig(jwt, publicKeyJwk) {
+async function decodeDeviceDocument(jwt, publicKeyJwk) {
   const payload = publicKeyJwk ? await verifyJwtEdDSA(jwt, publicKeyJwk) : decodeJwtClaimWithoutVerify(jwt);
   if (payload.version_seq === void 0) {
-    throw new Error("namelib: DeviceConfig version_seq is required when decoding from JWT");
+    throw new Error("namelib: DeviceDocument version_seq is required when decoding from JWT");
   }
   return payload;
 }
-function newDeviceMiniConfig(params) {
+function newDeviceMiniDocument(params) {
   return pruneUndefined({
     n: params.name,
     x: params.x,
@@ -1440,24 +1694,24 @@ function newDeviceMiniConfig(params) {
     exp: params.exp
   });
 }
-function newDeviceMiniConfigByDeviceConfig(deviceConfig) {
-  const defaultKey = deviceConfig.verificationMethod.find((method) => method.id === "#main_key");
+function newDeviceMiniDocumentByDeviceDocument(deviceDoc) {
+  const defaultKey = deviceDoc.verificationMethod.find((method) => method.id === "#main_key");
   if (!defaultKey) {
-    throw new Error("namelib: device config has no #main_key verification method");
+    throw new Error("namelib: device document has no #main_key verification method");
   }
-  return newDeviceMiniConfig({
-    name: deviceConfig.name,
+  return newDeviceMiniDocument({
+    name: deviceDoc.name,
     x: getXFromJwk(defaultKey.publicKeyJwk),
-    rtcpPort: deviceConfig.rtcp_port,
-    exp: deviceConfig.exp
+    rtcpPort: deviceDoc.rtcp_port,
+    exp: deviceDoc.exp
   });
 }
-async function deviceMiniConfigToJwt(miniConfig, ownerPrivateKeyPem) {
-  const { n: n2, x: x2, p: p2, exp, ...extra } = miniConfig;
+async function deviceMiniDocumentToJwt(miniDoc, ownerPrivateKeyPem) {
+  const { n: n2, x: x2, p: p2, exp, ...extra } = miniDoc;
   const payload = pruneUndefined({ n: n2, x: x2, p: p2, exp, ...extra });
   return signJwtEdDSA(payload, ownerPrivateKeyPem);
 }
-async function deviceMiniConfigFromJwt(jwt, publicKeyJwk) {
+async function deviceMiniDocumentFromJwt(jwt, publicKeyJwk) {
   const payload = publicKeyJwk ? await verifyJwtEdDSA(jwt, publicKeyJwk) : decodeJwtClaimWithoutVerify(jwt);
   return payload;
 }
@@ -1471,13 +1725,13 @@ function newNodeIdentityConfig(params) {
     zone_iat: params.zoneIat
   };
 }
-async function encodeOwnerConfig(ownerConfig, privateKeyPem) {
-  if (ownerConfig.version_seq === void 0) {
-    throw new Error("namelib: OwnerConfig version_seq is required when encoding as JWT");
+async function encodeOwnerDocument(ownerDoc, privateKeyPem) {
+  if (ownerDoc.version_seq === void 0) {
+    throw new Error("namelib: OwnerDocument version_seq is required when encoding as JWT");
   }
-  return signJwtEdDSA(ownerConfigPayload(ownerConfig), privateKeyPem);
+  return signJwtEdDSA(ownerDocumentPayload(ownerDoc), privateKeyPem);
 }
-function ownerConfigPayload(config) {
+function ownerDocumentPayload(doc) {
   const {
     "@context": context,
     id,
@@ -1492,13 +1746,16 @@ function ownerConfigPayload(config) {
     mini_version_seq,
     valid_iat,
     keyScope,
+    "buckyos:scopes": buckyosScopes,
     name,
-    full_name,
+    display_name,
+    avatar,
     meta,
-    default_zone_did,
+    binded_zone_list,
     wallets,
     ...extra
-  } = config;
+  } = doc;
+  const keyScopeValue = keyScope ?? buckyosScopes;
   return pruneUndefined({
     "@context": context,
     id,
@@ -1513,21 +1770,22 @@ function ownerConfigPayload(config) {
     mini_version_seq,
     valid_iat,
     ...extra,
-    keyScope: keyScope && Object.keys(keyScope).length > 0 ? keyScope : void 0,
+    keyScope: keyScopeValue && Object.keys(keyScopeValue).length > 0 ? keyScopeValue : void 0,
     name,
-    full_name,
+    display_name,
+    avatar,
     meta,
-    default_zone_did,
+    binded_zone_list: binded_zone_list && binded_zone_list.length > 0 ? binded_zone_list : void 0,
     wallets: wallets && Object.keys(wallets).length > 0 ? wallets : void 0
   });
 }
-async function encodeZoneConfig(zoneConfig, ownerPrivateKeyPem) {
-  if (zoneConfig.version_seq === void 0) {
-    throw new Error("namelib: ZoneConfig version_seq is required when encoding as JWT");
+async function encodeZoneDocument(zoneDoc, ownerPrivateKeyPem) {
+  if (zoneDoc.version_seq === void 0) {
+    throw new Error("namelib: ZoneDocument version_seq is required when encoding as JWT");
   }
-  return signJwtEdDSA(zoneConfigPayload(zoneConfig), ownerPrivateKeyPem);
+  return signJwtEdDSA(zoneDocumentPayload(zoneDoc), ownerPrivateKeyPem);
 }
-function zoneConfigPayload(config) {
+function zoneDocumentPayload(doc) {
   const {
     "@context": context,
     id,
@@ -1540,16 +1798,17 @@ function zoneConfigPayload(config) {
     iat,
     version_seq,
     keyScope,
+    "buckyos:scopes": buckyosScopes,
     hostname,
     owner,
     oods,
     boot_jwt,
+    mini_device_jwts,
     devices,
     sn,
-    docker_repo_base_url,
-    verify_hub_info,
     ...extra
-  } = config;
+  } = doc;
+  const keyScopeValue = keyScope ?? buckyosScopes;
   return pruneUndefined({
     "@context": context,
     id,
@@ -1562,16 +1821,178 @@ function zoneConfigPayload(config) {
     iat,
     version_seq,
     ...extra,
-    keyScope: keyScope && Object.keys(keyScope).length > 0 ? keyScope : void 0,
+    keyScope: keyScopeValue && Object.keys(keyScopeValue).length > 0 ? keyScopeValue : void 0,
     hostname,
     owner,
     oods,
     boot_jwt,
+    mini_device_jwts: mini_device_jwts && Object.keys(mini_device_jwts).length > 0 ? mini_device_jwts : void 0,
     devices: devices && Object.keys(devices).length > 0 ? devices : void 0,
-    sn,
-    docker_repo_base_url,
-    verify_hub_info
+    sn
   });
+}
+function ownerDocumentToOrderedJson(doc) {
+  return ownerDocumentPayload(doc);
+}
+function zoneDocumentToOrderedJson(doc) {
+  return zoneDocumentPayload(doc);
+}
+function deviceDocumentToOrderedJson(doc) {
+  return deviceDocumentPayload(doc);
+}
+const KEY_SCOPE_MANUAL = "manual";
+const KEY_SCOPE_ZONE_PUBLISH = "zone:publish";
+const KEY_SCOPE_MESSAGE_CREATE = "message:create";
+const KEY_SCOPE_CONTENT_CREATE = "content:create";
+const KEY_SCOPE_AGENT_SPEND = "agent:spend";
+const KEY_SCOPE_AGENT_RECEIVE = "agent:receive";
+const KEY_SCOPE_AGENT_CREATE_CONTENT = "agent:create-content";
+function getDocumentKeyScope(doc) {
+  const keyScope = doc.keyScope ?? doc["buckyos:scopes"];
+  return keyScope ?? {};
+}
+function getDocumentAuthKey(doc, kid) {
+  const methods = doc.verificationMethod ?? [];
+  if (methods.length === 0) {
+    return null;
+  }
+  if (kid === void 0) {
+    return methods[0].publicKeyJwk;
+  }
+  const method = methods.find((item) => item.id === kid);
+  return method ? method.publicKeyJwk : null;
+}
+function getDocumentDefaultKey(doc) {
+  const method = (doc.verificationMethod ?? []).find((item) => item.id === "#main_key");
+  return method ? method.publicKeyJwk : null;
+}
+function getKeyIdsByScope(doc, scope) {
+  return getDocumentKeyScope(doc)[scope] ?? null;
+}
+function hasKeyScope(doc) {
+  return Object.keys(getDocumentKeyScope(doc)).length > 0;
+}
+function getStandardScopeKeyIds(doc) {
+  const capabilityInvocation = doc.capabilityInvocation;
+  if (Array.isArray(capabilityInvocation) && capabilityInvocation.length > 0) {
+    return capabilityInvocation;
+  }
+  const authentication = doc.authentication;
+  if (Array.isArray(authentication) && authentication.length > 0) {
+    return authentication;
+  }
+  if (isBuckyOSDIDObjectCard(doc)) {
+    const assertionMethod = doc.assertionMethod;
+    if (Array.isArray(assertionMethod) && assertionMethod.length > 0) {
+      return assertionMethod;
+    }
+  }
+  return null;
+}
+function normalizeKeyIdForLocalLookup(doc, keyId) {
+  const documentId = doc.id;
+  if (keyId.startsWith(documentId)) {
+    const localKeyId = keyId.slice(documentId.length);
+    if (localKeyId.startsWith("#")) {
+      return localKeyId;
+    }
+  }
+  return keyId;
+}
+function expandLocalKeyId(doc, keyId) {
+  if (keyId.startsWith("#")) {
+    return `${doc.id}${keyId}`;
+  }
+  return keyId;
+}
+function isSameDocumentKeyId(doc, left, right) {
+  return left === right || normalizeKeyIdForLocalLookup(doc, left) === normalizeKeyIdForLocalLookup(doc, right) || expandLocalKeyId(doc, left) === expandLocalKeyId(doc, right);
+}
+function getKeyFromKeyIds(doc, keyIds) {
+  for (const keyId of keyIds) {
+    const localKeyId = normalizeKeyIdForLocalLookup(doc, keyId);
+    const jwk = getDocumentAuthKey(doc, localKeyId);
+    if (jwk) {
+      return [keyId, jwk];
+    }
+  }
+  return null;
+}
+function getKeyByScope(doc, scope) {
+  const scopedKeyIds = getKeyIdsByScope(doc, scope);
+  if (scopedKeyIds) {
+    return getKeyFromKeyIds(doc, scopedKeyIds);
+  }
+  if (hasKeyScope(doc)) {
+    return null;
+  }
+  const standardKeyIds = getStandardScopeKeyIds(doc);
+  if (standardKeyIds) {
+    const key = getKeyFromKeyIds(doc, standardKeyIds);
+    if (key) {
+      return key;
+    }
+  }
+  const authKey = getDocumentAuthKey(doc);
+  return authKey ? ["", authKey] : null;
+}
+function isKeyAllowedInScope(doc, scope, keyId) {
+  const scopedKeyIds = getKeyIdsByScope(doc, scope);
+  if (scopedKeyIds) {
+    return scopedKeyIds.some((allowedKeyId) => isSameDocumentKeyId(doc, allowedKeyId, keyId));
+  }
+  if (hasKeyScope(doc)) {
+    return false;
+  }
+  const standardKeyIds = getStandardScopeKeyIds(doc);
+  if (standardKeyIds) {
+    return standardKeyIds.some((allowedKeyId) => isSameDocumentKeyId(doc, allowedKeyId, keyId));
+  }
+  return getDocumentAuthKey(doc, normalizeKeyIdForLocalLookup(doc, keyId)) !== null;
+}
+function parseDidDoc(doc) {
+  const encoded = typeof doc === "string" ? encodedDocumentFromStr(doc) : doc;
+  const isJwt = encoded.type === "jwt";
+  const value = encodedDocumentToJsonValue(encoded);
+  if (typeof value !== "object" || value === null) {
+    throw new Error("namelib: unknown did document");
+  }
+  const ensureVersionSeqForJwt = (docTypeName) => {
+    if (isJwt && typeof value.version_seq !== "number") {
+      throw new Error(`namelib: ${docTypeName} version_seq is required when encoding as JWT`);
+    }
+  };
+  if (value.verificationMethod !== void 0 && value.name !== void 0 && (value.display_name !== void 0 || value.displayName !== void 0 || value.full_name !== void 0)) {
+    ensureVersionSeqForJwt("OwnerDocument");
+    return { docType: "owner", doc: value };
+  }
+  if (value.httpServicePorts !== void 0) {
+    ensureVersionSeqForJwt("AgentDocument");
+    return { docType: "agent", doc: value };
+  }
+  if (value.device_type !== void 0) {
+    ensureVersionSeqForJwt("DeviceDocument");
+    return { docType: "device", doc: value };
+  }
+  if (value.oods !== void 0) {
+    ensureVersionSeqForJwt("ZoneDocument");
+    return { docType: "zone", doc: value };
+  }
+  if (Array.isArray(value.service) && value.service.some((service) => (service == null ? void 0 : service.type) === DID_OBJECT_SERVICE_TYPE)) {
+    ensureVersionSeqForJwt("DIDObjectCard");
+    return { docType: "did-object", doc: value };
+  }
+  throw new Error("namelib: unknown did document");
+}
+function getDidDocType(parsed) {
+  return parsed.docType;
+}
+function parseDidDocAs(doc, docType) {
+  const parsed = parseDidDoc(doc);
+  if (parsed.docType !== docType) {
+    throw new Error(`namelib: expected ${docType} document, got ${parsed.docType}`);
+  }
+  return parsed.doc;
 }
 const namelib = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
   __proto__: null,
@@ -1580,6 +2001,13 @@ const namelib = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.definePrope
   DID,
   DID_CORE_CONTEXT,
   DID_DOC_AUTHKEY,
+  KEY_SCOPE_AGENT_CREATE_CONTENT,
+  KEY_SCOPE_AGENT_RECEIVE,
+  KEY_SCOPE_AGENT_SPEND,
+  KEY_SCOPE_CONTENT_CREATE,
+  KEY_SCOPE_MANUAL,
+  KEY_SCOPE_MESSAGE_CREATE,
+  KEY_SCOPE_ZONE_PUBLISH,
   base64UrlDecodeToBytes,
   base64UrlDecodeToString,
   base64UrlEncodeBytes,
@@ -1587,46 +2015,72 @@ const namelib = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.definePrope
   buckyosContext,
   buckyosGetUnixTimestamp,
   createJwkByX,
-  decodeDeviceConfig,
+  decodeDeviceDocument,
   decodeJwtClaimWithoutVerify,
   decodeJwtHeaderWithoutVerify,
-  decodeZoneBootConfig,
+  decodeZoneBootDocument,
   derToPkcs8Pem,
-  deviceMiniConfigFromJwt,
-  deviceMiniConfigToJwt,
-  encodeDeviceConfig,
-  encodeOwnerConfig,
-  encodeZoneBootConfig,
-  encodeZoneConfig,
+  deviceDocumentToOrderedJson,
+  deviceMiniDocumentFromJwt,
+  deviceMiniDocumentToJwt,
+  encodeDeviceDocument,
+  encodeOwnerDocument,
+  encodeZoneBootDocument,
+  encodeZoneDocument,
   encodedDocumentFromStr,
   encodedDocumentToJsonValue,
   encodedDocumentToString,
+  expandLocalKeyId,
   generateEd25519KeyPair,
   getDeviceDidFromJwk,
+  getDidDocType,
+  getDocumentAuthKey,
+  getDocumentDefaultKey,
+  getDocumentKeyScope,
+  getKeyByScope,
+  getKeyFromKeyIds,
+  getKeyIdsByScope,
   getKnownWeb3BridgeConfig,
   getPublicKeyXFromPrivatePem,
+  getStandardScopeKeyIds,
   getXFromJwk,
-  newDeviceConfig,
-  newDeviceConfigByJwk,
-  newDeviceConfigByMiniConfig,
-  newDeviceMiniConfig,
-  newDeviceMiniConfigByDeviceConfig,
+  hasKeyScope,
+  isKeyAllowedInScope,
+  isSameDocumentKeyId,
+  newDeviceDocument,
+  newDeviceDocumentByJwk,
+  newDeviceDocumentByMiniDocument,
+  newDeviceMiniDocument,
+  newDeviceMiniDocumentByDeviceDocument,
   newNodeIdentityConfig,
-  newOwnerConfig,
-  newZoneBootConfig,
-  newZoneConfig,
+  newOwnerDocument,
+  newOwnerDocumentByPkx,
+  newZoneBootDocument,
+  newZoneDocument,
+  normalizeKeyIdForLocalLookup,
   oodDescriptionToString,
   oodNodeTypeIsGateway,
   oodNodeTypeIsOod,
+  ownerDocumentGetDefaultZoneDid,
+  ownerDocumentGetHistoricalKeys,
+  ownerDocumentIsBoundToZone,
+  ownerDocumentSetDefaultZoneDid,
+  ownerDocumentToOrderedJson,
+  ownerDocumentValidateJwtRevocation,
+  parseDidDoc,
+  parseDidDocAs,
   parseOODDescription,
   pemToDer,
   resetKnownWeb3BridgeConfigForTest,
   setKnownWeb3BridgeConfig,
-  setOwnerDefaultZoneDid,
   signJwtEdDSA,
   verifyJwtEdDSA,
-  zoneBootConfigToZoneConfig,
-  zoneConfigInitByBootConfig
+  zoneBootDocumentGetGatewayName,
+  zoneBootDocumentToZoneDocument,
+  zoneDocumentGetDefaultGateway,
+  zoneDocumentGetSnApiUrl,
+  zoneDocumentInitByBootDocument,
+  zoneDocumentToOrderedJson
 }, Symbol.toStringTag, { value: "Module" }));
 var commonjsGlobal = typeof globalThis !== "undefined" ? globalThis : typeof window !== "undefined" ? window : typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : {};
 function getDefaultExportFromCjs(x2) {
@@ -3155,36 +3609,58 @@ const ndn_types = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.definePro
   verifyNamedObjectFromStr
 }, Symbol.toStringTag, { value: "Module" }));
 export {
+  deviceDocumentToOrderedJson as A,
+  decodeJwtClaimWithoutVerify as B,
   ChunkId as C,
-  DirObject as D,
+  DID_OBJECT_SERVICE_TYPE as D,
+  commonjsGlobal as E,
   FileObject as F,
+  createJwkByX as G,
+  newOwnerDocument as H,
+  ownerDocumentToOrderedJson as I,
+  parseOODDescription as J,
+  oodDescriptionToString as K,
+  newZoneBootDocument as L,
+  newZoneDocument as M,
+  NODE_IDENTITY_SCHEMA_V2 as N,
   ObjId as O,
+  encodeZoneBootDocument as P,
+  zoneDocumentInitByBootDocument as Q,
+  zoneDocumentToOrderedJson as R,
   SimpleChunkList as S,
+  newDeviceMiniDocument as T,
+  deviceMiniDocumentToJwt as U,
+  encodeDeviceDocument as V,
+  newDeviceMiniDocumentByDeviceDocument as W,
+  newDeviceDocumentByMiniDocument as X,
+  buckyosGetUnixTimestamp as Y,
+  buildNamedObjectByJson as Z,
+  getDefaultExportFromCjs as _,
   ndn_types as a,
-  DID as b,
-  commonjsGlobal as c,
-  createJwkByX as d,
-  newOwnerConfig as e,
-  newZoneBootConfig as f,
-  newZoneConfig as g,
-  ht as h,
-  encodeZoneBootConfig as i,
-  newDeviceMiniConfig as j,
-  deviceMiniConfigToJwt as k,
-  newDeviceConfigByJwk as l,
-  encodeDeviceConfig as m,
+  DID_OBJECT_SERVICE_ID as b,
+  isBuckyOSOwnerDocument as c,
+  isBuckyOSDeviceMiniDocument as d,
+  isBuckyOSZoneBootDocument as e,
+  isBuckyOSNodeIdentityConfig as f,
+  isBuckyOSLocalNodeIdentityConfig as g,
+  isBuckyOSDeviceDocument as h,
+  isW3CDIDDocumentBase as i,
+  isBuckyOSAgentDocument as j,
+  isBuckyOSZoneDocument as k,
+  isBuckyOSDIDObjectCard as l,
+  isBuckyOSZoneConfig as m,
   namelib as n,
-  oodDescriptionToString as o,
-  parseOODDescription as p,
-  newDeviceMiniConfigByDeviceConfig as q,
-  newNodeIdentityConfig as r,
-  sha256Bytes as s,
-  newDeviceConfigByMiniConfig as t,
-  buckyosGetUnixTimestamp as u,
-  verifyJwtEdDSA as v,
-  buildNamedObjectByJson as w,
-  decodeJwtClaimWithoutVerify as x,
-  getDefaultExportFromCjs as y,
-  zoneConfigInitByBootConfig as z
+  parseBuckyOSOwnerDocument as o,
+  parseW3CDIDDocumentBase as p,
+  parseBuckyOSDeviceMiniDocument as q,
+  parseBuckyOSDIDDocument as r,
+  getDidMethod as s,
+  getDidIdentifier as t,
+  ht as u,
+  DID as v,
+  sha256Bytes as w,
+  DirObject as x,
+  newDeviceDocumentByJwk as y,
+  verifyJwtEdDSA as z
 };
-//# sourceMappingURL=ndn_types-e2a3628e.mjs.map
+//# sourceMappingURL=ndn_types-7ce47e32.mjs.map

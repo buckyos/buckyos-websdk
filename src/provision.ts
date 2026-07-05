@@ -10,6 +10,12 @@
 //   setPkgMeta         <-> buckycli set_pkg_meta
 //   buildDidDocs       <-> buckycli build_did_docs
 //
+// Node identity uses schema v2 (see device_identity.ts): createNodeConfigs
+// writes node_identity.json (metadata only) + node_gateway_params.json into
+// the node dir, and the device document / jwts / private key into the
+// identity-roots layout under <nodeDir>/local/identity and <nodeDir>/security.
+// Device DIDs are name-based (did:bns:ood1.alice), built by buildDeviceDid.
+//
 // Runtime requirements: Node >= 22.13 or Deno >= 2.2 (node:sqlite). Never
 // import this module from a browser bundle.
 
@@ -18,22 +24,32 @@ import {
   parseOODDescription,
   oodDescriptionToString,
   createJwkByX,
-  newOwnerConfig,
-  newZoneConfig,
-  newZoneBootConfig,
-  encodeZoneBootConfig,
-  zoneConfigInitByBootConfig,
-  newDeviceConfigByJwk,
-  newDeviceConfigByMiniConfig,
-  encodeDeviceConfig,
-  newDeviceMiniConfig,
-  newDeviceMiniConfigByDeviceConfig,
-  deviceMiniConfigToJwt,
-  newNodeIdentityConfig,
+  newOwnerDocument,
+  newZoneDocument,
+  newZoneBootDocument,
+  encodeZoneBootDocument,
+  zoneDocumentInitByBootDocument,
+  newDeviceDocumentByMiniDocument,
+  encodeDeviceDocument,
+  newDeviceMiniDocument,
+  newDeviceMiniDocumentByDeviceDocument,
+  deviceMiniDocumentToJwt,
   decodeJwtClaimWithoutVerify,
   verifyJwtEdDSA,
   buckyosGetUnixTimestamp,
+  ownerDocumentToOrderedJson,
+  zoneDocumentToOrderedJson,
+  deviceDocumentToOrderedJson,
 } from './namelib'
+import {
+  buildDeviceDid,
+  deviceIdentityPathsForRoots,
+  loadLocalNodeIdentityConfig,
+  newDeviceDocumentByJwkWithDid,
+  newLocalNodeIdentityConfig,
+  saveLocalDeviceIdentityForRoots,
+} from './device_identity'
+import { IdentityRoots } from './cert'
 import { DEV_TEST_KEYS, DevTestKeyPair, getDevTestKeyPairById } from './dev_test_keys'
 import { buildNamedObjectByJson } from './ndn_types'
 import {
@@ -42,6 +58,27 @@ import {
   BuckyOSZoneTxtRecord,
   Ed25519Jwk,
 } from './types'
+
+// v2 device identity layout helpers (mirror buckyos-api device_identity.rs).
+export {
+  NODE_IDENTITY_SCHEMA_V2,
+  DEVICE_DOC_JWT_FILE_NAME,
+  DEVICE_MINI_DOC_JWT_FILE_NAME,
+  NODE_GATEWAY_PARAMS_FILE_NAME,
+  buildDeviceDid,
+  bindDeviceDocumentDid,
+  newDeviceDocumentByJwkWithDid,
+  newLocalNodeIdentityConfig,
+  loadLocalNodeIdentityConfig,
+  deviceIdentityPathsForRoots,
+  saveLocalDeviceIdentityForRoots,
+  saveNodeGatewayParams,
+  loadDeviceDocJwtForRoots,
+  loadDeviceMiniDocJwtForRoots,
+  loadLocalDeviceDocumentForRoots,
+  decodeDeviceDocumentWithoutVerify,
+} from './device_identity'
+export type { BuckyOSLocalNodeIdentityConfig, DeviceIdentityPaths, NewLocalNodeIdentityConfigParams } from './device_identity'
 
 // TLS CA / certificate generation (Phase 3, replaces python CertManager)
 export {
@@ -239,13 +276,13 @@ export async function createUserEnv(params: CreateUserEnvParams): Promise<BuckyO
   // create_owner_config
   writeFileWithLog(path.join(userDir, 'user_private_key.pem'), keyPair.privateKeyPem)
   const ownerJwk = createJwkByX(keyPair.publicKeyX)
-  const ownerConfig = newOwnerConfig({
+  const ownerDoc = newOwnerDocument({
     did: ownerDid,
     name: params.username,
-    fullName: params.username,
+    displayName: params.username,
     publicKeyJwk: ownerJwk,
   })
-  writeJsonWithLog(path.join(userDir, 'user_config.json'), ownerConfig)
+  writeJsonWithLog(path.join(userDir, 'user_config.json'), ownerDocumentToOrderedJson(ownerDoc))
   console.log(`Created owner config for ${params.username}`)
 
   // create_zone_boot_config_jwt
@@ -264,43 +301,44 @@ export async function createUserEnv(params: CreateUserEnvParams): Promise<BuckyO
   }
 
   const oodString = oodDescriptionToString(ood)
-  const zoneBoot = newZoneBootConfig({ oods: [oodString], sn: realSnHost, exp })
+  const zoneBoot = newZoneBootDocument({ oods: [oodString], sn: realSnHost, exp })
   const zoneHostName = zoneDid.toRawHostName()
   writeJsonWithLog(path.join(userDir, `${zoneHostName}.zone.json`), zoneBoot)
 
   zoneBoot.id = zoneDid.toString()
-  const zoneConfig = newZoneConfig({ id: zoneDid, ownerDid, publicKeyJwk: ownerJwk })
-  const bootJwt = await encodeZoneBootConfig(zoneBoot, keyPair.privateKeyPem)
-  zoneConfigInitByBootConfig(zoneConfig, zoneBoot, bootJwt)
-  writeJsonWithLog(path.join(userDir, 'zone_config.json'), zoneConfig)
+  const zoneDoc = newZoneDocument({ id: zoneDid, ownerDid, publicKeyJwk: ownerJwk })
+  const bootJwt = await encodeZoneBootDocument(zoneBoot, keyPair.privateKeyPem)
+  zoneDocumentInitByBootDocument(zoneDoc, zoneBoot, bootJwt)
+  writeJsonWithLog(path.join(userDir, 'zone_config.json'), zoneDocumentToOrderedJson(zoneDoc))
 
   const pkx = keyPair.publicKeyX
   console.log(`=> ${zoneHostName} TXT Record(${bootJwt.length + 6}): BOOT=${bootJwt};`)
   console.log(`=> ${zoneHostName} TXT Record(${pkx.length + 5}): PKX=${pkx};`)
 
   const realRtcpPort = rtcpPort === 2980 ? undefined : rtcpPort
-  const miniConfig = newDeviceMiniConfig({
+  const miniDoc = newDeviceMiniDocument({
     name: ood.name,
     x: deviceKeyPair.publicKeyX,
     rtcpPort: realRtcpPort,
     exp,
   })
-  const miniJwt = await deviceMiniConfigToJwt(miniConfig, keyPair.privateKeyPem)
+  const miniJwt = await deviceMiniDocumentToJwt(miniDoc, keyPair.privateKeyPem)
   console.log(`=> ${zoneHostName} TXT Record(${miniJwt.length + 5}): DEV=${miniJwt};`)
 
-  // device configuration (written into the node dir, consumed by createNodeConfigs)
-  const deviceConfig = newDeviceConfigByJwk(ood.name, createJwkByX(deviceKeyPair.publicKeyX))
-  deviceConfig.support_container = true
-  delete (deviceConfig as Record<string, unknown>).support_container // true is the serde default and is skipped
+  // Device configuration is only printed here (mirror of Rust); the actual
+  // identity files are produced by createNodeConfigs in the v2 layout.
+  const deviceDid = buildDeviceDid(ood.name, zoneDid)
+  const deviceDoc = newDeviceDocumentByJwkWithDid(ood.name, createJwkByX(deviceKeyPair.publicKeyX), deviceDid)
+  deviceDoc.support_container = true
   if (ood.netId !== undefined) {
-    deviceConfig.net_id = ood.netId
+    deviceDoc.net_id = ood.netId
   }
-  deviceConfig.owner = ownerDid.toString()
-  deviceConfig.zone_did = zoneDid.toString()
+  deviceDoc.owner = ownerDid.toString()
+  deviceDoc.zone_did = zoneDid.toString()
   if (ddnsSnUrl !== undefined) {
-    deviceConfig.ddns_sn_url = ddnsSnUrl
+    deviceDoc.ddns_sn_url = ddnsSnUrl
   }
-  writeJsonWithLog(path.join(userDir, ood.name, 'node_device_config.json'), deviceConfig)
+  console.log(`${ood.name} device config: ${JSON.stringify(deviceDocumentToOrderedJson(deviceDoc), null, 2)}`)
 
   const zoneTxtRecord: BuckyOSZoneTxtRecord = {
     boot_config_jwt: bootJwt,
@@ -323,12 +361,20 @@ export interface CreateNodeConfigsParams {
   netId?: string
   ownerKeyPair?: DevTestKeyPair
   deviceKeyPair?: DevTestKeyPair
+  // device document iat override (defaults to the current time, like Rust)
+  now?: number
+}
+
+// Mirrors Rust test_config.rs test_identity_roots: node-local identity roots
+// under the node dir.
+export function nodeTestIdentityRoots(nodeDir: string): IdentityRoots {
+  const path = requireNode('node:path')
+  return new IdentityRoots(path.join(nodeDir, 'local', 'identity'), path.join(nodeDir, 'security'))
 }
 
 export async function createNodeConfigs(params: CreateNodeConfigsParams): Promise<string> {
   assertProvisionRuntime()
   const path = requireNode('node:path')
-  const fs = requireNode('node:fs')
   const rootDir = params.envDir
 
   const userConfig = readJson(path.join(rootDir, 'user_config.json'))
@@ -343,37 +389,55 @@ export async function createNodeConfigs(params: CreateNodeConfigsParams): Promis
   const keyPair = resolveOwnerKeyPair(username, params.ownerKeyPair)
   const deviceKeyPair = resolveDeviceKeyPair(username, params.deviceName, params.deviceKeyPair)
   const nodeDir = path.join(rootDir, params.deviceName)
+  const ownerDid = new DID('bns', username)
 
-  // 1. device private key
-  writeFileWithLog(path.join(nodeDir, 'node_private_key.pem'), deviceKeyPair.privateKeyPem)
-
-  // 2. device config & JWTs (signed by the OWNER key)
-  const deviceConfigPath = path.join(nodeDir, 'node_device_config.json')
-  if (!fs.existsSync(deviceConfigPath)) {
-    throw new Error(`device config not found: ${deviceConfigPath}, run createUserEnv first`)
+  // 1. device document (name-based device DID, signed by the OWNER key)
+  const deviceDid = buildDeviceDid(params.deviceName, zoneDid)
+  const deviceDoc = newDeviceDocumentByJwkWithDid(
+    params.deviceName,
+    createJwkByX(deviceKeyPair.publicKeyX),
+    deviceDid,
+    params.now,
+  )
+  deviceDoc.support_container = true
+  delete (deviceDoc as Record<string, unknown>).support_container // true is the serde default and is skipped
+  if (params.netId !== undefined) {
+    deviceDoc.net_id = params.netId
   }
-  const deviceConfig = readJson(deviceConfigPath) as BuckyOSDeviceDocument
-  console.log(`input net_id: ${params.netId}, device_config.net_id: ${deviceConfig.net_id}`)
+  deviceDoc.owner = ownerDid.toString()
+  deviceDoc.zone_did = zoneDid.toString()
+  console.log(`input net_id: ${params.netId}, device_config.net_id: ${deviceDoc.net_id}`)
 
-  const deviceJwt = await encodeDeviceConfig(deviceConfig, keyPair.privateKeyPem)
+  const deviceJwt = await encodeDeviceDocument(deviceDoc, keyPair.privateKeyPem)
   console.log(`${params.deviceName} device jwt: ${deviceJwt}`)
 
-  const deviceMiniConfig = newDeviceMiniConfigByDeviceConfig(deviceConfig)
-  const deviceMiniJwt = await deviceMiniConfigToJwt(deviceMiniConfig, keyPair.privateKeyPem)
+  const deviceMiniDoc = newDeviceMiniDocumentByDeviceDocument(deviceDoc)
+  const deviceMiniJwt = await deviceMiniDocumentToJwt(deviceMiniDoc, keyPair.privateKeyPem)
   writeFileWithLog(path.join(nodeDir, 'device_mini_config.jwt'), deviceMiniJwt)
 
-  // 3. node identity configuration
-  const identityConfig = newNodeIdentityConfig({
+  // 2. node identity configuration (schema v2) + identity-roots layout:
+  //    node_identity.json / node_gateway_params.json / did.json /
+  //    device_doc.jwt / device_mini_doc.jwt / authentication.private.pem
+  const identityConfig = newLocalNodeIdentityConfig({
     zoneDid,
+    ownerDid,
     ownerPublicKey: createJwkByX(keyPair.publicKeyX),
-    ownerDid: new DID('bns', username),
-    deviceDocJwt: deviceJwt,
-    deviceMiniDocJwt: deviceMiniJwt,
+    deviceName: params.deviceName,
+    deviceDid,
     zoneIat: PROVISION_BASE_TIME,
   })
-  writeJsonWithLog(path.join(nodeDir, 'node_identity.json'), identityConfig)
+  const roots = nodeTestIdentityRoots(nodeDir)
+  saveLocalDeviceIdentityForRoots(
+    nodeDir,
+    roots,
+    identityConfig,
+    deviceDoc,
+    deviceJwt,
+    deviceMiniJwt,
+    deviceKeyPair.privateKeyPem,
+  )
 
-  // 4. startup configuration (only for OOD nodes); json!-literal -> sorted keys
+  // 3. startup configuration (only for OOD nodes); json!-literal -> sorted keys
   if (params.deviceName.startsWith('ood')) {
     const startConfig = sortKeysDeep({
       admin_password_hash: ADMIN_PASSWORD_HASH,
@@ -394,7 +458,7 @@ export async function createNodeConfigs(params: CreateNodeConfigsParams): Promis
 
   console.log(`Successfully created node configuration: ${username}.${params.deviceName}`)
   // return device self-signed JWT (for verification), mirroring Rust
-  return encodeDeviceConfig(deviceConfig, deviceKeyPair.privateKeyPem)
+  return encodeDeviceDocument(deviceDoc, deviceKeyPair.privateKeyPem)
 }
 
 // ============================================================================
@@ -496,28 +560,28 @@ export async function createSnConfigs(params: CreateSnConfigsParams): Promise<vo
 
   // owner config for sn admin under .buckycli
   writeFileWithLog(path.join(snDir, '.buckycli', 'user_private_key.pem'), ownerKeys.privateKeyPem)
-  const ownerConfig = newOwnerConfig({
+  const ownerDoc = newOwnerDocument({
     did: new DID('bns', 'sn'),
     name: 'root',
-    fullName: 'sn admin',
+    displayName: 'sn admin',
     publicKeyJwk: createJwkByX(ownerKeys.publicKeyX),
   })
-  writeJsonWithLog(path.join(snDir, '.buckycli', 'user_config.json'), ownerConfig)
+  writeJsonWithLog(path.join(snDir, '.buckycli', 'user_config.json'), ownerDocumentToOrderedJson(ownerDoc))
   console.log('- Created owner config for sn admin.')
 
   // device JWT (zone/owner dids are fixed in the Rust implementation)
-  const miniConfig = newDeviceMiniConfig({ name: 'sn', x: deviceKeys.publicKeyX, exp })
-  const miniJwt = await deviceMiniConfigToJwt(miniConfig, ownerKeys.privateKeyPem)
+  const miniDoc = newDeviceMiniDocument({ name: 'sn', x: deviceKeys.publicKeyX, exp })
+  const miniJwt = await deviceMiniDocumentToJwt(miniDoc, ownerKeys.privateKeyPem)
 
-  const deviceConfig = newDeviceConfigByMiniConfig(miniJwt, miniConfig, 'did:web:sn.devtests.org', 'did:bns:sn')
-  deviceConfig.net_id = 'wan'
-  writeJsonWithLog(path.join(snDir, 'sn_device_config.json'), deviceConfig)
+  const deviceDoc = newDeviceDocumentByMiniDocument(miniJwt, miniDoc, 'did:web:sn.devtests.org', 'did:bns:sn')
+  deviceDoc.net_id = 'wan'
+  writeJsonWithLog(path.join(snDir, 'sn_device_config.json'), deviceDocumentToOrderedJson(deviceDoc))
   writeFileWithLog(path.join(snDir, 'sn_private_key.pem'), deviceKeys.privateKeyPem)
   console.log('- Created sn device config & private key.')
 
-  // ZoneBootConfig + params.json (json!-literal -> sorted keys)
-  const zoneBoot = newZoneBootConfig({ oods: ['sn'], exp })
-  const zoneBootJwt = await encodeZoneBootConfig(zoneBoot, ownerKeys.privateKeyPem)
+  // ZoneBootDocument + params.json (json!-literal -> sorted keys)
+  const zoneBoot = newZoneBootDocument({ oods: ['sn'], exp })
+  const zoneBootJwt = await encodeZoneBootDocument(zoneBoot, ownerKeys.privateKeyPem)
   const paramsJson = sortKeysDeep({
     params: {
       sn_boot_jwt: zoneBootJwt,
@@ -616,19 +680,30 @@ export async function registerDeviceToSn(
   const fs = requireNode('node:fs')
   const os = requireNode('node:os')
 
-  const nodeIdentityPath = path.join(rootDir, userZoneId, deviceName, 'node_identity.json')
+  const deviceDir = path.join(rootDir, userZoneId, deviceName)
+  const nodeIdentityPath = path.join(deviceDir, 'node_identity.json')
   if (!fs.existsSync(nodeIdentityPath)) {
     throw new Error(`Device config not found: ${nodeIdentityPath}`)
   }
-  const nodeIdentity = readJson(nodeIdentityPath)
+  const nodeIdentity = loadLocalNodeIdentityConfig(nodeIdentityPath)
   const username = DID.fromStr(nodeIdentity.owner_did).id
 
-  // verify the device doc with the owner public key, then take its DID
-  const deviceDoc = await verifyJwtEdDSA(nodeIdentity.device_doc_jwt, nodeIdentity.owner_public_key as Ed25519Jwk)
+  // read the device jwts from the identity-roots layout, verify the device
+  // doc with the owner public key, then take its DID
+  const identityPaths = deviceIdentityPathsForRoots(nodeTestIdentityRoots(deviceDir), nodeIdentity.device_did)
+  const deviceDocJwt: string = fs.readFileSync(identityPaths.deviceDocJwt, 'utf8')
+  const deviceMiniDocJwt: string = fs.readFileSync(identityPaths.deviceMiniDocJwt, 'utf8')
+  const deviceDoc = await verifyJwtEdDSA(deviceDocJwt, nodeIdentity.owner_public_key as Ed25519Jwk)
   const deviceDid: string = deviceDoc.id
 
-  // ood description from zone_config (fallback: parse the device name)
-  let oodDesc = parseOODDescription(deviceName)
+  // ood description from zone_config (fallback: parse the device name, or a
+  // plain Device entry when even that fails — mirrors Rust)
+  let oodDesc
+  try {
+    oodDesc = parseOODDescription(deviceName)
+  } catch {
+    oodDesc = { name: deviceName, nodeType: 'Device' as const }
+  }
   try {
     const zoneConfig = readJson(path.join(rootDir, userZoneId, 'zone_config.json')) as BuckyOSZoneDocument
     const matched = zoneConfig.oods
@@ -680,7 +755,7 @@ export async function registerDeviceToSn(
     username,
     deviceName,
     deviceDid,
-    nodeIdentity.device_mini_doc_jwt,
+    deviceMiniDocJwt,
     deviceIp,
     JSON.stringify(deviceInfo, null, 2),
   )

@@ -1,6 +1,9 @@
 import { DID } from './namelib';
+import { IdentityRoots } from './cert';
 import { DevTestKeyPair } from './dev_test_keys';
 import { BuckyOSZoneTxtRecord } from './types';
+export { NODE_IDENTITY_SCHEMA_V2, DEVICE_DOC_JWT_FILE_NAME, DEVICE_MINI_DOC_JWT_FILE_NAME, NODE_GATEWAY_PARAMS_FILE_NAME, buildDeviceDid, bindDeviceDocumentDid, newDeviceDocumentByJwkWithDid, newLocalNodeIdentityConfig, loadLocalNodeIdentityConfig, deviceIdentityPathsForRoots, saveLocalDeviceIdentityForRoots, saveNodeGatewayParams, loadDeviceDocJwtForRoots, loadDeviceMiniDocJwtForRoots, loadLocalDeviceDocumentForRoots, decodeDeviceDocumentWithoutVerify, } from './device_identity';
+export type { BuckyOSLocalNodeIdentityConfig, DeviceIdentityPaths, NewLocalNodeIdentityConfigParams } from './device_identity';
 export { IdentityRoots, IDENTITY_MATERIALS, IDENTITY_USAGES, createCa, createCertFromCa, createIdentityCertFromCa, didWebDocumentUrl, encodeIdentityDirName, ensureCa, identityDirName, identityFileName, identityRawHostUri, } from './cert';
 export type { CreateCaResult, CreateCertResult, CreateIdentityCertFromCaOptions, CreateIdentityCertResult, IdentityDirMatch, IdentityMatchType, IdentityMaterial, IdentityRootsOptions, IdentityUsage, X509PathMatch, X509Paths, } from './cert';
 export { DEV_TEST_KEYS, getDevTestKeyPairById } from './dev_test_keys';
@@ -25,7 +28,9 @@ export interface CreateNodeConfigsParams {
     netId?: string;
     ownerKeyPair?: DevTestKeyPair;
     deviceKeyPair?: DevTestKeyPair;
+    now?: number;
 }
+export declare function nodeTestIdentityRoots(nodeDir: string): IdentityRoots;
 export declare function createNodeConfigs(params: CreateNodeConfigsParams): Promise<string>;
 export declare class DevSnDb {
     private readonly dbPath;

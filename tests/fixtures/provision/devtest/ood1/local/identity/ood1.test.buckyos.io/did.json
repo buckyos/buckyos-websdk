@@ -3,16 +3,16 @@
     "https://www.w3.org/ns/did/v1",
     "https://buckyos.org/ns/device/v1"
   ],
-  "id": "did:dev:E1oQDYqzyX4ysrNgTJ5DAVaMgA3By8XpBa0e6r2gBqQ",
+  "id": "did:web:ood1.test.buckyos.io",
   "verificationMethod": [
     {
       "type": "Ed25519VerificationKey2020",
       "id": "#main_key",
-      "controller": "did:dev:E1oQDYqzyX4ysrNgTJ5DAVaMgA3By8XpBa0e6r2gBqQ",
+      "controller": "did:web:ood1.test.buckyos.io",
       "publicKeyJwk": {
         "kty": "OKP",
         "crv": "Ed25519",
-        "x": "E1oQDYqzyX4ysrNgTJ5DAVaMgA3By8XpBa0e6r2gBqQ"
+        "x": "gubVIszw-u_d5PVTh-oc8CKAhM9C-ne5G_yUK5BDaXc"
       }
     }
   ],
@@ -25,11 +25,12 @@
   "capabilityInvocation": [
     "#main_key"
   ],
-  "exp": 1938983657,
-  "iat": 1781303657,
+  "exp": 1940952891,
+  "iat": 1783272891,
   "version_seq": 0,
-  "zone_did": "did:bns:alice",
-  "owner": "did:bns:alice",
+  "zone_did": "did:web:test.buckyos.io",
+  "owner": "did:bns:devtest",
   "device_type": "ood",
-  "name": "ood1"
+  "name": "ood1",
+  "net_id": "wan"
 }

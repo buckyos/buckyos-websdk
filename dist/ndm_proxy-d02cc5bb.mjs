@@ -1,4 +1,4 @@
-import { h as ht, O as ObjId, C as ChunkId, F as FileObject, s as sha256Bytes, D as DirObject, S as SimpleChunkList } from "./ndn_types-e2a3628e.mjs";
+import { u as ht, v as DID, o as parseBuckyOSOwnerDocument, O as ObjId, C as ChunkId, F as FileObject, w as sha256Bytes, x as DirObject, S as SimpleChunkList } from "./ndn_types-7ce47e32.mjs";
 class RPCError extends Error {
   constructor(message) {
     super(message);
@@ -1975,113 +1975,6 @@ class RepoClient {
     return asBoolean(result, "announce response");
   }
 }
-function isRecord(value) {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-function isVerificationMethodArray(value) {
-  return Array.isArray(value);
-}
-function isServiceArray(value) {
-  return value === void 0 || Array.isArray(value);
-}
-function isDIDContext(value) {
-  if (typeof value === "string") {
-    return true;
-  }
-  return Array.isArray(value) && value.every((item) => typeof item === "string");
-}
-function isW3CDIDDocumentBase(value) {
-  if (!isRecord(value)) {
-    return false;
-  }
-  return isDIDContext(value["@context"]) && typeof value.id === "string" && isVerificationMethodArray(value.verificationMethod) && Array.isArray(value.authentication) && typeof value.exp === "number" && typeof value.iat === "number" && isServiceArray(value.service);
-}
-function isBuckyOSOwnerConfigDocument(value) {
-  return isW3CDIDDocumentBase(value) && typeof value.name === "string" && typeof value.full_name === "string";
-}
-function isUserDocument(value) {
-  return isBuckyOSOwnerConfigDocument(value);
-}
-function isBuckyOSDeviceMiniDocument(value) {
-  return isRecord(value) && typeof value.n === "string" && typeof value.x === "string" && typeof value.exp === "number";
-}
-function isBuckyOSZoneBootConfig(value) {
-  return isRecord(value) && Array.isArray(value.oods) && value.oods.every((item) => typeof item === "string") && typeof value.exp === "number";
-}
-function isBuckyOSNodeIdentityConfig(value) {
-  return isRecord(value) && typeof value.zone_did === "string" && isRecord(value.owner_public_key) && typeof value.owner_did === "string" && typeof value.device_doc_jwt === "string" && typeof value.device_mini_doc_jwt === "string" && typeof value.zone_iat === "number";
-}
-function isBuckyOSDeviceDocument(value) {
-  return isW3CDIDDocumentBase(value) && typeof value.owner === "string" && typeof value.device_type === "string" && typeof value.name === "string";
-}
-function isBuckyOSAgentDocument(value) {
-  return isW3CDIDDocumentBase(value) && typeof value.owner === "string" && isRecord(value.httpServicePorts);
-}
-function isBuckyOSZoneDocument(value) {
-  return isW3CDIDDocumentBase(value) && typeof value.hostname === "string" && typeof value.owner === "string" && Array.isArray(value.oods) && typeof value.boot_jwt === "string";
-}
-function isDIDDocumentBase(value) {
-  return isW3CDIDDocumentBase(value);
-}
-function isOwnerConfigDocument(value) {
-  return isBuckyOSOwnerConfigDocument(value);
-}
-function isDeviceMiniConfig(value) {
-  return isBuckyOSDeviceMiniDocument(value);
-}
-function isDeviceDocument(value) {
-  return isBuckyOSDeviceDocument(value);
-}
-function isAgentDocument(value) {
-  return isBuckyOSAgentDocument(value);
-}
-function isZoneDocument(value) {
-  return isBuckyOSZoneDocument(value);
-}
-function parseW3CDIDDocumentBase(value) {
-  return isW3CDIDDocumentBase(value) ? value : null;
-}
-function parseBuckyOSOwnerConfigDocument(value) {
-  return isBuckyOSOwnerConfigDocument(value) ? value : null;
-}
-function parseOwnerConfigDocument(value) {
-  return parseBuckyOSOwnerConfigDocument(value);
-}
-function parseBuckyOSDeviceMiniDocument(value) {
-  return isBuckyOSDeviceMiniDocument(value) ? value : null;
-}
-function parseDeviceMiniConfig(value) {
-  return parseBuckyOSDeviceMiniDocument(value);
-}
-function parseBuckyOSDIDDocument(value) {
-  if (isBuckyOSOwnerConfigDocument(value)) {
-    return value;
-  }
-  if (isBuckyOSAgentDocument(value)) {
-    return value;
-  }
-  if (isBuckyOSDeviceDocument(value)) {
-    return value;
-  }
-  if (isBuckyOSZoneDocument(value)) {
-    return value;
-  }
-  return null;
-}
-function getDidMethod(did) {
-  if (typeof did !== "string" || !did.startsWith("did:")) {
-    return null;
-  }
-  const parts = did.split(":");
-  return parts.length >= 3 ? parts[1] : null;
-}
-function getDidIdentifier(did) {
-  if (typeof did !== "string" || !did.startsWith("did:")) {
-    return null;
-  }
-  const parts = did.split(":");
-  return parts.length >= 3 ? parts.slice(2).join(":") : null;
-}
 const DEFAULT_NODE_GATEWAY_PORT = 3180;
 const DEFAULT_SESSION_TOKEN_TTL_SECONDS = 15 * 60;
 const DEFAULT_RENEW_INTERVAL_MS = 5e3;
@@ -2838,6 +2731,7 @@ class BuckyOSRuntime {
       const deviceName = this.extractDeviceNameFromIdentityPayload(parsed);
       return {
         deviceName,
+        deviceDid: typeof parsed.device_did === "string" ? parsed.device_did.trim() || null : null,
         zoneDid: typeof parsed.zone_did === "string" ? parsed.zone_did.trim() || null : null,
         zoneName: typeof parsed.zone_name === "string" ? parsed.zone_name.trim() || null : null
       };
@@ -2846,6 +2740,10 @@ class BuckyOSRuntime {
     }
   }
   extractDeviceNameFromIdentityPayload(payload) {
+    const directName = typeof payload.device_name === "string" ? payload.device_name.trim() : "";
+    if (directName) {
+      return directName;
+    }
     const miniDocJwt = typeof payload.device_mini_doc_jwt === "string" ? payload.device_mini_doc_jwt : null;
     const miniDocClaims = parseSessionTokenClaims(miniDocJwt);
     const miniDocName = typeof (miniDocClaims == null ? void 0 : miniDocClaims.n) === "string" ? miniDocClaims.n.trim() : "";
@@ -2874,23 +2772,45 @@ class BuckyOSRuntime {
       ...roots.filter((root) => !root.endsWith(".pem"))
     ];
     for (const dir of Array.from(new Set(candidateDirs))) {
-      const deviceName = await this.readDeviceNameFromNodeIdentityPath(path.join(dir, "node_identity.json"));
+      const metadata = await this.readNodeIdentityMetadata(path.join(dir, "node_identity.json"));
+      const deviceName = (metadata == null ? void 0 : metadata.deviceName) ?? null;
       if (!deviceName || deviceName !== userId) {
         continue;
       }
-      const keyPath = path.join(dir, "node_private_key.pem");
-      const keyPem = await this.readPemFile(keyPath);
-      if (!keyPem) {
-        continue;
+      for (const keyPath of await this.deviceKeyPathCandidates(dir, (metadata == null ? void 0 : metadata.deviceDid) ?? null)) {
+        const keyPem = await this.readPemFile(keyPath);
+        if (!keyPem) {
+          continue;
+        }
+        return {
+          keyPem,
+          issuer: deviceName,
+          subject: deviceName,
+          sourcePath: keyPath
+        };
       }
-      return {
-        keyPem,
-        issuer: deviceName,
-        subject: deviceName,
-        sourcePath: keyPath
-      };
     }
     return null;
+  }
+  // node_identity schema v2 stores the device authentication key in the
+  // identity-roots security dir (keyed by the device DID); v1 layouts keep a
+  // node_private_key.pem next to node_identity.json.
+  async deviceKeyPathCandidates(identityDir, deviceDid) {
+    const path = await importNodeModule$1("node:path");
+    const candidates = [];
+    if (deviceDid) {
+      try {
+        const dirName = DID.fromStr(deviceDid).toFilename();
+        const keyFileName = "authentication.private.pem";
+        candidates.push(path.join(identityDir, "security", dirName, keyFileName));
+        const env = getProcessEnv();
+        const securityRoot = trimToNull$1(env.BUCKYOS_SECURITY_ROOT) ?? path.join(trimToNull$1(env.BUCKYOS_ROOT) ?? "/opt/buckyos", "security");
+        candidates.push(path.join(securityRoot, dirName, keyFileName));
+      } catch {
+      }
+    }
+    candidates.push(path.join(identityDir, "node_private_key.pem"));
+    return candidates;
   }
   async tryLoadUserSigningMaterial(userId, roots) {
     var _a;
@@ -2902,8 +2822,8 @@ class BuckyOSRuntime {
       const userConfigPath = path.join(userConfigDir, "user_config.json");
       try {
         const raw = await fs.readFile(userConfigPath, "utf8");
-        const ownerConfig = parseOwnerConfigDocument(JSON.parse(raw));
-        const configUserId = (_a = ownerConfig == null ? void 0 : ownerConfig.name) == null ? void 0 : _a.trim();
+        const ownerDoc = parseBuckyOSOwnerDocument(JSON.parse(raw));
+        const configUserId = (_a = ownerDoc == null ? void 0 : ownerDoc.name) == null ? void 0 : _a.trim();
         if (!configUserId || configUserId !== userId) {
           continue;
         }
@@ -2952,6 +2872,7 @@ class BuckyOSRuntime {
     return null;
   }
   async tryResolveZoneHostFromSearchRoots(roots) {
+    var _a;
     const fs = await importNodeModule$1("node:fs/promises");
     const path = await importNodeModule$1("node:path");
     const env = getProcessEnv();
@@ -2977,8 +2898,8 @@ class BuckyOSRuntime {
       const userConfigPath = path.join(root, "user_config.json");
       try {
         const raw = await fs.readFile(userConfigPath, "utf8");
-        const ownerConfig = parseOwnerConfigDocument(JSON.parse(raw));
-        const zoneHost = resolveZoneHostFromDid(ownerConfig == null ? void 0 : ownerConfig.default_zone_did);
+        const ownerDoc = parseBuckyOSOwnerDocument(JSON.parse(raw));
+        const zoneHost = resolveZoneHostFromDid((_a = ownerDoc == null ? void 0 : ownerDoc.binded_zone_list) == null ? void 0 : _a[0]);
         if (!zoneHost) {
           continue;
         }
@@ -5282,7 +5203,7 @@ async function uploadChunkViaTus(endpoint, file, chunkInfo, chunkIndex, appId, f
   const logicalPath = `${appId}/${chunkInfo.chunkId}`;
   let tusModule;
   try {
-    tusModule = await import("./tus_client-9c79e84d.mjs");
+    tusModule = await import("./tus_client-aca59616.mjs");
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new NdmError("UPLOAD_FAILED", `Failed to load tus-js-client: ${message}`);
@@ -6032,29 +5953,6 @@ export {
   AiccClient as Z,
   KEventReader as _,
   ndm_proxy as a,
-  isW3CDIDDocumentBase as a0,
-  isBuckyOSOwnerConfigDocument as a1,
-  isUserDocument as a2,
-  isBuckyOSDeviceMiniDocument as a3,
-  isBuckyOSZoneBootConfig as a4,
-  isBuckyOSNodeIdentityConfig as a5,
-  isBuckyOSDeviceDocument as a6,
-  isBuckyOSAgentDocument as a7,
-  isBuckyOSZoneDocument as a8,
-  isDIDDocumentBase as a9,
-  isOwnerConfigDocument as aa,
-  isDeviceMiniConfig as ab,
-  isDeviceDocument as ac,
-  isAgentDocument as ad,
-  isZoneDocument as ae,
-  parseW3CDIDDocumentBase as af,
-  parseBuckyOSOwnerConfigDocument as ag,
-  parseOwnerConfigDocument as ah,
-  parseBuckyOSDeviceMiniDocument as ai,
-  parseDeviceMiniConfig as aj,
-  parseBuckyOSDIDDocument as ak,
-  getDidMethod as al,
-  getDidIdentifier as am,
   BS_SERVICE_TASK_MANAGER as b,
   createSDKModule as c,
   getActiveZoneGatewayOrigin as d,
@@ -6081,4 +5979,4 @@ export {
   WorkflowClient as y,
   AICC_SERVICE_UNIQUE_ID as z
 };
-//# sourceMappingURL=ndm_proxy-358fc819.mjs.map
+//# sourceMappingURL=ndm_proxy-d02cc5bb.mjs.map

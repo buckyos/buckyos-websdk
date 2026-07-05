@@ -14,14 +14,22 @@
 // WebCrypto is used when the node runtime is unavailable.
 
 import {
+  BuckyOSAgentDocument,
   BuckyOSDeviceDocument,
   BuckyOSDeviceMiniDocument,
+  BuckyOSDIDDocument,
+  BuckyOSDIDObjectCard,
   BuckyOSNodeIdentityConfig,
-  BuckyOSOwnerConfigDocument,
-  BuckyOSZoneBootConfig,
+  BuckyOSOwnerDocument,
+  BuckyOSZoneBootDocument,
   BuckyOSZoneDocument,
+  DidDocType,
   DIDContext,
+  DID_OBJECT_SERVICE_TYPE,
   Ed25519Jwk,
+  isBuckyOSDIDObjectCard,
+  W3CDIDDocumentBase,
+  W3CService,
   DID as DIDString,
 } from './types'
 
@@ -499,12 +507,69 @@ export class DID {
     return `did:${this.method}:${this.id}`
   }
 
+  isNamedObjId(): boolean {
+    return this.method === 'dev'
+  }
+
   getPathFromId(): string | null {
     const parts = this.id.split(':')
     if (parts.length > 1) {
       return parts.slice(1).join('/')
     }
     return null
+  }
+
+  // Mirrors Rust DID::upper_did: strip the left-most name label to get the
+  // parent DID. Ports (%3A-encoded) and path segments do not take part in the
+  // name hierarchy. Returns null when the parent is not independently
+  // resolvable (top-level domain, IP address, first-level bns name, key DIDs).
+  upperDid(): DID | null {
+    const name = (this.id.split(':')[0] ?? '').split('%')[0] ?? ''
+    switch (this.method) {
+      case 'web': {
+        if (isValidIpAddress(name)) {
+          return null
+        }
+        const dotIndex = name.indexOf('.')
+        if (dotIndex < 0) {
+          return null
+        }
+        const upper = name.slice(dotIndex + 1)
+        // Domains have at least one dot: when only the TLD remains there is
+        // no queryable parent.
+        if (!upper.includes('.')) {
+          return null
+        }
+        return new DID('web', upper)
+      }
+      case 'bns': {
+        const dotIndex = name.indexOf('.')
+        if (dotIndex < 0) {
+          return null
+        }
+        return new DID('bns', name.slice(dotIndex + 1))
+      }
+      default:
+        return null
+    }
+  }
+
+  // Mirrors Rust DID::to_filename: percent-encode the raw host uri so it is a
+  // safe single-path-component file name.
+  toFilename(): string {
+    const HEX = '0123456789ABCDEF'
+    const rawHostUri = this.toRawHostUri()
+    const bytes = utf8Encode(rawHostUri)
+    let filename = ''
+    for (const byte of bytes) {
+      const ch = String.fromCharCode(byte)
+      if (/[A-Za-z0-9._-]/.test(ch)) {
+        filename += ch
+      } else {
+        filename += `%${HEX[byte >> 4]}${HEX[byte & 0x0f]}`
+      }
+    }
+    return filename
   }
 
   // For did:dev the id is the base64url Ed25519 public key.
@@ -691,17 +756,17 @@ function asDid(value: DID | DIDString): DID {
   return value instanceof DID ? value : DID.fromStr(value)
 }
 
-export interface NewOwnerConfigParams {
+export interface NewOwnerDocumentParams {
   did: DID | DIDString
   name: string
-  fullName: string
+  displayName: string
   publicKeyJwk: Ed25519Jwk
   now?: number
 }
 
-// Mirrors Rust OwnerConfig::new. Field insertion order follows the Rust struct
-// so the serialized JSON / JWT payload is byte-compatible.
-export function newOwnerConfig(params: NewOwnerConfigParams): BuckyOSOwnerConfigDocument {
+// Mirrors Rust OwnerDocument::new. Field insertion order follows the Rust
+// struct so the serialized JSON / JWT payload is byte-compatible.
+export function newOwnerDocument(params: NewOwnerDocumentParams): BuckyOSOwnerDocument {
   const did = asDid(params.did)
   const now = params.now ?? buckyosGetUnixTimestamp()
   const didStr = did.toString()
@@ -723,32 +788,132 @@ export function newOwnerConfig(params: NewOwnerConfigParams): BuckyOSOwnerConfig
     iat: now,
     version_seq: 0,
     name: params.name,
-    full_name: params.fullName,
+    display_name: params.displayName,
   }
 }
 
-// Mirrors Rust OwnerConfig::set_default_zone_did.
-export function setOwnerDefaultZoneDid(ownerConfig: BuckyOSOwnerConfigDocument, defaultZoneDid: DID | DIDString): void {
-  const zoneDid = asDid(defaultZoneDid)
-  ownerConfig.default_zone_did = zoneDid.toString()
-  const services = (ownerConfig.service ?? []) as Array<Record<string, unknown>>
-  services.push({
-    id: `${ownerConfig.id}#lastDoc`,
-    type: 'DIDDoc',
-    serviceEndpoint: `https://${zoneDid.toHostName()}/resolve/${ownerConfig.id}`,
-  })
-  ownerConfig.service = services as BuckyOSOwnerConfigDocument['service']
+// Mirrors Rust OwnerDocument::new_by_pkx. pkx is either just the base64url x
+// of an Ed25519 public key, or "<x>:<did method>:<did id>[...]".
+export function newOwnerDocumentByPkx(pkx: string, hostname: string): BuckyOSOwnerDocument {
+  const parts = pkx.split(':')
+  if (parts.length === 0 || !parts[0]) {
+    throw new Error('namelib: invalid pkx: empty x')
+  }
+  const x = parts[0]
+  if (!/^[A-Za-z0-9_-]+$/.test(x)) {
+    throw new Error('namelib: invalid pkx: x must be base64url')
+  }
+  if (base64UrlDecodeToBytes(x).length !== 32) {
+    throw new Error(`namelib: invalid pkx: x length must be 32 bytes`)
+  }
+  const jwk = createJwkByX(x)
+  if (parts.length === 1) {
+    const ownerDid = DID.fromStr(hostname)
+    const ownerName = ownerDid.id
+    return newOwnerDocument({
+      did: ownerDid,
+      name: ownerName,
+      displayName: `${ownerName}@${hostname}`,
+      publicKeyJwk: jwk,
+    })
+  }
+  if (parts.length >= 3) {
+    const ownerName = parts[2]
+    return newOwnerDocument({
+      did: new DID(parts[1], parts[2]),
+      name: ownerName,
+      displayName: `${ownerName}@${hostname}`,
+      publicKeyJwk: jwk,
+    })
+  }
+  throw new Error(`namelib: invalid pkx: ${pkx}`)
 }
 
-export interface NewZoneConfigParams {
+// Mirrors Rust OwnerDocument::set_default_zone_did: the default zone is the
+// FIRST entry of binded_zone_list and the "#lastDoc" service is replaced.
+export function ownerDocumentSetDefaultZoneDid(ownerDoc: BuckyOSOwnerDocument, defaultZoneDid: DID | DIDString): void {
+  const zoneDid = asDid(defaultZoneDid)
+  const zoneDidStr = zoneDid.toString()
+  const bindedZoneList = (ownerDoc.binded_zone_list ?? []).filter(did => did !== zoneDidStr)
+  bindedZoneList.unshift(zoneDidStr)
+  ownerDoc.binded_zone_list = bindedZoneList
+
+  const lastDocServiceId = `${ownerDoc.id}#lastDoc`
+  const services: W3CService[] = (ownerDoc.service ?? []).filter(service => service.id !== lastDocServiceId)
+  services.push({
+    id: lastDocServiceId,
+    type: 'DIDDoc',
+    serviceEndpoint: `https://${zoneDid.toHostName()}/resolve/${ownerDoc.id}`,
+  })
+  ownerDoc.service = services
+}
+
+// Mirrors Rust OwnerDocument::get_default_zone_did.
+export function ownerDocumentGetDefaultZoneDid(ownerDoc: BuckyOSOwnerDocument): DIDString | null {
+  return ownerDoc.binded_zone_list?.[0] ?? null
+}
+
+// Mirrors Rust OwnerDocument::is_bound_to_zone.
+export function ownerDocumentIsBoundToZone(ownerDoc: BuckyOSOwnerDocument, zoneDid: DID | DIDString): boolean {
+  const zoneDidStr = asDid(zoneDid).toString()
+  return (ownerDoc.binded_zone_list ?? []).includes(zoneDidStr)
+}
+
+// Mirrors Rust OwnerDocument::get_historical_keys: every verification method
+// except #main_key, for fallback verification right after a key rotation.
+export function ownerDocumentGetHistoricalKeys(ownerDoc: BuckyOSOwnerDocument): Array<[string, Ed25519Jwk]> {
+  return ownerDoc.verificationMethod
+    .filter(method => method.id !== '#main_key')
+    .map(method => [method.id, method.publicKeyJwk as Ed25519Jwk])
+}
+
+// Mirrors Rust OwnerDocument::validate_jwt_revocation: an owner document can
+// declare mini_version_seq / valid_iat to revoke previously issued JWTs.
+export function ownerDocumentValidateJwtRevocation(
+  ownerDoc: BuckyOSOwnerDocument,
+  docType: string,
+  doc: EncodedDocument,
+): void {
+  if (ownerDoc.mini_version_seq === undefined && ownerDoc.valid_iat === undefined) {
+    return
+  }
+  if (doc.type !== 'jwt') {
+    return
+  }
+  const docValue = encodedDocumentToJsonValue(doc)
+  if (ownerDoc.mini_version_seq !== undefined) {
+    const versionSeq = typeof docValue?.version_seq === 'number' ? docValue.version_seq : undefined
+    if (versionSeq === undefined) {
+      throw new Error(`namelib: ${docType} JWT missing version_seq required by owner revocation policy`)
+    }
+    if (versionSeq <= ownerDoc.mini_version_seq) {
+      throw new Error(
+        `namelib: ${docType} JWT version_seq ${versionSeq} is not greater than owner mini_version_seq ${ownerDoc.mini_version_seq}`,
+      )
+    }
+  }
+  if (ownerDoc.valid_iat !== undefined) {
+    const iat = typeof docValue?.iat === 'number' ? docValue.iat : undefined
+    if (iat === undefined) {
+      throw new Error(`namelib: ${docType} JWT missing iat required by owner revocation policy`)
+    }
+    if (iat <= ownerDoc.valid_iat) {
+      throw new Error(
+        `namelib: ${docType} JWT iat ${iat} is not greater than owner valid_iat ${ownerDoc.valid_iat}`,
+      )
+    }
+  }
+}
+
+export interface NewZoneDocumentParams {
   id: DID | DIDString
   ownerDid: DID | DIDString
   publicKeyJwk: Ed25519Jwk
   now?: number
 }
 
-// Mirrors Rust ZoneConfig::new.
-export function newZoneConfig(params: NewZoneConfigParams): BuckyOSZoneDocument {
+// Mirrors Rust ZoneDocument::new.
+export function newZoneDocument(params: NewZoneDocumentParams): BuckyOSZoneDocument {
   const id = asDid(params.id)
   const ownerDid = asDid(params.ownerDid)
   const now = params.now ?? buckyosGetUnixTimestamp()
@@ -784,30 +949,46 @@ export function newZoneConfig(params: NewZoneConfigParams): BuckyOSZoneDocument 
   }
 }
 
-// Mirrors Rust ZoneConfig::init_by_boot_config.
-export function zoneConfigInitByBootConfig(
-  zoneConfig: BuckyOSZoneDocument,
-  bootConfig: BuckyOSZoneBootConfig,
+// Mirrors Rust ZoneDocument::init_by_boot_document.
+export function zoneDocumentInitByBootDocument(
+  zoneDoc: BuckyOSZoneDocument,
+  bootDoc: BuckyOSZoneBootDocument,
   bootJwt: string,
 ): void {
-  zoneConfig.boot_jwt = bootJwt
-  zoneConfig.id = bootConfig.id ?? zoneConfig.id
-  zoneConfig.oods = [...bootConfig.oods]
-  if (bootConfig.sn !== undefined) {
-    zoneConfig.sn = bootConfig.sn
+  zoneDoc.boot_jwt = bootJwt
+  zoneDoc.id = bootDoc.id ?? zoneDoc.id
+  zoneDoc.oods = [...bootDoc.oods]
+  if (bootDoc.sn !== undefined) {
+    zoneDoc.sn = bootDoc.sn
   } else {
-    delete zoneConfig.sn
+    delete zoneDoc.sn
   }
-  zoneConfig.exp = bootConfig.exp
-  zoneConfig.iat = bootConfig.exp - DEFAULT_EXPIRE_TIME
-  zoneConfig.version_seq = 0
-  zoneConfig.owner = bootConfig.owner ?? DID.undefined().toString()
-  if (bootConfig.owner_key !== undefined) {
-    zoneConfig.verificationMethod[0].publicKeyJwk = bootConfig.owner_key
+  zoneDoc.exp = bootDoc.exp
+  zoneDoc.iat = bootDoc.exp - DEFAULT_EXPIRE_TIME
+  zoneDoc.version_seq = 0
+  zoneDoc.owner = bootDoc.owner ?? DID.undefined().toString()
+  if (bootDoc.owner_key !== undefined) {
+    zoneDoc.verificationMethod[0].publicKeyJwk = bootDoc.owner_key
   }
 }
 
-export interface NewZoneBootConfigParams {
+// Mirrors Rust ZoneDocument::get_default_zone_gateway.
+export function zoneDocumentGetDefaultGateway(zoneDoc: BuckyOSZoneDocument): string | null {
+  for (const oodString of zoneDoc.oods) {
+    const ood = parseOODDescription(oodString)
+    if (oodNodeTypeIsGateway(ood.nodeType)) {
+      return ood.name
+    }
+  }
+  return null
+}
+
+// Mirrors Rust ZoneDocument::get_sn_api_url.
+export function zoneDocumentGetSnApiUrl(zoneDoc: BuckyOSZoneDocument): string | null {
+  return zoneDoc.sn !== undefined ? `https://${zoneDoc.sn}/kapi/sn` : null
+}
+
+export interface NewZoneBootDocumentParams {
   id?: DID | DIDString
   oods: string[]
   sn?: string
@@ -816,7 +997,7 @@ export interface NewZoneBootConfigParams {
   ownerKey?: Ed25519Jwk
 }
 
-export function newZoneBootConfig(params: NewZoneBootConfigParams): BuckyOSZoneBootConfig {
+export function newZoneBootDocument(params: NewZoneBootDocumentParams): BuckyOSZoneBootDocument {
   return pruneUndefined({
     id: params.id !== undefined ? asDid(params.id).toString() : undefined,
     oods: [...params.oods],
@@ -827,43 +1008,54 @@ export function newZoneBootConfig(params: NewZoneBootConfigParams): BuckyOSZoneB
   })
 }
 
-// Mirrors Rust ZoneBootConfig::encode: sign the boot config as an EdDSA JWT.
-// Payload key order: id?, oods, sn?, exp, owner?, owner_key?.
-export async function encodeZoneBootConfig(bootConfig: BuckyOSZoneBootConfig, ownerPrivateKeyPem: string): Promise<string> {
-  const { id, oods, sn, exp, owner, owner_key, ...extra } = bootConfig
+// Mirrors Rust ZoneBootDocument::encode: sign the boot document as an EdDSA
+// JWT. Payload key order: id?, oods, sn?, exp, owner?, owner_key?.
+export async function encodeZoneBootDocument(bootDoc: BuckyOSZoneBootDocument, ownerPrivateKeyPem: string): Promise<string> {
+  const { id, oods, sn, exp, owner, owner_key, ...extra } = bootDoc
   const payload = pruneUndefined({ id, oods, sn, exp, owner, ...extra, owner_key })
   return signJwtEdDSA(payload, ownerPrivateKeyPem)
 }
 
-export async function decodeZoneBootConfig(jwt: string, publicKeyJwk?: Ed25519Jwk): Promise<BuckyOSZoneBootConfig> {
+export async function decodeZoneBootDocument(jwt: string, publicKeyJwk?: Ed25519Jwk): Promise<BuckyOSZoneBootDocument> {
   const payload = publicKeyJwk ? await verifyJwtEdDSA(jwt, publicKeyJwk) : decodeJwtClaimWithoutVerify(jwt)
-  return payload as BuckyOSZoneBootConfig
+  return payload as BuckyOSZoneBootDocument
 }
 
-// Mirrors Rust ZoneBootConfig::to_zone_config.
-export function zoneBootConfigToZoneConfig(bootConfig: BuckyOSZoneBootConfig, bootJwt: string): BuckyOSZoneDocument {
-  if (!bootConfig.id || !bootConfig.owner_key) {
-    throw new Error('namelib: zone boot config needs id and owner_key to build zone config')
+// Mirrors Rust ZoneBootDocument::get_gateway_name.
+export function zoneBootDocumentGetGatewayName(bootDoc: BuckyOSZoneBootDocument): string {
+  for (const oodString of bootDoc.oods) {
+    const ood = parseOODDescription(oodString)
+    if (oodNodeTypeIsGateway(ood.nodeType)) {
+      return ood.name
+    }
   }
-  const ownerDid = bootConfig.owner ? DID.fromStr(bootConfig.owner) : DID.undefined()
-  const zoneConfig = newZoneConfig({
-    id: bootConfig.id,
-    ownerDid,
-    publicKeyJwk: bootConfig.owner_key,
-  })
-  zoneConfigInitByBootConfig(zoneConfig, bootConfig, bootJwt)
-  return zoneConfig
+  return ''
 }
 
-export interface NewDeviceConfigParams {
+// Mirrors Rust ZoneBootDocument::to_zone_document.
+export function zoneBootDocumentToZoneDocument(bootDoc: BuckyOSZoneBootDocument, bootJwt: string): BuckyOSZoneDocument {
+  if (!bootDoc.id || !bootDoc.owner_key) {
+    throw new Error('namelib: zone boot document needs id and owner_key to build zone document')
+  }
+  const ownerDid = bootDoc.owner ? DID.fromStr(bootDoc.owner) : DID.undefined()
+  const zoneDoc = newZoneDocument({
+    id: bootDoc.id,
+    ownerDid,
+    publicKeyJwk: bootDoc.owner_key,
+  })
+  zoneDocumentInitByBootDocument(zoneDoc, bootDoc, bootJwt)
+  return zoneDoc
+}
+
+export interface NewDeviceDocumentParams {
   name: string
   // base64url Ed25519 public key (the "x" of the device JWK)
   pkx: string
   now?: number
 }
 
-// Mirrors Rust DeviceConfig::new.
-export function newDeviceConfig(params: NewDeviceConfigParams): BuckyOSDeviceDocument {
+// Mirrors Rust DeviceDocument::new.
+export function newDeviceDocument(params: NewDeviceDocumentParams): BuckyOSDeviceDocument {
   const now = params.now ?? buckyosGetUnixTimestamp()
   const did = `did:dev:${params.pkx}`
   return {
@@ -889,20 +1081,20 @@ export function newDeviceConfig(params: NewDeviceConfigParams): BuckyOSDeviceDoc
   }
 }
 
-// Mirrors Rust DeviceConfig::new_by_jwk.
-export function newDeviceConfigByJwk(name: string, publicKeyJwk: Ed25519Jwk, now?: number): BuckyOSDeviceDocument {
-  return newDeviceConfig({ name, pkx: getXFromJwk(publicKeyJwk), now })
+// Mirrors Rust DeviceDocument::new_by_jwk.
+export function newDeviceDocumentByJwk(name: string, publicKeyJwk: Ed25519Jwk, now?: number): BuckyOSDeviceDocument {
+  return newDeviceDocument({ name, pkx: getXFromJwk(publicKeyJwk), now })
 }
 
-// Mirrors Rust DeviceConfig::new_by_mini_config.
-export function newDeviceConfigByMiniConfig(
-  miniConfigJwt: string,
-  miniConfig: BuckyOSDeviceMiniDocument,
+// Mirrors Rust DeviceDocument::new_by_mini_document.
+export function newDeviceDocumentByMiniDocument(
+  miniDocJwt: string,
+  miniDoc: BuckyOSDeviceMiniDocument,
   zoneDid: DID | DIDString,
   ownerDid: DID | DIDString,
 ): BuckyOSDeviceDocument {
-  const did = `did:dev:${miniConfig.x}`
-  const config: BuckyOSDeviceDocument = {
+  const did = `did:dev:${miniDoc.x}`
+  const deviceDoc: BuckyOSDeviceDocument = {
     '@context': buckyosContext('device'),
     id: did,
     verificationMethod: [
@@ -910,45 +1102,47 @@ export function newDeviceConfigByMiniConfig(
         type: 'Ed25519VerificationKey2020',
         id: '#main_key',
         controller: did,
-        publicKeyJwk: createJwkByX(miniConfig.x),
+        publicKeyJwk: createJwkByX(miniDoc.x),
       },
     ],
     authentication: ['#main_key'],
     assertion_method: ['#main_key'],
     capabilityInvocation: ['#main_key'],
-    exp: miniConfig.exp,
-    iat: miniConfig.exp - DEFAULT_EXPIRE_TIME,
+    exp: miniDoc.exp,
+    iat: miniDoc.exp - DEFAULT_EXPIRE_TIME,
     version_seq: 0,
     zone_did: asDid(zoneDid).toString(),
     owner: asDid(ownerDid).toString(),
     device_type: 'ood',
-    device_mini_config_jwt: miniConfigJwt,
-    name: miniConfig.n,
+    device_mini_document_jwt: miniDocJwt,
+    name: miniDoc.n,
   }
-  if (miniConfig.p !== undefined) {
-    config.rtcp_port = miniConfig.p
+  if (miniDoc.p !== undefined) {
+    deviceDoc.rtcp_port = miniDoc.p
   }
-  return config
+  return deviceDoc
 }
 
-// Serialize a DeviceConfig payload in Rust struct order and sign it.
+// Serialize a DeviceDocument payload in Rust struct order and sign it.
 // NOTE: device documents are signed by the OWNER private key, not the device key.
-export async function encodeDeviceConfig(deviceConfig: BuckyOSDeviceDocument, ownerPrivateKeyPem: string): Promise<string> {
-  if (deviceConfig.version_seq === undefined) {
-    throw new Error('namelib: DeviceConfig version_seq is required when encoding as JWT')
+export async function encodeDeviceDocument(deviceDoc: BuckyOSDeviceDocument, ownerPrivateKeyPem: string): Promise<string> {
+  if (deviceDoc.version_seq === undefined) {
+    throw new Error('namelib: DeviceDocument version_seq is required when encoding as JWT')
   }
-  return signJwtEdDSA(deviceConfigPayload(deviceConfig), ownerPrivateKeyPem)
+  return signJwtEdDSA(deviceDocumentPayload(deviceDoc), ownerPrivateKeyPem)
 }
 
-// Rebuild the payload in Rust DeviceConfig serde order, applying the same
+// Rebuild the payload in Rust DeviceDocument serde order, applying the same
 // skip_serializing_if rules (support_container is skipped when true).
-function deviceConfigPayload(config: BuckyOSDeviceDocument): Record<string, unknown> {
+function deviceDocumentPayload(doc: BuckyOSDeviceDocument): Record<string, unknown> {
   const {
     '@context': context, id, verificationMethod, authentication,
-    assertion_method, capabilityInvocation, service, exp, iat, version_seq, keyScope,
-    zone_did, owner, device_type, device_mini_config_jwt, name, rtcp_port,
+    assertion_method, capabilityInvocation, service, exp, iat, version_seq,
+    keyScope, 'buckyos:scopes': buckyosScopes,
+    zone_did, owner, device_type, device_mini_document_jwt, name, rtcp_port,
     ips, net_id, ddns_sn_url, support_container, capbilities, ...extra
-  } = config as Record<string, any>
+  } = doc as Record<string, any>
+  const keyScopeValue = keyScope ?? buckyosScopes
   return pruneUndefined({
     '@context': context,
     id,
@@ -961,11 +1155,11 @@ function deviceConfigPayload(config: BuckyOSDeviceDocument): Record<string, unkn
     iat,
     version_seq,
     ...extra,
-    keyScope: keyScope && Object.keys(keyScope).length > 0 ? keyScope : undefined,
+    keyScope: keyScopeValue && Object.keys(keyScopeValue).length > 0 ? keyScopeValue : undefined,
     zone_did,
     owner,
     device_type,
-    device_mini_config_jwt,
+    device_mini_document_jwt,
     name,
     rtcp_port,
     ips: ips && ips.length > 0 ? ips : undefined,
@@ -976,22 +1170,22 @@ function deviceConfigPayload(config: BuckyOSDeviceDocument): Record<string, unkn
   })
 }
 
-export async function decodeDeviceConfig(jwt: string, publicKeyJwk?: Ed25519Jwk): Promise<BuckyOSDeviceDocument> {
+export async function decodeDeviceDocument(jwt: string, publicKeyJwk?: Ed25519Jwk): Promise<BuckyOSDeviceDocument> {
   const payload = publicKeyJwk ? await verifyJwtEdDSA(jwt, publicKeyJwk) : decodeJwtClaimWithoutVerify(jwt)
   if (payload.version_seq === undefined) {
-    throw new Error('namelib: DeviceConfig version_seq is required when decoding from JWT')
+    throw new Error('namelib: DeviceDocument version_seq is required when decoding from JWT')
   }
   return payload as BuckyOSDeviceDocument
 }
 
-export interface NewDeviceMiniConfigParams {
+export interface NewDeviceMiniDocumentParams {
   name: string
   x: string
   rtcpPort?: number
   exp: number
 }
 
-export function newDeviceMiniConfig(params: NewDeviceMiniConfigParams): BuckyOSDeviceMiniDocument {
+export function newDeviceMiniDocument(params: NewDeviceMiniDocumentParams): BuckyOSDeviceMiniDocument {
   return pruneUndefined({
     n: params.name,
     x: params.x,
@@ -1000,29 +1194,29 @@ export function newDeviceMiniConfig(params: NewDeviceMiniConfigParams): BuckyOSD
   })
 }
 
-// Mirrors Rust DeviceMiniConfig::new_by_device_config.
-export function newDeviceMiniConfigByDeviceConfig(deviceConfig: BuckyOSDeviceDocument): BuckyOSDeviceMiniDocument {
-  const defaultKey = deviceConfig.verificationMethod.find(method => method.id === '#main_key')
+// Mirrors Rust DeviceMiniDocument::new_by_device_document.
+export function newDeviceMiniDocumentByDeviceDocument(deviceDoc: BuckyOSDeviceDocument): BuckyOSDeviceMiniDocument {
+  const defaultKey = deviceDoc.verificationMethod.find(method => method.id === '#main_key')
   if (!defaultKey) {
-    throw new Error('namelib: device config has no #main_key verification method')
+    throw new Error('namelib: device document has no #main_key verification method')
   }
-  return newDeviceMiniConfig({
-    name: deviceConfig.name,
+  return newDeviceMiniDocument({
+    name: deviceDoc.name,
     x: getXFromJwk(defaultKey.publicKeyJwk),
-    rtcpPort: deviceConfig.rtcp_port,
-    exp: deviceConfig.exp,
+    rtcpPort: deviceDoc.rtcp_port,
+    exp: deviceDoc.exp,
   })
 }
 
-// Mirrors Rust DeviceMiniConfig::to_jwt (signed by owner key).
+// Mirrors Rust DeviceMiniDocument::to_jwt (signed by owner key).
 // Payload key order: n, x, p?, exp.
-export async function deviceMiniConfigToJwt(miniConfig: BuckyOSDeviceMiniDocument, ownerPrivateKeyPem: string): Promise<string> {
-  const { n, x, p, exp, ...extra } = miniConfig
+export async function deviceMiniDocumentToJwt(miniDoc: BuckyOSDeviceMiniDocument, ownerPrivateKeyPem: string): Promise<string> {
+  const { n, x, p, exp, ...extra } = miniDoc
   const payload = pruneUndefined({ n, x, p, exp, ...extra })
   return signJwtEdDSA(payload, ownerPrivateKeyPem)
 }
 
-export async function deviceMiniConfigFromJwt(jwt: string, publicKeyJwk?: Ed25519Jwk): Promise<BuckyOSDeviceMiniDocument> {
+export async function deviceMiniDocumentFromJwt(jwt: string, publicKeyJwk?: Ed25519Jwk): Promise<BuckyOSDeviceMiniDocument> {
   const payload = publicKeyJwk ? await verifyJwtEdDSA(jwt, publicKeyJwk) : decodeJwtClaimWithoutVerify(jwt)
   return payload as BuckyOSDeviceMiniDocument
 }
@@ -1048,21 +1242,23 @@ export function newNodeIdentityConfig(params: NewNodeIdentityConfigParams): Buck
   }
 }
 
-// Serialize an OwnerConfig payload in Rust struct order and sign it.
-export async function encodeOwnerConfig(ownerConfig: BuckyOSOwnerConfigDocument, privateKeyPem: string): Promise<string> {
-  if (ownerConfig.version_seq === undefined) {
-    throw new Error('namelib: OwnerConfig version_seq is required when encoding as JWT')
+// Serialize an OwnerDocument payload in Rust struct order and sign it.
+export async function encodeOwnerDocument(ownerDoc: BuckyOSOwnerDocument, privateKeyPem: string): Promise<string> {
+  if (ownerDoc.version_seq === undefined) {
+    throw new Error('namelib: OwnerDocument version_seq is required when encoding as JWT')
   }
-  return signJwtEdDSA(ownerConfigPayload(ownerConfig), privateKeyPem)
+  return signJwtEdDSA(ownerDocumentPayload(ownerDoc), privateKeyPem)
 }
 
-function ownerConfigPayload(config: BuckyOSOwnerConfigDocument): Record<string, unknown> {
+function ownerDocumentPayload(doc: BuckyOSOwnerDocument): Record<string, unknown> {
   const {
     '@context': context, id, verificationMethod, authentication,
     assertion_method, capabilityInvocation, service, exp, iat,
-    version_seq, mini_version_seq, valid_iat, keyScope,
-    name, full_name, meta, default_zone_did, wallets, ...extra
-  } = config as Record<string, any>
+    version_seq, mini_version_seq, valid_iat,
+    keyScope, 'buckyos:scopes': buckyosScopes,
+    name, display_name, avatar, meta, binded_zone_list, wallets, ...extra
+  } = doc as Record<string, any>
+  const keyScopeValue = keyScope ?? buckyosScopes
   return pruneUndefined({
     '@context': context,
     id,
@@ -1077,30 +1273,33 @@ function ownerConfigPayload(config: BuckyOSOwnerConfigDocument): Record<string, 
     mini_version_seq,
     valid_iat,
     ...extra,
-    keyScope: keyScope && Object.keys(keyScope).length > 0 ? keyScope : undefined,
+    keyScope: keyScopeValue && Object.keys(keyScopeValue).length > 0 ? keyScopeValue : undefined,
     name,
-    full_name,
+    display_name,
+    avatar,
     meta,
-    default_zone_did,
+    binded_zone_list: binded_zone_list && binded_zone_list.length > 0 ? binded_zone_list : undefined,
     wallets: wallets && Object.keys(wallets).length > 0 ? wallets : undefined,
   })
 }
 
-// Serialize a ZoneConfig payload in Rust struct order and sign it.
-export async function encodeZoneConfig(zoneConfig: BuckyOSZoneDocument, ownerPrivateKeyPem: string): Promise<string> {
-  if (zoneConfig.version_seq === undefined) {
-    throw new Error('namelib: ZoneConfig version_seq is required when encoding as JWT')
+// Serialize a ZoneDocument payload in Rust struct order and sign it.
+export async function encodeZoneDocument(zoneDoc: BuckyOSZoneDocument, ownerPrivateKeyPem: string): Promise<string> {
+  if (zoneDoc.version_seq === undefined) {
+    throw new Error('namelib: ZoneDocument version_seq is required when encoding as JWT')
   }
-  return signJwtEdDSA(zoneConfigPayload(zoneConfig), ownerPrivateKeyPem)
+  return signJwtEdDSA(zoneDocumentPayload(zoneDoc), ownerPrivateKeyPem)
 }
 
-function zoneConfigPayload(config: BuckyOSZoneDocument): Record<string, unknown> {
+function zoneDocumentPayload(doc: BuckyOSZoneDocument): Record<string, unknown> {
   const {
     '@context': context, id, verificationMethod, authentication,
-    assertionMethod, capabilityInvocation, service, exp, iat, version_seq, keyScope,
-    hostname, owner, oods, boot_jwt, devices, sn, docker_repo_base_url, verify_hub_info,
+    assertionMethod, capabilityInvocation, service, exp, iat, version_seq,
+    keyScope, 'buckyos:scopes': buckyosScopes,
+    hostname, owner, oods, boot_jwt, mini_device_jwts, devices, sn,
     ...extra
-  } = config as Record<string, any>
+  } = doc as Record<string, any>
+  const keyScopeValue = keyScope ?? buckyosScopes
   return pruneUndefined({
     '@context': context,
     id,
@@ -1113,14 +1312,246 @@ function zoneConfigPayload(config: BuckyOSZoneDocument): Record<string, unknown>
     iat,
     version_seq,
     ...extra,
-    keyScope: keyScope && Object.keys(keyScope).length > 0 ? keyScope : undefined,
+    keyScope: keyScopeValue && Object.keys(keyScopeValue).length > 0 ? keyScopeValue : undefined,
     hostname,
     owner,
     oods,
     boot_jwt,
+    mini_device_jwts: mini_device_jwts && Object.keys(mini_device_jwts).length > 0 ? mini_device_jwts : undefined,
     devices: devices && Object.keys(devices).length > 0 ? devices : undefined,
     sn,
-    docker_repo_base_url,
-    verify_hub_info,
   })
+}
+
+// Ordered JSON views (Rust serde struct order). Use these when writing a
+// document to disk that must be byte-identical to Rust serde_json output.
+export function ownerDocumentToOrderedJson(doc: BuckyOSOwnerDocument): Record<string, unknown> {
+  return ownerDocumentPayload(doc)
+}
+
+export function zoneDocumentToOrderedJson(doc: BuckyOSZoneDocument): Record<string, unknown> {
+  return zoneDocumentPayload(doc)
+}
+
+export function deviceDocumentToOrderedJson(doc: BuckyOSDeviceDocument): Record<string, unknown> {
+  return deviceDocumentPayload(doc)
+}
+
+// ============================================================================
+// key scopes (mirror key_scope.rs)
+// ============================================================================
+
+export const KEY_SCOPE_MANUAL = 'manual'
+export const KEY_SCOPE_ZONE_PUBLISH = 'zone:publish'
+export const KEY_SCOPE_MESSAGE_CREATE = 'message:create'
+export const KEY_SCOPE_CONTENT_CREATE = 'content:create'
+export const KEY_SCOPE_AGENT_SPEND = 'agent:spend'
+export const KEY_SCOPE_AGENT_RECEIVE = 'agent:receive'
+export const KEY_SCOPE_AGENT_CREATE_CONTENT = 'agent:create-content'
+
+// ============================================================================
+// DIDDocumentTrait helpers (mirror did.rs trait default methods)
+//
+// These operate on the serialized JSON form of any BuckyOS did document
+// (owner / zone / device / agent / did-object card).
+// ============================================================================
+
+export type AnyBuckyOSDIDDocument = W3CDIDDocumentBase | BuckyOSDIDObjectCard
+
+// keyScope map (serde: rename "keyScope", deserialize alias "buckyos:scopes").
+export function getDocumentKeyScope(doc: AnyBuckyOSDIDDocument): Record<string, string[]> {
+  const keyScope = (doc.keyScope ?? doc['buckyos:scopes']) as Record<string, string[]> | undefined
+  return keyScope ?? {}
+}
+
+// Mirrors get_auth_key: kid undefined means the first verification method.
+export function getDocumentAuthKey(doc: AnyBuckyOSDIDDocument, kid?: string): Ed25519Jwk | null {
+  const methods = doc.verificationMethod ?? []
+  if (methods.length === 0) {
+    return null
+  }
+  if (kid === undefined) {
+    return methods[0].publicKeyJwk as Ed25519Jwk
+  }
+  const method = methods.find(item => item.id === kid)
+  return method ? (method.publicKeyJwk as Ed25519Jwk) : null
+}
+
+// Mirrors get_default_key (owner/zone/device/agent): the #main_key entry.
+export function getDocumentDefaultKey(doc: AnyBuckyOSDIDDocument): Ed25519Jwk | null {
+  const method = (doc.verificationMethod ?? []).find(item => item.id === '#main_key')
+  return method ? (method.publicKeyJwk as Ed25519Jwk) : null
+}
+
+export function getKeyIdsByScope(doc: AnyBuckyOSDIDDocument, scope: string): string[] | null {
+  return getDocumentKeyScope(doc)[scope] ?? null
+}
+
+export function hasKeyScope(doc: AnyBuckyOSDIDDocument): boolean {
+  return Object.keys(getDocumentKeyScope(doc)).length > 0
+}
+
+// Mirrors get_standard_scope_key_ids: capabilityInvocation, then
+// authentication (DID Object Cards also fall back to assertionMethod).
+export function getStandardScopeKeyIds(doc: AnyBuckyOSDIDDocument): string[] | null {
+  const capabilityInvocation = doc.capabilityInvocation
+  if (Array.isArray(capabilityInvocation) && capabilityInvocation.length > 0) {
+    return capabilityInvocation
+  }
+  const authentication = doc.authentication
+  if (Array.isArray(authentication) && authentication.length > 0) {
+    return authentication
+  }
+  if (isBuckyOSDIDObjectCard(doc)) {
+    const assertionMethod = doc.assertionMethod
+    if (Array.isArray(assertionMethod) && assertionMethod.length > 0) {
+      return assertionMethod
+    }
+  }
+  return null
+}
+
+// Mirrors normalize_key_id_for_local_lookup: "<doc id>#key" -> "#key".
+export function normalizeKeyIdForLocalLookup(doc: AnyBuckyOSDIDDocument, keyId: string): string {
+  const documentId = doc.id
+  if (keyId.startsWith(documentId)) {
+    const localKeyId = keyId.slice(documentId.length)
+    if (localKeyId.startsWith('#')) {
+      return localKeyId
+    }
+  }
+  return keyId
+}
+
+// Mirrors expand_local_key_id: "#key" -> "<doc id>#key".
+export function expandLocalKeyId(doc: AnyBuckyOSDIDDocument, keyId: string): string {
+  if (keyId.startsWith('#')) {
+    return `${doc.id}${keyId}`
+  }
+  return keyId
+}
+
+export function isSameDocumentKeyId(doc: AnyBuckyOSDIDDocument, left: string, right: string): boolean {
+  return left === right
+    || normalizeKeyIdForLocalLookup(doc, left) === normalizeKeyIdForLocalLookup(doc, right)
+    || expandLocalKeyId(doc, left) === expandLocalKeyId(doc, right)
+}
+
+// Mirrors get_key_from_key_ids: first key id that resolves to a key.
+export function getKeyFromKeyIds(doc: AnyBuckyOSDIDDocument, keyIds: string[]): [string, Ed25519Jwk] | null {
+  for (const keyId of keyIds) {
+    const localKeyId = normalizeKeyIdForLocalLookup(doc, keyId)
+    const jwk = getDocumentAuthKey(doc, localKeyId)
+    if (jwk) {
+      return [keyId, jwk]
+    }
+  }
+  return null
+}
+
+// Mirrors get_key_by_scope: an explicit scope entry wins; a document WITH a
+// keyScope map denies unlisted scopes; a document WITHOUT one falls back to
+// the standard scope key ids, then to the default auth key.
+export function getKeyByScope(doc: AnyBuckyOSDIDDocument, scope: string): [string, Ed25519Jwk] | null {
+  const scopedKeyIds = getKeyIdsByScope(doc, scope)
+  if (scopedKeyIds) {
+    return getKeyFromKeyIds(doc, scopedKeyIds)
+  }
+  if (hasKeyScope(doc)) {
+    return null
+  }
+  const standardKeyIds = getStandardScopeKeyIds(doc)
+  if (standardKeyIds) {
+    const key = getKeyFromKeyIds(doc, standardKeyIds)
+    if (key) {
+      return key
+    }
+  }
+  const authKey = getDocumentAuthKey(doc)
+  return authKey ? ['', authKey] : null
+}
+
+// Mirrors is_key_allowed_in_scope.
+export function isKeyAllowedInScope(doc: AnyBuckyOSDIDDocument, scope: string, keyId: string): boolean {
+  const scopedKeyIds = getKeyIdsByScope(doc, scope)
+  if (scopedKeyIds) {
+    return scopedKeyIds.some(allowedKeyId => isSameDocumentKeyId(doc, allowedKeyId, keyId))
+  }
+  if (hasKeyScope(doc)) {
+    return false
+  }
+  const standardKeyIds = getStandardScopeKeyIds(doc)
+  if (standardKeyIds) {
+    return standardKeyIds.some(allowedKeyId => isSameDocumentKeyId(doc, allowedKeyId, keyId))
+  }
+  return getDocumentAuthKey(doc, normalizeKeyIdForLocalLookup(doc, keyId)) !== null
+}
+
+// ============================================================================
+// parse_did_doc (mirror did.rs parse_did_doc: route by document shape)
+// ============================================================================
+
+export type ParsedDidDocument =
+  | { docType: 'owner'; doc: BuckyOSOwnerDocument }
+  | { docType: 'agent'; doc: BuckyOSAgentDocument }
+  | { docType: 'device'; doc: BuckyOSDeviceDocument }
+  | { docType: 'zone'; doc: BuckyOSZoneDocument }
+  | { docType: 'did-object'; doc: BuckyOSDIDObjectCard }
+
+// Mirrors Rust parse_did_doc. Routing order: owner (verificationMethod + name
+// + display name in any casing) -> agent (httpServicePorts) -> device
+// (device_type) -> zone (oods) -> DID Object Card (DIDObjectService service).
+// Documents decoded from a JWT must carry version_seq (revocation policy).
+export function parseDidDoc(doc: EncodedDocument | string): ParsedDidDocument {
+  const encoded = typeof doc === 'string' ? encodedDocumentFromStr(doc) : doc
+  const isJwt = encoded.type === 'jwt'
+  const value = encodedDocumentToJsonValue(encoded)
+  if (typeof value !== 'object' || value === null) {
+    throw new Error('namelib: unknown did document')
+  }
+  const ensureVersionSeqForJwt = (docTypeName: string) => {
+    if (isJwt && typeof value.version_seq !== 'number') {
+      throw new Error(`namelib: ${docTypeName} version_seq is required when encoding as JWT`)
+    }
+  }
+
+  if (value.verificationMethod !== undefined && value.name !== undefined
+    && (value.display_name !== undefined || value.displayName !== undefined || value.full_name !== undefined)) {
+    ensureVersionSeqForJwt('OwnerDocument')
+    return { docType: 'owner', doc: value as BuckyOSOwnerDocument }
+  }
+  if (value.httpServicePorts !== undefined) {
+    ensureVersionSeqForJwt('AgentDocument')
+    return { docType: 'agent', doc: value as BuckyOSAgentDocument }
+  }
+  if (value.device_type !== undefined) {
+    ensureVersionSeqForJwt('DeviceDocument')
+    return { docType: 'device', doc: value as BuckyOSDeviceDocument }
+  }
+  if (value.oods !== undefined) {
+    ensureVersionSeqForJwt('ZoneDocument')
+    return { docType: 'zone', doc: value as BuckyOSZoneDocument }
+  }
+  if (Array.isArray(value.service)
+    && value.service.some((service: any) => service?.type === DID_OBJECT_SERVICE_TYPE)) {
+    ensureVersionSeqForJwt('DIDObjectCard')
+    return { docType: 'did-object', doc: value as BuckyOSDIDObjectCard }
+  }
+  throw new Error('namelib: unknown did document')
+}
+
+// Mirrors DIDDocumentTrait::get_doc_type for the parseDidDoc result.
+export function getDidDocType(parsed: ParsedDidDocument): DidDocType {
+  return parsed.docType
+}
+
+export function parseDidDocAs<T extends BuckyOSDIDDocument>(
+  doc: EncodedDocument | string,
+  docType: ParsedDidDocument['docType'],
+): T {
+  const parsed = parseDidDoc(doc)
+  if (parsed.docType !== docType) {
+    throw new Error(`namelib: expected ${docType} document, got ${parsed.docType}`)
+  }
+  return parsed.doc as T
 }

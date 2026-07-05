@@ -8,7 +8,8 @@ import { MsgQueueClient } from './msg_queue_client'
 import { MsgCenterClient } from './msg_center_client'
 import { RepoClient } from './repo_client'
 import { BrowserUserInfo, getBrowserUserInfo, saveBrowserUserInfo } from './account'
-import { parseOwnerConfigDocument } from './types'
+import { parseBuckyOSOwnerDocument } from './types'
+import { DID } from './namelib'
 
 declare const require: undefined | ((name: string) => any)
 
@@ -92,6 +93,7 @@ interface LocalSigningMaterial {
 
 interface NodeIdentityMetadata {
   deviceName: string | null
+  deviceDid: string | null
   zoneDid: string | null
   zoneName: string | null
 }
@@ -1035,6 +1037,8 @@ export class BuckyOSRuntime {
     try {
       const raw = await fs.readFile(nodeIdentityPath, 'utf8')
       const parsed = JSON.parse(raw) as {
+        device_name?: unknown
+        device_did?: unknown
         zone_did?: unknown
         zone_name?: unknown
         device_mini_doc_jwt?: unknown
@@ -1044,6 +1048,7 @@ export class BuckyOSRuntime {
       const deviceName = this.extractDeviceNameFromIdentityPayload(parsed)
       return {
         deviceName,
+        deviceDid: typeof parsed.device_did === 'string' ? parsed.device_did.trim() || null : null,
         zoneDid: typeof parsed.zone_did === 'string' ? parsed.zone_did.trim() || null : null,
         zoneName: typeof parsed.zone_name === 'string' ? parsed.zone_name.trim() || null : null,
       }
@@ -1053,12 +1058,21 @@ export class BuckyOSRuntime {
   }
 
   private extractDeviceNameFromIdentityPayload(payload: {
+    device_name?: unknown
     device_mini_doc_jwt?: unknown
     device_doc_jwt?: unknown
   }): string | null {
+    // node_identity schema v2 (buckyos.node_identity.v2) carries the device
+    // name directly.
+    const directName = typeof payload.device_name === 'string' ? payload.device_name.trim() : ''
+    if (directName) {
+      return directName
+    }
+
+    // Legacy v1 identity files embed the device jwts instead. Lenient
+    // extraction: any JWT that carries an "n" claim is enough to learn the
+    // device name.
     const miniDocJwt = typeof payload.device_mini_doc_jwt === 'string' ? payload.device_mini_doc_jwt : null
-    // Lenient extraction: unlike the full DeviceMiniConfig shape ({n,x,exp}),
-    // here any JWT that carries an "n" claim is enough to learn the device name.
     const miniDocClaims = parseSessionTokenClaims(miniDocJwt)
     const miniDocName = typeof miniDocClaims?.n === 'string' ? miniDocClaims.n.trim() : ''
     if (miniDocName) {
@@ -1092,26 +1106,55 @@ export class BuckyOSRuntime {
     ]
 
     for (const dir of Array.from(new Set(candidateDirs))) {
-      const deviceName = await this.readDeviceNameFromNodeIdentityPath(path.join(dir, 'node_identity.json'))
+      const metadata = await this.readNodeIdentityMetadata(path.join(dir, 'node_identity.json'))
+      const deviceName = metadata?.deviceName ?? null
       if (!deviceName || deviceName !== userId) {
         continue
       }
 
-      const keyPath = path.join(dir, 'node_private_key.pem')
-      const keyPem = await this.readPemFile(keyPath)
-      if (!keyPem) {
-        continue
-      }
+      for (const keyPath of await this.deviceKeyPathCandidates(dir, metadata?.deviceDid ?? null)) {
+        const keyPem = await this.readPemFile(keyPath)
+        if (!keyPem) {
+          continue
+        }
 
-      return {
-        keyPem,
-        issuer: deviceName,
-        subject: deviceName,
-        sourcePath: keyPath,
+        return {
+          keyPem,
+          issuer: deviceName,
+          subject: deviceName,
+          sourcePath: keyPath,
+        }
       }
     }
 
     return null
+  }
+
+  // node_identity schema v2 stores the device authentication key in the
+  // identity-roots security dir (keyed by the device DID); v1 layouts keep a
+  // node_private_key.pem next to node_identity.json.
+  private async deviceKeyPathCandidates(identityDir: string, deviceDid: string | null): Promise<string[]> {
+    const path = await importNodeModule('node:path')
+    const candidates: string[] = []
+
+    if (deviceDid) {
+      try {
+        const dirName = DID.fromStr(deviceDid).toFilename()
+        const keyFileName = 'authentication.private.pem'
+        // dev/test layout: security root under the node dir itself
+        candidates.push(path.join(identityDir, 'security', dirName, keyFileName))
+        // deployed layout: $BUCKYOS_SECURITY_ROOT or $BUCKYOS_ROOT/security
+        const env = getProcessEnv()
+        const securityRoot = trimToNull(env.BUCKYOS_SECURITY_ROOT)
+          ?? path.join(trimToNull(env.BUCKYOS_ROOT) ?? '/opt/buckyos', 'security')
+        candidates.push(path.join(securityRoot, dirName, keyFileName))
+      } catch {
+        // Malformed device did: fall through to the legacy key path.
+      }
+    }
+
+    candidates.push(path.join(identityDir, 'node_private_key.pem'))
+    return candidates
   }
 
   private async tryLoadUserSigningMaterial(userId: string, roots: string[]): Promise<LocalSigningMaterial | null> {
@@ -1125,8 +1168,8 @@ export class BuckyOSRuntime {
 
       try {
         const raw = await fs.readFile(userConfigPath, 'utf8')
-        const ownerConfig = parseOwnerConfigDocument(JSON.parse(raw))
-        const configUserId = ownerConfig?.name?.trim()
+        const ownerDoc = parseBuckyOSOwnerDocument(JSON.parse(raw))
+        const configUserId = ownerDoc?.name?.trim()
         if (!configUserId || configUserId !== userId) {
           continue
         }
@@ -1217,8 +1260,9 @@ export class BuckyOSRuntime {
       const userConfigPath = path.join(root, 'user_config.json')
       try {
         const raw = await fs.readFile(userConfigPath, 'utf8')
-        const ownerConfig = parseOwnerConfigDocument(JSON.parse(raw))
-        const zoneHost = resolveZoneHostFromDid(ownerConfig?.default_zone_did)
+        const ownerDoc = parseBuckyOSOwnerDocument(JSON.parse(raw))
+        // The default zone is the first entry of binded_zone_list.
+        const zoneHost = resolveZoneHostFromDid(ownerDoc?.binded_zone_list?.[0])
         if (!zoneHost) {
           continue
         }

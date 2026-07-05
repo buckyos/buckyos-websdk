@@ -5,98 +5,134 @@ var __publicField = (obj, key, value) => {
   return value;
 };
 var _a;
-import { c as commonjsGlobal, b as DID, d as createJwkByX, e as newOwnerConfig, p as parseOODDescription, o as oodDescriptionToString, f as newZoneBootConfig, g as newZoneConfig, i as encodeZoneBootConfig, z as zoneConfigInitByBootConfig, j as newDeviceMiniConfig, k as deviceMiniConfigToJwt, l as newDeviceConfigByJwk, m as encodeDeviceConfig, q as newDeviceMiniConfigByDeviceConfig, r as newNodeIdentityConfig, t as newDeviceConfigByMiniConfig, v as verifyJwtEdDSA, u as buckyosGetUnixTimestamp, w as buildNamedObjectByJson, x as decodeJwtClaimWithoutVerify } from "./ndn_types-e2a3628e.mjs";
-function keyPair(privateKeyBase64, publicKeyX) {
+import { N as NODE_IDENTITY_SCHEMA_V2, v as DID, y as newDeviceDocumentByJwk, z as verifyJwtEdDSA, A as deviceDocumentToOrderedJson, B as decodeJwtClaimWithoutVerify, E as commonjsGlobal, G as createJwkByX, H as newOwnerDocument, I as ownerDocumentToOrderedJson, J as parseOODDescription, K as oodDescriptionToString, L as newZoneBootDocument, M as newZoneDocument, P as encodeZoneBootDocument, Q as zoneDocumentInitByBootDocument, R as zoneDocumentToOrderedJson, T as newDeviceMiniDocument, U as deviceMiniDocumentToJwt, V as encodeDeviceDocument, W as newDeviceMiniDocumentByDeviceDocument, X as newDeviceDocumentByMiniDocument, Y as buckyosGetUnixTimestamp, Z as buildNamedObjectByJson } from "./ndn_types-7ce47e32.mjs";
+const DEVICE_DOC_JWT_FILE_NAME = "device_doc.jwt";
+const DEVICE_MINI_DOC_JWT_FILE_NAME = "device_mini_doc.jwt";
+const NODE_GATEWAY_PARAMS_FILE_NAME = "node_gateway_params.json";
+function requireNode$2(moduleName) {
+  const proc = globalThis.process;
+  if (typeof (proc == null ? void 0 : proc.getBuiltinModule) === "function") {
+    const builtin = proc.getBuiltinModule(moduleName);
+    if (builtin) {
+      return builtin;
+    }
+  }
+  if (typeof require === "function") {
+    return require(moduleName);
+  }
+  throw new Error(`buckyos device_identity cannot load builtin module ${moduleName} in this runtime`);
+}
+function asDid(value) {
+  return value instanceof DID ? value : DID.fromStr(value);
+}
+function writeJsonPretty(filePath, value) {
+  const fs = requireNode$2("node:fs");
+  const path = requireNode$2("node:path");
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, JSON.stringify(value, null, 2));
+}
+function newLocalNodeIdentityConfig(params) {
   return {
-    privateKeyPem: `-----BEGIN PRIVATE KEY-----
-${privateKeyBase64}
------END PRIVATE KEY-----`,
-    publicKeyX
+    schema: NODE_IDENTITY_SCHEMA_V2,
+    zone_did: asDid(params.zoneDid).toString(),
+    owner_did: asDid(params.ownerDid).toString(),
+    owner_public_key: params.ownerPublicKey,
+    device_name: params.deviceName,
+    device_did: asDid(params.deviceDid).toString(),
+    zone_iat: params.zoneIat
   };
 }
-const DEVTEST_OWNER = keyPair(
-  "MC4CAQAwBQYDK2VwBCIEIJBRONAzbwpIOwm0ugIQNyZJrDXxZF7HoPWAZesMedOr",
-  "T4Quc1L6Ogu4N2tTKOvneV1yYnBcmhP89B_RsuFsJZ8"
-);
-const DEVTEST_OOD1 = keyPair(
-  "MC4CAQAwBQYDK2VwBCIEIMDp9endjUnT2o4ImedpgvhVFyZEunZqG+ca0mka8oRp",
-  "gubVIszw-u_d5PVTh-oc8CKAhM9C-ne5G_yUK5BDaXc"
-);
-const DEVTEST_NODE1 = keyPair(
-  "MC4CAQAwBQYDK2VwBCIEICwMZt1W7P/9v3Iw/rS2RdziVkF7L+o5mIt/WL6ef/0w",
-  "Bb325f2ed0XSxrPS5sKQaX7ylY9Jh9rfevXiidKA1zc"
-);
-const BOB_OWNER = keyPair(
-  "MC4CAQAwBQYDK2VwBCIEILQLoUZt2okCht0UVhsf4UlGAV9h3BoliwZQN5zBO1G+",
-  "y-kuJcQ0doFpdNXf4HI8E814lK8MB3-t4XjDRcR_QCU"
-);
-const BOB_OOD1 = keyPair(
-  "MC4CAQAwBQYDK2VwBCIEIADmO0+u/gcmStDsHZOZCM5gxNYlQmP6jpMo279TQE75",
-  "iSMKakFEGzGAxLTlaB5TkqZ6d4wurObr-BpaQleoE2M"
-);
-const SN_OWNER = keyPair(
-  "MC4CAQAwBQYDK2VwBCIEIMkwWZKUe7+z7NtfgbgxWwGjMddvxtrmeGJiJe8rq00M",
-  "blzinUlTNGYcvCPFT1OfPKPbmjvteuXWMwQG55cTo7M"
-);
-const SN_SERVER = keyPair(
-  "MC4CAQAwBQYDK2VwBCIEIBvnIIa1Tx45SjRu9kBZuMgusP5q762SvojXZ4scFxVD",
-  "FPvY3WXPxuWPYFuwOY0Qbh0O7-hhKr6ta1jTcX9ORPI"
-);
-const DEVTESTS_OOD1 = keyPair(
-  "MC4CAQAwBQYDK2VwBCIEICBO4nQL1yMcu4uu51Grea+VTaaS+sswioMRZXoltzZh",
-  "waupPnLqJRwjr3hJ_2i2J4qGLx-8t5ihX6LET0ZY828"
-);
-const ALICE_OWNER = keyPair(
-  "MC4CAQAwBQYDK2VwBCIEIKH6oJdebg+xxICY7Z1vm84qMkSzm6Wk0ic88DGR90aq",
-  "uh7RD37tflN65CrcJSUQ3vGnyU4vmC7_M8IkEEOHnds"
-);
-const ALICE_OOD1 = keyPair(
-  "MC4CAQAwBQYDK2VwBCIEIGhyUJ3/YgIrLZxSGG7o1bgiWcyETZKjTBoGagNdpxVy",
-  "E1oQDYqzyX4ysrNgTJ5DAVaMgA3By8XpBa0e6r2gBqQ"
-);
-const CHARLIE_OWNER = keyPair(
-  "MC4CAQAwBQYDK2VwBCIEICLjVTK81RKQ1aPtSLKFx/Fl33+WbxgqCpPCBFlqlBQX",
-  "cuFY7qeU1q96O1K5RRbXo7GXGR78szB-gmmkBXDMscE"
-);
-const CHARLIE_OOD1 = keyPair(
-  "MC4CAQAwBQYDK2VwBCIEIMe0Q/tl7DWbu3SIQE8vnDxO8YQMIivAlCgKiNUfjcWU",
-  "PY9uu16H74QYVRjstVxdWdAsgkoy10-74fvQhx4ddek"
-);
-const DEV_TEST_KEYS = {
-  // zone-id did:web:test.buckyos.io
-  devtest: DEVTEST_OWNER,
-  devtest_ood1: DEVTEST_OOD1,
-  "devtest.ood1": DEVTEST_OOD1,
-  devtest_node1: DEVTEST_NODE1,
-  "devtest.node1": DEVTEST_NODE1,
-  sn_owner: SN_OWNER,
-  // zone-id did:web:devtests.org
-  devtests: SN_OWNER,
-  // zone-id None (sn is not a zone)
-  sn: SN_SERVER,
-  sn_server: SN_SERVER,
-  devtests_ood1: DEVTESTS_OOD1,
-  "devtests.ood1": DEVTESTS_OOD1,
-  sn_web: DEVTESTS_OOD1,
-  // zone-id did:bns:bob
-  bob: BOB_OWNER,
-  bob_ood1: BOB_OOD1,
-  "bob.ood1": BOB_OOD1,
-  // zone-id did:bns:alice
-  alice: ALICE_OWNER,
-  alice_ood1: ALICE_OOD1,
-  "alice.ood1": ALICE_OOD1,
-  // zone-id did:web:charlie.me
-  charlie: CHARLIE_OWNER,
-  charlie_ood1: CHARLIE_OOD1,
-  "charlie.ood1": CHARLIE_OOD1
-};
-function getDevTestKeyPairById(id) {
-  const keyPair2 = DEV_TEST_KEYS[id];
-  if (!keyPair2) {
-    throw new Error(`unknown dev test key pair id: ${id}`);
+function loadLocalNodeIdentityConfig(filePath) {
+  const fs = requireNode$2("node:fs");
+  const config = JSON.parse(fs.readFileSync(filePath, "utf8"));
+  if (config.schema !== NODE_IDENTITY_SCHEMA_V2) {
+    throw new Error(
+      `unsupported node_identity schema '${config.schema}', expected '${NODE_IDENTITY_SCHEMA_V2}'`
+    );
   }
-  return keyPair2;
+  return config;
+}
+function deviceIdentityPathsForRoots(roots, deviceDid) {
+  const path = requireNode$2("node:path");
+  const deviceDidStr = asDid(deviceDid).toString();
+  const publicDir = roots.publicDir(deviceDidStr);
+  return {
+    publicDir,
+    securityDir: roots.securityDir(deviceDidStr),
+    didJson: roots.publicFile(deviceDidStr, "authentication", "did-json"),
+    deviceDocJwt: path.join(publicDir, DEVICE_DOC_JWT_FILE_NAME),
+    deviceMiniDocJwt: path.join(publicDir, DEVICE_MINI_DOC_JWT_FILE_NAME),
+    authenticationPrivateKey: roots.securityFile(deviceDidStr, "authentication", "private")
+  };
+}
+function buildDeviceDid(deviceName, zoneDid) {
+  const trimmedName = deviceName.trim();
+  if (!trimmedName) {
+    throw new Error("device name is empty");
+  }
+  const zone = asDid(zoneDid);
+  const zoneName = zone.method === "web" ? zone.toRawHostName() : zone.id.split(":")[0] ?? zone.id;
+  if (!zoneName.trim()) {
+    throw new Error(`zone DID ${zone.toString()} has empty host/name`);
+  }
+  return new DID(zone.method, `${trimmedName}.${zoneName}`);
+}
+function bindDeviceDocumentDid(deviceDoc, deviceDid) {
+  const deviceDidStr = asDid(deviceDid).toString();
+  deviceDoc.id = deviceDidStr;
+  if (!Array.isArray(deviceDoc.verificationMethod)) {
+    throw new Error("device document verificationMethod is missing");
+  }
+  for (const method of deviceDoc.verificationMethod) {
+    method.controller = deviceDidStr;
+  }
+  return deviceDoc;
+}
+function newDeviceDocumentByJwkWithDid(name, publicKeyJwk, deviceDid, now) {
+  return bindDeviceDocumentDid(newDeviceDocumentByJwk(name, publicKeyJwk, now), deviceDid);
+}
+function loadDeviceDocJwtForRoots(roots, deviceDid) {
+  const fs = requireNode$2("node:fs");
+  return fs.readFileSync(deviceIdentityPathsForRoots(roots, deviceDid).deviceDocJwt, "utf8");
+}
+function loadDeviceMiniDocJwtForRoots(roots, deviceDid) {
+  const fs = requireNode$2("node:fs");
+  return fs.readFileSync(deviceIdentityPathsForRoots(roots, deviceDid).deviceMiniDocJwt, "utf8");
+}
+async function loadLocalDeviceDocumentForRoots(roots, nodeIdentity, verify) {
+  const deviceDocJwt = loadDeviceDocJwtForRoots(roots, nodeIdentity.device_did);
+  const deviceDoc = verify ? await verifyJwtEdDSA(deviceDocJwt, nodeIdentity.owner_public_key) : decodeDeviceDocumentWithoutVerify(deviceDocJwt);
+  if (deviceDoc.id !== nodeIdentity.device_did) {
+    throw new Error(
+      `device_doc.jwt id ${deviceDoc.id} does not match node_identity device_did ${nodeIdentity.device_did}`
+    );
+  }
+  return [deviceDocJwt, deviceDoc];
+}
+function saveNodeGatewayParams(etcDir, deviceDid) {
+  const path = requireNode$2("node:path");
+  writeJsonPretty(path.join(etcDir, NODE_GATEWAY_PARAMS_FILE_NAME), {
+    params: {
+      device_did: asDid(deviceDid).toString()
+    }
+  });
+}
+function saveLocalDeviceIdentityForRoots(etcDir, roots, nodeIdentity, deviceDoc, deviceDocJwt, deviceMiniDocJwt, devicePrivateKeyPem) {
+  const fs = requireNode$2("node:fs");
+  const path = requireNode$2("node:path");
+  const paths = deviceIdentityPathsForRoots(roots, nodeIdentity.device_did);
+  fs.mkdirSync(paths.publicDir, { recursive: true });
+  fs.mkdirSync(paths.securityDir, { recursive: true });
+  writeJsonPretty(path.join(etcDir, "node_identity.json"), nodeIdentity);
+  saveNodeGatewayParams(etcDir, nodeIdentity.device_did);
+  writeJsonPretty(paths.didJson, deviceDocumentToOrderedJson(deviceDoc));
+  fs.writeFileSync(paths.deviceDocJwt, deviceDocJwt);
+  fs.writeFileSync(paths.deviceMiniDocJwt, deviceMiniDocJwt);
+  fs.writeFileSync(paths.authenticationPrivateKey, devicePrivateKeyPem);
+  return paths;
+}
+function decodeDeviceDocumentWithoutVerify(deviceDocJwt) {
+  return decodeJwtClaimWithoutVerify(deviceDocJwt);
 }
 /*! *****************************************************************************
 Copyright (C) Microsoft. All rights reserved.
@@ -13753,6 +13789,98 @@ async function createIdentityCertFromCa(caDir, didOrHostname, rootsInput, option
     metadataPath: paths.metadata
   };
 }
+function keyPair(privateKeyBase64, publicKeyX) {
+  return {
+    privateKeyPem: `-----BEGIN PRIVATE KEY-----
+${privateKeyBase64}
+-----END PRIVATE KEY-----`,
+    publicKeyX
+  };
+}
+const DEVTEST_OWNER = keyPair(
+  "MC4CAQAwBQYDK2VwBCIEIJBRONAzbwpIOwm0ugIQNyZJrDXxZF7HoPWAZesMedOr",
+  "T4Quc1L6Ogu4N2tTKOvneV1yYnBcmhP89B_RsuFsJZ8"
+);
+const DEVTEST_OOD1 = keyPair(
+  "MC4CAQAwBQYDK2VwBCIEIMDp9endjUnT2o4ImedpgvhVFyZEunZqG+ca0mka8oRp",
+  "gubVIszw-u_d5PVTh-oc8CKAhM9C-ne5G_yUK5BDaXc"
+);
+const DEVTEST_NODE1 = keyPair(
+  "MC4CAQAwBQYDK2VwBCIEICwMZt1W7P/9v3Iw/rS2RdziVkF7L+o5mIt/WL6ef/0w",
+  "Bb325f2ed0XSxrPS5sKQaX7ylY9Jh9rfevXiidKA1zc"
+);
+const BOB_OWNER = keyPair(
+  "MC4CAQAwBQYDK2VwBCIEILQLoUZt2okCht0UVhsf4UlGAV9h3BoliwZQN5zBO1G+",
+  "y-kuJcQ0doFpdNXf4HI8E814lK8MB3-t4XjDRcR_QCU"
+);
+const BOB_OOD1 = keyPair(
+  "MC4CAQAwBQYDK2VwBCIEIADmO0+u/gcmStDsHZOZCM5gxNYlQmP6jpMo279TQE75",
+  "iSMKakFEGzGAxLTlaB5TkqZ6d4wurObr-BpaQleoE2M"
+);
+const SN_OWNER = keyPair(
+  "MC4CAQAwBQYDK2VwBCIEIMkwWZKUe7+z7NtfgbgxWwGjMddvxtrmeGJiJe8rq00M",
+  "blzinUlTNGYcvCPFT1OfPKPbmjvteuXWMwQG55cTo7M"
+);
+const SN_SERVER = keyPair(
+  "MC4CAQAwBQYDK2VwBCIEIBvnIIa1Tx45SjRu9kBZuMgusP5q762SvojXZ4scFxVD",
+  "FPvY3WXPxuWPYFuwOY0Qbh0O7-hhKr6ta1jTcX9ORPI"
+);
+const DEVTESTS_OOD1 = keyPair(
+  "MC4CAQAwBQYDK2VwBCIEICBO4nQL1yMcu4uu51Grea+VTaaS+sswioMRZXoltzZh",
+  "waupPnLqJRwjr3hJ_2i2J4qGLx-8t5ihX6LET0ZY828"
+);
+const ALICE_OWNER = keyPair(
+  "MC4CAQAwBQYDK2VwBCIEIKH6oJdebg+xxICY7Z1vm84qMkSzm6Wk0ic88DGR90aq",
+  "uh7RD37tflN65CrcJSUQ3vGnyU4vmC7_M8IkEEOHnds"
+);
+const ALICE_OOD1 = keyPair(
+  "MC4CAQAwBQYDK2VwBCIEIGhyUJ3/YgIrLZxSGG7o1bgiWcyETZKjTBoGagNdpxVy",
+  "E1oQDYqzyX4ysrNgTJ5DAVaMgA3By8XpBa0e6r2gBqQ"
+);
+const CHARLIE_OWNER = keyPair(
+  "MC4CAQAwBQYDK2VwBCIEICLjVTK81RKQ1aPtSLKFx/Fl33+WbxgqCpPCBFlqlBQX",
+  "cuFY7qeU1q96O1K5RRbXo7GXGR78szB-gmmkBXDMscE"
+);
+const CHARLIE_OOD1 = keyPair(
+  "MC4CAQAwBQYDK2VwBCIEIMe0Q/tl7DWbu3SIQE8vnDxO8YQMIivAlCgKiNUfjcWU",
+  "PY9uu16H74QYVRjstVxdWdAsgkoy10-74fvQhx4ddek"
+);
+const DEV_TEST_KEYS = {
+  // zone-id did:web:test.buckyos.io
+  devtest: DEVTEST_OWNER,
+  devtest_ood1: DEVTEST_OOD1,
+  "devtest.ood1": DEVTEST_OOD1,
+  devtest_node1: DEVTEST_NODE1,
+  "devtest.node1": DEVTEST_NODE1,
+  sn_owner: SN_OWNER,
+  // zone-id did:web:devtests.org
+  devtests: SN_OWNER,
+  // zone-id None (sn is not a zone)
+  sn: SN_SERVER,
+  sn_server: SN_SERVER,
+  devtests_ood1: DEVTESTS_OOD1,
+  "devtests.ood1": DEVTESTS_OOD1,
+  sn_web: DEVTESTS_OOD1,
+  // zone-id did:bns:bob
+  bob: BOB_OWNER,
+  bob_ood1: BOB_OOD1,
+  "bob.ood1": BOB_OOD1,
+  // zone-id did:bns:alice
+  alice: ALICE_OWNER,
+  alice_ood1: ALICE_OOD1,
+  "alice.ood1": ALICE_OOD1,
+  // zone-id did:web:charlie.me
+  charlie: CHARLIE_OWNER,
+  charlie_ood1: CHARLIE_OOD1,
+  "charlie.ood1": CHARLIE_OOD1
+};
+function getDevTestKeyPairById(id) {
+  const keyPair2 = DEV_TEST_KEYS[id];
+  if (!keyPair2) {
+    throw new Error(`unknown dev test key pair id: ${id}`);
+  }
+  return keyPair2;
+}
 const PROVISION_BASE_TIME = 1743478939;
 const DEFAULT_EXP_YEARS = 10;
 const PROVISION_DEFAULT_EXP = PROVISION_BASE_TIME + 3600 * 24 * 365 * DEFAULT_EXP_YEARS;
@@ -13861,13 +13989,13 @@ async function createUserEnv(params) {
   }
   writeFileWithLog(path.join(userDir, "user_private_key.pem"), keyPair2.privateKeyPem);
   const ownerJwk = createJwkByX(keyPair2.publicKeyX);
-  const ownerConfig = newOwnerConfig({
+  const ownerDoc = newOwnerDocument({
     did: ownerDid,
     name: params.username,
-    fullName: params.username,
+    displayName: params.username,
     publicKeyJwk: ownerJwk
   });
-  writeJsonWithLog(path.join(userDir, "user_config.json"), ownerConfig);
+  writeJsonWithLog(path.join(userDir, "user_config.json"), ownerDocumentToOrderedJson(ownerDoc));
   console.log(`Created owner config for ${params.username}`);
   const ood = parseOODDescription(params.oodName);
   const deviceKeyPair = resolveDeviceKeyPair(params.username, ood.name, params.deviceKeyPair);
@@ -13882,38 +14010,38 @@ async function createUserEnv(params) {
     }
   }
   const oodString = oodDescriptionToString(ood);
-  const zoneBoot = newZoneBootConfig({ oods: [oodString], sn: realSnHost, exp });
+  const zoneBoot = newZoneBootDocument({ oods: [oodString], sn: realSnHost, exp });
   const zoneHostName = zoneDid.toRawHostName();
   writeJsonWithLog(path.join(userDir, `${zoneHostName}.zone.json`), zoneBoot);
   zoneBoot.id = zoneDid.toString();
-  const zoneConfig = newZoneConfig({ id: zoneDid, ownerDid, publicKeyJwk: ownerJwk });
-  const bootJwt = await encodeZoneBootConfig(zoneBoot, keyPair2.privateKeyPem);
-  zoneConfigInitByBootConfig(zoneConfig, zoneBoot, bootJwt);
-  writeJsonWithLog(path.join(userDir, "zone_config.json"), zoneConfig);
+  const zoneDoc = newZoneDocument({ id: zoneDid, ownerDid, publicKeyJwk: ownerJwk });
+  const bootJwt = await encodeZoneBootDocument(zoneBoot, keyPair2.privateKeyPem);
+  zoneDocumentInitByBootDocument(zoneDoc, zoneBoot, bootJwt);
+  writeJsonWithLog(path.join(userDir, "zone_config.json"), zoneDocumentToOrderedJson(zoneDoc));
   const pkx = keyPair2.publicKeyX;
   console.log(`=> ${zoneHostName} TXT Record(${bootJwt.length + 6}): BOOT=${bootJwt};`);
   console.log(`=> ${zoneHostName} TXT Record(${pkx.length + 5}): PKX=${pkx};`);
   const realRtcpPort = rtcpPort === 2980 ? void 0 : rtcpPort;
-  const miniConfig = newDeviceMiniConfig({
+  const miniDoc = newDeviceMiniDocument({
     name: ood.name,
     x: deviceKeyPair.publicKeyX,
     rtcpPort: realRtcpPort,
     exp
   });
-  const miniJwt = await deviceMiniConfigToJwt(miniConfig, keyPair2.privateKeyPem);
+  const miniJwt = await deviceMiniDocumentToJwt(miniDoc, keyPair2.privateKeyPem);
   console.log(`=> ${zoneHostName} TXT Record(${miniJwt.length + 5}): DEV=${miniJwt};`);
-  const deviceConfig = newDeviceConfigByJwk(ood.name, createJwkByX(deviceKeyPair.publicKeyX));
-  deviceConfig.support_container = true;
-  delete deviceConfig.support_container;
+  const deviceDid = buildDeviceDid(ood.name, zoneDid);
+  const deviceDoc = newDeviceDocumentByJwkWithDid(ood.name, createJwkByX(deviceKeyPair.publicKeyX), deviceDid);
+  deviceDoc.support_container = true;
   if (ood.netId !== void 0) {
-    deviceConfig.net_id = ood.netId;
+    deviceDoc.net_id = ood.netId;
   }
-  deviceConfig.owner = ownerDid.toString();
-  deviceConfig.zone_did = zoneDid.toString();
+  deviceDoc.owner = ownerDid.toString();
+  deviceDoc.zone_did = zoneDid.toString();
   if (ddnsSnUrl !== void 0) {
-    deviceConfig.ddns_sn_url = ddnsSnUrl;
+    deviceDoc.ddns_sn_url = ddnsSnUrl;
   }
-  writeJsonWithLog(path.join(userDir, ood.name, "node_device_config.json"), deviceConfig);
+  console.log(`${ood.name} device config: ${JSON.stringify(deviceDocumentToOrderedJson(deviceDoc), null, 2)}`);
   const zoneTxtRecord = {
     boot_config_jwt: bootJwt,
     device_mini_doc_jwt: miniJwt,
@@ -13923,10 +14051,13 @@ async function createUserEnv(params) {
   console.log(`Successfully created user environment configuration: ${params.username}`);
   return zoneTxtRecord;
 }
+function nodeTestIdentityRoots(nodeDir) {
+  const path = requireNode("node:path");
+  return new IdentityRoots(path.join(nodeDir, "local", "identity"), path.join(nodeDir, "security"));
+}
 async function createNodeConfigs(params) {
   assertProvisionRuntime();
   const path = requireNode("node:path");
-  const fs = requireNode("node:fs");
   const rootDir = params.envDir;
   const userConfig = readJson(path.join(rootDir, "user_config.json"));
   const username = userConfig.name;
@@ -13938,27 +14069,45 @@ async function createNodeConfigs(params) {
   const keyPair2 = resolveOwnerKeyPair(username, params.ownerKeyPair);
   const deviceKeyPair = resolveDeviceKeyPair(username, params.deviceName, params.deviceKeyPair);
   const nodeDir = path.join(rootDir, params.deviceName);
-  writeFileWithLog(path.join(nodeDir, "node_private_key.pem"), deviceKeyPair.privateKeyPem);
-  const deviceConfigPath = path.join(nodeDir, "node_device_config.json");
-  if (!fs.existsSync(deviceConfigPath)) {
-    throw new Error(`device config not found: ${deviceConfigPath}, run createUserEnv first`);
+  const ownerDid = new DID("bns", username);
+  const deviceDid = buildDeviceDid(params.deviceName, zoneDid);
+  const deviceDoc = newDeviceDocumentByJwkWithDid(
+    params.deviceName,
+    createJwkByX(deviceKeyPair.publicKeyX),
+    deviceDid,
+    params.now
+  );
+  deviceDoc.support_container = true;
+  delete deviceDoc.support_container;
+  if (params.netId !== void 0) {
+    deviceDoc.net_id = params.netId;
   }
-  const deviceConfig = readJson(deviceConfigPath);
-  console.log(`input net_id: ${params.netId}, device_config.net_id: ${deviceConfig.net_id}`);
-  const deviceJwt = await encodeDeviceConfig(deviceConfig, keyPair2.privateKeyPem);
+  deviceDoc.owner = ownerDid.toString();
+  deviceDoc.zone_did = zoneDid.toString();
+  console.log(`input net_id: ${params.netId}, device_config.net_id: ${deviceDoc.net_id}`);
+  const deviceJwt = await encodeDeviceDocument(deviceDoc, keyPair2.privateKeyPem);
   console.log(`${params.deviceName} device jwt: ${deviceJwt}`);
-  const deviceMiniConfig = newDeviceMiniConfigByDeviceConfig(deviceConfig);
-  const deviceMiniJwt = await deviceMiniConfigToJwt(deviceMiniConfig, keyPair2.privateKeyPem);
+  const deviceMiniDoc = newDeviceMiniDocumentByDeviceDocument(deviceDoc);
+  const deviceMiniJwt = await deviceMiniDocumentToJwt(deviceMiniDoc, keyPair2.privateKeyPem);
   writeFileWithLog(path.join(nodeDir, "device_mini_config.jwt"), deviceMiniJwt);
-  const identityConfig = newNodeIdentityConfig({
+  const identityConfig = newLocalNodeIdentityConfig({
     zoneDid,
+    ownerDid,
     ownerPublicKey: createJwkByX(keyPair2.publicKeyX),
-    ownerDid: new DID("bns", username),
-    deviceDocJwt: deviceJwt,
-    deviceMiniDocJwt: deviceMiniJwt,
+    deviceName: params.deviceName,
+    deviceDid,
     zoneIat: PROVISION_BASE_TIME
   });
-  writeJsonWithLog(path.join(nodeDir, "node_identity.json"), identityConfig);
+  const roots = nodeTestIdentityRoots(nodeDir);
+  saveLocalDeviceIdentityForRoots(
+    nodeDir,
+    roots,
+    identityConfig,
+    deviceDoc,
+    deviceJwt,
+    deviceMiniJwt,
+    deviceKeyPair.privateKeyPem
+  );
   if (params.deviceName.startsWith("ood")) {
     const startConfig = sortKeysDeep({
       admin_password_hash: ADMIN_PASSWORD_HASH,
@@ -13977,7 +14126,7 @@ async function createNodeConfigs(params) {
     writeJsonWithLog(path.join(nodeDir, "start_config.json"), startConfig);
   }
   console.log(`Successfully created node configuration: ${username}.${params.deviceName}`);
-  return encodeDeviceConfig(deviceConfig, deviceKeyPair.privateKeyPem);
+  return encodeDeviceDocument(deviceDoc, deviceKeyPair.privateKeyPem);
 }
 class DevSnDb {
   constructor(dbPath) {
@@ -14047,23 +14196,23 @@ async function createSnConfigs(params) {
   const deviceKeys = getDevTestKeyPairById("sn_server");
   const exp = PROVISION_DEFAULT_EXP;
   writeFileWithLog(path.join(snDir, ".buckycli", "user_private_key.pem"), ownerKeys.privateKeyPem);
-  const ownerConfig = newOwnerConfig({
+  const ownerDoc = newOwnerDocument({
     did: new DID("bns", "sn"),
     name: "root",
-    fullName: "sn admin",
+    displayName: "sn admin",
     publicKeyJwk: createJwkByX(ownerKeys.publicKeyX)
   });
-  writeJsonWithLog(path.join(snDir, ".buckycli", "user_config.json"), ownerConfig);
+  writeJsonWithLog(path.join(snDir, ".buckycli", "user_config.json"), ownerDocumentToOrderedJson(ownerDoc));
   console.log("- Created owner config for sn admin.");
-  const miniConfig = newDeviceMiniConfig({ name: "sn", x: deviceKeys.publicKeyX, exp });
-  const miniJwt = await deviceMiniConfigToJwt(miniConfig, ownerKeys.privateKeyPem);
-  const deviceConfig = newDeviceConfigByMiniConfig(miniJwt, miniConfig, "did:web:sn.devtests.org", "did:bns:sn");
-  deviceConfig.net_id = "wan";
-  writeJsonWithLog(path.join(snDir, "sn_device_config.json"), deviceConfig);
+  const miniDoc = newDeviceMiniDocument({ name: "sn", x: deviceKeys.publicKeyX, exp });
+  const miniJwt = await deviceMiniDocumentToJwt(miniDoc, ownerKeys.privateKeyPem);
+  const deviceDoc = newDeviceDocumentByMiniDocument(miniJwt, miniDoc, "did:web:sn.devtests.org", "did:bns:sn");
+  deviceDoc.net_id = "wan";
+  writeJsonWithLog(path.join(snDir, "sn_device_config.json"), deviceDocumentToOrderedJson(deviceDoc));
   writeFileWithLog(path.join(snDir, "sn_private_key.pem"), deviceKeys.privateKeyPem);
   console.log("- Created sn device config & private key.");
-  const zoneBoot = newZoneBootConfig({ oods: ["sn"], exp });
-  const zoneBootJwt = await encodeZoneBootConfig(zoneBoot, ownerKeys.privateKeyPem);
+  const zoneBoot = newZoneBootDocument({ oods: ["sn"], exp });
+  const zoneBootJwt = await encodeZoneBootDocument(zoneBoot, ownerKeys.privateKeyPem);
   const paramsJson = sortKeysDeep({
     params: {
       sn_boot_jwt: zoneBootJwt,
@@ -14149,15 +14298,24 @@ async function registerDeviceToSn(rootDir, userZoneId, deviceName, snDbPath) {
   const path = requireNode("node:path");
   const fs = requireNode("node:fs");
   const os = requireNode("node:os");
-  const nodeIdentityPath = path.join(rootDir, userZoneId, deviceName, "node_identity.json");
+  const deviceDir = path.join(rootDir, userZoneId, deviceName);
+  const nodeIdentityPath = path.join(deviceDir, "node_identity.json");
   if (!fs.existsSync(nodeIdentityPath)) {
     throw new Error(`Device config not found: ${nodeIdentityPath}`);
   }
-  const nodeIdentity = readJson(nodeIdentityPath);
+  const nodeIdentity = loadLocalNodeIdentityConfig(nodeIdentityPath);
   const username = DID.fromStr(nodeIdentity.owner_did).id;
-  const deviceDoc = await verifyJwtEdDSA(nodeIdentity.device_doc_jwt, nodeIdentity.owner_public_key);
+  const identityPaths = deviceIdentityPathsForRoots(nodeTestIdentityRoots(deviceDir), nodeIdentity.device_did);
+  const deviceDocJwt = fs.readFileSync(identityPaths.deviceDocJwt, "utf8");
+  const deviceMiniDocJwt = fs.readFileSync(identityPaths.deviceMiniDocJwt, "utf8");
+  const deviceDoc = await verifyJwtEdDSA(deviceDocJwt, nodeIdentity.owner_public_key);
   const deviceDid = deviceDoc.id;
-  let oodDesc = parseOODDescription(deviceName);
+  let oodDesc;
+  try {
+    oodDesc = parseOODDescription(deviceName);
+  } catch {
+    oodDesc = { name: deviceName, nodeType: "Device" };
+  }
   try {
     const zoneConfig = readJson(path.join(rootDir, userZoneId, "zone_config.json"));
     const matched = zoneConfig.oods.map(parseOODDescription).find((item) => item.name === deviceName);
@@ -14201,7 +14359,7 @@ async function registerDeviceToSn(rootDir, userZoneId, deviceName, snDbPath) {
     username,
     deviceName,
     deviceDid,
-    nodeIdentity.device_mini_doc_jwt,
+    deviceMiniDocJwt,
     deviceIp,
     JSON.stringify(deviceInfo, null, 2)
   );
@@ -14429,6 +14587,8 @@ function buildDidDocs(outputDir, options) {
   return written;
 }
 export {
+  DEVICE_DOC_JWT_FILE_NAME,
+  DEVICE_MINI_DOC_JWT_FILE_NAME,
   DEV_TEST_KEYS,
   DevSnDb,
   IDENTITY_MATERIALS,
@@ -14436,9 +14596,13 @@ export {
   IdentityRoots,
   KERNEL_SERVICE_DOC_VERSION,
   MetaIndexDb,
+  NODE_GATEWAY_PARAMS_FILE_NAME,
+  NODE_IDENTITY_SCHEMA_V2,
   PROVISION_BASE_TIME,
   PROVISION_DEFAULT_EXP,
   assertProvisionRuntime,
+  bindDeviceDocumentDid,
+  buildDeviceDid,
   buildDidDocs,
   calcPkgMetaObjId,
   createCa,
@@ -14447,6 +14611,8 @@ export {
   createNodeConfigs,
   createSnConfigs,
   createUserEnv,
+  decodeDeviceDocumentWithoutVerify,
+  deviceIdentityPathsForRoots,
   didWebDocumentUrl,
   encodeIdentityDirName,
   ensureCa,
@@ -14454,9 +14620,18 @@ export {
   identityDirName,
   identityFileName,
   identityRawHostUri,
+  loadDeviceDocJwtForRoots,
+  loadDeviceMiniDocJwtForRoots,
+  loadLocalDeviceDocumentForRoots,
+  loadLocalNodeIdentityConfig,
+  newDeviceDocumentByJwkWithDid,
+  newLocalNodeIdentityConfig,
+  nodeTestIdentityRoots,
   normalizePackageMetaForObjId,
   registerDeviceToSn,
   registerUserToSn,
+  saveLocalDeviceIdentityForRoots,
+  saveNodeGatewayParams,
   setPkgMeta,
   uniqueNameToDid,
   versionToInt

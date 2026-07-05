@@ -79,8 +79,8 @@ async function createAppClientRoot(options: {
         exp: 2200000000,
         iat: 1700000000,
         name: userId ?? 'unknown-user',
-        full_name: `${userId ?? 'unknown-user'}@example`,
-        default_zone_did: userConfigZoneDid,
+        display_name: `${userId ?? 'unknown-user'}@example`,
+        binded_zone_list: userConfigZoneDid ? [userConfigZoneDid] : undefined,
       }),
       'utf8',
     )

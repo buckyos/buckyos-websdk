@@ -14,26 +14,35 @@ import {
   verifyJwtEdDSA,
   decodeJwtClaimWithoutVerify,
   decodeJwtHeaderWithoutVerify,
-  newOwnerConfig,
-  setOwnerDefaultZoneDid,
-  newZoneConfig,
-  newZoneBootConfig,
-  encodeZoneBootConfig,
-  decodeZoneBootConfig,
-  zoneConfigInitByBootConfig,
-  newDeviceConfigByJwk,
-  newDeviceConfigByMiniConfig,
-  encodeDeviceConfig,
-  decodeDeviceConfig,
-  newDeviceMiniConfig,
-  newDeviceMiniConfigByDeviceConfig,
-  deviceMiniConfigToJwt,
-  newNodeIdentityConfig,
+  newOwnerDocument,
+  newOwnerDocumentByPkx,
+  ownerDocumentSetDefaultZoneDid,
+  ownerDocumentGetDefaultZoneDid,
+  ownerDocumentValidateJwtRevocation,
+  newZoneDocument,
+  newZoneBootDocument,
+  encodeZoneBootDocument,
+  decodeZoneBootDocument,
+  zoneDocumentInitByBootDocument,
+  newDeviceDocumentByJwk,
+  newDeviceDocumentByMiniDocument,
+  encodeDeviceDocument,
+  decodeDeviceDocument,
+  newDeviceMiniDocument,
+  newDeviceMiniDocumentByDeviceDocument,
+  deviceMiniDocumentToJwt,
+  deviceDocumentToOrderedJson,
   resetKnownWeb3BridgeConfigForTest,
   setKnownWeb3BridgeConfig,
+  parseDidDoc,
+  getKeyByScope,
+  isKeyAllowedInScope,
+  KEY_SCOPE_CONTENT_CREATE,
+  KEY_SCOPE_MANUAL,
 } from '../src/namelib'
+import { buildDeviceDid, newDeviceDocumentByJwkWithDid } from '../src/device_identity'
 import { DEV_TEST_KEYS, getDevTestKeyPairById } from '../src/dev_test_keys'
-import { BuckyOSZoneDocument } from '../src/types'
+import { BuckyOSOwnerDocument, BuckyOSZoneDocument } from '../src/types'
 
 const FIXTURE_DIR = path.join(__dirname, 'fixtures', 'provision')
 
@@ -140,6 +149,34 @@ describe('DID (mirror of did.rs unit tests)', () => {
     expect(DID.fromStr('did:web:example.com:user:alice').toRawHostUri()).toBe('example.com/user/alice')
     expect(DID.fromStr('did:bns:app1.waterflier').toRawHostUri()).toBe('app1.waterflier.bns.did')
   })
+
+  test('upper_did (mirror of did.rs test_upper_did)', () => {
+    const upper = (s: string) => DID.fromStr(s).upperDid()?.toString() ?? null
+
+    expect(upper('did:web:ood1.example.com')).toBe('did:web:example.com')
+    expect(upper('did:web:a.b.example.com')).toBe('did:web:b.example.com')
+    // ports and paths do not take part in the name hierarchy
+    expect(upper('did:web:ood1.example.com%3A8080')).toBe('did:web:example.com')
+    expect(upper('did:web:ood1.example.com:devices:cam01')).toBe('did:web:example.com')
+    // only the TLD would remain -> no upper
+    expect(upper('did:web:example.com')).toBeNull()
+    // IPs have no name hierarchy
+    expect(upper('did:web:127.0.0.1')).toBeNull()
+    expect(upper('did:web:127.0.0.1%3A3200')).toBeNull()
+    // bns: first-level names are roots
+    expect(upper('did:bns:app1.alice')).toBe('did:bns:alice')
+    expect(upper('did:bns:alice')).toBeNull()
+    // key DIDs have no name hierarchy
+    expect(upper('did:dev:5bUuyWLOKyCre9az_IhJVIuOw8bA0gyKjstcYGHbaPE')).toBeNull()
+  })
+
+  test('to_filename (mirror of did.rs test_did_to_filename)', () => {
+    expect(DID.fromStr('did:web:node1.example.com').toFilename()).toBe('node1.example.com')
+    expect(DID.fromStr('did:web:example.com:user:alice').toFilename()).toBe('example.com%2Fuser%2Falice')
+    expect(DID.fromStr('did:web:example.com%3A3000:user:alice').toFilename()).toBe('example.com%253A3000%2Fuser%2Falice')
+    expect(new DID('web', 'example.com:user:é').toFilename()).toBe('example.com%2Fuser%2F%C3%A9')
+    expect(DID.fromStr('did:bns:waterflier').toFilename()).toBe('waterflier.bns.did')
+  })
 })
 
 describe('OODDescriptionString (mirror of zone.rs)', () => {
@@ -229,18 +266,159 @@ describe('JWT encode/decode (T1.3)', () => {
     const tampered = `${parts[0]}.eyJhIjoyfQ.${parts[2]}`
     await expect(verifyJwtEdDSA(tampered, createJwkByX(keyPair.publicKeyX))).rejects.toThrow()
   })
+})
 
-  test('decodes a real Rust-produced device jwt (golden, from test_config.rs)', () => {
-    const deviceJwt = 'eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJAY29udGV4dCI6Imh0dHBzOi8vd3d3LnczLm9yZy9ucy9kaWQvdjEiLCJpZCI6ImRpZDpkZXY6VzU3MEpiUlBxSDFrdWttemNCX003eDVud0FvWS1pVTVHcnIyUlhjZjdHSSIsInZlcmlmaWNhdGlvbk1ldGhvZCI6W3sidHlwZSI6IkVkMjU1MTlWZXJpZmljYXRpb25LZXkyMDIwIiwiaWQiOiIjbWFpbl9rZXkiLCJjb250cm9sbGVyIjoiZGlkOmRldjpXNTcwSmJSUHFIMWt1a216Y0JfTTd4NW53QW9ZLWlVNUdycjJSWGNmN0dJIiwicHVibGljS2V5SndrIjp7Imt0eSI6Ik9LUCIsImNydiI6IkVkMjU1MTkiLCJ4IjoiVzU3MEpiUlBxSDFrdWttemNCX003eDVud0FvWS1pVTVHcnIyUlhjZjdHSSJ9fV0sImF1dGhlbnRpY2F0aW9uIjpbIiNtYWluX2tleSJdLCJhc3NlcnRpb25fbWV0aG9kIjpbIiNtYWluX2tleSJdLCJleHAiOjIwNTk0MTIyMTIsImlhdCI6MTc0NDA1MjIxMiwiZGV2aWNlX3R5cGUiOiJvb2QiLCJuYW1lIjoib29kMSIsIm5ldF9pZCI6IndhbiIsImlzcyI6ImJ1Y2t5In0.WT95o5617N-JCIgH6wEVDkt7uLW-NWtzIB8L9SZHl7sZEf269DLQ73oEp3PJ990uCzLcSFW-WJ12hppTr4A8CQ'
-    const payload = decodeJwtClaimWithoutVerify(deviceJwt)
-    expect(payload.id).toBe('did:dev:W570JbRPqH1kukmzcB_M7x5nwAoY-iU5Grr2RXcf7GI')
-    expect(payload.device_type).toBe('ood')
-    expect(payload.name).toBe('ood1')
-    expect(payload.net_id).toBe('wan')
+describe('parseDidDoc (mirror of did.rs parse_did_doc)', () => {
+  const ownerKeys = getDevTestKeyPairById('devtest')
+
+  test('routes owner/device/zone documents by shape', () => {
+    const ownerDoc = newOwnerDocument({
+      did: 'did:bns:alice',
+      name: 'alice',
+      displayName: 'alice',
+      publicKeyJwk: createJwkByX(ownerKeys.publicKeyX),
+    })
+    expect(parseDidDoc(JSON.stringify(ownerDoc)).docType).toBe('owner')
+
+    const deviceDoc = newDeviceDocumentByJwk('ood1', createJwkByX(ownerKeys.publicKeyX))
+    expect(parseDidDoc(JSON.stringify(deviceDoc)).docType).toBe('device')
+
+    const zoneDoc = newZoneDocument({
+      id: 'did:bns:alice',
+      ownerDid: 'did:bns:alice',
+      publicKeyJwk: createJwkByX(ownerKeys.publicKeyX),
+    })
+    expect(parseDidDoc(JSON.stringify(zoneDoc)).docType).toBe('zone')
+
+    const card = {
+      '@context': 'https://www.w3.org/ns/did/v1',
+      id: 'did:bns:photo.alice',
+      service: [{ id: '#did-object', type: 'DIDObjectService', serviceEndpoint: 'https://x', profile: 'p' }],
+    }
+    expect(parseDidDoc(JSON.stringify(card)).docType).toBe('did-object')
+
+    expect(() => parseDidDoc('{"hello":"world"}')).toThrow('unknown did document')
+  })
+
+  test('owner routing accepts full_name / displayName aliases', () => {
+    const base = {
+      '@context': 'https://www.w3.org/ns/did/v1',
+      id: 'did:bns:alice',
+      verificationMethod: [],
+      name: 'alice',
+    }
+    expect(parseDidDoc(JSON.stringify({ ...base, full_name: 'a' })).docType).toBe('owner')
+    expect(parseDidDoc(JSON.stringify({ ...base, displayName: 'a' })).docType).toBe('owner')
+  })
+
+  test('JWT documents must carry version_seq', async () => {
+    const ownerDoc = newOwnerDocument({
+      did: 'did:bns:alice',
+      name: 'alice',
+      displayName: 'alice',
+      publicKeyJwk: createJwkByX(ownerKeys.publicKeyX),
+    })
+    delete (ownerDoc as Record<string, unknown>).version_seq
+    const jwt = await signJwtEdDSA(ownerDoc, ownerKeys.privateKeyPem)
+    expect(() => parseDidDoc(jwt)).toThrow('version_seq')
   })
 })
 
-describe('golden fixtures (T1.8, generated by buckycli, see fixtures README)', () => {
+describe('key scopes (mirror of user.rs key scope tests)', () => {
+  const ownerKeys = getDevTestKeyPairById('devtest')
+
+  function buildOwnerDoc(): BuckyOSOwnerDocument {
+    return newOwnerDocument({
+      did: 'did:bns:lzc',
+      name: 'lzc',
+      displayName: 'zhicong liu',
+      publicKeyJwk: createJwkByX(ownerKeys.publicKeyX),
+      now: 1743478939,
+    })
+  }
+
+  test('documents without keyScope fall back to standard scope keys', () => {
+    const ownerDoc = buildOwnerDoc()
+    expect(isKeyAllowedInScope(ownerDoc, KEY_SCOPE_CONTENT_CREATE, '#main_key')).toBe(true)
+    expect(getKeyByScope(ownerDoc, KEY_SCOPE_CONTENT_CREATE)?.[0]).toBe('#main_key')
+  })
+
+  test('documents with a keyScope map deny unlisted scopes', () => {
+    const ownerDoc = buildOwnerDoc()
+    const mainKeyId = `${ownerDoc.id}#main_key`
+    ownerDoc.keyScope = { [KEY_SCOPE_MANUAL]: [mainKeyId] }
+
+    expect(isKeyAllowedInScope(ownerDoc, KEY_SCOPE_CONTENT_CREATE, '#main_key')).toBe(false)
+    expect(getKeyByScope(ownerDoc, KEY_SCOPE_CONTENT_CREATE)).toBeNull()
+
+    expect(isKeyAllowedInScope(ownerDoc, KEY_SCOPE_MANUAL, '#main_key')).toBe(true)
+    expect(isKeyAllowedInScope(ownerDoc, KEY_SCOPE_MANUAL, mainKeyId)).toBe(true)
+    expect(getKeyByScope(ownerDoc, KEY_SCOPE_MANUAL)?.[0]).toBe(mainKeyId)
+  })
+
+  test('accepts the buckyos:scopes alias', () => {
+    const ownerDoc = buildOwnerDoc() as BuckyOSOwnerDocument & Record<string, unknown>
+    ownerDoc['buckyos:scopes'] = { [KEY_SCOPE_CONTENT_CREATE]: ['did:bucky:lzc#identity-cold'] }
+
+    expect(isKeyAllowedInScope(ownerDoc, KEY_SCOPE_CONTENT_CREATE, 'did:bucky:lzc#identity-cold')).toBe(true)
+    expect(isKeyAllowedInScope(ownerDoc, KEY_SCOPE_MANUAL, '#main_key')).toBe(false)
+  })
+})
+
+describe('owner document revocation policy (mirror of user.rs replay guard)', () => {
+  test('rejects stale version_seq / iat jwts', async () => {
+    const ownerKeys = getDevTestKeyPairById('devtest')
+    const ownerDoc = newOwnerDocument({
+      did: 'did:bns:lzc',
+      name: 'lzc',
+      displayName: 'zhicong liu',
+      publicKeyJwk: createJwkByX(ownerKeys.publicKeyX),
+    })
+    ownerDoc.mini_version_seq = 3
+    ownerDoc.valid_iat = 100
+
+    const freshJwt = await signJwtEdDSA({ version_seq: 4, iat: 101, exp: 1000 }, ownerKeys.privateKeyPem)
+    expect(() =>
+      ownerDocumentValidateJwtRevocation(ownerDoc, 'ZoneDocument', { type: 'jwt', jwt: freshJwt }),
+    ).not.toThrow()
+
+    const staleVersionJwt = await signJwtEdDSA({ version_seq: 3, iat: 101, exp: 1000 }, ownerKeys.privateKeyPem)
+    expect(() =>
+      ownerDocumentValidateJwtRevocation(ownerDoc, 'ZoneDocument', { type: 'jwt', jwt: staleVersionJwt }),
+    ).toThrow('mini_version_seq')
+
+    const staleIatJwt = await signJwtEdDSA({ version_seq: 4, iat: 100, exp: 1000 }, ownerKeys.privateKeyPem)
+    expect(() =>
+      ownerDocumentValidateJwtRevocation(ownerDoc, 'ZoneDocument', { type: 'jwt', jwt: staleIatJwt }),
+    ).toThrow('valid_iat')
+  })
+})
+
+describe('newOwnerDocumentByPkx (mirror of user.rs new_by_pkx tests)', () => {
+  const validX = 'T4Quc1L6Ogu4N2tTKOvneV1yYnBcmhP89B_RsuFsJZ8'
+
+  test('accepts single-part pkx', () => {
+    const doc = newOwnerDocumentByPkx(validX, 'did:web:example.com')
+    expect(doc.id).toBe('did:web:example.com')
+    expect(doc.name).toBe('example.com')
+    expect(doc.display_name).toBe('example.com@did:web:example.com')
+  })
+
+  test('accepts three-part pkx', () => {
+    const doc = newOwnerDocumentByPkx(`${validX}:bns:user1:xxxx`, 'bridge.buckyos.org')
+    expect(doc.id).toBe('did:bns:user1')
+    expect(doc.name).toBe('user1')
+    expect(doc.display_name).toBe('user1@bridge.buckyos.org')
+  })
+
+  test('rejects two-part / malformed pkx', () => {
+    expect(() => newOwnerDocumentByPkx('abc123:onlytwo', 'did:web:example.com')).toThrow()
+    expect(() => newOwnerDocumentByPkx('not_base64!:bns:user1', 'bridge.buckyos.org')).toThrow()
+    expect(() => newOwnerDocumentByPkx('AQ:bns:user1', 'bridge.buckyos.org')).toThrow()
+  })
+})
+
+describe('golden fixtures (generated by buckycli, see fixtures README)', () => {
   describe.each([
     ['alice', 'did:bns:alice', 'alice.bns.did', 'ood1', 'sn.devtests.org', 2980],
     ['charlie', 'did:web:charlie.me', 'charlie.me', 'ood1@portmap', 'sn.devtests.org', 2981],
@@ -253,22 +431,24 @@ describe('golden fixtures (T1.8, generated by buckycli, see fixtures README)', (
       const ood = parseOODDescription(oodDesc)
       // mirror of create_zone_boot_config_jwt: wan oods drop the SN host
       const realSnHost = ood.netId?.startsWith('wan') ? undefined : snHost
+      const deviceDid = buildDeviceDid('ood1', DID.fromStr(zoneDidStr))
+      const identityDirName = deviceDid.toFilename()
 
-      test('user_config.json matches newOwnerConfig', () => {
+      test('user_config.json matches newOwnerDocument', () => {
         const fixture = readFixtureJson(username, 'user_config.json')
-        const rebuilt = newOwnerConfig({
+        const rebuilt = newOwnerDocument({
           did: `did:bns:${username}`,
           name: username,
-          fullName: username,
+          displayName: username,
           publicKeyJwk: createJwkByX(ownerKeys.publicKeyX),
           now: fixture.iat,
         })
         expect(rebuilt).toEqual(fixture)
       })
 
-      test('{zone}.zone.json matches newZoneBootConfig (without id)', () => {
+      test('{zone}.zone.json matches newZoneBootDocument (without id)', () => {
         const fixture = readFixtureJson(username, `${zoneHostName}.zone.json`)
-        const rebuilt = newZoneBootConfig({
+        const rebuilt = newZoneBootDocument({
           oods: [oodDesc],
           sn: realSnHost,
           exp: fixture.exp,
@@ -279,105 +459,121 @@ describe('golden fixtures (T1.8, generated by buckycli, see fixtures README)', (
       test('boot_config_jwt is byte-identical to the Rust-signed JWT', async () => {
         const txtRecord = readFixtureJson(username, 'zone_txt_record.json')
         const bootPayload = decodeJwtClaimWithoutVerify(txtRecord.boot_config_jwt)
-        const bootConfig = newZoneBootConfig({
+        const bootDoc = newZoneBootDocument({
           id: zoneDidStr,
           oods: [oodDesc],
           sn: realSnHost,
           exp: bootPayload.exp,
         })
-        const jwt = await encodeZoneBootConfig(bootConfig, ownerKeys.privateKeyPem)
+        const jwt = await encodeZoneBootDocument(bootDoc, ownerKeys.privateKeyPem)
         expect(jwt).toBe(txtRecord.boot_config_jwt)
         // and it verifies with the published pkx
-        await expect(decodeZoneBootConfig(jwt, createJwkByX(txtRecord.pkx))).resolves.toEqual(bootPayload)
+        await expect(decodeZoneBootDocument(jwt, createJwkByX(txtRecord.pkx))).resolves.toEqual(bootPayload)
       })
 
       test('zone_txt_record mini jwt is byte-identical', async () => {
         const txtRecord = readFixtureJson(username, 'zone_txt_record.json')
         expect(txtRecord.pkx).toBe(ownerKeys.publicKeyX)
         const miniPayload = decodeJwtClaimWithoutVerify(txtRecord.device_mini_doc_jwt)
-        const mini = newDeviceMiniConfig({
+        const mini = newDeviceMiniDocument({
           name: ood.name,
           x: deviceKeys.publicKeyX,
           rtcpPort: rtcpPort === 2980 ? undefined : rtcpPort,
           exp: miniPayload.exp,
         })
-        const jwt = await deviceMiniConfigToJwt(mini, ownerKeys.privateKeyPem)
+        const jwt = await deviceMiniDocumentToJwt(mini, ownerKeys.privateKeyPem)
         expect(jwt).toBe(txtRecord.device_mini_doc_jwt)
       })
 
-      test('zone_config.json matches newZoneConfig + initByBootConfig', () => {
+      test('zone_config.json matches newZoneDocument + initByBootDocument', () => {
         const fixture = readFixtureJson(username, 'zone_config.json') as BuckyOSZoneDocument
         const txtRecord = readFixtureJson(username, 'zone_txt_record.json')
-        const zoneConfig = newZoneConfig({
+        const zoneDoc = newZoneDocument({
           id: zoneDidStr,
           ownerDid: `did:bns:${username}`,
           publicKeyJwk: createJwkByX(ownerKeys.publicKeyX),
         })
-        const bootConfig = newZoneBootConfig({
+        const bootDoc = newZoneBootDocument({
           id: zoneDidStr,
           oods: [oodDesc],
           sn: realSnHost,
           exp: fixture.exp,
         })
-        zoneConfigInitByBootConfig(zoneConfig, bootConfig, txtRecord.boot_config_jwt)
-        expect(zoneConfig).toEqual(fixture)
+        zoneDocumentInitByBootDocument(zoneDoc, bootDoc, txtRecord.boot_config_jwt)
+        expect(zoneDoc).toEqual(fixture)
       })
 
-      test('node_device_config.json matches device config constructor', () => {
-        const fixture = readFixtureJson(username, 'ood1', 'node_device_config.json')
-        const deviceConfig = newDeviceConfigByJwk('ood1', createJwkByX(deviceKeys.publicKeyX), fixture.iat)
-        deviceConfig.net_id = ood.netId
-        deviceConfig.owner = `did:bns:${username}`
-        deviceConfig.zone_did = zoneDidStr
+      test('identity did.json matches the name-based device document', () => {
+        const fixture = readFixtureJson(username, 'ood1', 'local', 'identity', identityDirName, 'did.json')
+        expect(fixture.id).toBe(deviceDid.toString())
+
+        const deviceDoc = newDeviceDocumentByJwkWithDid(
+          'ood1',
+          createJwkByX(deviceKeys.publicKeyX),
+          deviceDid,
+          fixture.iat,
+        )
+        deviceDoc.net_id = fixture.net_id
+        deviceDoc.owner = `did:bns:${username}`
+        deviceDoc.zone_did = zoneDidStr
         // support_container=true is skipped by Rust serde, so it is absent in both
-        expect(JSON.parse(JSON.stringify(deviceConfig))).toEqual(fixture)
+        expect(deviceDocumentToOrderedJson(deviceDoc)).toEqual(fixture)
+        // ordered view is byte-identical to serde_json::to_string_pretty output
+        expect(JSON.stringify(deviceDocumentToOrderedJson(deviceDoc), null, 2))
+          .toBe(readFixtureText(username, 'ood1', 'local', 'identity', identityDirName, 'did.json'))
       })
 
-      test('node_identity.json: device jwts are byte-identical, structure matches', async () => {
-        const fixture = readFixtureJson(username, 'ood1', 'node_identity.json')
-        const deviceFixture = readFixtureJson(username, 'ood1', 'node_device_config.json')
+      test('device_doc.jwt / device_mini_doc.jwt are byte-identical, signed by owner', async () => {
+        const didJson = readFixtureJson(username, 'ood1', 'local', 'identity', identityDirName, 'did.json')
+        const deviceDocJwt = readFixtureText(username, 'ood1', 'local', 'identity', identityDirName, 'device_doc.jwt')
+        const deviceMiniDocJwt = readFixtureText(username, 'ood1', 'local', 'identity', identityDirName, 'device_mini_doc.jwt')
+        const nodeMiniJwt = readFixtureText(username, 'ood1', 'device_mini_config.jwt')
 
-        const deviceJwt = await encodeDeviceConfig(deviceFixture, ownerKeys.privateKeyPem)
-        expect(deviceJwt).toBe(fixture.device_doc_jwt)
+        const rebuiltJwt = await encodeDeviceDocument(didJson, ownerKeys.privateKeyPem)
+        expect(rebuiltJwt).toBe(deviceDocJwt)
 
-        const mini = newDeviceMiniConfigByDeviceConfig(deviceFixture)
-        const miniJwt = await deviceMiniConfigToJwt(mini, ownerKeys.privateKeyPem)
-        expect(miniJwt).toBe(fixture.device_mini_doc_jwt)
-
-        const rebuilt = newNodeIdentityConfig({
-          zoneDid: zoneDidStr,
-          ownerPublicKey: createJwkByX(ownerKeys.publicKeyX),
-          ownerDid: `did:bns:${username}`,
-          deviceDocJwt: deviceJwt,
-          deviceMiniDocJwt: miniJwt,
-          zoneIat: fixture.zone_iat,
-        })
-        expect(rebuilt).toEqual(fixture)
+        const mini = newDeviceMiniDocumentByDeviceDocument(didJson)
+        const rebuiltMiniJwt = await deviceMiniDocumentToJwt(mini, ownerKeys.privateKeyPem)
+        expect(rebuiltMiniJwt).toBe(deviceMiniDocJwt)
+        expect(rebuiltMiniJwt).toBe(nodeMiniJwt)
 
         // device doc decodes + verifies with the owner public key (signed by owner!)
-        const decoded = await decodeDeviceConfig(fixture.device_doc_jwt, createJwkByX(ownerKeys.publicKeyX))
-        expect(decoded).toEqual(deviceFixture)
+        const decoded = await decodeDeviceDocument(deviceDocJwt, createJwkByX(ownerKeys.publicKeyX))
+        expect(decoded).toEqual(didJson)
       })
 
-      test('node_private_key.pem is the preset device key', () => {
-        const pem = readFixtureText(username, 'ood1', 'node_private_key.pem')
+      test('node_identity.json is schema v2 with the name-based device did', () => {
+        const fixture = readFixtureJson(username, 'ood1', 'node_identity.json')
+        expect(fixture).toEqual({
+          schema: 'buckyos.node_identity.v2',
+          zone_did: zoneDidStr,
+          owner_did: `did:bns:${username}`,
+          owner_public_key: createJwkByX(ownerKeys.publicKeyX),
+          device_name: 'ood1',
+          device_did: deviceDid.toString(),
+          zone_iat: 1743478939,
+        })
+      })
+
+      test('authentication.private.pem is the preset device key', () => {
+        const pem = readFixtureText(username, 'ood1', 'security', identityDirName, 'authentication.private.pem')
         expect(pem.trim()).toBe(deviceKeys.privateKeyPem.trim())
       })
     },
   )
 
-  test('device config built by mini config matches sn_device_config.json', async () => {
+  test('device document built by mini document matches sn_device_config.json', async () => {
     const fixture = readFixtureJson('sn', 'sn_server', 'sn_device_config.json')
     const ownerKeys = getDevTestKeyPairById('sn_owner')
     const deviceKeys = getDevTestKeyPairById('sn_server')
 
-    const mini = newDeviceMiniConfig({ name: 'sn', x: deviceKeys.publicKeyX, exp: fixture.exp })
-    const miniJwt = await deviceMiniConfigToJwt(mini, ownerKeys.privateKeyPem)
-    expect(miniJwt).toBe(fixture.device_mini_config_jwt)
+    const mini = newDeviceMiniDocument({ name: 'sn', x: deviceKeys.publicKeyX, exp: fixture.exp })
+    const miniJwt = await deviceMiniDocumentToJwt(mini, ownerKeys.privateKeyPem)
+    expect(miniJwt).toBe(fixture.device_mini_document_jwt)
 
-    const deviceConfig = newDeviceConfigByMiniConfig(miniJwt, mini, 'did:web:sn.devtests.org', 'did:bns:sn')
-    deviceConfig.net_id = 'wan'
-    expect(JSON.parse(JSON.stringify(deviceConfig))).toEqual(fixture)
+    const deviceDoc = newDeviceDocumentByMiniDocument(miniJwt, mini, 'did:web:sn.devtests.org', 'did:bns:sn')
+    deviceDoc.net_id = 'wan'
+    expect(deviceDocumentToOrderedJson(deviceDoc)).toEqual(fixture)
   })
 
   test('sn params.json jwts are reproducible', async () => {
@@ -386,23 +582,24 @@ describe('golden fixtures (T1.8, generated by buckycli, see fixtures README)', (
     expect(fixture.sn_owner_pk).toBe(ownerKeys.publicKeyX)
 
     const bootPayload = decodeJwtClaimWithoutVerify(fixture.sn_boot_jwt)
-    const bootConfig = newZoneBootConfig({ oods: ['sn'], exp: bootPayload.exp })
-    const bootJwt = await encodeZoneBootConfig(bootConfig, ownerKeys.privateKeyPem)
+    const bootDoc = newZoneBootDocument({ oods: ['sn'], exp: bootPayload.exp })
+    const bootJwt = await encodeZoneBootDocument(bootDoc, ownerKeys.privateKeyPem)
     expect(bootJwt).toBe(fixture.sn_boot_jwt)
   })
 
-  test('owner config with default zone did round trips', async () => {
+  test('owner document with default zone did round trips', async () => {
     const ownerKeys = getDevTestKeyPairById('devtest')
-    const ownerConfig = newOwnerConfig({
+    const ownerDoc = newOwnerDocument({
       did: 'did:bns:lzc',
       name: 'lzc',
-      fullName: 'zhicong liu',
+      displayName: 'zhicong liu',
       publicKeyJwk: createJwkByX(ownerKeys.publicKeyX),
       now: 1743478939,
     })
-    setOwnerDefaultZoneDid(ownerConfig, 'did:bns:waterflier')
-    expect(ownerConfig.default_zone_did).toBe('did:bns:waterflier')
-    expect(ownerConfig.service).toEqual([
+    ownerDocumentSetDefaultZoneDid(ownerDoc, 'did:bns:waterflier')
+    expect(ownerDoc.binded_zone_list).toEqual(['did:bns:waterflier'])
+    expect(ownerDocumentGetDefaultZoneDid(ownerDoc)).toBe('did:bns:waterflier')
+    expect(ownerDoc.service).toEqual([
       {
         id: 'did:bns:lzc#lastDoc',
         type: 'DIDDoc',
@@ -410,7 +607,13 @@ describe('golden fixtures (T1.8, generated by buckycli, see fixtures README)', (
       },
     ])
 
-    const jwt = await signJwtEdDSA(ownerConfig, ownerKeys.privateKeyPem)
+    // setting a new default moves it to the front and replaces the service
+    ownerDocumentSetDefaultZoneDid(ownerDoc, 'did:bns:zone2')
+    expect(ownerDoc.binded_zone_list).toEqual(['did:bns:zone2', 'did:bns:waterflier'])
+    expect(ownerDoc.service).toHaveLength(1)
+    expect(ownerDoc.service?.[0].serviceEndpoint).toBe('https://zone2.bns.did/resolve/did:bns:lzc')
+
+    const jwt = await signJwtEdDSA(ownerDoc, ownerKeys.privateKeyPem)
     const payload = await verifyJwtEdDSA(jwt, createJwkByX(ownerKeys.publicKeyX))
     expect(payload.name).toBe('lzc')
   })

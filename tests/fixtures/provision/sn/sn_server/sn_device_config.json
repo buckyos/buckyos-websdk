@@ -31,7 +31,7 @@
   "zone_did": "did:web:sn.devtests.org",
   "owner": "did:bns:sn",
   "device_type": "ood",
-  "device_mini_config_jwt": "eyJhbGciOiJFZERTQSJ9.eyJuIjoic24iLCJ4IjoiRlB2WTNXWFB4dVdQWUZ1d09ZMFFiaDBPNy1oaEtyNnRhMWpUY1g5T1JQSSIsImV4cCI6MjA1ODgzODkzOX0._QscAOPWldnQ4OTuC3YkprqPEb8N0nJGhAKwlY54BTwjUxfhxDrYKa9Eqc7X9HP8v64mrneDYFju0Zb6RZOLBw",
+  "device_mini_document_jwt": "eyJhbGciOiJFZERTQSJ9.eyJuIjoic24iLCJ4IjoiRlB2WTNXWFB4dVdQWUZ1d09ZMFFiaDBPNy1oaEtyNnRhMWpUY1g5T1JQSSIsImV4cCI6MjA1ODgzODkzOX0._QscAOPWldnQ4OTuC3YkprqPEb8N0nJGhAKwlY54BTwjUxfhxDrYKa9Eqc7X9HP8v64mrneDYFju0Zb6RZOLBw",
   "name": "sn",
   "net_id": "wan"
 }

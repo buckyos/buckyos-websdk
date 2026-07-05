@@ -112,6 +112,7 @@ export declare class BuckyOSRuntime {
     private extractDeviceNameFromIdentityPayload;
     private readDeviceNameFromNodeIdentityPath;
     private tryLoadDeviceSigningMaterial;
+    private deviceKeyPathCandidates;
     private tryLoadUserSigningMaterial;
     private tryResolveDeviceNameFromSearchRoots;
     private tryResolveZoneHostFromSearchRoots;

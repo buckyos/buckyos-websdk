@@ -4,6 +4,7 @@ import * as os from 'os'
 
 import {
   assertProvisionRuntime,
+  buildDeviceDid,
   createUserEnv,
   createNodeConfigs,
   createSnConfigs,
@@ -17,7 +18,7 @@ import {
   uniqueNameToDid,
   buildDidDocs,
 } from '../src/provision'
-import { decodeJwtClaimWithoutVerify } from '../src/namelib'
+import { DID } from '../src/namelib'
 
 // node:sqlite is available on the runtimes provision supports (Node >= 22.13)
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -79,15 +80,12 @@ describe('createUserEnv (T2.2) vs buckycli fixtures', () => {
         const producedUser = readJson(path.join(outDir, 'user_config.json'))
         const fixtureUser = readJson(path.join(FIXTURE_DIR, username, 'user_config.json'))
         expect(producedUser).toEqual(withAlignedTimestamps(producedUser, fixtureUser))
-
-        const producedDevice = readJson(path.join(outDir, 'ood1', 'node_device_config.json'))
-        const fixtureDevice = readJson(path.join(FIXTURE_DIR, username, 'ood1', 'node_device_config.json'))
-        expect(producedDevice).toEqual(withAlignedTimestamps(producedDevice, fixtureDevice))
       })
     },
   )
 
   test('wan_dyn ood gets ddns_sn_url and drops the boot sn host', async () => {
+    consoleSpy.mockClear()
     const outDir = tmpDir('provision-bob-')
     await createUserEnv({
       username: 'bob',
@@ -98,9 +96,15 @@ describe('createUserEnv (T2.2) vs buckycli fixtures', () => {
     })
     const bootConfig = readJson(path.join(outDir, 'bob.bns.did.zone.json'))
     expect(bootConfig.sn).toBeUndefined()
-    const deviceConfig = readJson(path.join(outDir, 'ood1', 'node_device_config.json'))
+    // the device config is only printed (mirror of Rust): find it in the log
+    const deviceConfigLog = consoleSpy.mock.calls
+      .map(call => String(call[0]))
+      .find(line => line.startsWith('ood1 device config:'))
+    expect(deviceConfigLog).toBeDefined()
+    const deviceConfig = JSON.parse(deviceConfigLog!.slice('ood1 device config:'.length))
     expect(deviceConfig.ddns_sn_url).toBe('https://sn.devtests.org/kapi/sn')
     expect(deviceConfig.net_id).toBe('wan_dyn')
+    expect(deviceConfig.id).toBe('did:bns:ood1.bob')
   })
 })
 
@@ -111,19 +115,39 @@ describe('createNodeConfigs (T2.3) on the fixture env (byte-level golden)', () =
     for (const name of ['user_config.json', 'zone_config.json']) {
       fs.copyFileSync(path.join(FIXTURE_DIR, username, name), path.join(envDir, name))
     }
-    fs.mkdirSync(path.join(envDir, 'ood1'), { recursive: true })
-    fs.copyFileSync(
-      path.join(FIXTURE_DIR, username, 'ood1', 'node_device_config.json'),
-      path.join(envDir, 'ood1', 'node_device_config.json'),
-    )
 
-    await createNodeConfigs({ deviceName: 'ood1', envDir })
+    // device documents take iat from the wall clock (like Rust); rebuild with
+    // the fixture's iat so the jwts and json files compare byte-for-byte
+    const nodeIdentity = readJson(path.join(FIXTURE_DIR, username, 'ood1', 'node_identity.json'))
+    const identityDirName = DID.fromStr(nodeIdentity.device_did).toFilename()
+    const identitySubdir = path.join('local', 'identity', identityDirName)
+    const fixtureDidJson = readJson(path.join(FIXTURE_DIR, username, 'ood1', identitySubdir, 'did.json'))
+    const netId = fixtureDidJson.net_id
 
-    for (const name of ['node_private_key.pem', 'device_mini_config.jwt', 'node_identity.json', 'start_config.json']) {
+    await createNodeConfigs({ deviceName: 'ood1', envDir, netId, now: fixtureDidJson.iat })
+
+    const goldenFiles = [
+      'device_mini_config.jwt',
+      'node_identity.json',
+      'node_gateway_params.json',
+      'start_config.json',
+      path.join(identitySubdir, 'did.json'),
+      path.join(identitySubdir, 'device_doc.jwt'),
+      path.join(identitySubdir, 'device_mini_doc.jwt'),
+      path.join('security', identityDirName, 'authentication.private.pem'),
+    ]
+    for (const name of goldenFiles) {
       const produced = fs.readFileSync(path.join(envDir, 'ood1', name), 'utf8')
       const fixture = fs.readFileSync(path.join(FIXTURE_DIR, username, 'ood1', name), 'utf8')
       expect({ name, content: produced }).toEqual({ name, content: fixture })
     }
+  })
+
+  test('buildDeviceDid mirrors buckyos-api build_device_did', () => {
+    expect(buildDeviceDid('ood1', 'did:bns:alice').toString()).toBe('did:bns:ood1.alice')
+    expect(buildDeviceDid('ood1', 'did:web:test.buckyos.io').toString()).toBe('did:web:ood1.test.buckyos.io')
+    expect(buildDeviceDid('cam01', 'did:bns:app1.alice').toString()).toBe('did:bns:cam01.app1.alice')
+    expect(() => buildDeviceDid('  ', 'did:bns:alice')).toThrow()
   })
 })
 
@@ -225,14 +249,12 @@ describe('SN registration (mirror register_user_to_sn / register_device_to_sn)',
   test('registers the fixture alice env into a fresh sn_db', async () => {
     const rootDir = tmpDir('provision-reg-')
     const envDir = path.join(rootDir, 'alice.bns.did')
-    fs.mkdirSync(path.join(envDir, 'ood1'), { recursive: true })
+    fs.mkdirSync(envDir, { recursive: true })
     for (const name of ['user_config.json', 'zone_config.json', 'zone_txt_record.json']) {
       fs.copyFileSync(path.join(FIXTURE_DIR, 'alice', name), path.join(envDir, name))
     }
-    fs.copyFileSync(
-      path.join(FIXTURE_DIR, 'alice', 'ood1', 'node_identity.json'),
-      path.join(envDir, 'ood1', 'node_identity.json'),
-    )
+    // v2 layout: node_identity.json + the identity-roots tree under the node dir
+    fs.cpSync(path.join(FIXTURE_DIR, 'alice', 'ood1'), path.join(envDir, 'ood1'), { recursive: true })
 
     const dbPath = path.join(rootDir, 'sn_db.sqlite3')
     new DevSnDb(dbPath).initializeDatabase()
@@ -242,7 +264,11 @@ describe('SN registration (mirror register_user_to_sn / register_device_to_sn)',
 
     const txtRecord = readJson(path.join(FIXTURE_DIR, 'alice', 'zone_txt_record.json'))
     const nodeIdentity = readJson(path.join(FIXTURE_DIR, 'alice', 'ood1', 'node_identity.json'))
-    const expectedDeviceDid = decodeJwtClaimWithoutVerify(nodeIdentity.device_doc_jwt).id
+    const identityDirName = DID.fromStr(nodeIdentity.device_did).toFilename()
+    const expectedMiniJwt = fs.readFileSync(
+      path.join(FIXTURE_DIR, 'alice', 'ood1', 'local', 'identity', identityDirName, 'device_mini_doc.jwt'),
+      'utf8',
+    )
 
     const raw = new DatabaseSync(dbPath)
     try {
@@ -262,12 +288,13 @@ describe('SN registration (mirror register_user_to_sn / register_device_to_sn)',
       expect(device).toMatchObject({
         owner: 'alice',
         device_name: 'ood1',
-        did: expectedDeviceDid,
-        mini_config_jwt: nodeIdentity.device_mini_doc_jwt,
+        did: nodeIdentity.device_did,
+        mini_config_jwt: expectedMiniJwt,
       })
       const description = JSON.parse(device.description as string)
       expect(description.name).toBe('ood1')
       expect(description.state).toBe('Ready')
+      expect(description.id).toBe('did:bns:ood1.alice')
     } finally {
       raw.close()
     }
