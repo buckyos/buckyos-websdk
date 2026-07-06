@@ -18,7 +18,13 @@ import {
   uniqueNameToDid,
   buildDidDocs,
 } from '../src/provision'
-import { DID } from '../src/namelib'
+import {
+  createJwkByX,
+  DID,
+  getPublicKeyXFromPrivatePem,
+  verifyJwtEdDSA,
+} from '../src/namelib'
+import { getDevTestKeyPairById } from '../src/dev_test_keys'
 
 // node:sqlite is available on the runtimes provision supports (Node >= 22.13)
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -34,10 +40,6 @@ function tmpDir(prefix: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix))
 }
 
-function withAlignedTimestamps(produced: any, fixture: any): any {
-  return { ...fixture, iat: produced.iat, exp: produced.exp }
-}
-
 let consoleSpy: jest.SpyInstance
 beforeAll(() => {
   consoleSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined)
@@ -50,7 +52,7 @@ test('runtime guard accepts current runtime', () => {
   expect(() => assertProvisionRuntime()).not.toThrow()
 })
 
-describe('createUserEnv (T2.2) vs buckycli fixtures', () => {
+describe('createUserEnv (T2.2)', () => {
   describe.each([
     ['alice', 'alice.bns.did', 'ood1', 'devtests.org', 2980, 'alice.bns.did'],
     ['charlie', 'charlie.me', 'ood1@portmap', 'devtests.org', 2981, 'charlie.me'],
@@ -64,22 +66,28 @@ describe('createUserEnv (T2.2) vs buckycli fixtures', () => {
         await createUserEnv({ username, hostname, oodName, snBaseHost, rtcpPort, outputDir: outDir })
       })
 
-      test('deterministic outputs are identical to the Rust outputs', () => {
-        // boot config / txt record / zone config use fixed BASE_TIME-derived exp
-        expect(readJson(path.join(outDir, `${zoneHostName}.zone.json`)))
-          .toEqual(readJson(path.join(FIXTURE_DIR, username, `${zoneHostName}.zone.json`)))
-        expect(readJson(path.join(outDir, 'zone_txt_record.json')))
-          .toEqual(readJson(path.join(FIXTURE_DIR, username, 'zone_txt_record.json')))
-        expect(readJson(path.join(outDir, 'zone_config.json')))
-          .toEqual(readJson(path.join(FIXTURE_DIR, username, 'zone_config.json')))
-        expect(fs.readFileSync(path.join(outDir, 'user_private_key.pem'), 'utf8'))
-          .toBe(fs.readFileSync(path.join(FIXTURE_DIR, username, 'user_private_key.pem'), 'utf8'))
-      })
+      test('outputs use the mnemonic-derived dev owner key', async () => {
+        const ownerKey = getDevTestKeyPairById(username)
+        const privateKeyPem = fs.readFileSync(path.join(outDir, 'user_private_key.pem'), 'utf8')
+        expect(privateKeyPem).toBe(ownerKey.privateKeyPem)
+        await expect(getPublicKeyXFromPrivatePem(privateKeyPem)).resolves.toBe(ownerKey.publicKeyX)
 
-      test('time-dependent outputs match after aligning iat/exp', () => {
-        const producedUser = readJson(path.join(outDir, 'user_config.json'))
-        const fixtureUser = readJson(path.join(FIXTURE_DIR, username, 'user_config.json'))
-        expect(producedUser).toEqual(withAlignedTimestamps(producedUser, fixtureUser))
+        const userConfig = readJson(path.join(outDir, 'user_config.json'))
+        expect(userConfig).toMatchObject({
+          id: `did:bns:${username}`,
+          name: username,
+          display_name: username,
+        })
+        expect(userConfig.verificationMethod[0].publicKeyJwk.x).toBe(ownerKey.publicKeyX)
+
+        const zoneRecord = readJson(path.join(outDir, 'zone_txt_record.json'))
+        expect(zoneRecord.pkx).toBe(ownerKey.publicKeyX)
+        await expect(verifyJwtEdDSA(zoneRecord.boot_config_jwt, createJwkByX(ownerKey.publicKeyX)))
+          .resolves.toMatchObject({ exp: 2058838939 })
+
+        const bootConfig = readJson(path.join(outDir, `${zoneHostName}.zone.json`))
+        expect(bootConfig.exp).toBe(2058838939)
+        expect(readJson(path.join(outDir, 'zone_config.json')).boot_jwt).toBe(zoneRecord.boot_config_jwt)
       })
     },
   )
@@ -108,40 +116,54 @@ describe('createUserEnv (T2.2) vs buckycli fixtures', () => {
   })
 })
 
-describe('createNodeConfigs (T2.3) on the fixture env (byte-level golden)', () => {
-  test.each(['alice', 'charlie', 'devtest'])('%s/ood1 node files are byte-identical', async (username) => {
-    // copy the fixture env so createNodeConfigs sees exactly what buckycli saw
-    const envDir = tmpDir(`provision-node-${username}-`)
-    for (const name of ['user_config.json', 'zone_config.json']) {
-      fs.copyFileSync(path.join(FIXTURE_DIR, username, name), path.join(envDir, name))
-    }
+describe('createNodeConfigs (T2.3)', () => {
+  test.each([
+    ['alice', 'alice.bns.did', 'ood1', 'devtests.org', 'lan'],
+    ['charlie', 'charlie.me', 'ood1@portmap', 'devtests.org', 'portmap'],
+    ['devtest', 'test.buckyos.io', 'ood1@wan', '', 'wan'],
+    ['dave', 'dave.bns.did', 'ood1@wan', 'devtests.org', 'wan'],
+  ] as Array<[string, string, string, string, string]>)(
+    '%s/ood1 node files use mnemonic-derived owner and device keys',
+    async (username, hostname, oodName, snBaseHost, netId) => {
+      const envDir = tmpDir(`provision-node-${username}-`)
+      await createUserEnv({
+        username,
+        hostname,
+        oodName,
+        snBaseHost,
+        rtcpPort: 2980,
+        outputDir: envDir,
+      })
+      await createNodeConfigs({ deviceName: 'ood1', envDir, netId, now: 123456 })
 
-    // device documents take iat from the wall clock (like Rust); rebuild with
-    // the fixture's iat so the jwts and json files compare byte-for-byte
-    const nodeIdentity = readJson(path.join(FIXTURE_DIR, username, 'ood1', 'node_identity.json'))
-    const identityDirName = DID.fromStr(nodeIdentity.device_did).toFilename()
-    const identitySubdir = path.join('local', 'identity', identityDirName)
-    const fixtureDidJson = readJson(path.join(FIXTURE_DIR, username, 'ood1', identitySubdir, 'did.json'))
-    const netId = fixtureDidJson.net_id
+      const ownerKey = getDevTestKeyPairById(username)
+      const deviceKey = getDevTestKeyPairById(`${username}.ood1`)
+      const nodeDir = path.join(envDir, 'ood1')
+      const nodeIdentity = readJson(path.join(nodeDir, 'node_identity.json'))
+      const identityDirName = DID.fromStr(nodeIdentity.device_did).toFilename()
+      const identitySubdir = path.join('local', 'identity', identityDirName)
+      const didJson = readJson(path.join(nodeDir, identitySubdir, 'did.json'))
 
-    await createNodeConfigs({ deviceName: 'ood1', envDir, netId, now: fixtureDidJson.iat })
+      expect(nodeIdentity.owner_public_key.x).toBe(ownerKey.publicKeyX)
+      expect(nodeIdentity.device_did).toBe(buildDeviceDid('ood1', nodeIdentity.zone_did).toString())
+      expect(didJson.verificationMethod[0].publicKeyJwk.x).toBe(deviceKey.publicKeyX)
+      expect(fs.readFileSync(path.join(nodeDir, 'security', identityDirName, 'authentication.private.pem'), 'utf8'))
+        .toBe(deviceKey.privateKeyPem)
 
-    const goldenFiles = [
-      'device_mini_config.jwt',
-      'node_identity.json',
-      'node_gateway_params.json',
-      'start_config.json',
-      path.join(identitySubdir, 'did.json'),
-      path.join(identitySubdir, 'device_doc.jwt'),
-      path.join(identitySubdir, 'device_mini_doc.jwt'),
-      path.join('security', identityDirName, 'authentication.private.pem'),
-    ]
-    for (const name of goldenFiles) {
-      const produced = fs.readFileSync(path.join(envDir, 'ood1', name), 'utf8')
-      const fixture = fs.readFileSync(path.join(FIXTURE_DIR, username, 'ood1', name), 'utf8')
-      expect({ name, content: produced }).toEqual({ name, content: fixture })
-    }
-  })
+      const deviceDocJwt = fs.readFileSync(path.join(nodeDir, identitySubdir, 'device_doc.jwt'), 'utf8')
+      const verifiedDeviceDoc = await verifyJwtEdDSA(deviceDocJwt, createJwkByX(ownerKey.publicKeyX))
+      expect(verifiedDeviceDoc).toMatchObject({
+        id: nodeIdentity.device_did,
+        owner: `did:bns:${username}`,
+        name: 'ood1',
+      })
+      expect(verifiedDeviceDoc.verificationMethod[0].publicKeyJwk.x).toBe(deviceKey.publicKeyX)
+
+      const miniJwt = fs.readFileSync(path.join(nodeDir, identitySubdir, 'device_mini_doc.jwt'), 'utf8')
+      await expect(verifyJwtEdDSA(miniJwt, createJwkByX(ownerKey.publicKeyX)))
+        .resolves.toMatchObject({ n: 'ood1', x: deviceKey.publicKeyX })
+    },
+  )
 
   test('buildDeviceDid mirrors buckyos-api build_device_did', () => {
     expect(buildDeviceDid('ood1', 'did:bns:alice').toString()).toBe('did:bns:ood1.alice')
@@ -208,28 +230,34 @@ describe('DevSnDb (T2.4)', () => {
   })
 })
 
-describe('createSnConfigs (T2.5) vs buckycli fixture', () => {
+describe('createSnConfigs (T2.5)', () => {
   const outDir = tmpDir('provision-sn-')
 
   beforeAll(async () => {
     await createSnConfigs({ outputDir: outDir, snIp: '192.168.64.84', snBaseHost: 'devtests.org' })
   })
 
-  test('deterministic outputs match', () => {
-    expect(readJson(path.join(outDir, 'sn_server', 'params.json')))
-      .toEqual(readJson(path.join(FIXTURE_DIR, 'sn', 'sn_server', 'params.json')))
-    expect(readJson(path.join(outDir, 'sn_server', 'sn_device_config.json')))
-      .toEqual(readJson(path.join(FIXTURE_DIR, 'sn', 'sn_server', 'sn_device_config.json')))
-    expect(fs.readFileSync(path.join(outDir, 'sn_server', 'sn_private_key.pem'), 'utf8'))
-      .toBe(fs.readFileSync(path.join(FIXTURE_DIR, 'sn', 'sn_server', 'sn_private_key.pem'), 'utf8'))
-    expect(fs.readFileSync(path.join(outDir, 'sn_server', '.buckycli', 'user_private_key.pem'), 'utf8'))
-      .toBe(fs.readFileSync(path.join(FIXTURE_DIR, 'sn', 'sn_server', '.buckycli', 'user_private_key.pem'), 'utf8'))
-  })
+  test('outputs use the mnemonic-derived sn owner and device keys', async () => {
+    const snDir = path.join(outDir, 'sn_server')
+    const ownerKey = getDevTestKeyPairById('sn_owner')
+    const deviceKey = getDevTestKeyPairById('sn_server')
+    expect(fs.readFileSync(path.join(snDir, '.buckycli', 'user_private_key.pem'), 'utf8'))
+      .toBe(ownerKey.privateKeyPem)
+    expect(fs.readFileSync(path.join(snDir, 'sn_private_key.pem'), 'utf8'))
+      .toBe(deviceKey.privateKeyPem)
 
-  test('sn admin user_config matches after aligning iat/exp', () => {
-    const produced = readJson(path.join(outDir, 'sn_server', '.buckycli', 'user_config.json'))
-    const fixture = readJson(path.join(FIXTURE_DIR, 'sn', 'sn_server', '.buckycli', 'user_config.json'))
-    expect(produced).toEqual(withAlignedTimestamps(produced, fixture))
+    const userConfig = readJson(path.join(snDir, '.buckycli', 'user_config.json'))
+    expect(userConfig.verificationMethod[0].publicKeyJwk.x).toBe(ownerKey.publicKeyX)
+
+    const params = readJson(path.join(snDir, 'params.json')).params
+    expect(params.sn_owner_pk).toBe(ownerKey.publicKeyX)
+    await expect(verifyJwtEdDSA(params.sn_boot_jwt, createJwkByX(ownerKey.publicKeyX)))
+      .resolves.toMatchObject({ oods: ['sn'], exp: 2058838939 })
+    await expect(verifyJwtEdDSA(params.sn_device_jwt, createJwkByX(ownerKey.publicKeyX)))
+      .resolves.toMatchObject({ n: 'sn', x: deviceKey.publicKeyX, exp: 2058838939 })
+
+    const deviceConfig = readJson(path.join(snDir, 'sn_device_config.json'))
+    expect(deviceConfig.verificationMethod[0].publicKeyJwk.x).toBe(deviceKey.publicKeyX)
   })
 
   test('sn_db contains the dev activation codes', () => {

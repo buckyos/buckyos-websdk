@@ -6,8 +6,8 @@ export { NODE_IDENTITY_SCHEMA_V2, DEVICE_DOC_JWT_FILE_NAME, DEVICE_MINI_DOC_JWT_
 export type { BuckyOSLocalNodeIdentityConfig, DeviceIdentityPaths, NewLocalNodeIdentityConfigParams } from './device_identity';
 export { IdentityRoots, IDENTITY_MATERIALS, IDENTITY_USAGES, createCa, createCertFromCa, createIdentityCertFromCa, didWebDocumentUrl, encodeIdentityDirName, ensureCa, identityDirName, identityFileName, identityRawHostUri, } from './cert';
 export type { CreateCaResult, CreateCertResult, CreateIdentityCertFromCaOptions, CreateIdentityCertResult, IdentityDirMatch, IdentityMatchType, IdentityMaterial, IdentityRootsOptions, IdentityUsage, X509PathMatch, X509Paths, } from './cert';
-export { DEV_TEST_KEYS, getDevTestKeyPairById } from './dev_test_keys';
-export type { DevTestKeyPair } from './dev_test_keys';
+export { DEV_TEST_EVM_ACCOUNTS, DEV_TEST_EVM_SEED_SENDER, DEV_TEST_EVM_SEED_SENDER_INDEX, DEV_TEST_EVM_USER_INDEXES, DEV_TEST_KEY_INDEXES, DEV_TEST_KEYS, DEV_TEST_MNEMONIC, deriveDevTestEvmAccount, deriveDevTestEvmAccountFromMnemonic, deriveDevTestKeyPair, deriveDevTestKeyPairFromMnemonic, devTestKeccak256, getDevTestEvmAccountByIndex, getDevTestEvmAccountByUsername, getDevTestKeyPairById, getDevTestKeyPairByIndex, } from './dev_test_keys';
+export type { DevTestEvmAccount, DevTestKeyPair } from './dev_test_keys';
 export declare const PROVISION_BASE_TIME = 1743478939;
 export declare const PROVISION_DEFAULT_EXP: number;
 export declare function assertProvisionRuntime(): void;

@@ -6,6 +6,8 @@ var __publicField = (obj, key, value) => {
 };
 var _a;
 import { N as NODE_IDENTITY_SCHEMA_V2, v as DID, y as newDeviceDocumentByJwk, z as verifyJwtEdDSA, A as deviceDocumentToOrderedJson, B as decodeJwtClaimWithoutVerify, E as commonjsGlobal, G as createJwkByX, H as newOwnerDocument, I as ownerDocumentToOrderedJson, J as parseOODDescription, K as oodDescriptionToString, L as newZoneBootDocument, M as newZoneDocument, P as encodeZoneBootDocument, Q as zoneDocumentInitByBootDocument, R as zoneDocumentToOrderedJson, T as newDeviceMiniDocument, U as deviceMiniDocumentToJwt, V as encodeDeviceDocument, W as newDeviceMiniDocumentByDeviceDocument, X as newDeviceDocumentByMiniDocument, Y as buckyosGetUnixTimestamp, Z as buildNamedObjectByJson } from "./ndn_types-7ce47e32.mjs";
+import { Buffer as Buffer$1 } from "node:buffer";
+import { pbkdf2Sync, createPublicKey, createPrivateKey, createECDH, createHmac } from "node:crypto";
 const DEVICE_DOC_JWT_FILE_NAME = "device_doc.jwt";
 const DEVICE_MINI_DOC_JWT_FILE_NAME = "device_mini_doc.jwt";
 const NODE_GATEWAY_PARAMS_FILE_NAME = "node_gateway_params.json";
@@ -13789,97 +13791,325 @@ async function createIdentityCertFromCa(caDir, didOrHostname, rootsInput, option
     metadataPath: paths.metadata
   };
 }
-function keyPair(privateKeyBase64, publicKeyX) {
+const DEV_TEST_MNEMONIC = "test test test test test test test test test test test junk";
+const DEV_TEST_EVM_SEED_SENDER_INDEX = 0;
+const HARDENED_OFFSET = 2147483648;
+const BUC_KEY_PURPOSE = 9777;
+const BUC_KEY_COIN = 0;
+const SECP256K1_N = BigInt("0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141");
+const MASK_64 = (1n << 64n) - 1n;
+const KECCAK_ROUNDS = [
+  0x0000000000000001n,
+  0x0000000000008082n,
+  0x800000000000808an,
+  0x8000000080008000n,
+  0x000000000000808bn,
+  0x0000000080000001n,
+  0x8000000080008081n,
+  0x8000000000008009n,
+  0x000000000000008an,
+  0x0000000000000088n,
+  0x0000000080008009n,
+  0x000000008000000an,
+  0x000000008000808bn,
+  0x800000000000008bn,
+  0x8000000000008089n,
+  0x8000000000008003n,
+  0x8000000000008002n,
+  0x8000000000000080n,
+  0x000000000000800an,
+  0x800000008000000an,
+  0x8000000080008081n,
+  0x8000000000008080n,
+  0x0000000080000001n,
+  0x8000000080008008n
+];
+const KECCAK_ROTATION = [
+  [0, 36, 3, 41, 18],
+  [1, 44, 10, 45, 2],
+  [62, 6, 43, 15, 61],
+  [28, 55, 25, 21, 56],
+  [27, 20, 39, 8, 14]
+];
+function mnemonicToSeed(mnemonic, passphrase = "") {
+  return pbkdf2Sync(
+    Buffer$1.from(mnemonic.normalize("NFKD"), "utf8"),
+    Buffer$1.from(`mnemonic${passphrase}`.normalize("NFKD"), "utf8"),
+    2048,
+    64,
+    "sha512"
+  );
+}
+function hmacSha512(key, data) {
+  return createHmac("sha512", key).update(data).digest();
+}
+function ser32(value) {
+  const out = Buffer$1.alloc(4);
+  out.writeUInt32BE(value >>> 0, 0);
+  return out;
+}
+function pkcs8PemFromEd25519Seed(seed) {
+  const pkcs8 = Buffer$1.concat([
+    Buffer$1.from("302e020100300506032b657004220420", "hex"),
+    seed
+  ]);
+  return `-----BEGIN PRIVATE KEY-----
+${pkcs8.toString("base64")}
+-----END PRIVATE KEY-----
+`;
+}
+function getEd25519PublicKeyX(privateKeyPem) {
+  const jwk = createPublicKey(createPrivateKey(privateKeyPem)).export({
+    format: "jwk"
+  });
+  if (!jwk.x) {
+    throw new Error("failed to derive Ed25519 public key x");
+  }
+  return jwk.x;
+}
+function slip10MasterKey(seed) {
+  const result = hmacSha512("ed25519 seed", seed);
   return {
-    privateKeyPem: `-----BEGIN PRIVATE KEY-----
-${privateKeyBase64}
------END PRIVATE KEY-----`,
-    publicKeyX
+    key: result.subarray(0, 32),
+    chainCode: result.subarray(32)
   };
 }
-const DEVTEST_OWNER = keyPair(
-  "MC4CAQAwBQYDK2VwBCIEIJBRONAzbwpIOwm0ugIQNyZJrDXxZF7HoPWAZesMedOr",
-  "T4Quc1L6Ogu4N2tTKOvneV1yYnBcmhP89B_RsuFsJZ8"
-);
-const DEVTEST_OOD1 = keyPair(
-  "MC4CAQAwBQYDK2VwBCIEIMDp9endjUnT2o4ImedpgvhVFyZEunZqG+ca0mka8oRp",
-  "gubVIszw-u_d5PVTh-oc8CKAhM9C-ne5G_yUK5BDaXc"
-);
-const DEVTEST_NODE1 = keyPair(
-  "MC4CAQAwBQYDK2VwBCIEICwMZt1W7P/9v3Iw/rS2RdziVkF7L+o5mIt/WL6ef/0w",
-  "Bb325f2ed0XSxrPS5sKQaX7ylY9Jh9rfevXiidKA1zc"
-);
-const BOB_OWNER = keyPair(
-  "MC4CAQAwBQYDK2VwBCIEILQLoUZt2okCht0UVhsf4UlGAV9h3BoliwZQN5zBO1G+",
-  "y-kuJcQ0doFpdNXf4HI8E814lK8MB3-t4XjDRcR_QCU"
-);
-const BOB_OOD1 = keyPair(
-  "MC4CAQAwBQYDK2VwBCIEIADmO0+u/gcmStDsHZOZCM5gxNYlQmP6jpMo279TQE75",
-  "iSMKakFEGzGAxLTlaB5TkqZ6d4wurObr-BpaQleoE2M"
-);
-const SN_OWNER = keyPair(
-  "MC4CAQAwBQYDK2VwBCIEIMkwWZKUe7+z7NtfgbgxWwGjMddvxtrmeGJiJe8rq00M",
-  "blzinUlTNGYcvCPFT1OfPKPbmjvteuXWMwQG55cTo7M"
-);
-const SN_SERVER = keyPair(
-  "MC4CAQAwBQYDK2VwBCIEIBvnIIa1Tx45SjRu9kBZuMgusP5q762SvojXZ4scFxVD",
-  "FPvY3WXPxuWPYFuwOY0Qbh0O7-hhKr6ta1jTcX9ORPI"
-);
-const DEVTESTS_OOD1 = keyPair(
-  "MC4CAQAwBQYDK2VwBCIEICBO4nQL1yMcu4uu51Grea+VTaaS+sswioMRZXoltzZh",
-  "waupPnLqJRwjr3hJ_2i2J4qGLx-8t5ihX6LET0ZY828"
-);
-const ALICE_OWNER = keyPair(
-  "MC4CAQAwBQYDK2VwBCIEIKH6oJdebg+xxICY7Z1vm84qMkSzm6Wk0ic88DGR90aq",
-  "uh7RD37tflN65CrcJSUQ3vGnyU4vmC7_M8IkEEOHnds"
-);
-const ALICE_OOD1 = keyPair(
-  "MC4CAQAwBQYDK2VwBCIEIGhyUJ3/YgIrLZxSGG7o1bgiWcyETZKjTBoGagNdpxVy",
-  "E1oQDYqzyX4ysrNgTJ5DAVaMgA3By8XpBa0e6r2gBqQ"
-);
-const CHARLIE_OWNER = keyPair(
-  "MC4CAQAwBQYDK2VwBCIEICLjVTK81RKQ1aPtSLKFx/Fl33+WbxgqCpPCBFlqlBQX",
-  "cuFY7qeU1q96O1K5RRbXo7GXGR78szB-gmmkBXDMscE"
-);
-const CHARLIE_OOD1 = keyPair(
-  "MC4CAQAwBQYDK2VwBCIEIMe0Q/tl7DWbu3SIQE8vnDxO8YQMIivAlCgKiNUfjcWU",
-  "PY9uu16H74QYVRjstVxdWdAsgkoy10-74fvQhx4ddek"
-);
-const DEV_TEST_KEYS = {
-  // zone-id did:web:test.buckyos.io
-  devtest: DEVTEST_OWNER,
-  devtest_ood1: DEVTEST_OOD1,
-  "devtest.ood1": DEVTEST_OOD1,
-  devtest_node1: DEVTEST_NODE1,
-  "devtest.node1": DEVTEST_NODE1,
-  sn_owner: SN_OWNER,
-  // zone-id did:web:devtests.org
-  devtests: SN_OWNER,
-  // zone-id None (sn is not a zone)
-  sn: SN_SERVER,
-  sn_server: SN_SERVER,
-  devtests_ood1: DEVTESTS_OOD1,
-  "devtests.ood1": DEVTESTS_OOD1,
-  sn_web: DEVTESTS_OOD1,
-  // zone-id did:bns:bob
-  bob: BOB_OWNER,
-  bob_ood1: BOB_OOD1,
-  "bob.ood1": BOB_OOD1,
-  // zone-id did:bns:alice
-  alice: ALICE_OWNER,
-  alice_ood1: ALICE_OOD1,
-  "alice.ood1": ALICE_OOD1,
-  // zone-id did:web:charlie.me
-  charlie: CHARLIE_OWNER,
-  charlie_ood1: CHARLIE_OOD1,
-  "charlie.ood1": CHARLIE_OOD1
+function slip10DeriveHardened(parentKey, parentChainCode, index) {
+  const data = Buffer$1.concat([
+    Buffer$1.from([0]),
+    parentKey,
+    ser32(index + HARDENED_OFFSET)
+  ]);
+  const result = hmacSha512(parentChainCode, data);
+  return {
+    key: result.subarray(0, 32),
+    chainCode: result.subarray(32)
+  };
+}
+function deriveBuckyEd25519Seed(mnemonic, passphrase, index) {
+  let node = slip10MasterKey(mnemonicToSeed(mnemonic, passphrase));
+  for (const segment of [BUC_KEY_PURPOSE, BUC_KEY_COIN, index]) {
+    node = slip10DeriveHardened(node.key, node.chainCode, segment);
+  }
+  return Buffer$1.from(node.key);
+}
+function deriveDevTestKeyPairFromMnemonic(mnemonic, passphrase, index) {
+  const seed = deriveBuckyEd25519Seed(mnemonic, passphrase ?? "", index);
+  const privateKeyPem = pkcs8PemFromEd25519Seed(seed);
+  return {
+    privateKeyPem,
+    publicKeyX: getEd25519PublicKeyX(privateKeyPem)
+  };
+}
+function deriveDevTestKeyPair(index) {
+  return deriveDevTestKeyPairFromMnemonic(DEV_TEST_MNEMONIC, void 0, index);
+}
+function bigintTo32(value) {
+  const hex = value.toString(16).padStart(64, "0");
+  return Buffer$1.from(hex, "hex");
+}
+function bufferToBigint(value) {
+  return BigInt(`0x${value.toString("hex")}`);
+}
+function secp256k1PublicKey(privateKey, compressed) {
+  const ecdh = createECDH("secp256k1");
+  ecdh.setPrivateKey(privateKey);
+  return ecdh.getPublicKey(void 0, compressed ? "compressed" : "uncompressed");
+}
+function secp256k1MasterKey(seed) {
+  const result = hmacSha512("Bitcoin seed", seed);
+  const privateKey = result.subarray(0, 32);
+  const privateKeyInt = bufferToBigint(privateKey);
+  if (privateKeyInt <= 0n || privateKeyInt >= SECP256K1_N) {
+    throw new Error("invalid secp256k1 master key");
+  }
+  return {
+    privateKey: Buffer$1.from(privateKey),
+    chainCode: result.subarray(32)
+  };
+}
+function secp256k1ChildKey(parentPrivateKey, parentChainCode, index) {
+  const hardened = index >= HARDENED_OFFSET;
+  const data = hardened ? Buffer$1.concat([Buffer$1.from([0]), parentPrivateKey, ser32(index)]) : Buffer$1.concat([secp256k1PublicKey(parentPrivateKey, true), ser32(index)]);
+  const result = hmacSha512(parentChainCode, data);
+  const tweak = bufferToBigint(result.subarray(0, 32));
+  if (tweak >= SECP256K1_N) {
+    throw new Error(`invalid secp256k1 child tweak at index ${index}`);
+  }
+  const childPrivateKeyInt = (tweak + bufferToBigint(parentPrivateKey)) % SECP256K1_N;
+  if (childPrivateKeyInt === 0n) {
+    throw new Error(`invalid secp256k1 child key at index ${index}`);
+  }
+  return {
+    privateKey: bigintTo32(childPrivateKeyInt),
+    chainCode: result.subarray(32)
+  };
+}
+function evmDerivationPath(index) {
+  return [
+    44 + HARDENED_OFFSET,
+    60 + HARDENED_OFFSET,
+    HARDENED_OFFSET,
+    0,
+    index
+  ];
+}
+function evmDerivationPathString(index) {
+  return `m/44'/60'/0'/0/${index}`;
+}
+function rotl64(value, shift) {
+  if (shift === 0) {
+    return value & MASK_64;
+  }
+  const n = BigInt(shift);
+  return (value << n | value >> 64n - n) & MASK_64;
+}
+function keccakF1600(state) {
+  for (const round of KECCAK_ROUNDS) {
+    const c = new Array(5);
+    const d = new Array(5);
+    const b = new Array(25).fill(0n);
+    for (let x = 0; x < 5; x += 1) {
+      c[x] = state[x] ^ state[x + 5] ^ state[x + 10] ^ state[x + 15] ^ state[x + 20];
+    }
+    for (let x = 0; x < 5; x += 1) {
+      d[x] = c[(x + 4) % 5] ^ rotl64(c[(x + 1) % 5], 1);
+    }
+    for (let x = 0; x < 5; x += 1) {
+      for (let y = 0; y < 5; y += 1) {
+        state[x + 5 * y] = (state[x + 5 * y] ^ d[x]) & MASK_64;
+      }
+    }
+    for (let x = 0; x < 5; x += 1) {
+      for (let y = 0; y < 5; y += 1) {
+        b[y + 5 * ((2 * x + 3 * y) % 5)] = rotl64(
+          state[x + 5 * y],
+          KECCAK_ROTATION[x][y]
+        );
+      }
+    }
+    for (let x = 0; x < 5; x += 1) {
+      for (let y = 0; y < 5; y += 1) {
+        state[x + 5 * y] = (b[x + 5 * y] ^ ~b[(x + 1) % 5 + 5 * y] & MASK_64 & b[(x + 2) % 5 + 5 * y]) & MASK_64;
+      }
+    }
+    state[0] = (state[0] ^ round) & MASK_64;
+  }
+}
+function devTestKeccak256(data) {
+  const rate = 136;
+  const state = new Array(25).fill(0n);
+  const padded = Buffer$1.concat([
+    data,
+    Buffer$1.from([1]),
+    Buffer$1.alloc((rate - (data.length + 1) % rate) % rate)
+  ]);
+  padded[padded.length - 1] ^= 128;
+  for (let offset = 0; offset < padded.length; offset += rate) {
+    for (let i = 0; i < rate; i += 1) {
+      state[Math.floor(i / 8)] ^= BigInt(padded[offset + i]) << BigInt(i % 8 * 8);
+    }
+    keccakF1600(state);
+  }
+  const out = Buffer$1.alloc(32);
+  for (let i = 0; i < out.length; i += 1) {
+    out[i] = Number(state[Math.floor(i / 8)] >> BigInt(i % 8 * 8) & 0xffn);
+  }
+  return out;
+}
+function eip55Address(addr20) {
+  const lowerHex = addr20.toString("hex");
+  const hash = devTestKeccak256(Buffer$1.from(lowerHex, "ascii"));
+  let out = "0x";
+  for (let i = 0; i < lowerHex.length; i += 1) {
+    const ch = lowerHex[i];
+    const nibble = hash[Math.floor(i / 2)] >> 4 * (1 - i % 2) & 15;
+    out += /[a-f]/.test(ch) && nibble > 7 ? ch.toUpperCase() : ch;
+  }
+  return out;
+}
+function deriveDevTestEvmAccountFromMnemonic(mnemonic, passphrase, index) {
+  let node = secp256k1MasterKey(mnemonicToSeed(mnemonic, passphrase ?? ""));
+  for (const segment of evmDerivationPath(index)) {
+    node = secp256k1ChildKey(node.privateKey, node.chainCode, segment);
+  }
+  const uncompressed = secp256k1PublicKey(node.privateKey, false);
+  const compressed = secp256k1PublicKey(node.privateKey, true);
+  const addressHash = devTestKeccak256(uncompressed.subarray(1));
+  const privateKeyHex = node.privateKey.toString("hex");
+  return {
+    derivationPath: evmDerivationPathString(index),
+    privateKey: `0x${privateKeyHex}`,
+    privateKeyHex,
+    publicKeyCompressedHex: compressed.toString("hex"),
+    publicKeyUncompressedHex: uncompressed.toString("hex"),
+    address: eip55Address(addressHash.subarray(12))
+  };
+}
+function deriveDevTestEvmAccount(index) {
+  return deriveDevTestEvmAccountFromMnemonic(DEV_TEST_MNEMONIC, void 0, index);
+}
+const DEV_TEST_KEY_INDEXES = {
+  devtest: 0,
+  alice: 1,
+  bob: 2,
+  charlie: 3,
+  dave: 4,
+  sn_owner: 5,
+  devtests: 5,
+  "devtest.ood1": 100,
+  devtest_ood1: 100,
+  "devtest.node1": 101,
+  devtest_node1: 101,
+  "alice.ood1": 102,
+  alice_ood1: 102,
+  "bob.ood1": 103,
+  bob_ood1: 103,
+  "charlie.ood1": 104,
+  charlie_ood1: 104,
+  "dave.ood1": 105,
+  dave_ood1: 105,
+  sn: 106,
+  sn_server: 106,
+  "devtests.ood1": 107,
+  devtests_ood1: 107,
+  sn_web: 107
 };
+const DEV_TEST_EVM_USER_INDEXES = {
+  alice: 1,
+  bob: 2,
+  charlie: 3,
+  dave: 4
+};
+const DEV_TEST_KEYS = Object.fromEntries(
+  Object.entries(DEV_TEST_KEY_INDEXES).map(([id, index]) => [id, deriveDevTestKeyPair(index)])
+);
+const DEV_TEST_EVM_ACCOUNTS = Object.fromEntries(
+  Object.entries(DEV_TEST_EVM_USER_INDEXES).map(([username, index]) => [
+    username,
+    deriveDevTestEvmAccount(index)
+  ])
+);
+const DEV_TEST_EVM_SEED_SENDER = deriveDevTestEvmAccount(DEV_TEST_EVM_SEED_SENDER_INDEX);
+function getDevTestKeyPairByIndex(index) {
+  return deriveDevTestKeyPair(index);
+}
 function getDevTestKeyPairById(id) {
-  const keyPair2 = DEV_TEST_KEYS[id];
-  if (!keyPair2) {
+  const keyPair = DEV_TEST_KEYS[id];
+  if (!keyPair) {
     throw new Error(`unknown dev test key pair id: ${id}`);
   }
-  return keyPair2;
+  return keyPair;
+}
+function getDevTestEvmAccountByIndex(index) {
+  return deriveDevTestEvmAccount(index);
+}
+function getDevTestEvmAccountByUsername(username) {
+  const account = DEV_TEST_EVM_ACCOUNTS[username];
+  if (!account) {
+    throw new Error(`no deterministic EVM account for seed user ${username}; register it in DEV_TEST_EVM_USER_INDEXES`);
+  }
+  return account;
 }
 const PROVISION_BASE_TIME = 1743478939;
 const DEFAULT_EXP_YEARS = 10;
@@ -13978,7 +14208,7 @@ async function createUserEnv(params) {
   const rtcpPort = params.rtcpPort ?? 2980;
   const userDir = params.outputDir;
   const exp = PROVISION_DEFAULT_EXP;
-  const keyPair2 = resolveOwnerKeyPair(params.username, params.ownerKeyPair);
+  const keyPair = resolveOwnerKeyPair(params.username, params.ownerKeyPair);
   const ownerDid = new DID("bns", params.username);
   let zoneDid = new DID("web", params.hostname);
   let snHost;
@@ -13987,8 +14217,8 @@ async function createUserEnv(params) {
     zoneDid = DID.fromHostNameByBridge(params.hostname, "bns", web3Bns);
     snHost = `sn.${params.snBaseHost}`;
   }
-  writeFileWithLog(path.join(userDir, "user_private_key.pem"), keyPair2.privateKeyPem);
-  const ownerJwk = createJwkByX(keyPair2.publicKeyX);
+  writeFileWithLog(path.join(userDir, "user_private_key.pem"), keyPair.privateKeyPem);
+  const ownerJwk = createJwkByX(keyPair.publicKeyX);
   const ownerDoc = newOwnerDocument({
     did: ownerDid,
     name: params.username,
@@ -14015,10 +14245,10 @@ async function createUserEnv(params) {
   writeJsonWithLog(path.join(userDir, `${zoneHostName}.zone.json`), zoneBoot);
   zoneBoot.id = zoneDid.toString();
   const zoneDoc = newZoneDocument({ id: zoneDid, ownerDid, publicKeyJwk: ownerJwk });
-  const bootJwt = await encodeZoneBootDocument(zoneBoot, keyPair2.privateKeyPem);
+  const bootJwt = await encodeZoneBootDocument(zoneBoot, keyPair.privateKeyPem);
   zoneDocumentInitByBootDocument(zoneDoc, zoneBoot, bootJwt);
   writeJsonWithLog(path.join(userDir, "zone_config.json"), zoneDocumentToOrderedJson(zoneDoc));
-  const pkx = keyPair2.publicKeyX;
+  const pkx = keyPair.publicKeyX;
   console.log(`=> ${zoneHostName} TXT Record(${bootJwt.length + 6}): BOOT=${bootJwt};`);
   console.log(`=> ${zoneHostName} TXT Record(${pkx.length + 5}): PKX=${pkx};`);
   const realRtcpPort = rtcpPort === 2980 ? void 0 : rtcpPort;
@@ -14028,7 +14258,7 @@ async function createUserEnv(params) {
     rtcpPort: realRtcpPort,
     exp
   });
-  const miniJwt = await deviceMiniDocumentToJwt(miniDoc, keyPair2.privateKeyPem);
+  const miniJwt = await deviceMiniDocumentToJwt(miniDoc, keyPair.privateKeyPem);
   console.log(`=> ${zoneHostName} TXT Record(${miniJwt.length + 5}): DEV=${miniJwt};`);
   const deviceDid = buildDeviceDid(ood.name, zoneDid);
   const deviceDoc = newDeviceDocumentByJwkWithDid(ood.name, createJwkByX(deviceKeyPair.publicKeyX), deviceDid);
@@ -14066,7 +14296,7 @@ async function createNodeConfigs(params) {
   }
   const zoneConfig = readJson(path.join(rootDir, "zone_config.json"));
   const zoneDid = DID.fromStr(zoneConfig.id);
-  const keyPair2 = resolveOwnerKeyPair(username, params.ownerKeyPair);
+  const keyPair = resolveOwnerKeyPair(username, params.ownerKeyPair);
   const deviceKeyPair = resolveDeviceKeyPair(username, params.deviceName, params.deviceKeyPair);
   const nodeDir = path.join(rootDir, params.deviceName);
   const ownerDid = new DID("bns", username);
@@ -14085,15 +14315,15 @@ async function createNodeConfigs(params) {
   deviceDoc.owner = ownerDid.toString();
   deviceDoc.zone_did = zoneDid.toString();
   console.log(`input net_id: ${params.netId}, device_config.net_id: ${deviceDoc.net_id}`);
-  const deviceJwt = await encodeDeviceDocument(deviceDoc, keyPair2.privateKeyPem);
+  const deviceJwt = await encodeDeviceDocument(deviceDoc, keyPair.privateKeyPem);
   console.log(`${params.deviceName} device jwt: ${deviceJwt}`);
   const deviceMiniDoc = newDeviceMiniDocumentByDeviceDocument(deviceDoc);
-  const deviceMiniJwt = await deviceMiniDocumentToJwt(deviceMiniDoc, keyPair2.privateKeyPem);
+  const deviceMiniJwt = await deviceMiniDocumentToJwt(deviceMiniDoc, keyPair.privateKeyPem);
   writeFileWithLog(path.join(nodeDir, "device_mini_config.jwt"), deviceMiniJwt);
   const identityConfig = newLocalNodeIdentityConfig({
     zoneDid,
     ownerDid,
-    ownerPublicKey: createJwkByX(keyPair2.publicKeyX),
+    ownerPublicKey: createJwkByX(keyPair.publicKeyX),
     deviceName: params.deviceName,
     deviceDid,
     zoneIat: PROVISION_BASE_TIME
@@ -14117,8 +14347,8 @@ async function createNodeConfigs(params) {
       friend_passcode: "sdfsdfsdf",
       gateway_type: "PortForward",
       guest_access: true,
-      private_key: keyPair2.privateKeyPem,
-      public_key: createJwkByX(keyPair2.publicKeyX),
+      private_key: keyPair.privateKeyPem,
+      public_key: createJwkByX(keyPair.publicKeyX),
       user_name: username,
       zone_name: zoneDid.toHostName(),
       BUCKYOS_ROOT: "/opt/buckyos"
@@ -14589,7 +14819,13 @@ function buildDidDocs(outputDir, options) {
 export {
   DEVICE_DOC_JWT_FILE_NAME,
   DEVICE_MINI_DOC_JWT_FILE_NAME,
+  DEV_TEST_EVM_ACCOUNTS,
+  DEV_TEST_EVM_SEED_SENDER,
+  DEV_TEST_EVM_SEED_SENDER_INDEX,
+  DEV_TEST_EVM_USER_INDEXES,
   DEV_TEST_KEYS,
+  DEV_TEST_KEY_INDEXES,
+  DEV_TEST_MNEMONIC,
   DevSnDb,
   IDENTITY_MATERIALS,
   IDENTITY_USAGES,
@@ -14612,11 +14848,19 @@ export {
   createSnConfigs,
   createUserEnv,
   decodeDeviceDocumentWithoutVerify,
+  deriveDevTestEvmAccount,
+  deriveDevTestEvmAccountFromMnemonic,
+  deriveDevTestKeyPair,
+  deriveDevTestKeyPairFromMnemonic,
+  devTestKeccak256,
   deviceIdentityPathsForRoots,
   didWebDocumentUrl,
   encodeIdentityDirName,
   ensureCa,
+  getDevTestEvmAccountByIndex,
+  getDevTestEvmAccountByUsername,
   getDevTestKeyPairById,
+  getDevTestKeyPairByIndex,
   identityDirName,
   identityFileName,
   identityRawHostUri,

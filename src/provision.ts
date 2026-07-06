@@ -109,9 +109,26 @@ export type {
   X509Paths,
 } from './cert'
 
-// Dev-only preset keys (mirror of Rust TestKeys); never use in production.
-export { DEV_TEST_KEYS, getDevTestKeyPairById } from './dev_test_keys'
-export type { DevTestKeyPair } from './dev_test_keys'
+// Dev-only deterministic keys/accounts; never use in production.
+export {
+  DEV_TEST_EVM_ACCOUNTS,
+  DEV_TEST_EVM_SEED_SENDER,
+  DEV_TEST_EVM_SEED_SENDER_INDEX,
+  DEV_TEST_EVM_USER_INDEXES,
+  DEV_TEST_KEY_INDEXES,
+  DEV_TEST_KEYS,
+  DEV_TEST_MNEMONIC,
+  deriveDevTestEvmAccount,
+  deriveDevTestEvmAccountFromMnemonic,
+  deriveDevTestKeyPair,
+  deriveDevTestKeyPairFromMnemonic,
+  devTestKeccak256,
+  getDevTestEvmAccountByIndex,
+  getDevTestEvmAccountByUsername,
+  getDevTestKeyPairById,
+  getDevTestKeyPairByIndex,
+} from './dev_test_keys'
+export type { DevTestEvmAccount, DevTestKeyPair } from './dev_test_keys'
 
 // Mirrors test_config.rs constants.
 export const PROVISION_BASE_TIME = 1743478939 // 2025-04-01

@@ -141,8 +141,9 @@ await createNodeConfigs({ deviceName: 'ood1', envDir: '/tmp/alice-env' })
 `$BUCKYOS_SECURITY_ROOT/{encoded raw host URI}/server.private.pem`；现阶段不生成
 `server.keyref.json`）。
 
-注意：`buckyos/provision` 导出的 `DEV_TEST_KEYS` 是**仅供本地开发**的公开测试密钥
-（与 Rust TestKeys 一致），严禁用于真实激活流程；浏览器 bundle 不包含 provision。
+注意：`buckyos/provision` 导出的 `DEV_TEST_KEYS` / dev EVM account helper 是**仅供本地开发**
+的公开测试密钥，使用固定 dev 助记词按 Rust `name-lib` 的 mnemonic 派生规则构造，严禁用于
+真实激活流程；浏览器 bundle 不包含 provision。
 
 ## 构建与发布
 
