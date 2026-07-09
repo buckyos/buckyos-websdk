@@ -68,7 +68,7 @@ describe('VerifyHubClient', () => {
       .fn()
       .mockResolvedValueOnce(makeResponse({
         result: { session_token: 'session-2', refresh_token: 'refresh-2' },
-        sys: [21, 'session-2'],
+        sys: [21],
       }))
       .mockResolvedValueOnce(makeResponse({
         result: true,
@@ -79,6 +79,9 @@ describe('VerifyHubClient', () => {
     const client = new VerifyHubClient(rpcClient)
 
     const refreshed = await client.refreshToken({ refresh_token: 'refresh-1' })
+    // Beta2.2 responses never rotate the session token via sys; adopting the
+    // refreshed token is the caller's job.
+    rpcClient.setSessionToken(refreshed.session_token)
     const verified = await client.verifyToken({ session_token: 'session-2', appid: 'buckycli' })
 
     expect(refreshed).toEqual({ session_token: 'session-2', refresh_token: 'refresh-2' })

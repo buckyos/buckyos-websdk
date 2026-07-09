@@ -307,7 +307,10 @@ export declare class BnsClient {
     setSeq(seq: number): void;
     syncSessionToken(token: string | null): Promise<void>;
     getSessionToken(): string | null;
+    setTraceId(traceId: string | null): void;
+    getTraceId(): string | null;
     private callEnvelope;
+    private decodeResult;
     private call;
     private callNullable;
     queryNameState(name: string): Promise<NameState | null>;

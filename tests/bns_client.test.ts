@@ -45,6 +45,15 @@ function requestBody(fetcher: jest.Mock, callIndex: number = 0) {
   return JSON.parse((fetcher.mock.calls[callIndex][1] as RequestInit).body as string)
 }
 
+async function captureError(promise: Promise<unknown>): Promise<BnsClientError> {
+  return promise.then(
+    () => {
+      throw new Error('expected rejection')
+    },
+    (e) => e,
+  )
+}
+
 const NAME_STATE = {
   name: 'alice',
   asset_owner: '0x0123456789abcdef0123456789abcdef01234567',
@@ -68,6 +77,62 @@ const NAME_STATE = {
   namespace_policy_hash: ZERO_HASH,
   payment_policy_hash: ZERO_HASH,
   alias_state_hash: ZERO_HASH,
+}
+
+const RESOLVE_RESULT = {
+  name_state: NAME_STATE,
+  document_state: {
+    name: 'alice',
+    doc_type: 'owner',
+    version: 1,
+    previous_version: 0,
+    status: 'active',
+    document: {
+      storage_type: 'inline',
+      uri: '',
+      inline_document: [123, 125],
+      content_hash: ZERO_HASH,
+      schema: '',
+      codec: 'json',
+      extra_hash: ZERO_HASH,
+    },
+    controller: { kind: 'chain_account', value: NAME_STATE.asset_owner },
+    beneficiary: { kind: 'unset', value: '' },
+    payment_target: '',
+    valid_from: 1,
+    expire_at: 0,
+    revoked_at: 0,
+    controller_policy_hash: ZERO_HASH,
+    payment_policy_hash: ZERO_HASH,
+    split_policy_hash: ZERO_HASH,
+    price_policy_hash: ZERO_HASH,
+    rights_policy_hash: ZERO_HASH,
+    document_state_hash: ZERO_HASH,
+  },
+  owner: {
+    effective_owner: NAME_STATE.effective_owner,
+    source: NAME_STATE.owner_source,
+    authority_root: ZERO_HASH,
+    authority_seq: 0,
+  },
+  effective_controller: { kind: 'chain_account', value: NAME_STATE.asset_owner },
+  status: 'active',
+  alias_kind: 'none',
+  alias_target_did: '',
+  proof_root: ZERO_HASH,
+}
+
+const EVENT_RECORD = {
+  seq: 7,
+  event_type: 'name_registered',
+  observed_at: 1700000000,
+  event_hash: ZERO_HASH,
+  previous_log_root: ZERO_HASH,
+  log_root: ZERO_HASH,
+  event: {
+    type: 'name_registered',
+    data: { name: 'alice', asset_owner: NAME_STATE.asset_owner, expire_at: 2, lineage_epoch: 1, name_seq: 5 },
+  },
 }
 
 describe('BNS URL normalization', () => {
@@ -124,6 +189,18 @@ describe('BnsClient reads', () => {
     })
   })
 
+  it('rejects a missing result field even for nullable reads', async () => {
+    const fetcher = bnsFetcher(() => ({ ok: true }))
+    const client = new BnsClient('http://bns.test', null, { fetcher })
+
+    await expect(client.queryNameState('alice')).rejects.toMatchObject({
+      kind: 'invalid_response',
+      code: 'INVALID_RESPONSE',
+    })
+    await expect(client.latestCheckpoint()).rejects.toMatchObject({ kind: 'invalid_response' })
+    await expect(client.resolveOwner('alice')).rejects.toMatchObject({ kind: 'invalid_response' })
+  })
+
   it('maps envelope errors to registry BnsClientError', async () => {
     const fetcher = bnsFetcher(() => errEnvelope('NAME_NOT_FOUND', 'name `alice` was not found', { name: 'alice' }))
     const client = new BnsClient('http://bns.test', null, { fetcher })
@@ -139,6 +216,60 @@ describe('BnsClient reads', () => {
     expect(error.code).toBe('NAME_NOT_FOUND')
     expect(error.isRegistryCode('NAME_NOT_FOUND')).toBe(true)
     expect(error.info?.name).toBe('alice')
+  })
+
+  it('accepts error info with omitted optional fields', async () => {
+    const fetcher = bnsFetcher(() => ({ ok: false, error: { code: 'NAME_NOT_FOUND', message: 'gone' } }))
+    const client = new BnsClient('http://bns.test', null, { fetcher })
+
+    const error = await captureError(client.resolveOwner('alice'))
+    expect(error.kind).toBe('registry')
+    expect(error.code).toBe('NAME_NOT_FOUND')
+    expect(error.info).toEqual({
+      code: 'NAME_NOT_FOUND',
+      message: 'gone',
+      name: null,
+      doc_type: null,
+      expected: null,
+      actual: null,
+    })
+  })
+
+  it('falls back to UNKNOWN_BNS_ERROR when the error is missing', async () => {
+    const fetcher = bnsFetcher(() => ({ ok: false }))
+    const client = new BnsClient('http://bns.test', null, { fetcher })
+
+    const error = await captureError(client.resolveOwner('alice'))
+    expect(error.kind).toBe('registry')
+    expect(error.code).toBe('UNKNOWN_BNS_ERROR')
+  })
+
+  it('rejects malformed error info as INVALID_RESPONSE', async () => {
+    const cases: unknown[] = [
+      { ok: false, result: null, error: { code: 123, message: 'boom' } },
+      { ok: false, result: null, error: { message: 'no code' } },
+      { ok: false, result: null, error: 'boom' },
+      { ok: false, result: null, error: { code: 'X', message: 'y', expected: -1 } },
+    ]
+    for (const envelope of cases) {
+      const fetcher = bnsFetcher(() => envelope)
+      const client = new BnsClient('http://bns.test', null, { fetcher })
+      await expect(client.resolveOwner('alice')).rejects.toMatchObject({ kind: 'invalid_response' })
+    }
+  })
+
+  it('rejects inconsistent ok/result/error combinations', async () => {
+    const successWithError = bnsFetcher(() =>
+      ({ ok: true, result: NAME_STATE, error: { code: 'X', message: 'y' } }))
+    await expect(
+      new BnsClient('http://bns.test', null, { fetcher: successWithError }).queryNameState('alice'),
+    ).rejects.toMatchObject({ kind: 'invalid_response' })
+
+    const failureWithResult = bnsFetcher(() =>
+      ({ ok: false, result: NAME_STATE, error: { code: 'X', message: 'y' } }))
+    await expect(
+      new BnsClient('http://bns.test', null, { fetcher: failureWithResult }).queryNameState('alice'),
+    ).rejects.toMatchObject({ kind: 'invalid_response' })
   })
 
   it('maps kRPC-level failures to transport errors', async () => {
@@ -164,7 +295,7 @@ describe('BnsClient reads', () => {
   it('serializes document and event query params in snake_case', async () => {
     const fetcher = bnsFetcher((method) => {
       if (method === 'document.resolve') {
-        return okEnvelope({ dummy: true })
+        return okEnvelope(RESOLVE_RESULT)
       }
       if (method === 'document.get_version') {
         return okEnvelope(null)
@@ -173,7 +304,7 @@ describe('BnsClient reads', () => {
     })
     const client = new BnsClient('http://bns.test', null, { fetcher })
 
-    await client.resolveDocument('alice', 'owner')
+    await expect(client.resolveDocument('alice', 'owner')).resolves.toEqual(RESOLVE_RESULT)
     await client.getDocumentVersion('alice', 'owner', 2)
     await client.listEvents(100, 50)
 
@@ -189,6 +320,103 @@ describe('BnsClient reads', () => {
       method: 'events.list',
       params: { from_seq: 100, limit: 50 },
     })
+  })
+
+  it('sends the configured trace id in the kRPC request sys', async () => {
+    const fetcher = bnsFetcher(() => okEnvelope(null))
+    const client = new BnsClient('http://bns.test', null, { fetcher })
+
+    client.setTraceId('tr-bns-1')
+    expect(client.getTraceId()).toBe('tr-bns-1')
+    await client.queryNameState('alice')
+
+    const sys = requestBody(fetcher, 0).sys
+    expect(sys.length).toBe(3)
+    expect(sys[1]).toBeNull()
+    expect(sys[2]).toBe('tr-bns-1')
+  })
+})
+
+describe('BnsClient result decoding', () => {
+  it('rejects structurally invalid results', async () => {
+    const missingField = { ...RESOLVE_RESULT.owner } as Record<string, unknown>
+    delete missingField.authority_seq
+    const fetcher = bnsFetcher(() => okEnvelope(missingField))
+    const client = new BnsClient('http://bns.test', null, { fetcher })
+
+    const error = await captureError(client.resolveOwner('alice'))
+    expect(error.kind).toBe('invalid_response')
+    expect(error.message).toContain('authority_seq')
+  })
+
+  it('rejects invalid field values that serde would refuse', async () => {
+    const cases = [
+      { ...NAME_STATE, expire_at: -1 },
+      { ...NAME_STATE, registered_at: 1.5 },
+      { ...NAME_STATE, status: 'weird' },
+      { ...NAME_STATE, renewable: 'yes' },
+      { ...NAME_STATE, semantic_owner: { kind: 'unset' } },
+    ]
+    for (const state of cases) {
+      const fetcher = bnsFetcher(() => okEnvelope(state))
+      const client = new BnsClient('http://bns.test', null, { fetcher })
+      await expect(client.queryNameState('alice')).rejects.toMatchObject({ kind: 'invalid_response' })
+    }
+  })
+
+  it('accepts u64 values beyond Number.MAX_SAFE_INTEGER (known lossy wire format)', async () => {
+    const fetcher = bnsFetcher(() => okEnvelope({ ...NAME_STATE, expire_at: 18446744073709551615 }))
+    const client = new BnsClient('http://bns.test', null, { fetcher })
+
+    const state = await client.queryNameState('alice')
+    expect(state?.expire_at).toBe(18446744073709551615)
+  })
+
+  it('defaults serde(default) fields when missing', async () => {
+    const partial = { ...NAME_STATE } as Record<string, unknown>
+    delete partial.min_document_iat
+    delete partial.owner_policy_seq
+    const fetcher = bnsFetcher(() => okEnvelope(partial))
+    const client = new BnsClient('http://bns.test', null, { fetcher })
+
+    const state = await client.queryNameState('alice')
+    expect(state?.min_document_iat).toBe(0)
+    expect(state?.owner_policy_seq).toBe(0)
+  })
+
+  it('decodes event log records including the owner_iat_floor_updated outer tag', async () => {
+    const iatRecord = {
+      ...EVENT_RECORD,
+      seq: 8,
+      // Outer tag intentionally differs from the inner serde tag; both are
+      // valid on the wire.
+      event_type: 'owner_iat_floor_updated',
+      event: {
+        type: 'owner_document_iat_floor_updated',
+        data: {
+          name: 'alice',
+          previous_min_document_iat: 0,
+          new_min_document_iat: 100,
+          owner_policy_seq: 1,
+          name_seq: 6,
+          reason_hash: ZERO_HASH,
+        },
+      },
+    }
+    const fetcher = bnsFetcher(() => okEnvelope([EVENT_RECORD, iatRecord]))
+    const client = new BnsClient('http://bns.test', null, { fetcher })
+
+    await expect(client.listEvents(7, 10)).resolves.toEqual([EVENT_RECORD, iatRecord])
+  })
+
+  it('rejects unknown event types like serde', async () => {
+    const fetcher = bnsFetcher(() =>
+      okEnvelope([{ ...EVENT_RECORD, event: { type: 'mystery_event', data: {} } }]))
+    const client = new BnsClient('http://bns.test', null, { fetcher })
+
+    const error = await captureError(client.listEvents(0, 10))
+    expect(error.kind).toBe('invalid_response')
+    expect(error.message).toContain('mystery_event')
   })
 })
 
@@ -282,6 +510,56 @@ describe('BnsClient tx methods', () => {
         timeoutMs: 10,
       }),
     ).rejects.toMatchObject({ kind: 'timeout', code: 'TX_WAIT_TIMEOUT' })
+  })
+
+  it('waitTx rejects non-integer options before any RPC', async () => {
+    const fetcher = bnsFetcher(() => okEnvelope(null))
+    const client = new BnsClient('http://bns.test', null, { fetcher })
+
+    const invalidOptions: Array<Record<string, number>> = [
+      { confirmations: -1 },
+      { confirmations: 1.5 },
+      { confirmations: NaN },
+      { confirmations: Infinity },
+      { intervalMs: -10 },
+      { intervalMs: 0.5 },
+      { timeoutMs: -1 },
+      { timeoutMs: NaN },
+      { timeoutMs: -Infinity },
+    ]
+    for (const options of invalidOptions) {
+      await expect(client.waitTx('0x1', options)).rejects.toMatchObject({
+        kind: 'serialization',
+        code: 'SERIALIZATION_ERROR',
+      })
+    }
+    expect(fetcher).not.toHaveBeenCalled()
+  })
+
+  it('waitTx clamps confirmations 0 to 1 like Rust wait_for_receipt', async () => {
+    const states = [
+      { tx_hash: '0x1', state: 'succeeded', block_number: 10, confirmations: 0 },
+      { tx_hash: '0x1', state: 'succeeded', block_number: 10, confirmations: 1 },
+    ]
+    let index = 0
+    const fetcher = bnsFetcher(() => okEnvelope(states[Math.min(index++, states.length - 1)]))
+    const client = new BnsClient('http://bns.test', null, { fetcher })
+
+    const finalState = await client.waitTx('0x1', { confirmations: 0, intervalMs: 1 })
+    expect(finalState.confirmations).toBe(1)
+    expect(fetcher).toHaveBeenCalledTimes(2)
+  })
+
+  it('waitTx clamps timeoutMs 0 to 1ms instead of disabling the timeout', async () => {
+    const fetcher = bnsFetcher(() =>
+      okEnvelope({ tx_hash: '0x1', state: 'pending', block_number: null, confirmations: 0 }),
+    )
+    const client = new BnsClient('http://bns.test', null, { fetcher })
+
+    await expect(client.waitTx('0x1', { intervalMs: 1, timeoutMs: 0 })).rejects.toMatchObject({
+      kind: 'timeout',
+      code: 'TX_WAIT_TIMEOUT',
+    })
   })
 })
 

@@ -54,6 +54,37 @@ export interface WalletSignWithActiveDidResult {
   pwd_hash: string | null
 }
 
+interface BuckyApiBridge {
+  getCurrentUser?: () => Promise<unknown> | unknown
+  signJsonWithActiveDid?: (payloads: Record<string, unknown>[]) => Promise<unknown> | unknown
+}
+
+function getBuckyApiBridge(): BuckyApiBridge | null {
+  if (typeof window === 'undefined') {
+    return null
+  }
+  const bridge = (window as unknown as { BuckyApi?: unknown }).BuckyApi
+  return bridge && typeof bridge === 'object' ? bridge as BuckyApiBridge : null
+}
+
+// Shared by BuckyOSSDK.getCurrentWalletUser() and runtime-aware helpers such
+// as BnsTxExecutor, so wallet availability is detected in exactly one place.
+export async function getCurrentWalletUserFromHost(): Promise<any | null> {
+  const bridge = getBuckyApiBridge()
+  const getCurrentUser = bridge?.getCurrentUser
+  if (typeof getCurrentUser !== 'function') {
+    return null
+  }
+
+  const result: any = await getCurrentUser.call(bridge)
+  if (result?.code === 0) {
+    return result.data ?? null
+  }
+
+  console.error('BuckyApi.getCurrentUser failed: ', result?.message)
+  return null
+}
+
 function isBrowserRuntime(): boolean {
   return typeof window !== 'undefined'
 }
@@ -511,16 +542,7 @@ export class BuckyOSSDK {
     if (typeof window === 'undefined') {
       throw new Error('BuckyApi is only available in browser runtime')
     }
-
-    return (async () => {
-      const result: any = await (window as any).BuckyApi.getCurrentUser()
-      if (result.code === 0) {
-        return result.data
-      }
-
-      console.error('BuckyApi.getCurrentUser failed: ', result.message)
-      return null
-    })()
+    return getCurrentWalletUserFromHost()
   }
 
   walletSignWithActiveDid(payloads: Record<string, unknown>[]): Promise<WalletSignWithActiveDidResult | null> {

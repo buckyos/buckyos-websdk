@@ -19,6 +19,7 @@ export interface WalletSignWithActiveDidResult {
     signatures: (string | null)[];
     pwd_hash: string | null;
 }
+export declare function getCurrentWalletUserFromHost(): Promise<any | null>;
 export declare function getActiveRuntimeType(): RuntimeType;
 export declare function getActiveZoneGatewayOrigin(): string | null;
 export declare function getActiveSessionToken(): Promise<string | null>;
