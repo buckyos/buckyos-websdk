@@ -94,7 +94,6 @@ export interface NewZoneDocumentParams {
     now?: number;
 }
 export declare function newZoneDocument(params: NewZoneDocumentParams): BuckyOSZoneDocument;
-export declare function zoneDocumentInitByBootDocument(zoneDoc: BuckyOSZoneDocument, bootDoc: BuckyOSZoneBootDocument, bootJwt: string): void;
 export declare function zoneDocumentGetDefaultGateway(zoneDoc: BuckyOSZoneDocument): string | null;
 export declare function zoneDocumentGetSnApiUrl(zoneDoc: BuckyOSZoneDocument): string | null;
 export interface NewZoneBootDocumentParams {

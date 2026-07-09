@@ -1,4 +1,4 @@
-import { u as ht, v as DID, o as parseBuckyOSOwnerDocument, O as ObjId, C as ChunkId, F as FileObject, w as sha256Bytes, x as DirObject, S as SimpleChunkList } from "./ndn_types-7ce47e32.mjs";
+import { u as ht, v as DID, o as parseBuckyOSOwnerDocument, O as ObjId, C as ChunkId, F as FileObject, w as sha256Bytes, x as DirObject, S as SimpleChunkList } from "./ndn_types-089ba30c.mjs";
 class RPCError extends Error {
   constructor(message) {
     super(message);
@@ -4332,6 +4332,336 @@ function createSDKModule(target) {
     }
   };
 }
+const BNS_SERVER_RPC_PATH = "/kapi/bns";
+const BNS_INDEXER_RPC_PATH = "/kapi/bns-indexer";
+const MAX_BNS_NAMES_PAGE_SIZE = 1e3;
+const DID_BNS_PREFIX = "did:bns:";
+const ZERO_HASH = "0x0000000000000000000000000000000000000000000000000000000000000000";
+const MAX_BNS_NAME_LEN = 253;
+const MAX_BNS_LABEL_LEN = 126;
+const KEY_PURPOSE_AUTHENTICATION = 1 << 0;
+const KEY_PURPOSE_RECOVERY = 1 << 1;
+const KEY_PURPOSE_SIGN_DOCUMENT = 1 << 2;
+const METHOD_QUERY_NAME_STATE = "name.query_state";
+const METHOD_RESOLVE_OWNER = "name.resolve_owner";
+const METHOD_GET_AUTHORITY_SET = "authority.get_set";
+const METHOD_GET_AUTHORITY_KEY = "authority.get_key";
+const METHOD_RESOLVE_DOCUMENT = "document.resolve";
+const METHOD_GET_DOCUMENT_VERSION = "document.get_version";
+const METHOD_QUERY_NAMES_BY_ADDRESS = "name.query_by_addr";
+const METHOD_QUERY_TX_STATE = "tx.query_state";
+const METHOD_SUBMIT_RAW_TX = "tx.submit_raw";
+const METHOD_LIST_EVENTS = "events.list";
+const METHOD_LATEST_CHECKPOINT = "checkpoint.latest";
+const ERROR_KIND_CODES = {
+  transport: "RPC_TRANSPORT_ERROR",
+  serialization: "SERIALIZATION_ERROR",
+  invalid_response: "INVALID_RESPONSE",
+  timeout: "TX_WAIT_TIMEOUT"
+};
+class BnsClientError extends Error {
+  constructor(kind, message, info = null) {
+    super(message);
+    this.name = "BnsClientError";
+    this.kind = kind;
+    this.info = info;
+  }
+  get code() {
+    var _a;
+    if (this.kind === "registry") {
+      return ((_a = this.info) == null ? void 0 : _a.code) ?? "UNKNOWN_BNS_ERROR";
+    }
+    return ERROR_KIND_CODES[this.kind];
+  }
+  isRegistryCode(code) {
+    return this.kind === "registry" && this.code === code;
+  }
+  static registry(info) {
+    return new BnsClientError("registry", `${info.code}: ${info.message}`, info);
+  }
+  static registryCode(code, message, context = {}) {
+    return BnsClientError.registry({
+      code,
+      message,
+      name: null,
+      doc_type: null,
+      expected: null,
+      actual: null,
+      ...context
+    });
+  }
+}
+function hasExplicitPath(url) {
+  const schemeSplit = url.split("://");
+  const rest = schemeSplit.length > 1 ? schemeSplit.slice(1).join("://") : url;
+  const slashIndex = rest.indexOf("/");
+  if (slashIndex < 0) {
+    return false;
+  }
+  return rest.slice(slashIndex + 1).replace(/\/+$/, "") !== "";
+}
+function normalizeBnsServerUrl(serverUrl) {
+  const trimmed = serverUrl.replace(/\/+$/, "");
+  return hasExplicitPath(trimmed) ? trimmed : `${trimmed}${BNS_SERVER_RPC_PATH}`;
+}
+function normalizeBnsIndexerUrl(indexerUrl) {
+  const trimmed = indexerUrl.replace(/\/+$/, "");
+  return hasExplicitPath(trimmed) ? trimmed : `${trimmed}${BNS_INDEXER_RPC_PATH}`;
+}
+function canonicalBnsName(name) {
+  const invalid = (reason) => BnsClientError.registryCode("INVALID_NAME", `invalid BNS name \`${name}\`: ${reason}`, { name });
+  if (!name) {
+    throw invalid("name is empty");
+  }
+  if (name.trim() !== name) {
+    throw invalid("name must not contain leading or trailing whitespace");
+  }
+  if (name.startsWith(DID_BNS_PREFIX)) {
+    throw invalid("contract names must not include did:bns: prefix");
+  }
+  if (name.length > MAX_BNS_NAME_LEN) {
+    throw invalid(`name must be at most ${MAX_BNS_NAME_LEN} bytes`);
+  }
+  for (const label of name.split(".")) {
+    if (!label) {
+      throw invalid("empty label");
+    }
+    if (label.length > MAX_BNS_LABEL_LEN) {
+      throw invalid(`label must be at most ${MAX_BNS_LABEL_LEN} bytes`);
+    }
+    if (label.startsWith("-") || label.endsWith("-")) {
+      throw invalid("label must not start or end with '-'");
+    }
+    if (!/^[a-z0-9-]+$/.test(label)) {
+      throw invalid("only lower-case ASCII letters, digits, '-' and '.' are supported");
+    }
+  }
+  return name;
+}
+function canonicalDocType(docType) {
+  const invalid = (reason) => BnsClientError.registryCode("INVALID_DOC_TYPE", `invalid doc_type \`${docType}\`: ${reason}`, { doc_type: docType });
+  if (!docType) {
+    throw invalid("doc_type is empty");
+  }
+  if (docType.length > 32) {
+    throw invalid("doc_type must be at most 32 bytes");
+  }
+  if (!/^[a-z0-9_-]+$/.test(docType)) {
+    throw invalid("only lower-case ASCII letters, digits, '-' and '_' are supported");
+  }
+  return docType;
+}
+function didBnsFromName(name) {
+  return `${DID_BNS_PREFIX}${canonicalBnsName(name)}`;
+}
+function nameFromDidBns(did) {
+  if (!did.startsWith(DID_BNS_PREFIX)) {
+    throw BnsClientError.registryCode("INVALID_NAME", `invalid BNS name \`${did}\`: DID must start with did:bns:`, {
+      name: did
+    });
+  }
+  return canonicalBnsName(did.slice(DID_BNS_PREFIX.length));
+}
+const HEX_CHARS = "0123456789abcdef";
+function bytesToHex(bytes) {
+  let result = "";
+  for (let i = 0; i < bytes.length; i++) {
+    result += HEX_CHARS[bytes[i] >> 4] + HEX_CHARS[bytes[i] & 15];
+  }
+  return result;
+}
+function normalizeRawTx(rawTx) {
+  if (rawTx instanceof Uint8Array) {
+    if (rawTx.length === 0) {
+      throw new BnsClientError("serialization", "raw_tx must not be empty");
+    }
+    return `0x${bytesToHex(rawTx)}`;
+  }
+  const raw = rawTx.trim();
+  if (!raw) {
+    throw new BnsClientError("serialization", "raw_tx must not be empty");
+  }
+  const hex = raw.startsWith("0x") ? raw.slice(2) : raw;
+  if (!hex || hex.length % 2 !== 0) {
+    throw new BnsClientError("serialization", `raw_tx must be even-length hex, got \`${rawTx}\``);
+  }
+  if (!/^[0-9a-fA-F]+$/.test(hex)) {
+    throw new BnsClientError("serialization", `invalid raw_tx hex \`${rawTx}\``);
+  }
+  return `0x${hex}`;
+}
+class BnsClient {
+  // `serviceUrl` with only scheme/host[:port] gets `/kapi/bns` appended; a URL
+  // that already carries a non-root path is used as-is (BNS-API.md §1.1).
+  constructor(serviceUrl, sessionToken = null, options = {}) {
+    this.rpcClient = new kRPCClient(normalizeBnsServerUrl(serviceUrl), sessionToken, null, options);
+  }
+  // Targets a legacy/standalone BNS-Indexer (default path /kapi/bns-indexer).
+  static forIndexer(indexerUrl, sessionToken = null, options = {}) {
+    return new BnsClient(normalizeBnsIndexerUrl(indexerUrl), sessionToken, options);
+  }
+  setSeq(seq) {
+    this.rpcClient.setSeq(seq);
+  }
+  async syncSessionToken(token) {
+    this.rpcClient.setSessionToken(token);
+  }
+  getSessionToken() {
+    return this.rpcClient.getSessionToken();
+  }
+  async callEnvelope(method, params) {
+    let raw;
+    try {
+      raw = await this.rpcClient.call(method, params);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new BnsClientError("transport", `${method} failed: ${message}`);
+    }
+    if (raw === null || typeof raw !== "object" || typeof raw.ok !== "boolean") {
+      throw new BnsClientError("invalid_response", `invalid BNS RPC envelope for ${method}`);
+    }
+    const envelope = raw;
+    if (!envelope.ok) {
+      throw BnsClientError.registry(
+        envelope.error ?? {
+          code: "UNKNOWN_BNS_ERROR",
+          message: "BNS RPC envelope missing error",
+          name: null,
+          doc_type: null,
+          expected: null,
+          actual: null
+        }
+      );
+    }
+    return envelope.result ?? null;
+  }
+  async call(method, params) {
+    const result = await this.callEnvelope(method, params);
+    if (result === null) {
+      throw new BnsClientError("invalid_response", `BNS RPC envelope missing result for ${method}`);
+    }
+    return result;
+  }
+  async callNullable(method, params) {
+    return await this.callEnvelope(method, params);
+  }
+  // Full projection state of a name; null when the name does not exist.
+  async queryNameState(name) {
+    return this.callNullable(METHOD_QUERY_NAME_STATE, { name });
+  }
+  // Effective semantic owner plus its authority summary. NAME_NOT_FOUND when
+  // the name does not exist.
+  async resolveOwner(name) {
+    return this.call(METHOD_RESOLVE_OWNER, { name });
+  }
+  // Authority set summary; an empty set (authority_seq 0, ZERO_HASH root) is
+  // returned when no record exists.
+  async getAuthoritySet(name) {
+    return this.call(METHOD_GET_AUTHORITY_SET, { name });
+  }
+  // Single authority key by kid; null when the key does not exist.
+  async getAuthorityKey(name, kid) {
+    return this.callNullable(METHOD_GET_AUTHORITY_KEY, { name, kid });
+  }
+  // Current document of (name, doc_type) with owner/controller/alias/proof
+  // context. NAME_NOT_FOUND / DOCUMENT_NOT_FOUND on missing name/document.
+  async resolveDocument(name, docType) {
+    return this.call(METHOD_RESOLVE_DOCUMENT, { name, doc_type: docType });
+  }
+  // Historical document version; null when that version does not exist.
+  async getDocumentVersion(name, docType, version) {
+    return this.callNullable(METHOD_GET_DOCUMENT_VERSION, { name, doc_type: docType, version });
+  }
+  // Names currently held (asset_owner) by an EVM address, ordered by name.
+  // `limit` must stay within 1..=1000; pass the returned next_cursor to page.
+  async queryNamesByAddress(address, cursor = null, limit = 100) {
+    return this.call(METHOD_QUERY_NAMES_BY_ADDRESS, { address, cursor, limit });
+  }
+  // Iterates all names held by an address, following next_cursor pagination.
+  async *iterNamesByAddress(address, pageSize = 100) {
+    let cursor = null;
+    do {
+      const page = await this.queryNamesByAddress(address, cursor, pageSize);
+      yield* page.names;
+      cursor = page.next_cursor;
+    } while (cursor !== null);
+  }
+  // Execution state of a submitted TX. `not_found` only means the upstream
+  // node currently has neither the transaction nor a receipt.
+  async queryTxState(txHash) {
+    return this.call(METHOD_QUERY_TX_STATE, { tx_hash: txHash });
+  }
+  // Submits a signed EVM raw transaction (hex string or bytes). Success only
+  // means the chain node accepted the TX — poll queryTxState / waitTx for the
+  // final execution state.
+  async submitRawTx(rawTx) {
+    return this.call(METHOD_SUBMIT_RAW_TX, { raw_tx: normalizeRawTx(rawTx) });
+  }
+  // Polls tx.query_state until the TX is reverted or succeeded with enough
+  // confirmations, then returns that final state (callers must still check
+  // `state`). `not_found`/`pending` keep polling until timeoutMs.
+  async waitTx(txHash, options = {}) {
+    const confirmations = options.confirmations ?? 1;
+    const intervalMs = options.intervalMs ?? 2e3;
+    const timeoutMs = options.timeoutMs ?? 12e4;
+    const startedAt = Date.now();
+    for (; ; ) {
+      const state = await this.queryTxState(txHash);
+      if (state.state === "reverted") {
+        return state;
+      }
+      if (state.state === "succeeded" && state.confirmations >= confirmations) {
+        return state;
+      }
+      if (timeoutMs > 0 && Date.now() - startedAt >= timeoutMs) {
+        throw new BnsClientError("timeout", `timed out waiting for tx ${txHash} (last state: ${state.state})`);
+      }
+      await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    }
+  }
+  // Projection event log, `seq >= fromSeq`, ascending, at most `limit`
+  // records. Continue paging with `lastRecord.seq + 1`.
+  async listEvents(fromSeq, limit = 100) {
+    return this.call(METHOD_LIST_EVENTS, { from_seq: fromSeq, limit });
+  }
+  // Log checkpoint with the largest last_seq; null when none exists yet.
+  async latestCheckpoint() {
+    return this.callNullable(METHOD_LATEST_CHECKPOINT, {});
+  }
+}
+const bns_client = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
+  __proto__: null,
+  BNS_INDEXER_RPC_PATH,
+  BNS_SERVER_RPC_PATH,
+  BnsClient,
+  BnsClientError,
+  DID_BNS_PREFIX,
+  KEY_PURPOSE_AUTHENTICATION,
+  KEY_PURPOSE_RECOVERY,
+  KEY_PURPOSE_SIGN_DOCUMENT,
+  MAX_BNS_LABEL_LEN,
+  MAX_BNS_NAMES_PAGE_SIZE,
+  MAX_BNS_NAME_LEN,
+  METHOD_GET_AUTHORITY_KEY,
+  METHOD_GET_AUTHORITY_SET,
+  METHOD_GET_DOCUMENT_VERSION,
+  METHOD_LATEST_CHECKPOINT,
+  METHOD_LIST_EVENTS,
+  METHOD_QUERY_NAMES_BY_ADDRESS,
+  METHOD_QUERY_NAME_STATE,
+  METHOD_QUERY_TX_STATE,
+  METHOD_RESOLVE_DOCUMENT,
+  METHOD_RESOLVE_OWNER,
+  METHOD_SUBMIT_RAW_TX,
+  ZERO_HASH,
+  canonicalBnsName,
+  canonicalDocType,
+  didBnsFromName,
+  nameFromDidBns,
+  normalizeBnsIndexerUrl,
+  normalizeBnsServerUrl,
+  normalizeRawTx
+}, Symbol.toStringTag, { value: "Module" }));
 const WORKER_SOURCE = (
   /* js */
   `
@@ -5203,7 +5533,7 @@ async function uploadChunkViaTus(endpoint, file, chunkInfo, chunkIndex, appId, f
   const logicalPath = `${appId}/${chunkInfo.chunkId}`;
   let tusModule;
   try {
-    tusModule = await import("./tus_client-aca59616.mjs");
+    tusModule = await import("./tus_client-7e7db51b.mjs");
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new NdmError("UPLOAD_FAILED", `Failed to load tus-js-client: ${message}`);
@@ -5924,59 +6254,60 @@ const ndm_proxy = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.definePro
   unpinOwner
 }, Symbol.toStringTag, { value: "Module" }));
 export {
-  KEventClient as $,
+  KEventReader as $,
   AICC_SERVICE_NAME as A,
   BS_SERVICE_VERIFY_HUB as B,
-  AICC_SERVICE_SERVICE_NAME as C,
-  AICC_SERVICE_SERVICE_PORT as D,
-  AICC_AI_METHODS as E,
-  AICC_CONTROL_METHODS as F,
-  AICC_FEATURES as G,
-  isAiccAiMethod as H,
-  aiccTextMessage as I,
-  aiccMessageTextContent as J,
-  aiccMessageFirstText as K,
-  aiccResponseTextContent as L,
+  AICC_SERVICE_UNIQUE_ID as C,
+  AICC_SERVICE_SERVICE_NAME as D,
+  AICC_SERVICE_SERVICE_PORT as E,
+  AICC_AI_METHODS as F,
+  AICC_CONTROL_METHODS as G,
+  AICC_FEATURES as H,
+  isAiccAiMethod as I,
+  aiccTextMessage as J,
+  aiccMessageTextContent as K,
+  aiccMessageFirstText as L,
   MsgQueueClient as M,
-  aiccResponseToolCalls as N,
-  aiccResponseArtifacts as O,
-  aiccRenderMessageForDebug as P,
-  aiccEstimateMessageTextLen as Q,
+  aiccResponseTextContent as N,
+  aiccResponseToolCalls as O,
+  aiccResponseArtifacts as P,
+  aiccRenderMessageForDebug as Q,
   RuntimeType as R,
   SystemConfigClient as S,
   TaskManagerClient as T,
-  validateAiccMessage as U,
+  aiccEstimateMessageTextLen as U,
   VerifyHubClient as V,
   WEB3_BRIDGE_HOST as W,
-  validateAiccMessages as X,
-  validateAiccResponse as Y,
-  AiccClient as Z,
-  KEventReader as _,
+  validateAiccMessage as X,
+  validateAiccMessages as Y,
+  validateAiccResponse as Z,
+  AiccClient as _,
   ndm_proxy as a,
-  BS_SERVICE_TASK_MANAGER as b,
+  KEventClient as a0,
+  bns_client as b,
   createSDKModule as c,
-  getActiveZoneGatewayOrigin as d,
-  getActiveSessionToken as e,
-  BuckyOSSDK as f,
+  BS_SERVICE_TASK_MANAGER as d,
+  getActiveZoneGatewayOrigin as e,
+  getActiveSessionToken as f,
   getActiveRuntimeType as g,
   hashPassword as h,
-  MsgCenterClient as i,
-  RepoClient as j,
-  WORKFLOW_SERVICE_NAME as k,
-  WorkflowStepType as l,
-  WorkflowOutputMode as m,
+  BuckyOSSDK as i,
+  MsgCenterClient as j,
+  RepoClient as k,
+  WORKFLOW_SERVICE_NAME as l,
+  WorkflowStepType as m,
   ndm_client as n,
-  WorkflowJoinMode as o,
+  WorkflowOutputMode as o,
   parseSessionTokenClaims as p,
-  WorkflowRetryFallback as q,
-  WorkflowDefinitionStatus as r,
-  WorkflowRunStatus as s,
-  WorkflowNodeRunState as t,
-  WorkflowHumanActionKind as u,
-  WorkflowScheduledTaskStatus as v,
-  WorkflowScheduledTaskMisfirePolicy as w,
-  WorkflowScheduledTaskFireStatus as x,
-  WorkflowClient as y,
-  AICC_SERVICE_UNIQUE_ID as z
+  WorkflowJoinMode as q,
+  WorkflowRetryFallback as r,
+  WorkflowDefinitionStatus as s,
+  WorkflowRunStatus as t,
+  WorkflowNodeRunState as u,
+  WorkflowHumanActionKind as v,
+  WorkflowScheduledTaskStatus as w,
+  WorkflowScheduledTaskMisfirePolicy as x,
+  WorkflowScheduledTaskFireStatus as y,
+  WorkflowClient as z
 };
-//# sourceMappingURL=ndm_proxy-d02cc5bb.mjs.map
+//# sourceMappingURL=ndm_proxy-eef905cd.mjs.map

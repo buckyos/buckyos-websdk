@@ -949,29 +949,6 @@ export function newZoneDocument(params: NewZoneDocumentParams): BuckyOSZoneDocum
   }
 }
 
-// Mirrors Rust ZoneDocument::init_by_boot_document.
-export function zoneDocumentInitByBootDocument(
-  zoneDoc: BuckyOSZoneDocument,
-  bootDoc: BuckyOSZoneBootDocument,
-  bootJwt: string,
-): void {
-  zoneDoc.boot_jwt = bootJwt
-  zoneDoc.id = bootDoc.id ?? zoneDoc.id
-  zoneDoc.oods = [...bootDoc.oods]
-  if (bootDoc.sn !== undefined) {
-    zoneDoc.sn = bootDoc.sn
-  } else {
-    delete zoneDoc.sn
-  }
-  zoneDoc.exp = bootDoc.exp
-  zoneDoc.iat = bootDoc.exp - DEFAULT_EXPIRE_TIME
-  zoneDoc.version_seq = 0
-  zoneDoc.owner = bootDoc.owner ?? DID.undefined().toString()
-  if (bootDoc.owner_key !== undefined) {
-    zoneDoc.verificationMethod[0].publicKeyJwk = bootDoc.owner_key
-  }
-}
-
 // Mirrors Rust ZoneDocument::get_default_zone_gateway.
 export function zoneDocumentGetDefaultGateway(zoneDoc: BuckyOSZoneDocument): string | null {
   for (const oodString of zoneDoc.oods) {
@@ -1043,7 +1020,17 @@ export function zoneBootDocumentToZoneDocument(bootDoc: BuckyOSZoneBootDocument,
     ownerDid,
     publicKeyJwk: bootDoc.owner_key,
   })
-  zoneDocumentInitByBootDocument(zoneDoc, bootDoc, bootJwt)
+  zoneDoc.boot_jwt = bootJwt
+  zoneDoc.oods = [...bootDoc.oods]
+  if (bootDoc.sn !== undefined) {
+    zoneDoc.sn = bootDoc.sn
+  } else {
+    delete zoneDoc.sn
+  }
+  zoneDoc.exp = bootDoc.exp
+  zoneDoc.iat = bootDoc.exp - DEFAULT_EXPIRE_TIME
+  zoneDoc.version_seq = 0
+  zoneDoc.owner = bootDoc.owner ?? DID.undefined().toString()
   return zoneDoc
 }
 

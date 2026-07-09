@@ -1491,23 +1491,6 @@ function newZoneDocument(params) {
     boot_jwt: ""
   };
 }
-function zoneDocumentInitByBootDocument(zoneDoc, bootDoc, bootJwt) {
-  zoneDoc.boot_jwt = bootJwt;
-  zoneDoc.id = bootDoc.id ?? zoneDoc.id;
-  zoneDoc.oods = [...bootDoc.oods];
-  if (bootDoc.sn !== void 0) {
-    zoneDoc.sn = bootDoc.sn;
-  } else {
-    delete zoneDoc.sn;
-  }
-  zoneDoc.exp = bootDoc.exp;
-  zoneDoc.iat = bootDoc.exp - DEFAULT_EXPIRE_TIME;
-  zoneDoc.version_seq = 0;
-  zoneDoc.owner = bootDoc.owner ?? DID.undefined().toString();
-  if (bootDoc.owner_key !== void 0) {
-    zoneDoc.verificationMethod[0].publicKeyJwk = bootDoc.owner_key;
-  }
-}
 function zoneDocumentGetDefaultGateway(zoneDoc) {
   for (const oodString of zoneDoc.oods) {
     const ood = parseOODDescription(oodString);
@@ -1558,7 +1541,17 @@ function zoneBootDocumentToZoneDocument(bootDoc, bootJwt) {
     ownerDid,
     publicKeyJwk: bootDoc.owner_key
   });
-  zoneDocumentInitByBootDocument(zoneDoc, bootDoc, bootJwt);
+  zoneDoc.boot_jwt = bootJwt;
+  zoneDoc.oods = [...bootDoc.oods];
+  if (bootDoc.sn !== void 0) {
+    zoneDoc.sn = bootDoc.sn;
+  } else {
+    delete zoneDoc.sn;
+  }
+  zoneDoc.exp = bootDoc.exp;
+  zoneDoc.iat = bootDoc.exp - DEFAULT_EXPIRE_TIME;
+  zoneDoc.version_seq = 0;
+  zoneDoc.owner = bootDoc.owner ?? DID.undefined().toString();
   return zoneDoc;
 }
 function newDeviceDocument(params) {
@@ -2079,7 +2072,6 @@ const namelib = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.definePrope
   zoneBootDocumentToZoneDocument,
   zoneDocumentGetDefaultGateway,
   zoneDocumentGetSnApiUrl,
-  zoneDocumentInitByBootDocument,
   zoneDocumentToOrderedJson
 }, Symbol.toStringTag, { value: "Module" }));
 var commonjsGlobal = typeof globalThis !== "undefined" ? globalThis : typeof window !== "undefined" ? window : typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : {};
@@ -3625,7 +3617,7 @@ export {
   NODE_IDENTITY_SCHEMA_V2 as N,
   ObjId as O,
   encodeZoneBootDocument as P,
-  zoneDocumentInitByBootDocument as Q,
+  DEFAULT_EXPIRE_TIME as Q,
   zoneDocumentToOrderedJson as R,
   SimpleChunkList as S,
   newDeviceMiniDocument as T,
@@ -3663,4 +3655,4 @@ export {
   newDeviceDocumentByJwk as y,
   verifyJwtEdDSA as z
 };
-//# sourceMappingURL=ndn_types-7ce47e32.mjs.map
+//# sourceMappingURL=ndn_types-089ba30c.mjs.map

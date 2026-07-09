@@ -24,11 +24,11 @@ import {
   parseOODDescription,
   oodDescriptionToString,
   createJwkByX,
+  DEFAULT_EXPIRE_TIME,
   newOwnerDocument,
   newZoneDocument,
   newZoneBootDocument,
   encodeZoneBootDocument,
-  zoneDocumentInitByBootDocument,
   newDeviceDocumentByMiniDocument,
   encodeDeviceDocument,
   newDeviceMiniDocument,
@@ -325,7 +325,21 @@ export async function createUserEnv(params: CreateUserEnvParams): Promise<BuckyO
   zoneBoot.id = zoneDid.toString()
   const zoneDoc = newZoneDocument({ id: zoneDid, ownerDid, publicKeyJwk: ownerJwk })
   const bootJwt = await encodeZoneBootDocument(zoneBoot, keyPair.privateKeyPem)
-  zoneDocumentInitByBootDocument(zoneDoc, zoneBoot, bootJwt)
+  zoneDoc.boot_jwt = bootJwt
+  zoneDoc.id = zoneBoot.id
+  zoneDoc.oods = [...zoneBoot.oods]
+  if (zoneBoot.sn !== undefined) {
+    zoneDoc.sn = zoneBoot.sn
+  } else {
+    delete zoneDoc.sn
+  }
+  zoneDoc.exp = zoneBoot.exp
+  zoneDoc.iat = zoneBoot.exp - DEFAULT_EXPIRE_TIME
+  zoneDoc.version_seq = 0
+  zoneDoc.owner = zoneBoot.owner ?? DID.undefined().toString()
+  if (zoneBoot.owner_key !== undefined) {
+    zoneDoc.verificationMethod[0].publicKeyJwk = zoneBoot.owner_key
+  }
   writeJsonWithLog(path.join(userDir, 'zone_config.json'), zoneDocumentToOrderedJson(zoneDoc))
 
   const pkx = keyPair.publicKeyX

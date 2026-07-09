@@ -5,7 +5,7 @@ var __publicField = (obj, key, value) => {
   return value;
 };
 var _a;
-import { N as NODE_IDENTITY_SCHEMA_V2, v as DID, y as newDeviceDocumentByJwk, z as verifyJwtEdDSA, A as deviceDocumentToOrderedJson, B as decodeJwtClaimWithoutVerify, E as commonjsGlobal, G as createJwkByX, H as newOwnerDocument, I as ownerDocumentToOrderedJson, J as parseOODDescription, K as oodDescriptionToString, L as newZoneBootDocument, M as newZoneDocument, P as encodeZoneBootDocument, Q as zoneDocumentInitByBootDocument, R as zoneDocumentToOrderedJson, T as newDeviceMiniDocument, U as deviceMiniDocumentToJwt, V as encodeDeviceDocument, W as newDeviceMiniDocumentByDeviceDocument, X as newDeviceDocumentByMiniDocument, Y as buckyosGetUnixTimestamp, Z as buildNamedObjectByJson } from "./ndn_types-7ce47e32.mjs";
+import { N as NODE_IDENTITY_SCHEMA_V2, v as DID, y as newDeviceDocumentByJwk, z as verifyJwtEdDSA, A as deviceDocumentToOrderedJson, B as decodeJwtClaimWithoutVerify, E as commonjsGlobal, G as createJwkByX, H as newOwnerDocument, I as ownerDocumentToOrderedJson, J as parseOODDescription, K as oodDescriptionToString, L as newZoneBootDocument, M as newZoneDocument, P as encodeZoneBootDocument, Q as DEFAULT_EXPIRE_TIME, R as zoneDocumentToOrderedJson, T as newDeviceMiniDocument, U as deviceMiniDocumentToJwt, V as encodeDeviceDocument, W as newDeviceMiniDocumentByDeviceDocument, X as newDeviceDocumentByMiniDocument, Y as buckyosGetUnixTimestamp, Z as buildNamedObjectByJson } from "./ndn_types-089ba30c.mjs";
 import { Buffer as Buffer$1 } from "node:buffer";
 import { pbkdf2Sync, createPublicKey, createPrivateKey, createECDH, createHmac } from "node:crypto";
 const DEVICE_DOC_JWT_FILE_NAME = "device_doc.jwt";
@@ -14246,7 +14246,21 @@ async function createUserEnv(params) {
   zoneBoot.id = zoneDid.toString();
   const zoneDoc = newZoneDocument({ id: zoneDid, ownerDid, publicKeyJwk: ownerJwk });
   const bootJwt = await encodeZoneBootDocument(zoneBoot, keyPair.privateKeyPem);
-  zoneDocumentInitByBootDocument(zoneDoc, zoneBoot, bootJwt);
+  zoneDoc.boot_jwt = bootJwt;
+  zoneDoc.id = zoneBoot.id;
+  zoneDoc.oods = [...zoneBoot.oods];
+  if (zoneBoot.sn !== void 0) {
+    zoneDoc.sn = zoneBoot.sn;
+  } else {
+    delete zoneDoc.sn;
+  }
+  zoneDoc.exp = zoneBoot.exp;
+  zoneDoc.iat = zoneBoot.exp - DEFAULT_EXPIRE_TIME;
+  zoneDoc.version_seq = 0;
+  zoneDoc.owner = zoneBoot.owner ?? DID.undefined().toString();
+  if (zoneBoot.owner_key !== void 0) {
+    zoneDoc.verificationMethod[0].publicKeyJwk = zoneBoot.owner_key;
+  }
   writeJsonWithLog(path.join(userDir, "zone_config.json"), zoneDocumentToOrderedJson(zoneDoc));
   const pkx = keyPair.publicKeyX;
   console.log(`=> ${zoneHostName} TXT Record(${bootJwt.length + 6}): BOOT=${bootJwt};`);
