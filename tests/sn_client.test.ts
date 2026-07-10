@@ -324,7 +324,7 @@ describe('SnClient bns-proxy requests', () => {
     expect(fetcher).not.toHaveBeenCalled()
   })
 
-  it('rejects non-object publish_document documents locally', async () => {
+  it('sends object or compact JWT publish_document content without re-encoding', async () => {
     const fetcher = snFetcher(() => ({ code: 0 }))
     const client = new SnClient('https://sn.example', null, { fetcher })
 
@@ -339,6 +339,25 @@ describe('SnClient bns-proxy requests', () => {
       doc_type: 'zone',
       document: { gateway: 'ood1' },
     })
+
+    const zoneJwt = 'eyJhbGciOiJFZERTQSJ9.eyJpZCI6ImRpZDpibnM6YWxpY2UifQ.signature'
+    await client.publishDocument({
+      name: 'alice',
+      doc_type: 'zone',
+      document: zoneJwt,
+      request_id: 'zone-jwt-1',
+    })
+    expect(requestBody(fetcher, 1).params).toEqual({
+      name: 'alice',
+      doc_type: 'zone',
+      document: zoneJwt,
+      request_id: 'zone-jwt-1',
+    })
+    expect(typeof requestBody(fetcher, 1).params.document).toBe('string')
+
+    await expect(
+      client.publishDocument({ name: 'alice', doc_type: 'owner', document: zoneJwt }),
+    ).rejects.toMatchObject({ kind: 'validation' })
   })
 })
 

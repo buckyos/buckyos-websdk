@@ -25724,8 +25724,17 @@ class SnClient {
     return this.call(this.bnsProxyRpc, METHOD_BNS_PUBLISH_DNS_TXT, params);
   }
   async publishDocument(req) {
-    if (req.document === null || typeof req.document !== "object" || Array.isArray(req.document)) {
-      throw new SnClientError("validation", "publish_document document must be a JSON object");
+    const isObject = req.document !== null && typeof req.document === "object" && !Array.isArray(req.document);
+    const jwtParts = typeof req.document === "string" ? req.document.trim().split(".") : [];
+    const isJwt = jwtParts.length === 3 && jwtParts.every((part) => part.length > 0);
+    if (!isObject && !isJwt) {
+      throw new SnClientError(
+        "validation",
+        "publish_document document must be a JSON object or non-empty compact JWT string"
+      );
+    }
+    if (req.doc_type.trim().toLowerCase() === "owner" && !isObject) {
+      throw new SnClientError("validation", "owner document must be a JSON object");
     }
     const params = {
       name: req.name,
@@ -27474,4 +27483,4 @@ export {
   WorkflowScheduledTaskStatus as y,
   WorkflowScheduledTaskMisfirePolicy as z
 };
-//# sourceMappingURL=ndm_proxy-b6d6923d.mjs.map
+//# sourceMappingURL=ndm_proxy-34d32437.mjs.map

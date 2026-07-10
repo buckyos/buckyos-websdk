@@ -503,8 +503,7 @@ export interface SnBnsPublishDocumentReq {
   // `relay_assignment` is rejected; existing identity fields of `owner`
   // documents are protected server-side (SN-API.md §6.1).
   doc_type: string
-  // Must be a JSON object; the server fills expected_version itself.
-  document: Record<string, unknown>
+  document: Record<string, unknown> | string
   request_id?: string
 }
 
@@ -820,8 +819,17 @@ export class SnClient {
   }
 
   async publishDocument(req: SnBnsPublishDocumentReq): Promise<SnBnsProxyTxResp> {
-    if (req.document === null || typeof req.document !== 'object' || Array.isArray(req.document)) {
-      throw new SnClientError('validation', 'publish_document document must be a JSON object')
+    const isObject = req.document !== null && typeof req.document === 'object' && !Array.isArray(req.document)
+    const jwtParts = typeof req.document === 'string' ? req.document.trim().split('.') : []
+    const isJwt = jwtParts.length === 3 && jwtParts.every((part) => part.length > 0)
+    if (!isObject && !isJwt) {
+      throw new SnClientError(
+        'validation',
+        'publish_document document must be a JSON object or non-empty compact JWT string',
+      )
+    }
+    if (req.doc_type.trim().toLowerCase() === 'owner' && !isObject) {
+      throw new SnClientError('validation', 'owner document must be a JSON object')
     }
     const params: Record<string, unknown> = {
       name: req.name,

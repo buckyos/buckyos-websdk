@@ -265,7 +265,7 @@ export interface SnBnsPublishDnsTxtReq {
 export interface SnBnsPublishDocumentReq {
     name: string;
     doc_type: string;
-    document: Record<string, unknown>;
+    document: Record<string, unknown> | string;
     request_id?: string;
 }
 export interface SnBnsProxyTxOutcome {
