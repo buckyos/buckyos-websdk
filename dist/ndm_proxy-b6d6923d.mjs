@@ -25421,6 +25421,8 @@ const SN_ERROR_CODES = {
   bns_write_failed: 1025,
   bns_proxy_unavailable: 1026,
   bns_controller_unavailable: 1027,
+  invalid_email: 1028,
+  email_already_bound: 1029,
   internal_error: 1099
 };
 const SN_ERROR_TAG_RE = /\[SN:(\d+):([a-z_]+)\]\s*/;
@@ -25563,6 +25565,7 @@ class SnClient {
   async register(req) {
     const params = {
       name: req.name,
+      email: req.email,
       pwd_hash: req.pwd_hash,
       active_code: req.active_code
     };
@@ -27471,4 +27474,4 @@ export {
   WorkflowScheduledTaskStatus as y,
   WorkflowScheduledTaskMisfirePolicy as z
 };
-//# sourceMappingURL=ndm_proxy-1e75260f.mjs.map
+//# sourceMappingURL=ndm_proxy-b6d6923d.mjs.map

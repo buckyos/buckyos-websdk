@@ -126,6 +126,7 @@ describe('SnClient auth serialization', () => {
 
     await client.register({
       name: 'alice',
+      email: 'alice@example.com',
       pwd_hash: 'hash',
       active_code: 'code',
       request_id: 'sn:register:alice',
@@ -140,6 +141,7 @@ describe('SnClient auth serialization', () => {
     // Same wire fixture as the Rust register_request_serializes_initial_documents test.
     expect(requestBody(fetcher).params).toEqual({
       name: 'alice',
+      email: 'alice@example.com',
       pwd_hash: 'hash',
       active_code: 'code',
       request_id: 'sn:register:alice',
@@ -158,6 +160,7 @@ describe('SnClient auth serialization', () => {
 
     await client.register({
       name: 'alice',
+      email: 'alice@example.com',
       pwd_hash: 'hash',
       active_code: 'code',
       initial_documents: {
@@ -168,6 +171,7 @@ describe('SnClient auth serialization', () => {
 
     expect(requestBody(fetcher).params).toEqual({
       name: 'alice',
+      email: 'alice@example.com',
       pwd_hash: 'hash',
       active_code: 'code',
       initial_documents: { boot: { sn: 'sn.example' } },
@@ -339,6 +343,11 @@ describe('SnClient bns-proxy requests', () => {
 })
 
 describe('SN error mapping', () => {
+  it('exposes the registration email error codes', () => {
+    expect(SN_ERROR_CODES.invalid_email).toBe(1028)
+    expect(SN_ERROR_CODES.email_already_bound).toBe(1029)
+  })
+
   it('parses [SN:code:name] tagged business errors', async () => {
     const fetcher = snErrorFetcher('Parse Request Error: [SN:1002:username_already_exists] username alice already exists')
     const client = new SnClient('https://sn.example', null, { fetcher })

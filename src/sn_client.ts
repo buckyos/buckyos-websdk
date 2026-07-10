@@ -89,6 +89,8 @@ export const SN_ERROR_CODES = {
   bns_write_failed: 1025,
   bns_proxy_unavailable: 1026,
   bns_controller_unavailable: 1027,
+  invalid_email: 1028,
+  email_already_bound: 1029,
   internal_error: 1099,
 } as const
 
@@ -269,6 +271,9 @@ export interface SnBnsDnsTxtRecord {
 
 export interface SnAuthRegisterReq {
   name: string
+  // Required SN-local account email. The server normalizes it and enforces
+  // that each normalized address is bound to at most one account.
+  email: string
   pwd_hash: string
   active_code: string
   // Idempotency key; server default is `sn:register:<username>`.
@@ -632,6 +637,7 @@ export class SnClient {
   async register(req: SnAuthRegisterReq): Promise<SnAuthSessionResp> {
     const params: Record<string, unknown> = {
       name: req.name,
+      email: req.email,
       pwd_hash: req.pwd_hash,
       active_code: req.active_code,
     }

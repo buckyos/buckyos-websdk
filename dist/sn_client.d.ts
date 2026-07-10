@@ -51,6 +51,8 @@ export declare const SN_ERROR_CODES: {
     readonly bns_write_failed: 1025;
     readonly bns_proxy_unavailable: 1026;
     readonly bns_controller_unavailable: 1027;
+    readonly invalid_email: 1028;
+    readonly email_already_bound: 1029;
     readonly internal_error: 1099;
 };
 export type SnErrorName = keyof typeof SN_ERROR_CODES;
@@ -101,6 +103,7 @@ export interface SnBnsDnsTxtRecord {
 }
 export interface SnAuthRegisterReq {
     name: string;
+    email: string;
     pwd_hash: string;
     active_code: string;
     request_id?: string;
