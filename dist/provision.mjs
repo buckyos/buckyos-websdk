@@ -13606,7 +13606,7 @@ async function issueX509CertFromCa(caDir, dnsNames, uriSans = [], usage = "serve
   const cert = await X509CertificateGenerator.create({
     serialNumber: randomSerialNumber(),
     subject: `CN=${commonName}`,
-    issuer: caCert.subject,
+    issuer: caCert.subjectName,
     notBefore: /* @__PURE__ */ new Date(),
     notAfter: daysFromNow(CERT_VALIDITY_DAYS),
     signingAlgorithm: { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },

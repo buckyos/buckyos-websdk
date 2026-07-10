@@ -62,6 +62,49 @@ async function writeInvalidCaWithoutBasicConstraints(dir: string, name: string):
   return caCertPath
 }
 
+async function writeCaWithMixedStringTypes(dir: string, name: string): Promise<string> {
+  x509.cryptoProvider.set(webcrypto as unknown as Crypto)
+  fs.mkdirSync(dir, { recursive: true })
+
+  const keys = await webcrypto.subtle.generateKey({
+    name: 'RSASSA-PKCS1-v1_5',
+    hash: 'SHA-256',
+    publicExponent: new Uint8Array([1, 0, 1]),
+    modulusLength: 2048,
+  }, true, ['sign', 'verify'])
+  const subject = new x509.Name([
+    { C: [{ printableString: 'US' }] },
+    { ST: [{ utf8String: 'California' }] },
+    { L: [{ utf8String: 'San Jose' }] },
+    { O: [{ utf8String: `${name}s Dev Test Environment` }] },
+    { OU: [{ utf8String: 'Test' }] },
+    { CN: [{ utf8String: name }] },
+  ])
+  const cert = await x509.X509CertificateGenerator.createSelfSigned({
+    serialNumber: '01020304',
+    name: subject,
+    notBefore: new Date(),
+    notAfter: new Date(Date.now() + 24 * 3600 * 1000),
+    signingAlgorithm: { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
+    keys: keys as unknown as CryptoKeyPair,
+    extensions: [
+      new x509.BasicConstraintsExtension(true, undefined, true),
+      new x509.KeyUsagesExtension(
+        x509.KeyUsageFlags.keyCertSign | x509.KeyUsageFlags.cRLSign | x509.KeyUsageFlags.digitalSignature,
+        true,
+      ),
+      await x509.SubjectKeyIdentifierExtension.create(keys.publicKey as unknown as CryptoKey),
+    ],
+  })
+
+  const caCertPath = path.join(dir, `${name}_ca_cert.pem`)
+  const caKeyPath = path.join(dir, `${name}_ca_key.pem`)
+  const keyDer = await webcrypto.subtle.exportKey('pkcs8', keys.privateKey)
+  fs.writeFileSync(caCertPath, cert.toString('pem'))
+  fs.writeFileSync(caKeyPath, x509.PemConverter.encode(keyDer, 'PRIVATE KEY'))
+  return caCertPath
+}
+
 let consoleSpy: jest.SpyInstance
 beforeAll(() => {
   consoleSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined)
@@ -194,6 +237,21 @@ describe('cert (T3.1, replaces python CertManager)', () => {
       'verify', '-CAfile', path.join(caDir, 'buckyos_test_ca_ca_cert.pem'), certPath,
     ]).toString()
     expect(verify).toContain('OK')
+  })
+
+  test('createCertFromCa preserves the CA subject DER in the leaf issuer', async () => {
+    const issuerCaDir = tmpDir('cert-issuer-ca-')
+    const outDir = tmpDir('cert-issuer-name-')
+    await writeCaWithMixedStringTypes(issuerCaDir, 'buckyos_test_ca')
+    const { certPath } = await createCertFromCa(issuerCaDir, zone, outDir)
+    const caCert = new x509.X509Certificate(
+      fs.readFileSync(path.join(issuerCaDir, 'buckyos_test_ca_ca_cert.pem'), 'utf8'),
+    )
+    const leafCert = new x509.X509Certificate(fs.readFileSync(certPath, 'utf8'))
+
+    expect(Buffer.from(leafCert.issuerName.toArrayBuffer())).toEqual(
+      Buffer.from(caCert.subjectName.toArrayBuffer()),
+    )
   })
 
   test('createIdentityCertFromCa installs server materials using identity path protocol', async () => {
