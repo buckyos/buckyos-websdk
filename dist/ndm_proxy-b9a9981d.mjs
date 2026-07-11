@@ -3734,6 +3734,26 @@ async function getCurrentWalletUserFromHost() {
   console.error("BuckyApi.getCurrentUser failed: ", result == null ? void 0 : result.message);
   return null;
 }
+function isEncodedDocument(value) {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const document2 = value;
+  return document2.type === "json" && Object.prototype.hasOwnProperty.call(document2, "value") || document2.type === "jwt" && typeof document2.jwt === "string";
+}
+async function resolveDidFromHost(did, docType = null) {
+  const bridge = getBuckyApiBridge();
+  const resolveDid = bridge == null ? void 0 : bridge.resolve_did;
+  if (typeof resolveDid !== "function") {
+    return null;
+  }
+  const result = await resolveDid.call(bridge, did, docType);
+  if ((result == null ? void 0 : result.code) === 0 && isEncodedDocument(result.data)) {
+    return result.data;
+  }
+  console.error("BuckyApi.resolve_did failed: ", result == null ? void 0 : result.message);
+  return null;
+}
 function isBrowserRuntime() {
   return typeof window !== "undefined";
 }
@@ -4094,6 +4114,12 @@ class BuckyOSSDK {
     }
     return getCurrentWalletUserFromHost();
   }
+  resolve_did(did, docType = null) {
+    if (typeof window === "undefined") {
+      throw new Error("BuckyApi is only available in browser runtime");
+    }
+    return resolveDidFromHost(did, docType);
+  }
   walletSignWithActiveDid(payloads) {
     if (typeof window === "undefined") {
       throw new Error("BuckyApi is only available in browser runtime");
@@ -4354,6 +4380,7 @@ function createSDKModule(target) {
     getAppSetting: sdk.getAppSetting.bind(sdk),
     setAppSetting: sdk.setAppSetting.bind(sdk),
     getCurrentWalletUser: sdk.getCurrentWalletUser.bind(sdk),
+    resolve_did: sdk.resolve_did.bind(sdk),
     walletSignWithActiveDid: sdk.walletSignWithActiveDid.bind(sdk),
     openExternalUrl: sdk.openExternalUrl.bind(sdk),
     getZoneHostName: sdk.getZoneHostName.bind(sdk),
@@ -27412,51 +27439,52 @@ const ndm_proxy = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.definePro
   unpinOwner
 }, Symbol.toStringTag, { value: "Module" }));
 export {
-  validateAiccResponse as $,
-  WorkflowScheduledTaskFireStatus as A,
+  validateAiccMessages as $,
+  WorkflowScheduledTaskMisfirePolicy as A,
   BS_SERVICE_VERIFY_HUB as B,
-  WorkflowClient as C,
-  AICC_SERVICE_NAME as D,
-  AICC_SERVICE_UNIQUE_ID as E,
-  AICC_SERVICE_SERVICE_NAME as F,
-  AICC_SERVICE_SERVICE_PORT as G,
-  AICC_AI_METHODS as H,
-  AICC_CONTROL_METHODS as I,
-  AICC_FEATURES as J,
-  isAiccAiMethod as K,
-  aiccTextMessage as L,
+  WorkflowScheduledTaskFireStatus as C,
+  WorkflowClient as D,
+  AICC_SERVICE_NAME as E,
+  AICC_SERVICE_UNIQUE_ID as F,
+  AICC_SERVICE_SERVICE_NAME as G,
+  AICC_SERVICE_SERVICE_PORT as H,
+  AICC_AI_METHODS as I,
+  AICC_CONTROL_METHODS as J,
+  AICC_FEATURES as K,
+  isAiccAiMethod as L,
   MsgQueueClient as M,
-  aiccMessageTextContent as N,
-  aiccMessageFirstText as O,
-  aiccResponseTextContent as P,
-  aiccResponseToolCalls as Q,
+  aiccTextMessage as N,
+  aiccMessageTextContent as O,
+  aiccMessageFirstText as P,
+  aiccResponseTextContent as Q,
   RuntimeType as R,
   SystemConfigClient as S,
   TaskManagerClient as T,
-  aiccResponseArtifacts as U,
+  aiccResponseToolCalls as U,
   VerifyHubClient as V,
   WEB3_BRIDGE_HOST as W,
-  aiccRenderMessageForDebug as X,
-  aiccEstimateMessageTextLen as Y,
-  validateAiccMessage as Z,
-  validateAiccMessages as _,
+  aiccResponseArtifacts as X,
+  aiccRenderMessageForDebug as Y,
+  aiccEstimateMessageTextLen as Z,
+  validateAiccMessage as _,
   ndm_proxy as a,
-  AiccClient as a0,
-  KEventReader as a1,
-  KEventClient as a2,
-  BNS_EVM_DEFAULT_GAS_LIMIT as a3,
-  BNS_EVM_DEFAULT_MAX_FEE_PER_GAS as a4,
-  BNS_EVM_DEFAULT_MAX_PRIORITY_FEE_PER_GAS as a5,
-  BNS_MAX_INLINE_DOCUMENT_BYTES as a6,
-  BNS_DNS_TXT_DEFAULT_TTL as a7,
-  BNS_DNS_TXT_DOC_TYPE as a8,
-  BNS_PUBLISH_DOCUMENT_ABI as a9,
-  BnsEvmTxError as aa,
-  BnsEvmTxBuilder as ab,
-  decodeBnsPublishDocumentCalldata as ac,
-  BnsTxExecutorError as ad,
-  walletUserHasSnAccount as ae,
-  BnsTxExecutor as af,
+  validateAiccResponse as a0,
+  AiccClient as a1,
+  KEventReader as a2,
+  KEventClient as a3,
+  BNS_EVM_DEFAULT_GAS_LIMIT as a4,
+  BNS_EVM_DEFAULT_MAX_FEE_PER_GAS as a5,
+  BNS_EVM_DEFAULT_MAX_PRIORITY_FEE_PER_GAS as a6,
+  BNS_MAX_INLINE_DOCUMENT_BYTES as a7,
+  BNS_DNS_TXT_DEFAULT_TTL as a8,
+  BNS_DNS_TXT_DOC_TYPE as a9,
+  BNS_PUBLISH_DOCUMENT_ABI as aa,
+  BnsEvmTxError as ab,
+  BnsEvmTxBuilder as ac,
+  decodeBnsPublishDocumentCalldata as ad,
+  BnsTxExecutorError as ae,
+  walletUserHasSnAccount as af,
+  BnsTxExecutor as ag,
   bns_client as b,
   createSDKModule as c,
   BS_SERVICE_TASK_MANAGER as d,
@@ -27473,14 +27501,14 @@ export {
   WorkflowStepType as o,
   parseSessionTokenClaims as p,
   WorkflowOutputMode as q,
-  WorkflowJoinMode as r,
+  resolveDidFromHost as r,
   sn_client as s,
-  WorkflowRetryFallback as t,
-  WorkflowDefinitionStatus as u,
-  WorkflowRunStatus as v,
-  WorkflowNodeRunState as w,
-  WorkflowHumanActionKind as x,
-  WorkflowScheduledTaskStatus as y,
-  WorkflowScheduledTaskMisfirePolicy as z
+  WorkflowJoinMode as t,
+  WorkflowRetryFallback as u,
+  WorkflowDefinitionStatus as v,
+  WorkflowRunStatus as w,
+  WorkflowNodeRunState as x,
+  WorkflowHumanActionKind as y,
+  WorkflowScheduledTaskStatus as z
 };
-//# sourceMappingURL=ndm_proxy-34d32437.mjs.map
+//# sourceMappingURL=ndm_proxy-b9a9981d.mjs.map

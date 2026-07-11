@@ -23,6 +23,7 @@ export const logout = sdkModule.logout
 export const getAppSetting = sdkModule.getAppSetting
 export const setAppSetting = sdkModule.setAppSetting
 export const getCurrentWalletUser = sdkModule.getCurrentWalletUser
+export const resolve_did = sdkModule.resolve_did
 export const walletSignWithActiveDid = sdkModule.walletSignWithActiveDid
 export const openExternalUrl = sdkModule.openExternalUrl
 export const getZoneHostName = sdkModule.getZoneHostName

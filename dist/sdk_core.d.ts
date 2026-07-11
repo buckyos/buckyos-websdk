@@ -11,6 +11,8 @@ import { MsgQueueClient } from './msg_queue_client';
 import { MsgCenterClient } from './msg_center_client';
 import { RepoClient } from './repo_client';
 import { KEventClient, KEvent, KEventPatternInput, KEventReader, KEventReaderOptions, KEventSubscribeOptions, KEventSubscription } from './kevent_client';
+import type { DidDocType } from './types';
+import type { EncodedDocument } from './namelib';
 export declare const WEB3_BRIDGE_HOST = "web3.buckyos.ai";
 export declare const BS_SERVICE_VERIFY_HUB = "verify-hub";
 export declare const BS_SERVICE_TASK_MANAGER = "task-manager";
@@ -20,6 +22,7 @@ export interface WalletSignWithActiveDidResult {
     pwd_hash: string | null;
 }
 export declare function getCurrentWalletUserFromHost(): Promise<any | null>;
+export declare function resolveDidFromHost(did: string, docType?: DidDocType | null): Promise<EncodedDocument | null>;
 export declare function getActiveRuntimeType(): RuntimeType;
 export declare function getActiveZoneGatewayOrigin(): string | null;
 export declare function getActiveSessionToken(): Promise<string | null>;
@@ -48,6 +51,7 @@ export declare class BuckyOSSDK {
     getAppSetting(settingName?: string | null): Promise<unknown>;
     setAppSetting(settingName: string | null | undefined, settingValue: string): Promise<void>;
     getCurrentWalletUser(): Promise<any>;
+    resolve_did(did: string, docType?: DidDocType | null): Promise<EncodedDocument | null>;
     walletSignWithActiveDid(payloads: Record<string, unknown>[]): Promise<WalletSignWithActiveDidResult | null>;
     openExternalUrl(url: string): Promise<void>;
     getZoneHostName(): string | null;
@@ -90,6 +94,7 @@ export declare function createSDKModule(target: SDKTarget): {
         getAppSetting: (settingName?: string | null) => Promise<unknown>;
         setAppSetting: (settingName: string | null | undefined, settingValue: string) => Promise<void>;
         getCurrentWalletUser: () => Promise<any>;
+        resolve_did: (did: string, docType?: DidDocType | null) => Promise<EncodedDocument | null>;
         walletSignWithActiveDid: (payloads: Record<string, unknown>[]) => Promise<WalletSignWithActiveDidResult | null>;
         openExternalUrl: (url: string) => Promise<void>;
         getZoneHostName: () => string | null;
@@ -125,6 +130,7 @@ export declare function createSDKModule(target: SDKTarget): {
     getAppSetting: (settingName?: string | null) => Promise<unknown>;
     setAppSetting: (settingName: string | null | undefined, settingValue: string) => Promise<void>;
     getCurrentWalletUser: () => Promise<any>;
+    resolve_did: (did: string, docType?: DidDocType | null) => Promise<EncodedDocument | null>;
     walletSignWithActiveDid: (payloads: Record<string, unknown>[]) => Promise<WalletSignWithActiveDidResult | null>;
     openExternalUrl: (url: string) => Promise<void>;
     getZoneHostName: () => string | null;

@@ -33,6 +33,8 @@ import {
   KEventSubscription,
   KEventTransportMode,
 } from './kevent_client'
+import type { DidDocType } from './types'
+import type { EncodedDocument } from './namelib'
 
 export const WEB3_BRIDGE_HOST = 'web3.buckyos.ai'
 
@@ -56,6 +58,7 @@ export interface WalletSignWithActiveDidResult {
 
 interface BuckyApiBridge {
   getCurrentUser?: () => Promise<unknown> | unknown
+  resolve_did?: (did: string, docType?: DidDocType | null) => Promise<unknown> | unknown
   signJsonWithActiveDid?: (payloads: Record<string, unknown>[]) => Promise<unknown> | unknown
 }
 
@@ -82,6 +85,34 @@ export async function getCurrentWalletUserFromHost(): Promise<any | null> {
   }
 
   console.error('BuckyApi.getCurrentUser failed: ', result?.message)
+  return null
+}
+
+function isEncodedDocument(value: unknown): value is EncodedDocument {
+  if (!value || typeof value !== 'object') {
+    return false
+  }
+  const document = value as Record<string, unknown>
+  return (document.type === 'json' && Object.prototype.hasOwnProperty.call(document, 'value'))
+    || (document.type === 'jwt' && typeof document.jwt === 'string')
+}
+
+export async function resolveDidFromHost(
+  did: string,
+  docType: DidDocType | null = null,
+): Promise<EncodedDocument | null> {
+  const bridge = getBuckyApiBridge()
+  const resolveDid = bridge?.resolve_did
+  if (typeof resolveDid !== 'function') {
+    return null
+  }
+
+  const result: any = await resolveDid.call(bridge, did, docType)
+  if (result?.code === 0 && isEncodedDocument(result.data)) {
+    return result.data
+  }
+
+  console.error('BuckyApi.resolve_did failed: ', result?.message)
   return null
 }
 
@@ -545,6 +576,13 @@ export class BuckyOSSDK {
     return getCurrentWalletUserFromHost()
   }
 
+  resolve_did(did: string, docType: DidDocType | null = null): Promise<EncodedDocument | null> {
+    if (typeof window === 'undefined') {
+      throw new Error('BuckyApi is only available in browser runtime')
+    }
+    return resolveDidFromHost(did, docType)
+  }
+
   walletSignWithActiveDid(payloads: Record<string, unknown>[]): Promise<WalletSignWithActiveDidResult | null> {
     if (typeof window === 'undefined') {
       throw new Error('BuckyApi is only available in browser runtime')
@@ -869,6 +907,7 @@ export function createSDKModule(target: SDKTarget) {
     getAppSetting: sdk.getAppSetting.bind(sdk),
     setAppSetting: sdk.setAppSetting.bind(sdk),
     getCurrentWalletUser: sdk.getCurrentWalletUser.bind(sdk),
+    resolve_did: sdk.resolve_did.bind(sdk),
     walletSignWithActiveDid: sdk.walletSignWithActiveDid.bind(sdk),
     openExternalUrl: sdk.openExternalUrl.bind(sdk),
     getZoneHostName: sdk.getZoneHostName.bind(sdk),

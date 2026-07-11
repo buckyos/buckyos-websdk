@@ -20,6 +20,7 @@ export declare const buckyos: {
     getAppSetting: (settingName?: string | null) => Promise<unknown>;
     setAppSetting: (settingName: string | null | undefined, settingValue: string) => Promise<void>;
     getCurrentWalletUser: () => Promise<any>;
+    resolve_did: (did: string, docType?: import("./types").DidDocType | null) => Promise<import("./namelib").EncodedDocument | null>;
     walletSignWithActiveDid: (payloads: Record<string, unknown>[]) => Promise<import("./sdk_core").WalletSignWithActiveDidResult | null>;
     openExternalUrl: (url: string) => Promise<void>;
     getZoneHostName: () => string | null;
@@ -55,6 +56,7 @@ export declare const logout: (cleanAccountInfo?: boolean) => void;
 export declare const getAppSetting: (settingName?: string | null) => Promise<unknown>;
 export declare const setAppSetting: (settingName: string | null | undefined, settingValue: string) => Promise<void>;
 export declare const getCurrentWalletUser: () => Promise<any>;
+export declare const resolve_did: (did: string, docType?: import("./types").DidDocType | null) => Promise<import("./namelib").EncodedDocument | null>;
 export declare const walletSignWithActiveDid: (payloads: Record<string, unknown>[]) => Promise<import("./sdk_core").WalletSignWithActiveDidResult | null>;
 export declare const openExternalUrl: (url: string) => Promise<void>;
 export declare const getZoneHostName: () => string | null;
