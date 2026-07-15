@@ -1603,9 +1603,9 @@ class MsgQueueClient {
 }
 function compact$1(input) {
   const out = {};
-  for (const [k, v] of Object.entries(input)) {
-    if (v !== void 0) {
-      out[k] = v;
+  for (const [key, value] of Object.entries(input)) {
+    if (value !== void 0) {
+      out[key] = value;
     }
   }
   return out;
@@ -1616,11 +1616,23 @@ function asRecord$1(value, what) {
   }
   return value;
 }
+function asOptionalRecord(value, what) {
+  return value == null ? null : asRecord$1(value, what);
+}
 function asArrayOf(value, what) {
   if (!Array.isArray(value)) {
     throw new RPCError(`expected ${what} to be an array`);
   }
   return value;
+}
+function asDid(value, method) {
+  if (typeof value !== "string") {
+    throw new RPCError(`${method} expected to return a DID string`);
+  }
+  return value;
+}
+function asOptionalDid(value, method) {
+  return value == null ? null : asDid(value, method);
 }
 class MsgCenterClient {
   constructor(rpcClient) {
@@ -1629,217 +1641,251 @@ class MsgCenterClient {
   setSeq(seq) {
     this.rpcClient.setSeq(seq);
   }
-  // ---- msg.* ---------------------------------------------------------------
+  call(method, params) {
+    return this.rpcClient.call(method, params);
+  }
   async dispatch(msg, ingressCtx, idempotencyKey) {
-    const params = compact$1({
+    const result = await this.call("msg.dispatch", compact$1({
       msg,
       ingress_ctx: ingressCtx,
       idempotency_key: idempotencyKey
-    });
-    const result = await this.rpcClient.call("msg.dispatch", params);
+    }));
     return asRecord$1(result, "DispatchResult");
   }
-  async postSend(msg, sendCtx, idempotencyKey) {
-    const params = compact$1({
+  async postSend(msg, idempotencyKey) {
+    const result = await this.call("msg.post_send", compact$1({
       msg,
-      send_ctx: sendCtx,
       idempotency_key: idempotencyKey
-    });
-    const result = await this.rpcClient.call("msg.post_send", params);
+    }));
     return asRecord$1(result, "PostSendResult");
   }
   async getNext(req) {
-    const result = await this.rpcClient.call(
-      "msg.get_next",
-      compact$1({ ...req })
-    );
-    if (result == null) {
-      return null;
-    }
-    return asRecord$1(result, "MsgRecordWithObject");
+    const result = await this.call("msg.get_next", compact$1({ ...req }));
+    return asOptionalRecord(result, "MailboxRecordWithObject");
+  }
+  async getNextDelivery(req) {
+    const result = await this.call("msg.get_next_delivery", compact$1({ ...req }));
+    return asOptionalRecord(result, "DeliveryRecordWithObject");
   }
   async peekBox(req) {
-    const result = await this.rpcClient.call(
-      "msg.peek_box",
-      compact$1({ ...req })
-    );
-    return asArrayOf(result, "Vec<MsgRecordWithObject>");
+    const result = await this.call("msg.peek_box", compact$1({ ...req }));
+    return asArrayOf(result, "Vec<MailboxRecordWithObject>");
   }
   async listBoxByTime(req) {
-    const result = await this.rpcClient.call(
-      "msg.list_box_by_time",
-      compact$1({ ...req })
-    );
-    const record = asRecord$1(result, "MsgRecordPage");
+    const result = await this.call("msg.list_box_by_time", compact$1({ ...req }));
+    const page = asRecord$1(result, "MailboxRecordPage");
     return {
-      items: Array.isArray(record.items) ? record.items : [],
-      next_cursor_sort_key: typeof record.next_cursor_sort_key === "number" ? record.next_cursor_sort_key : void 0,
-      next_cursor_record_id: typeof record.next_cursor_record_id === "string" ? record.next_cursor_record_id : void 0
+      ...page,
+      items: Array.isArray(page.items) ? page.items : []
     };
   }
-  async updateRecordState(recordId, newState, reason) {
-    const result = await this.rpcClient.call(
-      "msg.update_record_state",
-      compact$1({ record_id: recordId, new_state: newState, reason })
-    );
-    return asRecord$1(result, "MsgRecord");
+  async listSessions(req) {
+    const result = await this.call("msg.list_sessions", compact$1({ ...req }));
+    const page = asRecord$1(result, "SessionSummaryPage");
+    return {
+      ...page,
+      items: Array.isArray(page.items) ? page.items : []
+    };
+  }
+  async listSession(req) {
+    const result = await this.call("msg.list_session", compact$1({ ...req }));
+    const page = asRecord$1(result, "SessionMessagePage");
+    return {
+      ...page,
+      items: Array.isArray(page.items) ? page.items : []
+    };
+  }
+  async updateRecordState(recordId, newState) {
+    const result = await this.call("msg.update_record_state", {
+      record_id: recordId,
+      new_state: newState
+    });
+    return asRecord$1(result, "MailboxRecord");
   }
   async updateRecordSession(recordId, sessionId) {
-    const result = await this.rpcClient.call(
-      "msg.update_record_session",
-      { record_id: recordId, session_id: sessionId }
-    );
-    return asRecord$1(result, "MsgRecord");
+    const result = await this.call("msg.update_record_session", {
+      record_id: recordId,
+      session_id: sessionId
+    });
+    return asRecord$1(result, "MailboxRecord");
   }
-  async reportDelivery(recordId, result) {
-    const response = await this.rpcClient.call(
-      "msg.report_delivery",
-      { record_id: recordId, result }
-    );
-    return asRecord$1(response, "MsgRecord");
+  async reportDelivery(deliveryId, result) {
+    const response = await this.call("msg.report_delivery", {
+      delivery_id: deliveryId,
+      result
+    });
+    return asRecord$1(response, "DeliveryRecord");
   }
   async setReadState(req) {
-    const result = await this.rpcClient.call(
-      "msg.set_read_state",
-      compact$1({ ...req })
-    );
+    const result = await this.call("msg.set_read_state", compact$1({ ...req }));
     return asRecord$1(result, "MsgReceiptObj");
   }
   async listReadReceipts(req) {
-    const result = await this.rpcClient.call(
-      "msg.list_read_receipts",
-      compact$1({ ...req })
-    );
+    const result = await this.call("msg.list_read_receipts", compact$1({ ...req }));
     return asArrayOf(result, "Vec<MsgReceiptObj>");
   }
   async getRecord(recordId, withObject) {
-    const result = await this.rpcClient.call(
-      "msg.get_record",
-      compact$1({ record_id: recordId, with_object: withObject })
-    );
-    if (result == null) {
-      return null;
-    }
-    return asRecord$1(result, "MsgRecordWithObject");
+    const result = await this.call("msg.get_record", compact$1({
+      record_id: recordId,
+      with_object: withObject
+    }));
+    return asOptionalRecord(result, "MailboxRecordWithObject");
   }
   async getMessage(msgId) {
-    const result = await this.rpcClient.call(
-      "msg.get_message",
-      { msg_id: msgId }
-    );
-    if (result == null) {
-      return null;
-    }
-    return asRecord$1(result, "MsgObject");
+    const result = await this.call("msg.get_message", { msg_id: msgId });
+    return asOptionalRecord(result, "MsgObject");
   }
-  // ---- contact.* -----------------------------------------------------------
+  async updateUiSessionState(sessionId, key, value) {
+    const result = await this.call("ui_session.update_state", {
+      session_id: sessionId,
+      key,
+      value
+    });
+    return asRecord$1(result, "UiSessionStateEntry");
+  }
+  async getUiSessionState(sessionId, key) {
+    const result = await this.call("ui_session.get_state", { session_id: sessionId, key });
+    return asOptionalRecord(result, "UiSessionStateEntry");
+  }
+  async listUiSessionState(sessionId) {
+    const result = await this.call("ui_session.list_state", { session_id: sessionId });
+    return asArrayOf(result, "Vec<UiSessionStateEntry>");
+  }
   async resolveDid(platform, accountId, profileHint, contactMgrOwner) {
-    const result = await this.rpcClient.call(
-      "contact.resolve_did",
-      compact$1({
-        platform,
-        account_id: accountId,
-        profile_hint: profileHint,
-        contact_mgr_owner: contactMgrOwner
-      })
-    );
-    if (typeof result !== "string") {
-      throw new RPCError("contact.resolve_did expected to return a DID string");
-    }
-    return result;
+    const result = await this.call("contact.resolve_did", compact$1({
+      platform,
+      account_id: accountId,
+      profile_hint: profileHint,
+      contact_mgr_owner: contactMgrOwner
+    }));
+    return asDid(result, "contact.resolve_did");
+  }
+  async resolveEndpointDid(platform, accountId, accountType, tunnelInstanceId, contactMgrOwner) {
+    const result = await this.call("contact.resolve_endpoint_did", compact$1({
+      platform,
+      account_id: accountId,
+      account_type: accountType,
+      tunnel_instance_id: tunnelInstanceId,
+      contact_mgr_owner: contactMgrOwner
+    }));
+    return asDid(result, "contact.resolve_endpoint_did");
+  }
+  async resolveTarget(contactDid, selector, contactMgrOwner) {
+    const result = await this.call("contact.resolve_target", compact$1({
+      contact_did: contactDid,
+      selector,
+      contact_mgr_owner: contactMgrOwner
+    }));
+    return asDid(result, "contact.resolve_target");
+  }
+  async resolveContactForEndpoint(endpointDid, contactMgrOwner) {
+    const result = await this.call("contact.resolve_contact_for_endpoint", compact$1({
+      endpoint_did: endpointDid,
+      contact_mgr_owner: contactMgrOwner
+    }));
+    return asOptionalDid(result, "contact.resolve_contact_for_endpoint");
+  }
+  async resolveCanonicalDid(did, contactMgrOwner) {
+    const result = await this.call("contact.resolve_canonical_did", compact$1({
+      did,
+      contact_mgr_owner: contactMgrOwner
+    }));
+    return asDid(result, "contact.resolve_canonical_did");
+  }
+  async listAliasDids(canonicalDid, contactMgrOwner) {
+    const result = await this.call("contact.list_alias_dids", compact$1({
+      canonical_did: canonicalDid,
+      contact_mgr_owner: contactMgrOwner
+    }));
+    return asArrayOf(result, "Vec<DID>");
   }
   async getPreferredBinding(did, contactMgrOwner) {
-    const result = await this.rpcClient.call(
-      "contact.get_preferred_binding",
-      compact$1({ did, contact_mgr_owner: contactMgrOwner })
-    );
+    const result = await this.call("contact.get_preferred_binding", compact$1({
+      did,
+      contact_mgr_owner: contactMgrOwner
+    }));
     return asRecord$1(result, "AccountBinding");
   }
   async checkAccessPermission(did, contextId, contactMgrOwner) {
-    const result = await this.rpcClient.call(
-      "contact.check_access_permission",
-      compact$1({ did, context_id: contextId, contact_mgr_owner: contactMgrOwner })
-    );
+    const result = await this.call("contact.check_access_permission", compact$1({
+      did,
+      context_id: contextId,
+      contact_mgr_owner: contactMgrOwner
+    }));
     return asRecord$1(result, "AccessDecision");
   }
   async grantTemporaryAccess(dids, contextId, durationSecs, contactMgrOwner) {
-    const result = await this.rpcClient.call(
-      "contact.grant_temporary_access",
-      compact$1({
-        dids,
-        context_id: contextId,
-        duration_secs: durationSecs,
-        contact_mgr_owner: contactMgrOwner
-      })
-    );
-    const record = asRecord$1(result, "GrantTemporaryAccessResult");
+    const result = await this.call("contact.grant_temporary_access", compact$1({
+      dids,
+      context_id: contextId,
+      duration_secs: durationSecs,
+      contact_mgr_owner: contactMgrOwner
+    }));
+    const response = asRecord$1(result, "GrantTemporaryAccessResult");
     return {
-      updated: Array.isArray(record.updated) ? record.updated : []
+      updated: Array.isArray(response.updated) ? response.updated : []
     };
   }
   async blockContact(did, reason, contactMgrOwner) {
-    await this.rpcClient.call(
-      "contact.block_contact",
-      compact$1({ did, reason, contact_mgr_owner: contactMgrOwner })
-    );
+    await this.call("contact.block_contact", compact$1({
+      did,
+      reason,
+      contact_mgr_owner: contactMgrOwner
+    }));
   }
   async importContacts(contacts, upgradeToFriend, contactMgrOwner) {
-    const result = await this.rpcClient.call(
-      "contact.import_contacts",
-      compact$1({
-        contacts,
-        upgrade_to_friend: upgradeToFriend,
-        contact_mgr_owner: contactMgrOwner
-      })
-    );
+    const result = await this.call("contact.import_contacts", compact$1({
+      contacts,
+      upgrade_to_friend: upgradeToFriend,
+      contact_mgr_owner: contactMgrOwner
+    }));
     return asRecord$1(result, "ImportReport");
   }
   async mergeContacts(targetDid, sourceDid, contactMgrOwner) {
-    const result = await this.rpcClient.call(
-      "contact.merge_contacts",
-      compact$1({ target_did: targetDid, source_did: sourceDid, contact_mgr_owner: contactMgrOwner })
-    );
+    const result = await this.call("contact.merge_contacts", compact$1({
+      target_did: targetDid,
+      source_did: sourceDid,
+      contact_mgr_owner: contactMgrOwner
+    }));
     return asRecord$1(result, "Contact");
   }
   async updateContact(did, patch, contactMgrOwner) {
-    const result = await this.rpcClient.call(
-      "contact.update_contact",
-      compact$1({ did, patch, contact_mgr_owner: contactMgrOwner })
-    );
+    const result = await this.call("contact.update_contact", compact$1({
+      did,
+      patch,
+      contact_mgr_owner: contactMgrOwner
+    }));
     return asRecord$1(result, "Contact");
   }
   async getContact(did, contactMgrOwner) {
-    const result = await this.rpcClient.call(
-      "contact.get_contact",
-      compact$1({ did, contact_mgr_owner: contactMgrOwner })
-    );
-    if (result == null) {
-      return null;
-    }
-    return asRecord$1(result, "Contact");
+    const result = await this.call("contact.get_contact", compact$1({
+      did,
+      contact_mgr_owner: contactMgrOwner
+    }));
+    return asOptionalRecord(result, "Contact");
   }
   async listContacts(query, contactMgrOwner) {
-    const result = await this.rpcClient.call(
-      "contact.list_contacts",
-      compact$1({ query, contact_mgr_owner: contactMgrOwner })
-    );
+    const result = await this.call("contact.list_contacts", compact$1({
+      query,
+      contact_mgr_owner: contactMgrOwner
+    }));
     return asArrayOf(result, "Vec<Contact>");
   }
   async getGroupSubscribers(groupId, limit, offset, contactMgrOwner) {
-    const result = await this.rpcClient.call(
-      "contact.get_group_subscribers",
-      compact$1({ group_id: groupId, limit, offset, contact_mgr_owner: contactMgrOwner })
-    );
-    if (!Array.isArray(result)) {
-      throw new RPCError("expected Vec<DID> response");
-    }
-    return result;
+    const result = await this.call("contact.get_group_subscribers", compact$1({
+      group_id: groupId,
+      limit,
+      offset,
+      contact_mgr_owner: contactMgrOwner
+    }));
+    return asArrayOf(result, "Vec<DID>");
   }
   async setGroupSubscribers(groupId, subscribers, contactMgrOwner) {
-    const result = await this.rpcClient.call(
-      "contact.set_group_subscribers",
-      compact$1({ group_id: groupId, subscribers, contact_mgr_owner: contactMgrOwner })
-    );
+    const result = await this.call("contact.set_group_subscribers", compact$1({
+      group_id: groupId,
+      subscribers,
+      contact_mgr_owner: contactMgrOwner
+    }));
     const record = asRecord$1(result, "SetGroupSubscribersResult");
     if (typeof record.group_id !== "string" || typeof record.subscriber_count !== "number") {
       throw new RPCError("Invalid SetGroupSubscribersResult");
@@ -1848,6 +1894,66 @@ class MsgCenterClient {
       group_id: record.group_id,
       subscriber_count: record.subscriber_count
     };
+  }
+  async groupCreate(req) {
+    return asRecord$1(await this.call("group.create", req), "GroupDoc");
+  }
+  async groupGetDoc(req) {
+    return asOptionalRecord(await this.call("group.get_doc", req), "GroupDoc");
+  }
+  async groupUpdateProfile(req) {
+    return asRecord$1(await this.call("group.update_profile", req), "GroupDoc");
+  }
+  async groupInviteMember(req) {
+    return asRecord$1(await this.call("group.invite_member", req), "GroupMemberRecord");
+  }
+  async groupSubmitMemberProof(req) {
+    return asRecord$1(await this.call("group.submit_member_proof", req), "GroupMemberRecord");
+  }
+  async groupRequestJoin(req) {
+    return asRecord$1(await this.call("group.request_join", req), "GroupMemberRecord");
+  }
+  async groupApproveMember(req) {
+    return asRecord$1(await this.call("group.approve_member", req), "GroupMemberRecord");
+  }
+  async groupRejectMember(req) {
+    return asRecord$1(await this.call("group.reject_member", req), "GroupMemberRecord");
+  }
+  async groupRemoveMember(req) {
+    return asRecord$1(await this.call("group.remove_member", req), "GroupMemberRecord");
+  }
+  async groupUpdateMemberRole(req) {
+    return asRecord$1(await this.call("group.update_member_role", req), "GroupMemberRecord");
+  }
+  async groupListMembers(req) {
+    return asArrayOf(await this.call("group.list_members", req), "Vec<GroupMemberRecord>");
+  }
+  async groupCreateSubgroup(req) {
+    return asRecord$1(await this.call("group.create_subgroup", req), "GroupSubgroup");
+  }
+  async groupUpdateSubgroup(req) {
+    return asRecord$1(await this.call("group.update_subgroup", req), "GroupSubgroup");
+  }
+  async groupListSubgroups(req) {
+    return asArrayOf(await this.call("group.list_subgroups", req), "Vec<GroupSubgroup>");
+  }
+  async groupUpdateCollectionPolicy(req) {
+    return asRecord$1(await this.call("group.update_collection_policy", req), "GroupDoc");
+  }
+  async groupUpdateAttributionPolicy(req) {
+    return asRecord$1(await this.call("group.update_attribution_policy", req), "GroupDoc");
+  }
+  async groupExpandMembers(req) {
+    return asRecord$1(await this.call("group.expand_members", req), "GroupExpansionSnapshot");
+  }
+  async groupListByMember(req) {
+    return asArrayOf(await this.call("group.list_by_member", req), "Vec<GroupSummary>");
+  }
+  async groupListParents(req) {
+    return asArrayOf(await this.call("group.list_parents", req), "Vec<GroupSummary>");
+  }
+  async groupCheckAccess(req) {
+    return asRecord$1(await this.call("group.check_access", req), "GroupAccessDecision");
   }
 }
 function compact(input) {
@@ -27511,4 +27617,4 @@ export {
   WorkflowHumanActionKind as y,
   WorkflowScheduledTaskStatus as z
 };
-//# sourceMappingURL=ndm_proxy-b9a9981d.mjs.map
+//# sourceMappingURL=ndm_proxy-f82f58f6.mjs.map

@@ -1,5 +1,5 @@
-import { c as createSDKModule } from "./ndm_proxy-b9a9981d.mjs";
-import { I, J, K, E, G, H, F, a1, a8, a9, a4, a5, a6, a7, aa, d, B, ac, ab, ag, ae, j, a3, a2, k, M, l, R, S, T, V, W, m, D, v, y, t, x, q, u, w, C, A, z, o, Z, P, O, Y, X, Q, U, N, b, ad, e, i, f, g, h, L, n, a, p, r, s, _, $, a0, af } from "./ndm_proxy-b9a9981d.mjs";
+import { c as createSDKModule } from "./ndm_proxy-f82f58f6.mjs";
+import { I, J, K, E, G, H, F, a1, a8, a9, a4, a5, a6, a7, aa, d, B, ac, ab, ag, ae, j, a3, a2, k, M, l, R, S, T, V, W, m, D, v, y, t, x, q, u, w, C, A, z, o, Z, P, O, Y, X, Q, U, N, b, ad, e, i, f, g, h, L, n, a, p, r, s, _, $, a0, af } from "./ndm_proxy-f82f58f6.mjs";
 import { b as b2, D as D2, N as N2, t as t2, s as s2, j as j2, l as l2, h as h2, d as d2, g as g2, f as f2, c, e as e2, m as m2, k as k2, i as i2, n as n2, a as a10, r as r2, q as q2, o as o2, p as p2 } from "./ndn_types-76983121.mjs";
 const sdkModule = createSDKModule("universal");
 const buckyos = sdkModule.buckyos;

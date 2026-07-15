@@ -1,40 +1,22 @@
 import { kRPCClient, RPCError } from './krpc_client'
 
-// MsgCenter client.
-//
-// Mirrors ../../buckyos/src/kernel/buckyos-api/src/msg_center_client.rs.
-// The Rust client carries a fairly large surface (msg.* + contact.*) and many
-// nested DTOs. We model the small structural enums here for type safety, but
-// keep the deeply nested object types (`MsgObject`, `MsgRecord`, `Contact`,
-// `MsgReceiptObj`, ...) as pass-through `Record<string, unknown>` aliases so
-// the TS side does not have to chase every Rust struct change. Wire JSON is
-// preserved verbatim.
-
+export const MSG_CENTER_SERVICE_UNIQUE_ID = 'msg-center'
 export const MSG_CENTER_SERVICE_NAME = 'msg-center'
 export const MSG_CENTER_SERVICE_PORT = 4050
 
-// DID and ObjId are stringly-typed on the wire (Rust serializes them via
-// Display/FromStr).
+export const UI_SESSION_STATE_ACTIVE_KEY = 'active'
+export const UI_SESSION_STATE_TYPING_KEY = 'typing'
+export const UI_SESSION_STATE_STATUS_LINE_KEY = 'status_line'
+export const UI_SESSION_PLATFORM_TELEGRAM = 'tg'
+
 export type DID = string
 export type ObjId = string
+export type JsonObject = Record<string, unknown>
+export type MsgObject = JsonObject
 
-// `enum BoxKind` (SCREAMING_SNAKE_CASE).
-export type BoxKind = 'INBOX' | 'OUTBOX' | 'GROUP_INBOX' | 'TUNNEL_OUTBOX' | 'REQUEST_BOX'
-
-// `enum MsgState` (SCREAMING_SNAKE_CASE).
-export type MsgState =
-  | 'UNREAD'
-  | 'READING'
-  | 'READED'
-  | 'WAIT'
-  | 'SENDING'
-  | 'SENT'
-  | 'FAILED'
-  | 'DEAD'
-  | 'DELETED'
-  | 'ARCHIVED'
-
-// `enum ReadReceiptState` (SCREAMING_SNAKE_CASE).
+export type MailboxKind = 'INBOX' | 'SENT' | 'GROUP_INBOX' | 'REQUEST_BOX'
+export type RecipientState = 'UNREAD' | 'READING' | 'READ' | 'ARCHIVED' | 'DELETED'
+export type DeliveryState = 'WAIT' | 'SENDING' | 'SENT' | 'FAILED' | 'DEAD'
 export type ReadReceiptState =
   | 'UNREAD'
   | 'READING'
@@ -43,12 +25,13 @@ export type ReadReceiptState =
   | 'REJECTED'
   | 'QUARANTINED'
 
-// `enum ContactSource` / `AccessGroupLevel` (snake_case).
 export type ContactSource = 'manual_import' | 'manual_create' | 'auto_inferred' | 'shared'
 export type AccessGroupLevel = 'block' | 'stranger' | 'temporary' | 'friend'
+export type SessionMessageDirection = 'in' | 'out'
+export type SessionDeliveryOverall = 'sending' | 'delivered' | 'partial_failed' | 'failed'
 
 export interface IngressContext {
-  tunnel_did?: DID
+  transport_did?: DID
   platform?: string
   chat_id?: string
   source_account_id?: string
@@ -57,36 +40,226 @@ export interface IngressContext {
   extra?: unknown
 }
 
-export interface SendContext {
-  context_id?: string
-  contact_mgr_owner?: DID
-  preferred_tunnel?: DID
-  priority?: number
+export type TransportKind =
+  | { kind: 'native' }
+  | { kind: 'tunnel'; platform: string; tunnel_instance_id: string }
+
+export interface DeliverySnapshot {
+  platform?: string
+  account_id?: string
+  account_type?: string
+  chat_id?: string
+  address?: string
+  ext_ids?: Record<string, string>
   extra?: unknown
 }
 
-// MsgObject / MsgRecord / Contact: large nested types from buckyos. We expose
-// them as opaque records to avoid duplicating every field. Callers populate or
-// inspect them as JSON.
-export type MsgObject = Record<string, unknown>
-export type MsgRecord = Record<string, unknown>
-export type MsgRecordWithObject = {
-  record: MsgRecord
+export interface DeliveryEnvelope {
+  msg_id: ObjId
+  target_did: DID
+  transport_did: DID
+  transport: TransportKind
+  address?: DeliverySnapshot
+}
+
+export interface DeliveryError {
+  error_code?: string
+  message: string
+  retryable: boolean
+  duplicate_risk: boolean
+}
+
+export interface DeliveryRecord {
+  delivery_id: string
+  envelope: DeliveryEnvelope
+  state: DeliveryState
+  attempts: number
+  next_retry_at_ms?: number
+  external_msg_id?: string
+  delivered_at_ms?: number
+  last_error?: DeliveryError
+  created_at_ms: number
+  updated_at_ms: number
+}
+
+export interface MailboxRecord {
+  record_id: string
+  owner: DID
+  box_kind: MailboxKind
+  msg_id: ObjId
+  msg_kind: string
+  state: RecipientState
+  from: DID
+  from_name?: string
+  to: DID
+  session_id?: string
+  sort_key: number
+  tags?: string[]
+  ingress?: IngressContext
+  created_at_ms: number
+  updated_at_ms: number
+}
+
+export interface MailboxRecordWithObject {
+  record: MailboxRecord
   msg: MsgObject | null
 }
-export type MsgReceiptObj = Record<string, unknown>
-export type Contact = Record<string, unknown>
-export type AccessDecision = Record<string, unknown>
-export type DispatchResult = Record<string, unknown>
-export type PostSendResult = Record<string, unknown>
-export type AccountBinding = Record<string, unknown>
-export type ImportContactEntry = Record<string, unknown>
-export type ContactPatch = Record<string, unknown>
 
-export interface MsgRecordPage {
-  items: MsgRecordWithObject[]
+export interface DeliveryRecordWithObject {
+  record: DeliveryRecord
+  msg: MsgObject | null
+}
+
+export interface UiSessionStateEntry {
+  session_id: string
+  key: string
+  value: unknown
+  updated_at_ms: number
+}
+
+export interface MailboxRecordPage {
+  items: MailboxRecordWithObject[]
   next_cursor_sort_key?: number
   next_cursor_record_id?: string
+}
+
+export interface SessionSummary {
+  session_id: string
+  last_record?: MailboxRecordWithObject
+  unread_count: number
+  updated_at_ms: number
+}
+
+export interface SessionSummaryPage {
+  items: SessionSummary[]
+  next_cursor_updated_at_ms?: number
+  next_cursor_session_id?: string
+}
+
+export interface SessionDeliveryTarget {
+  target_did: DID
+  state: DeliveryState
+  attempts: number
+  external_msg_id?: string
+  last_error?: DeliveryError
+}
+
+export interface SessionDeliveryView {
+  overall: SessionDeliveryOverall
+  per_target?: SessionDeliveryTarget[]
+}
+
+export interface SessionMessageItem {
+  record_id: string
+  msg_id: ObjId
+  direction: SessionMessageDirection
+  box_kind: MailboxKind
+  sort_key: number
+  from: DID
+  to: DID
+  recipient_state?: RecipientState
+  delivery?: SessionDeliveryView
+  msg?: MsgObject
+}
+
+export interface SessionMessagePage {
+  items: SessionMessageItem[]
+  next_cursor_sort_key?: number
+  next_cursor_record_id?: string
+}
+
+export interface MsgReceiptObj {
+  msg_id: ObjId
+  iss: DID
+  reader: DID
+  group_id?: DID
+  at_ms: number
+  status: ReadReceiptState
+  reason?: string
+}
+
+export interface DispatchResult {
+  ok: boolean
+  msg_id: ObjId
+  delivered_recipients?: DID[]
+  dropped_recipients?: DID[]
+  delivered_group?: DID
+  delivered_agents?: DID[]
+  reason?: string
+}
+
+export interface PostSendDelivery {
+  delivery_id: string
+  transport_did: DID
+  target_did: DID
+  transport: TransportKind
+}
+
+export interface PostSendResult {
+  ok: boolean
+  msg_id: ObjId
+  deliveries?: PostSendDelivery[]
+  reason?: string
+}
+
+export interface DeliveryReportResult {
+  ok: boolean
+  external_msg_id?: string
+  delivered_at_ms?: number
+  error_code?: string
+  error_message?: string
+  retry_after_ms?: number
+  retryable?: boolean
+}
+
+export interface AccountBinding {
+  platform: string
+  account_id: string
+  display_id: string
+  tunnel_instance_id: string
+  account_type: string
+  endpoint_did?: DID
+  last_active_at: number
+  meta?: Record<string, string>
+}
+
+export interface TemporaryGrant {
+  context_id: string
+  granted_at: number
+  expires_at: number
+}
+
+export interface Contact {
+  did: DID
+  name: string
+  avatar?: string
+  note?: string
+  source: ContactSource
+  is_verified: boolean
+  bindings?: AccountBinding[]
+  access_level: AccessGroupLevel
+  temp_grants?: TemporaryGrant[]
+  groups?: string[]
+  tags?: string[]
+  created_at: number
+  updated_at: number
+}
+
+export interface AccessDecision {
+  level: AccessGroupLevel
+  allow_delivery: boolean
+  target_box: string
+  temporary_expires_at_ms?: number
+  reason?: string
+}
+
+export interface ImportContactEntry {
+  name: string
+  avatar?: string
+  note?: string
+  bindings?: AccountBinding[]
+  groups?: string[]
+  tags?: string[]
 }
 
 export interface ImportReport {
@@ -100,13 +273,26 @@ export interface ImportReport {
   affected_dids?: DID[]
 }
 
+export interface ContactPatch {
+  name?: string
+  avatar?: string
+  note?: string
+  access_level?: AccessGroupLevel
+  source?: ContactSource
+  is_verified?: boolean
+  groups?: string[]
+  tags?: string[]
+}
+
+export interface TemporaryGrantOutcome {
+  did: DID
+  granted: boolean
+  expires_at_ms?: number
+  reason?: string
+}
+
 export interface GrantTemporaryAccessResult {
-  updated: Array<{
-    did: DID
-    granted: boolean
-    expires_at_ms?: number
-    reason?: string
-  }>
+  updated: TemporaryGrantOutcome[]
 }
 
 export interface ContactQuery {
@@ -122,38 +308,77 @@ export interface SetGroupSubscribersResult {
   subscriber_count: number
 }
 
-export interface DeliveryReportResult {
-  ok: boolean
-  external_msg_id?: string
-  delivered_at_ms?: number
-  error_code?: string
-  error_message?: string
-  retry_after_ms?: number
-  retryable?: boolean
-}
-
-// --- request param helpers -------------------------------------------------
+export type GroupCreateReq = JsonObject
+export type GroupGetDocReq = JsonObject
+export type GroupUpdateProfileReq = JsonObject
+export type GroupInviteMemberReq = JsonObject
+export type GroupSubmitMemberProofReq = JsonObject
+export type GroupRequestJoinReq = JsonObject
+export type GroupApproveMemberReq = JsonObject
+export type GroupRejectMemberReq = JsonObject
+export type GroupRemoveMemberReq = JsonObject
+export type GroupUpdateMemberRoleReq = JsonObject
+export type GroupListMembersReq = JsonObject
+export type GroupCreateSubgroupReq = JsonObject
+export type GroupUpdateSubgroupReq = JsonObject
+export type GroupListSubgroupsReq = JsonObject
+export type GroupUpdateCollectionPolicyReq = JsonObject
+export type GroupUpdateAttributionPolicyReq = JsonObject
+export type GroupExpandMembersReq = JsonObject
+export type GroupListByMemberReq = JsonObject
+export type GroupListParentsReq = JsonObject
+export type GroupCheckAccessReq = JsonObject
+export type GroupDoc = JsonObject
+export type GroupMemberRecord = JsonObject
+export type GroupSubgroup = JsonObject
+export type GroupExpansionSnapshot = JsonObject
+export type GroupSummary = JsonObject
+export type GroupAccessDecision = JsonObject
 
 export interface GetNextParams {
   owner: DID
-  box_kind: BoxKind
-  state_filter?: MsgState[]
+  box_kind: MailboxKind
+  state_filter?: RecipientState[]
+  lock_on_take?: boolean
+  with_object?: boolean
+}
+
+export interface GetNextDeliveryParams {
+  transport_did: DID
   lock_on_take?: boolean
   with_object?: boolean
 }
 
 export interface PeekBoxParams {
   owner: DID
-  box_kind: BoxKind
-  state_filter?: MsgState[]
+  box_kind: MailboxKind
+  state_filter?: RecipientState[]
   limit?: number
   with_object?: boolean
 }
 
 export interface ListBoxByTimeParams {
   owner: DID
-  box_kind: BoxKind
-  state_filter?: MsgState[]
+  box_kind: MailboxKind
+  state_filter?: RecipientState[]
+  limit?: number
+  cursor_sort_key?: number
+  cursor_record_id?: string
+  descending?: boolean
+  with_object?: boolean
+}
+
+export interface ListSessionsParams {
+  owner: DID
+  limit?: number
+  cursor_updated_at_ms?: number
+  cursor_session_id?: string
+  with_object?: boolean
+}
+
+export interface ListSessionParams {
+  owner: DID
+  session_id: string
   limit?: number
   cursor_sort_key?: number
   cursor_record_id?: string
@@ -178,32 +403,43 @@ export interface ListReadReceiptsParams {
   offset?: number
 }
 
-// Drop `undefined` keys so the wire payload matches the Rust client's
-// `skip_serializing_if = "Option::is_none"` behavior. We don't recurse into
-// nested objects — those are user-supplied JSON shapes and should already be
-// well-formed.
 function compact<T extends Record<string, unknown>>(input: T): Record<string, unknown> {
   const out: Record<string, unknown> = {}
-  for (const [k, v] of Object.entries(input)) {
-    if (v !== undefined) {
-      out[k] = v
+  for (const [key, value] of Object.entries(input)) {
+    if (value !== undefined) {
+      out[key] = value
     }
   }
   return out
 }
 
-function asRecord(value: unknown, what: string): Record<string, unknown> {
+function asRecord(value: unknown, what: string): JsonObject {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new RPCError(`expected ${what} to be an object`)
   }
-  return value as Record<string, unknown>
+  return value as JsonObject
 }
 
-function asArrayOf<T = Record<string, unknown>>(value: unknown, what: string): T[] {
+function asOptionalRecord<T>(value: unknown, what: string): T | null {
+  return value == null ? null : asRecord(value, what) as unknown as T
+}
+
+function asArrayOf<T>(value: unknown, what: string): T[] {
   if (!Array.isArray(value)) {
     throw new RPCError(`expected ${what} to be an array`)
   }
   return value as T[]
+}
+
+function asDid(value: unknown, method: string): DID {
+  if (typeof value !== 'string') {
+    throw new RPCError(`${method} expected to return a DID string`)
+  }
+  return value
+}
+
+function asOptionalDid(value: unknown, method: string): DID | null {
+  return value == null ? null : asDid(value, method)
 }
 
 export class MsgCenterClient {
@@ -217,133 +453,142 @@ export class MsgCenterClient {
     this.rpcClient.setSeq(seq)
   }
 
-  // ---- msg.* ---------------------------------------------------------------
+  private call(method: string, params: Record<string, unknown>): Promise<unknown> {
+    return this.rpcClient.call<unknown, Record<string, unknown>>(method, params)
+  }
 
   async dispatch(
     msg: MsgObject,
     ingressCtx?: IngressContext,
     idempotencyKey?: string,
   ): Promise<DispatchResult> {
-    const params = compact({
+    const result = await this.call('msg.dispatch', compact({
       msg,
       ingress_ctx: ingressCtx,
       idempotency_key: idempotencyKey,
-    })
-    const result = await this.rpcClient.call<unknown, Record<string, unknown>>('msg.dispatch', params)
-    return asRecord(result, 'DispatchResult')
+    }))
+    return asRecord(result, 'DispatchResult') as unknown as DispatchResult
   }
 
-  async postSend(
-    msg: MsgObject,
-    sendCtx?: SendContext,
-    idempotencyKey?: string,
-  ): Promise<PostSendResult> {
-    const params = compact({
+  async postSend(msg: MsgObject, idempotencyKey?: string): Promise<PostSendResult> {
+    const result = await this.call('msg.post_send', compact({
       msg,
-      send_ctx: sendCtx,
       idempotency_key: idempotencyKey,
-    })
-    const result = await this.rpcClient.call<unknown, Record<string, unknown>>('msg.post_send', params)
-    return asRecord(result, 'PostSendResult')
+    }))
+    return asRecord(result, 'PostSendResult') as unknown as PostSendResult
   }
 
-  async getNext(req: GetNextParams): Promise<MsgRecordWithObject | null> {
-    const result = await this.rpcClient.call<unknown, Record<string, unknown>>(
-      'msg.get_next',
-      compact({ ...req }),
-    )
-    if (result == null) {
-      return null
-    }
-    return asRecord(result, 'MsgRecordWithObject') as unknown as MsgRecordWithObject
+  async getNext(req: GetNextParams): Promise<MailboxRecordWithObject | null> {
+    const result = await this.call('msg.get_next', compact({ ...req }))
+    return asOptionalRecord<MailboxRecordWithObject>(result, 'MailboxRecordWithObject')
   }
 
-  async peekBox(req: PeekBoxParams): Promise<MsgRecordWithObject[]> {
-    const result = await this.rpcClient.call<unknown, Record<string, unknown>>(
-      'msg.peek_box',
-      compact({ ...req }),
-    )
-    return asArrayOf<MsgRecordWithObject>(result, 'Vec<MsgRecordWithObject>')
+  async getNextDelivery(req: GetNextDeliveryParams): Promise<DeliveryRecordWithObject | null> {
+    const result = await this.call('msg.get_next_delivery', compact({ ...req }))
+    return asOptionalRecord<DeliveryRecordWithObject>(result, 'DeliveryRecordWithObject')
   }
 
-  async listBoxByTime(req: ListBoxByTimeParams): Promise<MsgRecordPage> {
-    const result = await this.rpcClient.call<unknown, Record<string, unknown>>(
-      'msg.list_box_by_time',
-      compact({ ...req }),
-    )
-    const record = asRecord(result, 'MsgRecordPage')
+  async peekBox(req: PeekBoxParams): Promise<MailboxRecordWithObject[]> {
+    const result = await this.call('msg.peek_box', compact({ ...req }))
+    return asArrayOf<MailboxRecordWithObject>(result, 'Vec<MailboxRecordWithObject>')
+  }
+
+  async listBoxByTime(req: ListBoxByTimeParams): Promise<MailboxRecordPage> {
+    const result = await this.call('msg.list_box_by_time', compact({ ...req }))
+    const page = asRecord(result, 'MailboxRecordPage')
     return {
-      items: Array.isArray(record.items) ? (record.items as MsgRecordWithObject[]) : [],
-      next_cursor_sort_key:
-        typeof record.next_cursor_sort_key === 'number' ? record.next_cursor_sort_key : undefined,
-      next_cursor_record_id:
-        typeof record.next_cursor_record_id === 'string' ? record.next_cursor_record_id : undefined,
-    }
+      ...page,
+      items: Array.isArray(page.items) ? page.items as MailboxRecordWithObject[] : [],
+    } as unknown as MailboxRecordPage
   }
 
-  async updateRecordState(recordId: string, newState: MsgState, reason?: string): Promise<MsgRecord> {
-    const result = await this.rpcClient.call<unknown, Record<string, unknown>>(
-      'msg.update_record_state',
-      compact({ record_id: recordId, new_state: newState, reason }),
-    )
-    return asRecord(result, 'MsgRecord')
+  async listSessions(req: ListSessionsParams): Promise<SessionSummaryPage> {
+    const result = await this.call('msg.list_sessions', compact({ ...req }))
+    const page = asRecord(result, 'SessionSummaryPage')
+    return {
+      ...page,
+      items: Array.isArray(page.items) ? page.items as SessionSummary[] : [],
+    } as unknown as SessionSummaryPage
   }
 
-  async updateRecordSession(recordId: string, sessionId: string): Promise<MsgRecord> {
-    const result = await this.rpcClient.call<unknown, Record<string, unknown>>(
-      'msg.update_record_session',
-      { record_id: recordId, session_id: sessionId },
-    )
-    return asRecord(result, 'MsgRecord')
+  async listSession(req: ListSessionParams): Promise<SessionMessagePage> {
+    const result = await this.call('msg.list_session', compact({ ...req }))
+    const page = asRecord(result, 'SessionMessagePage')
+    return {
+      ...page,
+      items: Array.isArray(page.items) ? page.items as SessionMessageItem[] : [],
+    } as unknown as SessionMessagePage
   }
 
-  async reportDelivery(recordId: string, result: DeliveryReportResult): Promise<MsgRecord> {
-    const response = await this.rpcClient.call<unknown, Record<string, unknown>>(
-      'msg.report_delivery',
-      { record_id: recordId, result },
-    )
-    return asRecord(response, 'MsgRecord')
+  async updateRecordState(recordId: string, newState: RecipientState): Promise<MailboxRecord> {
+    const result = await this.call('msg.update_record_state', {
+      record_id: recordId,
+      new_state: newState,
+    })
+    return asRecord(result, 'MailboxRecord') as unknown as MailboxRecord
+  }
+
+  async updateRecordSession(recordId: string, sessionId: string): Promise<MailboxRecord> {
+    const result = await this.call('msg.update_record_session', {
+      record_id: recordId,
+      session_id: sessionId,
+    })
+    return asRecord(result, 'MailboxRecord') as unknown as MailboxRecord
+  }
+
+  async reportDelivery(deliveryId: string, result: DeliveryReportResult): Promise<DeliveryRecord> {
+    const response = await this.call('msg.report_delivery', {
+      delivery_id: deliveryId,
+      result,
+    })
+    return asRecord(response, 'DeliveryRecord') as unknown as DeliveryRecord
   }
 
   async setReadState(req: SetReadStateParams): Promise<MsgReceiptObj> {
-    const result = await this.rpcClient.call<unknown, Record<string, unknown>>(
-      'msg.set_read_state',
-      compact({ ...req }),
-    )
-    return asRecord(result, 'MsgReceiptObj')
+    const result = await this.call('msg.set_read_state', compact({ ...req }))
+    return asRecord(result, 'MsgReceiptObj') as unknown as MsgReceiptObj
   }
 
   async listReadReceipts(req: ListReadReceiptsParams): Promise<MsgReceiptObj[]> {
-    const result = await this.rpcClient.call<unknown, Record<string, unknown>>(
-      'msg.list_read_receipts',
-      compact({ ...req }),
-    )
+    const result = await this.call('msg.list_read_receipts', compact({ ...req }))
     return asArrayOf<MsgReceiptObj>(result, 'Vec<MsgReceiptObj>')
   }
 
-  async getRecord(recordId: string, withObject?: boolean): Promise<MsgRecordWithObject | null> {
-    const result = await this.rpcClient.call<unknown, Record<string, unknown>>(
-      'msg.get_record',
-      compact({ record_id: recordId, with_object: withObject }),
-    )
-    if (result == null) {
-      return null
-    }
-    return asRecord(result, 'MsgRecordWithObject') as unknown as MsgRecordWithObject
+  async getRecord(recordId: string, withObject?: boolean): Promise<MailboxRecordWithObject | null> {
+    const result = await this.call('msg.get_record', compact({
+      record_id: recordId,
+      with_object: withObject,
+    }))
+    return asOptionalRecord<MailboxRecordWithObject>(result, 'MailboxRecordWithObject')
   }
 
   async getMessage(msgId: ObjId): Promise<MsgObject | null> {
-    const result = await this.rpcClient.call<unknown, Record<string, unknown>>(
-      'msg.get_message',
-      { msg_id: msgId },
-    )
-    if (result == null) {
-      return null
-    }
-    return asRecord(result, 'MsgObject')
+    const result = await this.call('msg.get_message', { msg_id: msgId })
+    return asOptionalRecord<MsgObject>(result, 'MsgObject')
   }
 
-  // ---- contact.* -----------------------------------------------------------
+  async updateUiSessionState(
+    sessionId: string,
+    key: string,
+    value: unknown,
+  ): Promise<UiSessionStateEntry> {
+    const result = await this.call('ui_session.update_state', {
+      session_id: sessionId,
+      key,
+      value,
+    })
+    return asRecord(result, 'UiSessionStateEntry') as unknown as UiSessionStateEntry
+  }
+
+  async getUiSessionState(sessionId: string, key: string): Promise<UiSessionStateEntry | null> {
+    const result = await this.call('ui_session.get_state', { session_id: sessionId, key })
+    return asOptionalRecord<UiSessionStateEntry>(result, 'UiSessionStateEntry')
+  }
+
+  async listUiSessionState(sessionId: string): Promise<UiSessionStateEntry[]> {
+    const result = await this.call('ui_session.list_state', { session_id: sessionId })
+    return asArrayOf<UiSessionStateEntry>(result, 'Vec<UiSessionStateEntry>')
+  }
 
   async resolveDid(
     platform: string,
@@ -351,27 +596,78 @@ export class MsgCenterClient {
     profileHint?: unknown,
     contactMgrOwner?: DID,
   ): Promise<DID> {
-    const result = await this.rpcClient.call<unknown, Record<string, unknown>>(
-      'contact.resolve_did',
-      compact({
-        platform,
-        account_id: accountId,
-        profile_hint: profileHint,
-        contact_mgr_owner: contactMgrOwner,
-      }),
-    )
-    if (typeof result !== 'string') {
-      throw new RPCError('contact.resolve_did expected to return a DID string')
-    }
-    return result
+    const result = await this.call('contact.resolve_did', compact({
+      platform,
+      account_id: accountId,
+      profile_hint: profileHint,
+      contact_mgr_owner: contactMgrOwner,
+    }))
+    return asDid(result, 'contact.resolve_did')
+  }
+
+  async resolveEndpointDid(
+    platform: string,
+    accountId: string,
+    accountType: string,
+    tunnelInstanceId: string,
+    contactMgrOwner?: DID,
+  ): Promise<DID> {
+    const result = await this.call('contact.resolve_endpoint_did', compact({
+      platform,
+      account_id: accountId,
+      account_type: accountType,
+      tunnel_instance_id: tunnelInstanceId,
+      contact_mgr_owner: contactMgrOwner,
+    }))
+    return asDid(result, 'contact.resolve_endpoint_did')
+  }
+
+  async resolveTarget(
+    contactDid: DID,
+    selector: string,
+    contactMgrOwner?: DID,
+  ): Promise<DID> {
+    const result = await this.call('contact.resolve_target', compact({
+      contact_did: contactDid,
+      selector,
+      contact_mgr_owner: contactMgrOwner,
+    }))
+    return asDid(result, 'contact.resolve_target')
+  }
+
+  async resolveContactForEndpoint(
+    endpointDid: DID,
+    contactMgrOwner?: DID,
+  ): Promise<DID | null> {
+    const result = await this.call('contact.resolve_contact_for_endpoint', compact({
+      endpoint_did: endpointDid,
+      contact_mgr_owner: contactMgrOwner,
+    }))
+    return asOptionalDid(result, 'contact.resolve_contact_for_endpoint')
+  }
+
+  async resolveCanonicalDid(did: DID, contactMgrOwner?: DID): Promise<DID> {
+    const result = await this.call('contact.resolve_canonical_did', compact({
+      did,
+      contact_mgr_owner: contactMgrOwner,
+    }))
+    return asDid(result, 'contact.resolve_canonical_did')
+  }
+
+  async listAliasDids(canonicalDid: DID, contactMgrOwner?: DID): Promise<DID[]> {
+    const result = await this.call('contact.list_alias_dids', compact({
+      canonical_did: canonicalDid,
+      contact_mgr_owner: contactMgrOwner,
+    }))
+    return asArrayOf<DID>(result, 'Vec<DID>')
   }
 
   async getPreferredBinding(did: DID, contactMgrOwner?: DID): Promise<AccountBinding> {
-    const result = await this.rpcClient.call<unknown, Record<string, unknown>>(
-      'contact.get_preferred_binding',
-      compact({ did, contact_mgr_owner: contactMgrOwner }),
-    )
-    return asRecord(result, 'AccountBinding')
+    const result = await this.call('contact.get_preferred_binding', compact({
+      did,
+      contact_mgr_owner: contactMgrOwner,
+    }))
+    return asRecord(result, 'AccountBinding') as unknown as AccountBinding
   }
 
   async checkAccessPermission(
@@ -379,11 +675,12 @@ export class MsgCenterClient {
     contextId?: string,
     contactMgrOwner?: DID,
   ): Promise<AccessDecision> {
-    const result = await this.rpcClient.call<unknown, Record<string, unknown>>(
-      'contact.check_access_permission',
-      compact({ did, context_id: contextId, contact_mgr_owner: contactMgrOwner }),
-    )
-    return asRecord(result, 'AccessDecision')
+    const result = await this.call('contact.check_access_permission', compact({
+      did,
+      context_id: contextId,
+      contact_mgr_owner: contactMgrOwner,
+    }))
+    return asRecord(result, 'AccessDecision') as unknown as AccessDecision
   }
 
   async grantTemporaryAccess(
@@ -392,28 +689,26 @@ export class MsgCenterClient {
     durationSecs: number,
     contactMgrOwner?: DID,
   ): Promise<GrantTemporaryAccessResult> {
-    const result = await this.rpcClient.call<unknown, Record<string, unknown>>(
-      'contact.grant_temporary_access',
-      compact({
-        dids,
-        context_id: contextId,
-        duration_secs: durationSecs,
-        contact_mgr_owner: contactMgrOwner,
-      }),
-    )
-    const record = asRecord(result, 'GrantTemporaryAccessResult')
+    const result = await this.call('contact.grant_temporary_access', compact({
+      dids,
+      context_id: contextId,
+      duration_secs: durationSecs,
+      contact_mgr_owner: contactMgrOwner,
+    }))
+    const response = asRecord(result, 'GrantTemporaryAccessResult')
     return {
-      updated: Array.isArray(record.updated)
-        ? (record.updated as GrantTemporaryAccessResult['updated'])
+      updated: Array.isArray(response.updated)
+        ? response.updated as TemporaryGrantOutcome[]
         : [],
     }
   }
 
   async blockContact(did: DID, reason?: string, contactMgrOwner?: DID): Promise<void> {
-    await this.rpcClient.call<unknown, Record<string, unknown>>(
-      'contact.block_contact',
-      compact({ did, reason, contact_mgr_owner: contactMgrOwner }),
-    )
+    await this.call('contact.block_contact', compact({
+      did,
+      reason,
+      contact_mgr_owner: contactMgrOwner,
+    }))
   }
 
   async importContacts(
@@ -421,49 +716,45 @@ export class MsgCenterClient {
     upgradeToFriend?: boolean,
     contactMgrOwner?: DID,
   ): Promise<ImportReport> {
-    const result = await this.rpcClient.call<unknown, Record<string, unknown>>(
-      'contact.import_contacts',
-      compact({
-        contacts,
-        upgrade_to_friend: upgradeToFriend,
-        contact_mgr_owner: contactMgrOwner,
-      }),
-    )
+    const result = await this.call('contact.import_contacts', compact({
+      contacts,
+      upgrade_to_friend: upgradeToFriend,
+      contact_mgr_owner: contactMgrOwner,
+    }))
     return asRecord(result, 'ImportReport') as unknown as ImportReport
   }
 
   async mergeContacts(targetDid: DID, sourceDid: DID, contactMgrOwner?: DID): Promise<Contact> {
-    const result = await this.rpcClient.call<unknown, Record<string, unknown>>(
-      'contact.merge_contacts',
-      compact({ target_did: targetDid, source_did: sourceDid, contact_mgr_owner: contactMgrOwner }),
-    )
-    return asRecord(result, 'Contact')
+    const result = await this.call('contact.merge_contacts', compact({
+      target_did: targetDid,
+      source_did: sourceDid,
+      contact_mgr_owner: contactMgrOwner,
+    }))
+    return asRecord(result, 'Contact') as unknown as Contact
   }
 
   async updateContact(did: DID, patch: ContactPatch, contactMgrOwner?: DID): Promise<Contact> {
-    const result = await this.rpcClient.call<unknown, Record<string, unknown>>(
-      'contact.update_contact',
-      compact({ did, patch, contact_mgr_owner: contactMgrOwner }),
-    )
-    return asRecord(result, 'Contact')
+    const result = await this.call('contact.update_contact', compact({
+      did,
+      patch,
+      contact_mgr_owner: contactMgrOwner,
+    }))
+    return asRecord(result, 'Contact') as unknown as Contact
   }
 
   async getContact(did: DID, contactMgrOwner?: DID): Promise<Contact | null> {
-    const result = await this.rpcClient.call<unknown, Record<string, unknown>>(
-      'contact.get_contact',
-      compact({ did, contact_mgr_owner: contactMgrOwner }),
-    )
-    if (result == null) {
-      return null
-    }
-    return asRecord(result, 'Contact')
+    const result = await this.call('contact.get_contact', compact({
+      did,
+      contact_mgr_owner: contactMgrOwner,
+    }))
+    return asOptionalRecord<Contact>(result, 'Contact')
   }
 
   async listContacts(query: ContactQuery, contactMgrOwner?: DID): Promise<Contact[]> {
-    const result = await this.rpcClient.call<unknown, Record<string, unknown>>(
-      'contact.list_contacts',
-      compact({ query, contact_mgr_owner: contactMgrOwner }),
-    )
+    const result = await this.call('contact.list_contacts', compact({
+      query,
+      contact_mgr_owner: contactMgrOwner,
+    }))
     return asArrayOf<Contact>(result, 'Vec<Contact>')
   }
 
@@ -473,14 +764,13 @@ export class MsgCenterClient {
     offset?: number,
     contactMgrOwner?: DID,
   ): Promise<DID[]> {
-    const result = await this.rpcClient.call<unknown, Record<string, unknown>>(
-      'contact.get_group_subscribers',
-      compact({ group_id: groupId, limit, offset, contact_mgr_owner: contactMgrOwner }),
-    )
-    if (!Array.isArray(result)) {
-      throw new RPCError('expected Vec<DID> response')
-    }
-    return result as DID[]
+    const result = await this.call('contact.get_group_subscribers', compact({
+      group_id: groupId,
+      limit,
+      offset,
+      contact_mgr_owner: contactMgrOwner,
+    }))
+    return asArrayOf<DID>(result, 'Vec<DID>')
   }
 
   async setGroupSubscribers(
@@ -488,10 +778,11 @@ export class MsgCenterClient {
     subscribers: DID[],
     contactMgrOwner?: DID,
   ): Promise<SetGroupSubscribersResult> {
-    const result = await this.rpcClient.call<unknown, Record<string, unknown>>(
-      'contact.set_group_subscribers',
-      compact({ group_id: groupId, subscribers, contact_mgr_owner: contactMgrOwner }),
-    )
+    const result = await this.call('contact.set_group_subscribers', compact({
+      group_id: groupId,
+      subscribers,
+      contact_mgr_owner: contactMgrOwner,
+    }))
     const record = asRecord(result, 'SetGroupSubscribersResult')
     if (typeof record.group_id !== 'string' || typeof record.subscriber_count !== 'number') {
       throw new RPCError('Invalid SetGroupSubscribersResult')
@@ -500,5 +791,85 @@ export class MsgCenterClient {
       group_id: record.group_id,
       subscriber_count: record.subscriber_count,
     }
+  }
+
+  async groupCreate(req: GroupCreateReq): Promise<GroupDoc> {
+    return asRecord(await this.call('group.create', req), 'GroupDoc')
+  }
+
+  async groupGetDoc(req: GroupGetDocReq): Promise<GroupDoc | null> {
+    return asOptionalRecord<GroupDoc>(await this.call('group.get_doc', req), 'GroupDoc')
+  }
+
+  async groupUpdateProfile(req: GroupUpdateProfileReq): Promise<GroupDoc> {
+    return asRecord(await this.call('group.update_profile', req), 'GroupDoc')
+  }
+
+  async groupInviteMember(req: GroupInviteMemberReq): Promise<GroupMemberRecord> {
+    return asRecord(await this.call('group.invite_member', req), 'GroupMemberRecord')
+  }
+
+  async groupSubmitMemberProof(req: GroupSubmitMemberProofReq): Promise<GroupMemberRecord> {
+    return asRecord(await this.call('group.submit_member_proof', req), 'GroupMemberRecord')
+  }
+
+  async groupRequestJoin(req: GroupRequestJoinReq): Promise<GroupMemberRecord> {
+    return asRecord(await this.call('group.request_join', req), 'GroupMemberRecord')
+  }
+
+  async groupApproveMember(req: GroupApproveMemberReq): Promise<GroupMemberRecord> {
+    return asRecord(await this.call('group.approve_member', req), 'GroupMemberRecord')
+  }
+
+  async groupRejectMember(req: GroupRejectMemberReq): Promise<GroupMemberRecord> {
+    return asRecord(await this.call('group.reject_member', req), 'GroupMemberRecord')
+  }
+
+  async groupRemoveMember(req: GroupRemoveMemberReq): Promise<GroupMemberRecord> {
+    return asRecord(await this.call('group.remove_member', req), 'GroupMemberRecord')
+  }
+
+  async groupUpdateMemberRole(req: GroupUpdateMemberRoleReq): Promise<GroupMemberRecord> {
+    return asRecord(await this.call('group.update_member_role', req), 'GroupMemberRecord')
+  }
+
+  async groupListMembers(req: GroupListMembersReq): Promise<GroupMemberRecord[]> {
+    return asArrayOf<GroupMemberRecord>(await this.call('group.list_members', req), 'Vec<GroupMemberRecord>')
+  }
+
+  async groupCreateSubgroup(req: GroupCreateSubgroupReq): Promise<GroupSubgroup> {
+    return asRecord(await this.call('group.create_subgroup', req), 'GroupSubgroup')
+  }
+
+  async groupUpdateSubgroup(req: GroupUpdateSubgroupReq): Promise<GroupSubgroup> {
+    return asRecord(await this.call('group.update_subgroup', req), 'GroupSubgroup')
+  }
+
+  async groupListSubgroups(req: GroupListSubgroupsReq): Promise<GroupSubgroup[]> {
+    return asArrayOf<GroupSubgroup>(await this.call('group.list_subgroups', req), 'Vec<GroupSubgroup>')
+  }
+
+  async groupUpdateCollectionPolicy(req: GroupUpdateCollectionPolicyReq): Promise<GroupDoc> {
+    return asRecord(await this.call('group.update_collection_policy', req), 'GroupDoc')
+  }
+
+  async groupUpdateAttributionPolicy(req: GroupUpdateAttributionPolicyReq): Promise<GroupDoc> {
+    return asRecord(await this.call('group.update_attribution_policy', req), 'GroupDoc')
+  }
+
+  async groupExpandMembers(req: GroupExpandMembersReq): Promise<GroupExpansionSnapshot> {
+    return asRecord(await this.call('group.expand_members', req), 'GroupExpansionSnapshot')
+  }
+
+  async groupListByMember(req: GroupListByMemberReq): Promise<GroupSummary[]> {
+    return asArrayOf<GroupSummary>(await this.call('group.list_by_member', req), 'Vec<GroupSummary>')
+  }
+
+  async groupListParents(req: GroupListParentsReq): Promise<GroupSummary[]> {
+    return asArrayOf<GroupSummary>(await this.call('group.list_parents', req), 'Vec<GroupSummary>')
+  }
+
+  async groupCheckAccess(req: GroupCheckAccessReq): Promise<GroupAccessDecision> {
+    return asRecord(await this.call('group.check_access', req), 'GroupAccessDecision')
   }
 }
