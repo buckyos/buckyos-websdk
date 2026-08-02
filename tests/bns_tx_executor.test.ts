@@ -85,7 +85,7 @@ function snClient() {
       name: 'alice',
       controller_id: 'controller',
       controller_address: '0x1',
-      status: 'submitted',
+      status: 'submitted' as const,
       reused: false,
     })),
     publishDocument: jest.fn(async () => ({
@@ -95,7 +95,7 @@ function snClient() {
       name: 'alice',
       controller_id: 'controller',
       controller_address: '0x1',
-      status: 'submitted',
+      status: 'submitted' as const,
       reused: false,
     })),
   }

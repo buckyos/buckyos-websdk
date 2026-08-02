@@ -395,14 +395,14 @@ function isTerminalTaskStatus(status) {
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
-function asRecord$4(value) {
+function asRecord$5(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new RPCError("Invalid RPC response format");
   }
   return value;
 }
 function parseTask(value) {
-  const record = asRecord$4(value);
+  const record = asRecord$5(value);
   const id2 = record.id;
   const status = record.status;
   if (typeof id2 !== "number") {
@@ -426,7 +426,7 @@ function parseTaskListResult(value) {
   if (Array.isArray(value)) {
     return parseTasks(value);
   }
-  const parsed = asRecord$4(value);
+  const parsed = asRecord$5(value);
   if ("tasks" in parsed) {
     return parseTasks(parsed.tasks);
   }
@@ -456,7 +456,7 @@ class TaskManagerClient {
       app_name: params.appId || void 0
     };
     const result = await this.rpcClient.call("create_task", req);
-    const parsed = asRecord$4(result);
+    const parsed = asRecord$5(result);
     if ("task" in parsed) {
       return parseTask(parsed.task);
     }
@@ -469,7 +469,7 @@ class TaskManagerClient {
   async getTask(id2) {
     const req = { id: id2 };
     const result = await this.rpcClient.call("get_task", req);
-    const parsed = asRecord$4(result);
+    const parsed = asRecord$5(result);
     if ("task" in parsed) {
       return parseTask(parsed.task);
     }
@@ -569,7 +569,7 @@ class TaskManagerClient {
       source_app_id: options.sourceAppId
     };
     const result = await this.rpcClient.call("delete_tasks_by_session", req);
-    const parsed = asRecord$4(result);
+    const parsed = asRecord$5(result);
     const deletedCount = parsed.deleted_count;
     if (typeof deletedCount !== "number") {
       throw new RPCError("Expected DeleteTasksResult response");
@@ -592,7 +592,7 @@ class TaskManagerClient {
       app_name: appId || void 0
     };
     const result = await this.rpcClient.call("create_download_task", req);
-    const parsed = asRecord$4(result);
+    const parsed = asRecord$5(result);
     const taskId = parsed.task_id;
     if (typeof taskId !== "number") {
       throw new RPCError("Expected CreateDownloadTaskResult response");
@@ -749,7 +749,7 @@ var WorkflowScheduledTaskFireStatus = /* @__PURE__ */ ((WorkflowScheduledTaskFir
   WorkflowScheduledTaskFireStatus2["Failed"] = "failed";
   return WorkflowScheduledTaskFireStatus2;
 })(WorkflowScheduledTaskFireStatus || {});
-function asRecord$3(value) {
+function asRecord$4(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new RPCError("Invalid workflow RPC response format");
   }
@@ -770,7 +770,7 @@ class WorkflowClient {
   }
   async callOk(method, params) {
     const result = await this.rpcClient.call(method, params);
-    const parsed = asRecord$3(result);
+    const parsed = asRecord$4(result);
     if (parsed.ok === true) {
       return parsed;
     }
@@ -1159,7 +1159,7 @@ function validateAiccMessages(messages) {
   }
 }
 function validateAiccResponse(response) {
-  const record = asRecord$2(response);
+  const record = asRecord$3(response);
   for (const key of ["text", "tool_calls", "artifacts"]) {
     if (key in record) {
       throw new RPCError(`AiccResponse.${key} is no longer supported; use AiccResponse.message`);
@@ -1263,7 +1263,7 @@ function isBlockAllowedForRole(role, blockType) {
       return blockType === "tool_result";
   }
 }
-function asRecord$2(value) {
+function asRecord$3(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new RPCError("Invalid RPC response format");
   }
@@ -1313,7 +1313,7 @@ function validateLlmChatPayload(request) {
   validateAiccMessages(messages);
 }
 function parseMethodResponse(result) {
-  const record = asRecord$2(result);
+  const record = asRecord$3(result);
   if (typeof record.task_id !== "string") {
     throw new RPCError("AiccMethodResponse missing task_id");
   }
@@ -1444,7 +1444,7 @@ class AiccClient {
       throw new RPCError("AiccClient.cancel requires a non-empty task_id");
     }
     const result = await this.rpcClient.call(AICC_CONTROL_METHODS.CANCEL, { task_id: taskId });
-    const record = asRecord$2(result);
+    const record = asRecord$3(result);
     if (typeof record.task_id !== "string" || typeof record.accepted !== "boolean") {
       throw new RPCError("Invalid cancel response");
     }
@@ -1458,7 +1458,7 @@ class AiccClient {
   }
   async queryQuota(request) {
     const result = await this.rpcClient.call(AICC_CONTROL_METHODS.QUOTA_QUERY, request);
-    const record = asRecord$2(result);
+    const record = asRecord$3(result);
     if (!record.quota || typeof record.quota !== "object" || Array.isArray(record.quota)) {
       throw new RPCError("Invalid quota.query response");
     }
@@ -1480,13 +1480,13 @@ const DEFAULT_QUEUE_CONFIG = {
   other_user_can_read: false,
   other_user_can_write: false
 };
-function asNumber$1(value, what) {
+function asNumber$2(value, what) {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     throw new RPCError(`expected ${what} to be a number`);
   }
   return value;
 }
-function asString$1(value, what) {
+function asString$2(value, what) {
   if (typeof value !== "string") {
     throw new RPCError(`expected ${what} to be a string`);
   }
@@ -1502,8 +1502,8 @@ function asMessageList(value) {
     }
     const record = entry;
     return {
-      index: asNumber$1(record.index, `message[${idx}].index`),
-      created_at: asNumber$1(record.created_at, `message[${idx}].created_at`),
+      index: asNumber$2(record.index, `message[${idx}].index`),
+      created_at: asNumber$2(record.created_at, `message[${idx}].created_at`),
       payload: Array.isArray(record.payload) ? record.payload : [],
       headers: record.headers && typeof record.headers === "object" && !Array.isArray(record.headers) ? record.headers : {}
     };
@@ -1523,7 +1523,7 @@ class MsgQueueClient {
       app_owner: appOwner,
       config
     });
-    return asString$1(result, "queue_urn");
+    return asString$2(result, "queue_urn");
   }
   async deleteQueue(queueUrn) {
     await this.rpcClient.call("delete_queue", {
@@ -1539,10 +1539,10 @@ class MsgQueueClient {
     }
     const record = result;
     return {
-      message_count: asNumber$1(record.message_count, "message_count"),
-      first_index: asNumber$1(record.first_index, "first_index"),
-      last_index: asNumber$1(record.last_index, "last_index"),
-      size_bytes: asNumber$1(record.size_bytes, "size_bytes")
+      message_count: asNumber$2(record.message_count, "message_count"),
+      first_index: asNumber$2(record.first_index, "first_index"),
+      last_index: asNumber$2(record.last_index, "last_index"),
+      size_bytes: asNumber$2(record.size_bytes, "size_bytes")
     };
   }
   async updateQueueConfig(queueUrn, config) {
@@ -1556,7 +1556,7 @@ class MsgQueueClient {
       "post_message",
       { queue_urn: queueUrn, message }
     );
-    return asNumber$1(result, "msg_index");
+    return asNumber$2(result, "msg_index");
   }
   async subscribe(params) {
     const result = await this.rpcClient.call("subscribe", {
@@ -1568,7 +1568,7 @@ class MsgQueueClient {
       sub_id: params.subId ?? null,
       position: params.position
     });
-    return asString$1(result, "subscription_id");
+    return asString$2(result, "subscription_id");
   }
   async unsubscribe(subId) {
     await this.rpcClient.call("unsubscribe", { sub_id: subId });
@@ -1598,7 +1598,7 @@ class MsgQueueClient {
       "delete_message_before",
       { queue_urn: queueUrn, index }
     );
-    return asNumber$1(result, "deleted_count");
+    return asNumber$2(result, "deleted_count");
   }
 }
 function compact$1(input) {
@@ -1610,14 +1610,14 @@ function compact$1(input) {
   }
   return out;
 }
-function asRecord$1(value, what) {
+function asRecord$2(value, what) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new RPCError(`expected ${what} to be an object`);
   }
   return value;
 }
 function asOptionalRecord(value, what) {
-  return value == null ? null : asRecord$1(value, what);
+  return value == null ? null : asRecord$2(value, what);
 }
 function asArrayOf(value, what) {
   if (!Array.isArray(value)) {
@@ -1650,14 +1650,14 @@ class MsgCenterClient {
       ingress_ctx: ingressCtx,
       idempotency_key: idempotencyKey
     }));
-    return asRecord$1(result, "DispatchResult");
+    return asRecord$2(result, "DispatchResult");
   }
   async postSend(msg, idempotencyKey) {
     const result = await this.call("msg.post_send", compact$1({
       msg,
       idempotency_key: idempotencyKey
     }));
-    return asRecord$1(result, "PostSendResult");
+    return asRecord$2(result, "PostSendResult");
   }
   async getNext(req) {
     const result = await this.call("msg.get_next", compact$1({ ...req }));
@@ -1673,7 +1673,7 @@ class MsgCenterClient {
   }
   async listBoxByTime(req) {
     const result = await this.call("msg.list_box_by_time", compact$1({ ...req }));
-    const page = asRecord$1(result, "MailboxRecordPage");
+    const page = asRecord$2(result, "MailboxRecordPage");
     return {
       ...page,
       items: Array.isArray(page.items) ? page.items : []
@@ -1681,7 +1681,7 @@ class MsgCenterClient {
   }
   async listSessions(req) {
     const result = await this.call("msg.list_sessions", compact$1({ ...req }));
-    const page = asRecord$1(result, "SessionSummaryPage");
+    const page = asRecord$2(result, "SessionSummaryPage");
     return {
       ...page,
       items: Array.isArray(page.items) ? page.items : []
@@ -1689,7 +1689,7 @@ class MsgCenterClient {
   }
   async listSession(req) {
     const result = await this.call("msg.list_session", compact$1({ ...req }));
-    const page = asRecord$1(result, "SessionMessagePage");
+    const page = asRecord$2(result, "SessionMessagePage");
     return {
       ...page,
       items: Array.isArray(page.items) ? page.items : []
@@ -1700,25 +1700,25 @@ class MsgCenterClient {
       record_id: recordId,
       new_state: newState
     });
-    return asRecord$1(result, "MailboxRecord");
+    return asRecord$2(result, "MailboxRecord");
   }
   async updateRecordSession(recordId, sessionId) {
     const result = await this.call("msg.update_record_session", {
       record_id: recordId,
       session_id: sessionId
     });
-    return asRecord$1(result, "MailboxRecord");
+    return asRecord$2(result, "MailboxRecord");
   }
   async reportDelivery(deliveryId, result) {
     const response = await this.call("msg.report_delivery", {
       delivery_id: deliveryId,
       result
     });
-    return asRecord$1(response, "DeliveryRecord");
+    return asRecord$2(response, "DeliveryRecord");
   }
   async setReadState(req) {
     const result = await this.call("msg.set_read_state", compact$1({ ...req }));
-    return asRecord$1(result, "MsgReceiptObj");
+    return asRecord$2(result, "MsgReceiptObj");
   }
   async listReadReceipts(req) {
     const result = await this.call("msg.list_read_receipts", compact$1({ ...req }));
@@ -1741,7 +1741,7 @@ class MsgCenterClient {
       key,
       value
     });
-    return asRecord$1(result, "UiSessionStateEntry");
+    return asRecord$2(result, "UiSessionStateEntry");
   }
   async getUiSessionState(sessionId, key) {
     const result = await this.call("ui_session.get_state", { session_id: sessionId, key });
@@ -1804,7 +1804,7 @@ class MsgCenterClient {
       did,
       contact_mgr_owner: contactMgrOwner
     }));
-    return asRecord$1(result, "AccountBinding");
+    return asRecord$2(result, "AccountBinding");
   }
   async checkAccessPermission(did, contextId, contactMgrOwner) {
     const result = await this.call("contact.check_access_permission", compact$1({
@@ -1812,7 +1812,7 @@ class MsgCenterClient {
       context_id: contextId,
       contact_mgr_owner: contactMgrOwner
     }));
-    return asRecord$1(result, "AccessDecision");
+    return asRecord$2(result, "AccessDecision");
   }
   async grantTemporaryAccess(dids, contextId, durationSecs, contactMgrOwner) {
     const result = await this.call("contact.grant_temporary_access", compact$1({
@@ -1821,7 +1821,7 @@ class MsgCenterClient {
       duration_secs: durationSecs,
       contact_mgr_owner: contactMgrOwner
     }));
-    const response = asRecord$1(result, "GrantTemporaryAccessResult");
+    const response = asRecord$2(result, "GrantTemporaryAccessResult");
     return {
       updated: Array.isArray(response.updated) ? response.updated : []
     };
@@ -1839,7 +1839,7 @@ class MsgCenterClient {
       upgrade_to_friend: upgradeToFriend,
       contact_mgr_owner: contactMgrOwner
     }));
-    return asRecord$1(result, "ImportReport");
+    return asRecord$2(result, "ImportReport");
   }
   async mergeContacts(targetDid, sourceDid, contactMgrOwner) {
     const result = await this.call("contact.merge_contacts", compact$1({
@@ -1847,7 +1847,7 @@ class MsgCenterClient {
       source_did: sourceDid,
       contact_mgr_owner: contactMgrOwner
     }));
-    return asRecord$1(result, "Contact");
+    return asRecord$2(result, "Contact");
   }
   async updateContact(did, patch, contactMgrOwner) {
     const result = await this.call("contact.update_contact", compact$1({
@@ -1855,7 +1855,7 @@ class MsgCenterClient {
       patch,
       contact_mgr_owner: contactMgrOwner
     }));
-    return asRecord$1(result, "Contact");
+    return asRecord$2(result, "Contact");
   }
   async getContact(did, contactMgrOwner) {
     const result = await this.call("contact.get_contact", compact$1({
@@ -1886,7 +1886,7 @@ class MsgCenterClient {
       subscribers,
       contact_mgr_owner: contactMgrOwner
     }));
-    const record = asRecord$1(result, "SetGroupSubscribersResult");
+    const record = asRecord$2(result, "SetGroupSubscribersResult");
     if (typeof record.group_id !== "string" || typeof record.subscriber_count !== "number") {
       throw new RPCError("Invalid SetGroupSubscribersResult");
     }
@@ -1896,55 +1896,55 @@ class MsgCenterClient {
     };
   }
   async groupCreate(req) {
-    return asRecord$1(await this.call("group.create", req), "GroupDoc");
+    return asRecord$2(await this.call("group.create", req), "GroupDoc");
   }
   async groupGetDoc(req) {
     return asOptionalRecord(await this.call("group.get_doc", req), "GroupDoc");
   }
   async groupUpdateProfile(req) {
-    return asRecord$1(await this.call("group.update_profile", req), "GroupDoc");
+    return asRecord$2(await this.call("group.update_profile", req), "GroupDoc");
   }
   async groupInviteMember(req) {
-    return asRecord$1(await this.call("group.invite_member", req), "GroupMemberRecord");
+    return asRecord$2(await this.call("group.invite_member", req), "GroupMemberRecord");
   }
   async groupSubmitMemberProof(req) {
-    return asRecord$1(await this.call("group.submit_member_proof", req), "GroupMemberRecord");
+    return asRecord$2(await this.call("group.submit_member_proof", req), "GroupMemberRecord");
   }
   async groupRequestJoin(req) {
-    return asRecord$1(await this.call("group.request_join", req), "GroupMemberRecord");
+    return asRecord$2(await this.call("group.request_join", req), "GroupMemberRecord");
   }
   async groupApproveMember(req) {
-    return asRecord$1(await this.call("group.approve_member", req), "GroupMemberRecord");
+    return asRecord$2(await this.call("group.approve_member", req), "GroupMemberRecord");
   }
   async groupRejectMember(req) {
-    return asRecord$1(await this.call("group.reject_member", req), "GroupMemberRecord");
+    return asRecord$2(await this.call("group.reject_member", req), "GroupMemberRecord");
   }
   async groupRemoveMember(req) {
-    return asRecord$1(await this.call("group.remove_member", req), "GroupMemberRecord");
+    return asRecord$2(await this.call("group.remove_member", req), "GroupMemberRecord");
   }
   async groupUpdateMemberRole(req) {
-    return asRecord$1(await this.call("group.update_member_role", req), "GroupMemberRecord");
+    return asRecord$2(await this.call("group.update_member_role", req), "GroupMemberRecord");
   }
   async groupListMembers(req) {
     return asArrayOf(await this.call("group.list_members", req), "Vec<GroupMemberRecord>");
   }
   async groupCreateSubgroup(req) {
-    return asRecord$1(await this.call("group.create_subgroup", req), "GroupSubgroup");
+    return asRecord$2(await this.call("group.create_subgroup", req), "GroupSubgroup");
   }
   async groupUpdateSubgroup(req) {
-    return asRecord$1(await this.call("group.update_subgroup", req), "GroupSubgroup");
+    return asRecord$2(await this.call("group.update_subgroup", req), "GroupSubgroup");
   }
   async groupListSubgroups(req) {
     return asArrayOf(await this.call("group.list_subgroups", req), "Vec<GroupSubgroup>");
   }
   async groupUpdateCollectionPolicy(req) {
-    return asRecord$1(await this.call("group.update_collection_policy", req), "GroupDoc");
+    return asRecord$2(await this.call("group.update_collection_policy", req), "GroupDoc");
   }
   async groupUpdateAttributionPolicy(req) {
-    return asRecord$1(await this.call("group.update_attribution_policy", req), "GroupDoc");
+    return asRecord$2(await this.call("group.update_attribution_policy", req), "GroupDoc");
   }
   async groupExpandMembers(req) {
-    return asRecord$1(await this.call("group.expand_members", req), "GroupExpansionSnapshot");
+    return asRecord$2(await this.call("group.expand_members", req), "GroupExpansionSnapshot");
   }
   async groupListByMember(req) {
     return asArrayOf(await this.call("group.list_by_member", req), "Vec<GroupSummary>");
@@ -1953,7 +1953,7 @@ class MsgCenterClient {
     return asArrayOf(await this.call("group.list_parents", req), "Vec<GroupSummary>");
   }
   async groupCheckAccess(req) {
-    return asRecord$1(await this.call("group.check_access", req), "GroupAccessDecision");
+    return asRecord$2(await this.call("group.check_access", req), "GroupAccessDecision");
   }
 }
 function compact(input) {
@@ -1965,7 +1965,7 @@ function compact(input) {
   }
   return out;
 }
-function asString(value, what) {
+function asString$1(value, what) {
   if (typeof value !== "string") {
     throw new RPCError(`expected ${what} to be a string`);
   }
@@ -1977,19 +1977,19 @@ function asBoolean(value, what) {
   }
   return value;
 }
-function asNumber(value, what) {
+function asNumber$1(value, what) {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     throw new RPCError(`expected ${what} to be a number`);
   }
   return value;
 }
-function asArray(value, what) {
+function asArray$1(value, what) {
   if (!Array.isArray(value)) {
     throw new RPCError(`expected ${what} to be an array`);
   }
   return value;
 }
-function asRecord(value, what) {
+function asRecord$1(value, what) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new RPCError(`expected ${what} to be an object`);
   }
@@ -2006,14 +2006,14 @@ class RepoClient {
     const result = await this.rpcClient.call("store", {
       content_id: contentId
     });
-    return asString(result, "ObjId");
+    return asString$1(result, "ObjId");
   }
   async collect(contentMeta, referralProof) {
     const result = await this.rpcClient.call(
       "collect",
       compact({ content_meta: contentMeta, referral_proof: referralProof })
     );
-    return asString(result, "content_id");
+    return asString$1(result, "content_id");
   }
   async pin(contentId, downloadProof) {
     const result = await this.rpcClient.call("pin", { content_id: contentId, download_proof: downloadProof });
@@ -2035,16 +2035,16 @@ class RepoClient {
   }
   async addProof(proof) {
     const result = await this.rpcClient.call("add_proof", { proof });
-    return asString(result, "proof_id");
+    return asString$1(result, "proof_id");
   }
   async getProofs(contentId, filter) {
     const result = await this.rpcClient.call(
       "get_proofs",
       compact({ content_id: contentId, filter })
     );
-    const arr = asArray(result, "Vec<RepoProof>");
+    const arr = asArray$1(result, "Vec<RepoProof>");
     return arr.map((entry, idx) => {
-      const record = asRecord(entry, `RepoProof[${idx}]`);
+      const record = asRecord$1(entry, `RepoProof[${idx}]`);
       if (record.kind !== "Action" && record.kind !== "Collection") {
         throw new RPCError(`RepoProof[${idx}] has unknown kind: ${String(record.kind)}`);
       }
@@ -2055,26 +2055,26 @@ class RepoClient {
     const result = await this.rpcClient.call("resolve", {
       content_name: contentName
     });
-    const arr = asArray(result, "Vec<ObjId>");
-    return arr.map((entry, idx) => asString(entry, `ObjId[${idx}]`));
+    const arr = asArray$1(result, "Vec<ObjId>");
+    return arr.map((entry, idx) => asString$1(entry, `ObjId[${idx}]`));
   }
   async list(filter) {
     const result = await this.rpcClient.call(
       "list",
       compact({ filter })
     );
-    const arr = asArray(result, "Vec<RepoRecord>");
+    const arr = asArray$1(result, "Vec<RepoRecord>");
     return arr.map((entry, idx) => {
-      const record = asRecord(entry, `RepoRecord[${idx}]`);
+      const record = asRecord$1(entry, `RepoRecord[${idx}]`);
       return {
-        content_id: asString(record.content_id, `RepoRecord[${idx}].content_id`),
+        content_id: asString$1(record.content_id, `RepoRecord[${idx}].content_id`),
         content_name: typeof record.content_name === "string" ? record.content_name : void 0,
-        status: asString(record.status, `RepoRecord[${idx}].status`),
-        origin: asString(record.origin, `RepoRecord[${idx}].origin`),
+        status: asString$1(record.status, `RepoRecord[${idx}].status`),
+        origin: asString$1(record.origin, `RepoRecord[${idx}].origin`),
         meta: record.meta,
         owner_did: typeof record.owner_did === "string" ? record.owner_did : void 0,
         author: typeof record.author === "string" ? record.author : void 0,
-        access_policy: asString(record.access_policy, `RepoRecord[${idx}].access_policy`),
+        access_policy: asString$1(record.access_policy, `RepoRecord[${idx}].access_policy`),
         price: typeof record.price === "string" ? record.price : void 0,
         content_size: typeof record.content_size === "number" ? record.content_size : void 0,
         collected_at: typeof record.collected_at === "number" ? record.collected_at : void 0,
@@ -2085,22 +2085,22 @@ class RepoClient {
   }
   async stat() {
     const result = await this.rpcClient.call("stat", {});
-    const record = asRecord(result, "RepoStat");
+    const record = asRecord$1(result, "RepoStat");
     return {
-      total_objects: asNumber(record.total_objects, "RepoStat.total_objects"),
-      collected_objects: asNumber(record.collected_objects, "RepoStat.collected_objects"),
-      pinned_objects: asNumber(record.pinned_objects, "RepoStat.pinned_objects"),
-      local_objects: asNumber(record.local_objects, "RepoStat.local_objects"),
-      remote_objects: asNumber(record.remote_objects, "RepoStat.remote_objects"),
-      total_content_bytes: asNumber(record.total_content_bytes, "RepoStat.total_content_bytes"),
-      total_proofs: asNumber(record.total_proofs, "RepoStat.total_proofs")
+      total_objects: asNumber$1(record.total_objects, "RepoStat.total_objects"),
+      collected_objects: asNumber$1(record.collected_objects, "RepoStat.collected_objects"),
+      pinned_objects: asNumber$1(record.pinned_objects, "RepoStat.pinned_objects"),
+      local_objects: asNumber$1(record.local_objects, "RepoStat.local_objects"),
+      remote_objects: asNumber$1(record.remote_objects, "RepoStat.remote_objects"),
+      total_content_bytes: asNumber$1(record.total_content_bytes, "RepoStat.total_content_bytes"),
+      total_proofs: asNumber$1(record.total_proofs, "RepoStat.total_proofs")
     };
   }
   async serve(contentId, requestContext) {
     const result = await this.rpcClient.call("serve", { content_id: contentId, request_context: requestContext });
-    const record = asRecord(result, "RepoServeResult");
+    const record = asRecord$1(result, "RepoServeResult");
     return {
-      status: asString(record.status, "RepoServeResult.status"),
+      status: asString$1(record.status, "RepoServeResult.status"),
       content_ref: record.content_ref && typeof record.content_ref === "object" ? record.content_ref : void 0,
       download_proof: record.download_proof && typeof record.download_proof === "object" ? record.download_proof : void 0,
       reject_code: typeof record.reject_code === "string" ? record.reject_code : void 0,
@@ -25507,6 +25507,13 @@ const SN_AUTH_PATH = "/kapi/sn/auth";
 const SN_DEVICEINFO_PATH = "/kapi/sn/deviceinfo";
 const SN_BNS_PROXY_PATH = "/kapi/sn/bns-proxy";
 const LEGACY_SN_BNS_PATH = "/kapi/sn/bns";
+const SN_REGION_PROBE_CONFIG_PATH = "/kapi/sn/region-probe-config.json";
+const SN_REGION_PROBE_SCHEMA_VERSION = 1;
+const SN_REGION_PROBE_MAX_CONFIG_BYTES = 1024 * 1024;
+const SN_REGION_PROBE_MAX_REGIONS = 64;
+const SN_REGION_PROBE_MAX_URLS_PER_REGION = 16;
+const SN_REGION_PROBE_MAX_TOTAL_URLS = 256;
+const SN_REGION_PROBE_FETCH_TIMEOUT = 5e3;
 const METHOD_AUTH_CHECK_USERNAME = "auth.check_username";
 const METHOD_AUTH_CHECK_ACTIVE_CODE = "auth.check_active_code";
 const METHOD_AUTH_REGISTER = "auth.register";
@@ -25519,6 +25526,7 @@ const METHOD_USER_SET_SELF_CERT = "user.set_self_cert";
 const METHOD_USER_ADD_DNS_RECORD = "user.add_dns_record";
 const METHOD_USER_REMOVE_DNS_RECORD = "user.remove_dns_record";
 const METHOD_USER_LIST_DNS_RECORDS = "user.list_dns_records";
+const METHOD_ZONE_GET_INFO = "zone.get_info";
 const METHOD_DOMAIN_BIND = "domain.bind";
 const METHOD_DOMAIN_UNBIND = "domain.unbind";
 const METHOD_DEVICE_REGISTER = "device.register";
@@ -25637,6 +25645,447 @@ function normalizeSnUrl(snUrl, target) {
   }
   return `${trimmed}${path}`;
 }
+const SN_REGION_PROBE_KNOWN_SUFFIXES = [
+  SN_REGION_PROBE_CONFIG_PATH,
+  SN_BNS_PROXY_PATH,
+  SN_DEVICEINFO_PATH,
+  SN_AUTH_PATH,
+  LEGACY_SN_BNS_PATH,
+  SN_ROOT_PATH
+];
+const RFC3339_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
+const CONTROL_CHARACTER_RE = /[\u0000-\u001f\u007f-\u009f]/u;
+function regionProbeValidationError(message) {
+  throw new SnClientError("validation", message);
+}
+function byteLength(value) {
+  return new TextEncoder().encode(value).byteLength;
+}
+function asRecord(value, field) {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    regionProbeValidationError(`${field} must be a JSON object`);
+  }
+  return value;
+}
+function asString(value, field) {
+  if (typeof value !== "string") {
+    regionProbeValidationError(`${field} must be a string`);
+  }
+  return value;
+}
+function asNumber(value, field) {
+  if (typeof value !== "number") {
+    regionProbeValidationError(`${field} must be a number`);
+  }
+  return value;
+}
+function asInteger(value, field) {
+  const number2 = asNumber(value, field);
+  if (!Number.isSafeInteger(number2)) {
+    regionProbeValidationError(`${field} must be a safe integer`);
+  }
+  return number2;
+}
+function asInt32(value, field) {
+  const number2 = asInteger(value, field);
+  if (number2 < -2147483648 || number2 > 2147483647) {
+    regionProbeValidationError(`${field} must fit in a signed 32-bit integer`);
+  }
+  return number2;
+}
+function asArray(value, field) {
+  if (!Array.isArray(value)) {
+    regionProbeValidationError(`${field} must be an array`);
+  }
+  return value;
+}
+function decodeSnRegionProbeConfig(value) {
+  const input = asRecord(value, "region probe config");
+  const policyInput = asRecord(input.policy, "policy");
+  const policy = {
+    probe_method: asString(policyInput.probe_method, "policy.probe_method"),
+    samples_per_url: asInteger(policyInput.samples_per_url, "policy.samples_per_url"),
+    connect_timeout_ms: asInteger(policyInput.connect_timeout_ms, "policy.connect_timeout_ms"),
+    round_timeout_ms: asInteger(policyInput.round_timeout_ms, "policy.round_timeout_ms"),
+    max_concurrency: asInteger(policyInput.max_concurrency, "policy.max_concurrency"),
+    ip_family: asString(policyInput.ip_family, "policy.ip_family"),
+    minimum_valid_urls: asInteger(policyInput.minimum_valid_urls, "policy.minimum_valid_urls"),
+    confident_ratio: asNumber(policyInput.confident_ratio, "policy.confident_ratio"),
+    cache_ttl_sec: asInteger(policyInput.cache_ttl_sec, "policy.cache_ttl_sec")
+  };
+  const regions = asArray(input.regions, "regions").map((regionValue, regionIndex) => {
+    const region = asRecord(regionValue, `regions[${regionIndex}]`);
+    const probes = asArray(region.probe_urls, `regions[${regionIndex}].probe_urls`).map(
+      (probeValue, probeIndex) => {
+        const probe = asRecord(probeValue, `regions[${regionIndex}].probe_urls[${probeIndex}]`);
+        const decoded = {
+          id: asString(probe.id, `regions[${regionIndex}].probe_urls[${probeIndex}].id`),
+          url: asString(probe.url, `regions[${regionIndex}].probe_urls[${probeIndex}].url`)
+        };
+        if (probe.provider !== void 0 && probe.provider !== null) {
+          decoded.provider = asString(
+            probe.provider,
+            `regions[${regionIndex}].probe_urls[${probeIndex}].provider`
+          );
+        }
+        return decoded;
+      }
+    );
+    return {
+      region_id: asString(region.region_id, `regions[${regionIndex}].region_id`),
+      priority: region.priority === void 0 ? 0 : asInt32(region.priority, `regions[${regionIndex}].priority`),
+      probe_urls: probes
+    };
+  });
+  return {
+    schema_version: asInteger(input.schema_version, "schema_version"),
+    config_version: asString(input.config_version, "config_version"),
+    generated_at: asString(input.generated_at, "generated_at"),
+    expires_at: asString(input.expires_at, "expires_at"),
+    policy,
+    regions
+  };
+}
+function isCanonicalSnRegionId(value) {
+  return byteLength(value) <= 128 && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value);
+}
+function normalizeSnRegionIdHint(value) {
+  const trimmed = value.trim();
+  if (byteLength(trimmed) === 0 || byteLength(trimmed) > 128) {
+    return null;
+  }
+  let normalized = "";
+  let separatorPending = false;
+  for (const character of trimmed) {
+    if (/^[A-Za-z0-9]$/.test(character)) {
+      if (separatorPending && normalized.length > 0) {
+        normalized += "-";
+      }
+      separatorPending = false;
+      normalized += character.toLowerCase();
+    } else if (character === "-" || character === "_" || character === "/" || character === "." || /^\s$/u.test(character)) {
+      separatorPending = normalized.length > 0;
+    } else {
+      return null;
+    }
+  }
+  return normalized.length > 0 ? normalized : null;
+}
+function parseIpv4Address(value) {
+  const parts = value.split(".");
+  if (parts.length !== 4) {
+    return null;
+  }
+  const octets = parts.map((part) => Number(part));
+  if (octets.some((octet, index) => !/^\d+$/.test(parts[index]) || !Number.isInteger(octet) || octet < 0 || octet > 255)) {
+    return null;
+  }
+  return octets;
+}
+function isPublicSnProbeIp(value) {
+  const octets = parseIpv4Address(value);
+  if (!octets) {
+    return false;
+  }
+  const [a, b2, c] = octets;
+  return !(a === 0 || a === 10 || a === 127 || a === 100 && b2 >= 64 && b2 <= 127 || a === 169 && b2 === 254 || a === 172 && b2 >= 16 && b2 <= 31 || a === 192 && b2 === 0 && c === 0 || a === 192 && b2 === 0 && c === 2 || a === 192 && b2 === 88 && c === 99 || a === 192 && b2 === 168 || a === 198 && (b2 === 18 || b2 === 19) || a === 198 && b2 === 51 && c === 100 || a === 203 && b2 === 0 && c === 113 || a >= 224);
+}
+function parseRfc3339(value, field) {
+  const timestamp = Date.parse(value);
+  if (!RFC3339_RE.test(value) || !Number.isFinite(timestamp)) {
+    regionProbeValidationError(`${field} must be an RFC 3339 timestamp`);
+  }
+  return timestamp;
+}
+function validateSnRegionProbeConfig(config, now = Date.now()) {
+  if (config.schema_version !== SN_REGION_PROBE_SCHEMA_VERSION) {
+    regionProbeValidationError(
+      `unsupported schema_version ${config.schema_version}, expected ${SN_REGION_PROBE_SCHEMA_VERSION}`
+    );
+  }
+  if (config.config_version.length === 0 || byteLength(config.config_version) > 128 || config.config_version.trim() !== config.config_version || CONTROL_CHARACTER_RE.test(config.config_version)) {
+    regionProbeValidationError(
+      "config_version must be 1..=128 non-control bytes without surrounding whitespace"
+    );
+  }
+  const generatedAt = parseRfc3339(config.generated_at, "generated_at");
+  const expiresAt = parseRfc3339(config.expires_at, "expires_at");
+  const nowTimestamp = now instanceof Date ? now.getTime() : typeof now === "number" ? now : Date.parse(now);
+  if (!Number.isFinite(nowTimestamp)) {
+    regionProbeValidationError("validation time is invalid");
+  }
+  if (generatedAt >= expiresAt) {
+    regionProbeValidationError("expires_at must be later than generated_at");
+  }
+  if (expiresAt <= nowTimestamp) {
+    regionProbeValidationError("region probe config is expired");
+  }
+  const policy = config.policy;
+  if (policy.probe_method !== "tcp_connect") {
+    regionProbeValidationError(`unsupported probe_method ${JSON.stringify(policy.probe_method)}`);
+  }
+  if (policy.ip_family !== "ipv4") {
+    regionProbeValidationError(`unsupported ip_family ${JSON.stringify(policy.ip_family)}`);
+  }
+  if (policy.samples_per_url < 1 || policy.samples_per_url > 3) {
+    regionProbeValidationError("samples_per_url must be in 1..=3");
+  }
+  if (policy.connect_timeout_ms < 1 || policy.connect_timeout_ms > 1e4) {
+    regionProbeValidationError("connect_timeout_ms must be in 1..=10000");
+  }
+  if (policy.round_timeout_ms < 1 || policy.round_timeout_ms > 3e4) {
+    regionProbeValidationError("round_timeout_ms must be in 1..=30000");
+  }
+  if (policy.max_concurrency < 1 || policy.max_concurrency > 32) {
+    regionProbeValidationError("max_concurrency must be in 1..=32");
+  }
+  if (policy.minimum_valid_urls < 2 || policy.minimum_valid_urls > SN_REGION_PROBE_MAX_URLS_PER_REGION) {
+    regionProbeValidationError(`minimum_valid_urls must be in 2..=${SN_REGION_PROBE_MAX_URLS_PER_REGION}`);
+  }
+  if (!Number.isFinite(policy.confident_ratio) || policy.confident_ratio <= 0 || policy.confident_ratio > 1) {
+    regionProbeValidationError("confident_ratio must be finite and in (0, 1]");
+  }
+  if (policy.cache_ttl_sec < 1 || policy.cache_ttl_sec > 21600) {
+    regionProbeValidationError("cache_ttl_sec must be in 1..=21600");
+  }
+  if (config.regions.length < 1 || config.regions.length > SN_REGION_PROBE_MAX_REGIONS) {
+    regionProbeValidationError(`regions must contain 1..=${SN_REGION_PROBE_MAX_REGIONS} entries`);
+  }
+  const regionIds = /* @__PURE__ */ new Set();
+  const probeIds = /* @__PURE__ */ new Set();
+  const origins = /* @__PURE__ */ new Map();
+  let totalUrls = 0;
+  for (const region of config.regions) {
+    if (!isCanonicalSnRegionId(region.region_id)) {
+      regionProbeValidationError(`invalid canonical region_id ${JSON.stringify(region.region_id)}`);
+    }
+    if (regionIds.has(region.region_id)) {
+      regionProbeValidationError(`duplicate region_id ${JSON.stringify(region.region_id)}`);
+    }
+    regionIds.add(region.region_id);
+    if (region.probe_urls.length < 2 || region.probe_urls.length > SN_REGION_PROBE_MAX_URLS_PER_REGION) {
+      regionProbeValidationError(
+        `region ${region.region_id} must contain 2..=${SN_REGION_PROBE_MAX_URLS_PER_REGION} probe_urls`
+      );
+    }
+    if (policy.minimum_valid_urls > region.probe_urls.length) {
+      regionProbeValidationError(`region ${region.region_id} has fewer probe_urls than minimum_valid_urls`);
+    }
+    totalUrls += region.probe_urls.length;
+    if (totalUrls > SN_REGION_PROBE_MAX_TOTAL_URLS) {
+      regionProbeValidationError(`config contains more than ${SN_REGION_PROBE_MAX_TOTAL_URLS} probe URLs`);
+    }
+    for (const probe of region.probe_urls) {
+      if (probe.id.length === 0 || byteLength(probe.id) > 128 || probe.id.trim() !== probe.id || CONTROL_CHARACTER_RE.test(probe.id)) {
+        regionProbeValidationError(
+          `probe URL id in region ${region.region_id} must be 1..=128 non-control bytes without surrounding whitespace`
+        );
+      }
+      if (probeIds.has(probe.id)) {
+        regionProbeValidationError(`duplicate probe URL id ${JSON.stringify(probe.id)}`);
+      }
+      probeIds.add(probe.id);
+      let parsed;
+      try {
+        parsed = new URL(probe.url);
+      } catch (error) {
+        regionProbeValidationError(`invalid probe URL ${JSON.stringify(probe.url)}: ${String(error)}`);
+      }
+      if (parsed.protocol !== "https:") {
+        regionProbeValidationError(`probe URL ${JSON.stringify(probe.url)} must use https`);
+      }
+      if (!parsed.hostname || parsed.username || parsed.password) {
+        regionProbeValidationError(
+          `probe URL ${JSON.stringify(probe.url)} must be absolute and must not contain userinfo`
+        );
+      }
+      if (parsed.port !== "") {
+        regionProbeValidationError(`probe URL ${JSON.stringify(probe.url)} must use port 443`);
+      }
+      const literalIpv4 = parseIpv4Address(parsed.hostname);
+      const literalIpv6 = parsed.hostname.startsWith("[") && parsed.hostname.endsWith("]");
+      if (literalIpv4 && !isPublicSnProbeIp(parsed.hostname) || literalIpv6) {
+        regionProbeValidationError(
+          `probe URL ${JSON.stringify(probe.url)} has a non-public or unsupported literal IP`
+        );
+      }
+      const existingRegion = origins.get(parsed.origin);
+      if (existingRegion !== void 0) {
+        if (existingRegion !== region.region_id) {
+          regionProbeValidationError(
+            `probe origin ${parsed.origin} is assigned to both ${existingRegion} and ${region.region_id}`
+          );
+        }
+        regionProbeValidationError(`probe origin ${parsed.origin} is duplicated in region ${region.region_id}`);
+      }
+      origins.set(parsed.origin, region.region_id);
+    }
+  }
+}
+function parseSnRegionProbeConfig(json) {
+  let text;
+  try {
+    text = typeof json === "string" ? json : new TextDecoder("utf-8", { fatal: true }).decode(json);
+  } catch (error) {
+    regionProbeValidationError(`parse region probe config JSON failed: ${String(error)}`);
+  }
+  let value;
+  try {
+    value = JSON.parse(text);
+  } catch (error) {
+    regionProbeValidationError(`parse region probe config JSON failed: ${String(error)}`);
+  }
+  const config = decodeSnRegionProbeConfig(value);
+  validateSnRegionProbeConfig(config);
+  return config;
+}
+function normalizeSnRegionProbeUrl(snUrl) {
+  let url;
+  try {
+    url = new URL(snUrl.trim());
+  } catch (error) {
+    regionProbeValidationError(`invalid SN base URL for region probe config: ${String(error)}`);
+  }
+  if (url.protocol !== "https:") {
+    regionProbeValidationError("region probe config must be fetched from the target SN over HTTPS");
+  }
+  if (!url.hostname || url.username || url.password) {
+    regionProbeValidationError("SN region probe config URL must have a host and no userinfo");
+  }
+  url.search = "";
+  url.hash = "";
+  const trimmedPath = url.pathname.replace(/\/+$/, "");
+  let basePath = trimmedPath;
+  for (const suffix of SN_REGION_PROBE_KNOWN_SUFFIXES) {
+    if (trimmedPath.endsWith(suffix)) {
+      basePath = trimmedPath.slice(0, trimmedPath.length - suffix.length);
+      break;
+    }
+  }
+  url.pathname = `${basePath}${SN_REGION_PROBE_CONFIG_PATH}`;
+  return url.toString();
+}
+const defaultSnRegionProbeFetcher = async (input, init2) => {
+  if (typeof globalThis.fetch !== "function") {
+    throw new Error("fetch is not available in this runtime");
+  }
+  return globalThis.fetch(input, init2);
+};
+async function readBoundedRegionProbeBody(response, url) {
+  if (!response.body) {
+    const body2 = new Uint8Array(await response.arrayBuffer());
+    if (body2.byteLength > SN_REGION_PROBE_MAX_CONFIG_BYTES) {
+      throw new SnClientError(
+        "transport",
+        `SN region probe config from ${url} exceeds ${SN_REGION_PROBE_MAX_CONFIG_BYTES} bytes`
+      );
+    }
+    return body2;
+  }
+  const reader = response.body.getReader();
+  const chunks = [];
+  let totalBytes = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+    totalBytes += value.byteLength;
+    if (totalBytes > SN_REGION_PROBE_MAX_CONFIG_BYTES) {
+      await reader.cancel();
+      throw new SnClientError(
+        "transport",
+        `SN region probe config from ${url} exceeds ${SN_REGION_PROBE_MAX_CONFIG_BYTES} bytes`
+      );
+    }
+    chunks.push(value);
+  }
+  const body = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return body;
+}
+async function fetchSnRegionProbeConfig(snUrl, etag = null, options = {}) {
+  const url = normalizeSnRegionProbeUrl(snUrl);
+  const headers = { Accept: "application/json" };
+  if (etag !== null) {
+    if (/[\u0000-\u001f\u007f]/.test(etag)) {
+      regionProbeValidationError("invalid cached region probe ETag: header value contains control characters");
+    }
+    headers["If-None-Match"] = etag;
+  }
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), SN_REGION_PROBE_FETCH_TIMEOUT);
+  try {
+    let response;
+    try {
+      response = await (options.fetcher ?? defaultSnRegionProbeFetcher)(url, {
+        method: "GET",
+        headers,
+        redirect: "manual",
+        credentials: "omit",
+        signal: controller.signal
+      });
+    } catch (error) {
+      throw new SnClientError("transport", `fetch SN region probe config from ${url} failed: ${String(error)}`);
+    }
+    if (response.status === 304) {
+      return { kind: "not_modified" };
+    }
+    if (response.status === 404) {
+      return { kind: "not_configured" };
+    }
+    if (response.status !== 200) {
+      throw new SnClientError(
+        "transport",
+        `fetch SN region probe config from ${url} returned HTTP ${response.status}`
+      );
+    }
+    const contentType = response.headers.get("content-type") ?? "";
+    if (contentType.split(";")[0].trim().toLowerCase() !== "application/json") {
+      throw new SnClientError(
+        "transport",
+        `SN region probe config from ${url} has unsupported Content-Type ${JSON.stringify(contentType)}`
+      );
+    }
+    const contentLength = response.headers.get("content-length");
+    if (contentLength !== null && /^\d+$/.test(contentLength) && Number(contentLength) > SN_REGION_PROBE_MAX_CONFIG_BYTES) {
+      throw new SnClientError(
+        "transport",
+        `SN region probe config from ${url} exceeds ${SN_REGION_PROBE_MAX_CONFIG_BYTES} bytes`
+      );
+    }
+    let body;
+    try {
+      body = await readBoundedRegionProbeBody(response, url);
+    } catch (error) {
+      if (error instanceof SnClientError) {
+        throw error;
+      }
+      throw new SnClientError("transport", `read SN region probe config from ${url} failed: ${String(error)}`);
+    }
+    let config;
+    try {
+      config = parseSnRegionProbeConfig(body);
+    } catch (error) {
+      const detail = error instanceof SnClientError ? error.detail : String(error);
+      throw new SnClientError("validation", `invalid SN region probe config from ${url}: ${detail}`);
+    }
+    return {
+      kind: "modified",
+      document: {
+        config,
+        etag: response.headers.get("etag"),
+        cache_control: response.headers.get("cache-control")
+      }
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
 const SN_DEVICE_TOKEN_AUD = "sn-device";
 const SN_DEVICE_TOKEN_DEFAULT_TTL_SECS = 600;
 async function generateSnDeviceToken(deviceKeyDid, deviceScopedDid, devicePrivateKeyPem, ttlSecs = SN_DEVICE_TOKEN_DEFAULT_TTL_SECS) {
@@ -25705,6 +26154,9 @@ class SnClient {
     if (req.request_id !== void 0) {
       params.request_id = req.request_id;
     }
+    if (req.region !== void 0) {
+      params.region = req.region;
+    }
     if (req.asset_owner !== void 0) {
       params.asset_owner = req.asset_owner;
     }
@@ -25716,8 +26168,15 @@ class SnClient {
     }
     return this.call(this.authRpc, METHOD_AUTH_REGISTER, params);
   }
-  async login(name, pwdHash) {
-    return this.call(this.authRpc, METHOD_AUTH_LOGIN, { name, pwd_hash: pwdHash });
+  async login(req) {
+    const params = {
+      name: req.name,
+      pwd_hash: req.pwd_hash
+    };
+    if (req.active_code !== void 0) {
+      params.active_code = req.active_code;
+    }
+    return this.call(this.authRpc, METHOD_AUTH_LOGIN, params);
   }
   async refresh(refreshToken) {
     return this.call(this.authRpc, METHOD_AUTH_REFRESH, { refresh_token: refreshToken });
@@ -25742,36 +26201,22 @@ class SnClient {
       device_did: deviceDid ?? null
     });
   }
-  // Local (compatibility-store) DNS records only — no BNS dns_txt publish, no
-  // on-chain TX, no gas; suitable for short-lived ACME challenge TXT records.
+  // AuthDB RRset records only — no BNS dns_txt publish, on-chain TX, or gas.
+  // This is the supported bridge namespace for short-lived ACME challenges;
+  // it is not a legacy compat-store fallback.
   async addDnsRecord(req) {
-    const params = {
-      device_did: req.device_did,
-      domain: req.domain,
-      record_type: req.record_type,
-      record: req.record
-    };
-    if (req.ttl !== void 0) {
-      params.ttl = req.ttl;
-    }
-    if (req.has_cert !== void 0) {
-      params.has_cert = req.has_cert;
-    }
-    return this.call(this.authRpc, METHOD_USER_ADD_DNS_RECORD, params);
+    return this.call(this.authRpc, METHOD_USER_ADD_DNS_RECORD, dnsRecordParams(req));
   }
   async removeDnsRecord(req) {
-    const params = {
-      device_did: req.device_did,
-      domain: req.domain,
-      record_type: req.record_type
-    };
-    if (req.has_cert !== void 0) {
-      params.has_cert = req.has_cert;
-    }
-    return this.call(this.authRpc, METHOD_USER_REMOVE_DNS_RECORD, params);
+    return this.call(this.authRpc, METHOD_USER_REMOVE_DNS_RECORD, dnsRecordParams(req));
   }
   async listDnsRecords() {
     return this.call(this.authRpc, METHOD_USER_LIST_DNS_RECORDS, {});
+  }
+  // Returns the caller's SN-local zone runtime state. The zone is derived
+  // from the account/device token; the request deliberately takes no params.
+  async getZoneInfo() {
+    return this.call(this.authRpc, METHOD_ZONE_GET_INFO, {});
   }
   // ----- domain.* (SN access token required) -----
   // One-stop user_domain bind: the SN resolves the expected PKX from the
@@ -25896,6 +26341,35 @@ function sanitizeInitialDocuments(docs) {
 function sanitizeDnsTxtRecord(record) {
   return record.ttl !== void 0 ? { ttl: record.ttl, value: record.value } : { value: record.value };
 }
+function dnsRecordParams(req) {
+  const params = {
+    device_did: req.device_did,
+    domain: req.domain,
+    record_type: req.record_type
+  };
+  if (req.record !== void 0) {
+    params.record = req.record;
+  }
+  if (req.ttl !== void 0) {
+    params.ttl = req.ttl;
+  }
+  if (req.has_cert !== void 0) {
+    params.has_cert = req.has_cert;
+  }
+  return params;
+}
+function sanitizeDeviceEndpointUpdate(endpoint) {
+  return {
+    endpoint_id: endpoint.endpoint_id,
+    protocol: endpoint.protocol,
+    host: endpoint.host,
+    port: endpoint.port,
+    scope: endpoint.scope,
+    priority: endpoint.priority,
+    source: endpoint.source,
+    expires_at: endpoint.expires_at
+  };
+}
 function deviceReportParams(req) {
   const params = {
     device_name: req.device_name,
@@ -25905,8 +26379,8 @@ function deviceReportParams(req) {
   if (req.device_did !== void 0) {
     params.device_did = req.device_did;
   }
-  if (req.endpoints !== void 0) {
-    params.endpoints = req.endpoints;
+  if (req.endpoints !== void 0 && req.endpoints.length > 0) {
+    params.endpoints = req.endpoints.map(sanitizeDeviceEndpointUpdate);
   }
   if (req.report_seq !== void 0) {
     params.report_seq = req.report_seq;
@@ -25941,17 +26415,32 @@ const sn_client = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.definePro
   METHOD_USER_LIST_DNS_RECORDS,
   METHOD_USER_REMOVE_DNS_RECORD,
   METHOD_USER_SET_SELF_CERT,
+  METHOD_ZONE_GET_INFO,
   SN_AUTH_PATH,
   SN_BNS_PROXY_PATH,
   SN_DEVICEINFO_PATH,
   SN_DEVICE_TOKEN_AUD,
   SN_DEVICE_TOKEN_DEFAULT_TTL_SECS,
   SN_ERROR_CODES,
+  SN_REGION_PROBE_CONFIG_PATH,
+  SN_REGION_PROBE_FETCH_TIMEOUT,
+  SN_REGION_PROBE_MAX_CONFIG_BYTES,
+  SN_REGION_PROBE_MAX_REGIONS,
+  SN_REGION_PROBE_MAX_TOTAL_URLS,
+  SN_REGION_PROBE_MAX_URLS_PER_REGION,
+  SN_REGION_PROBE_SCHEMA_VERSION,
   SN_ROOT_PATH,
   SnClient,
   SnClientError,
+  fetchSnRegionProbeConfig,
   generateSnDeviceToken,
-  normalizeSnUrl
+  isCanonicalSnRegionId,
+  isPublicSnProbeIp,
+  normalizeSnRegionIdHint,
+  normalizeSnRegionProbeUrl,
+  normalizeSnUrl,
+  parseSnRegionProbeConfig,
+  validateSnRegionProbeConfig
 }, Symbol.toStringTag, { value: "Module" }));
 const WORKER_SOURCE = (
   /* js */
@@ -27617,4 +28106,4 @@ export {
   WorkflowHumanActionKind as y,
   WorkflowScheduledTaskStatus as z
 };
-//# sourceMappingURL=ndm_proxy-f82f58f6.mjs.map
+//# sourceMappingURL=ndm_proxy-b3565c32.mjs.map

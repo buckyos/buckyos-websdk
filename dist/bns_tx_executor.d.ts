@@ -1,7 +1,7 @@
 import { BnsClient, BnsSubmitRawTxResp } from './bns_client';
 import { BnsEvmProvider, BnsEvmTxConfig, BnsTxOperation } from './bns_evm_tx';
 import { RuntimeType } from './runtime';
-import { SnBnsPublishDnsTxtReq, SnBnsPublishDocumentReq, SnBnsProxyTxResp, SnClient } from './sn_client';
+import { SnBnsPublishDnsTxtReq, SnBnsPublishDocumentReq, SnBnsProxyResp, SnClient } from './sn_client';
 export type BnsTxRoute = 'sn-proxy' | 'wallet' | 'local';
 export type BnsLocalPrivateKeyProvider = string | (() => Promise<string | null> | string | null);
 export interface BnsWalletUser {
@@ -24,7 +24,7 @@ export interface BnsTxExecutorOptions {
 export interface BnsSnProxyExecutionResult {
     route: 'sn-proxy';
     operation: BnsTxOperation['type'];
-    response: SnBnsProxyTxResp;
+    response: SnBnsProxyResp;
 }
 export interface BnsLocalExecutionResult {
     route: 'local';

@@ -21,7 +21,7 @@ import { RuntimeType } from './runtime'
 import {
   SnBnsPublishDnsTxtReq,
   SnBnsPublishDocumentReq,
-  SnBnsProxyTxResp,
+  SnBnsProxyResp,
   SnClient,
 } from './sn_client'
 
@@ -58,7 +58,7 @@ export interface BnsTxExecutorOptions {
 export interface BnsSnProxyExecutionResult {
   route: 'sn-proxy'
   operation: BnsTxOperation['type']
-  response: SnBnsProxyTxResp
+  response: SnBnsProxyResp
 }
 
 export interface BnsLocalExecutionResult {

@@ -4,6 +4,13 @@ export declare const SN_AUTH_PATH = "/kapi/sn/auth";
 export declare const SN_DEVICEINFO_PATH = "/kapi/sn/deviceinfo";
 export declare const SN_BNS_PROXY_PATH = "/kapi/sn/bns-proxy";
 export declare const LEGACY_SN_BNS_PATH = "/kapi/sn/bns";
+export declare const SN_REGION_PROBE_CONFIG_PATH = "/kapi/sn/region-probe-config.json";
+export declare const SN_REGION_PROBE_SCHEMA_VERSION = 1;
+export declare const SN_REGION_PROBE_MAX_CONFIG_BYTES: number;
+export declare const SN_REGION_PROBE_MAX_REGIONS = 64;
+export declare const SN_REGION_PROBE_MAX_URLS_PER_REGION = 16;
+export declare const SN_REGION_PROBE_MAX_TOTAL_URLS = 256;
+export declare const SN_REGION_PROBE_FETCH_TIMEOUT = 5000;
 export declare const METHOD_AUTH_CHECK_USERNAME = "auth.check_username";
 export declare const METHOD_AUTH_CHECK_ACTIVE_CODE = "auth.check_active_code";
 export declare const METHOD_AUTH_REGISTER = "auth.register";
@@ -16,6 +23,7 @@ export declare const METHOD_USER_SET_SELF_CERT = "user.set_self_cert";
 export declare const METHOD_USER_ADD_DNS_RECORD = "user.add_dns_record";
 export declare const METHOD_USER_REMOVE_DNS_RECORD = "user.remove_dns_record";
 export declare const METHOD_USER_LIST_DNS_RECORDS = "user.list_dns_records";
+export declare const METHOD_ZONE_GET_INFO = "zone.get_info";
 export declare const METHOD_DOMAIN_BIND = "domain.bind";
 export declare const METHOD_DOMAIN_UNBIND = "domain.unbind";
 export declare const METHOD_DEVICE_REGISTER = "device.register";
@@ -83,12 +91,68 @@ export declare class SnClientError extends Error {
 }
 export type SnRpcTarget = 'auth' | 'deviceinfo' | 'bns-proxy';
 export declare function normalizeSnUrl(snUrl: string, target: SnRpcTarget): string;
+export type SnRegionProbeMethod = 'tcp_connect';
+export type SnRegionProbeIpFamily = 'ipv4';
+export interface SnRegionProbePolicy {
+    probe_method: SnRegionProbeMethod;
+    samples_per_url: number;
+    connect_timeout_ms: number;
+    round_timeout_ms: number;
+    max_concurrency: number;
+    ip_family: SnRegionProbeIpFamily;
+    minimum_valid_urls: number;
+    confident_ratio: number;
+    cache_ttl_sec: number;
+}
+export interface SnRegionProbeUrl {
+    id: string;
+    url: string;
+    provider?: string;
+}
+export interface SnRegionProbeRegion {
+    region_id: string;
+    priority: number;
+    probe_urls: SnRegionProbeUrl[];
+}
+export interface SnRegionProbeConfig {
+    schema_version: number;
+    config_version: string;
+    generated_at: string;
+    expires_at: string;
+    policy: SnRegionProbePolicy;
+    regions: SnRegionProbeRegion[];
+}
+export interface SnRegionProbeConfigDocument {
+    config: SnRegionProbeConfig;
+    etag: string | null;
+    cache_control: string | null;
+}
+export type SnRegionProbeConfigFetch = {
+    kind: 'modified';
+    document: SnRegionProbeConfigDocument;
+} | {
+    kind: 'not_modified';
+} | {
+    kind: 'not_configured';
+};
+type SnRegionProbeFetcher = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+export interface SnRegionProbeFetchOptions {
+    fetcher?: SnRegionProbeFetcher;
+}
+export declare function isCanonicalSnRegionId(value: string): boolean;
+export declare function normalizeSnRegionIdHint(value: string): string | null;
+export declare function isPublicSnProbeIp(value: string): boolean;
+export declare function validateSnRegionProbeConfig(config: SnRegionProbeConfig, now?: Date | number | string): void;
+export declare function parseSnRegionProbeConfig(json: string | Uint8Array): SnRegionProbeConfig;
+export declare function normalizeSnRegionProbeUrl(snUrl: string): string;
+export declare function fetchSnRegionProbeConfig(snUrl: string, etag?: string | null, options?: SnRegionProbeFetchOptions): Promise<SnRegionProbeConfigFetch>;
 export interface SnCheckUsernameResp {
     valid: boolean;
-    reason: string;
+    reason: SnCheckUsernameReason;
     message: string;
     normalized_name: string;
 }
+export type SnCheckUsernameReason = 'ok' | 'invalid_username' | 'already_exists';
 export interface SnCheckActiveCodeResp {
     valid: boolean;
 }
@@ -106,10 +170,16 @@ export interface SnAuthRegisterReq {
     email: string;
     pwd_hash: string;
     active_code: string;
+    region?: string;
     request_id?: string;
     asset_owner?: string;
     owner_config?: Record<string, unknown>;
     initial_documents?: SnBnsProxyInitialDocuments;
+}
+export interface SnAuthLoginReq {
+    name: string;
+    pwd_hash: string;
+    active_code?: string;
 }
 export interface SnAuthSessionResp {
     code: number;
@@ -118,11 +188,13 @@ export interface SnAuthSessionResp {
     need_bind_owner_key: boolean;
     bns?: SnBnsProxyTxOutcome;
 }
+export type SnAuthRegisterResp = SnAuthSessionResp;
+export type SnAuthLoginResp = SnAuthSessionResp;
 export interface SnAuthRefreshResp {
     code: number;
     access_token: string;
 }
-export interface SnCodeResp {
+export interface SnSuccessResp {
     code: number;
 }
 export interface SnUserProfileResp {
@@ -131,38 +203,52 @@ export interface SnUserProfileResp {
     owner_key_bound: boolean;
     user_domain: string | null;
     self_cert: boolean;
-    sn_ips: unknown;
+    sn_ips: string[] | null;
     zone_config: string;
 }
-export interface SnAddDnsRecordReq {
+export interface SnDnsRecordReq {
     device_did: string;
     domain: string;
     record_type: string;
-    record: string;
+    record?: string;
     ttl?: number;
     has_cert?: boolean;
 }
 export interface SnAddDnsRecordResp {
     code: number;
     device_name: string;
+    revision: number;
+    changed: boolean;
 }
-export interface SnRemoveDnsRecordReq {
-    device_did: string;
-    domain: string;
-    record_type: string;
-    has_cert?: boolean;
-}
-export interface SnDnsRecordItem {
-    domain: string;
-    record_type: string;
-    record: string;
+export type SnDnsRecordType = 'A' | 'AAAA' | 'TXT';
+export interface SnDnsRrset {
+    name: string;
+    record_type: SnDnsRecordType;
     ttl: number;
+    values: string[];
+    revision: number;
 }
-export interface SnListDnsRecordsResp {
+export interface SnRemoveDnsRecordResp {
     code: number;
-    items: SnDnsRecordItem[];
+    revision: number;
+    changed: boolean;
 }
-export interface SnDomainBindResp {
+export interface SnDnsRecordListResp {
+    code: number;
+    items: SnDnsRrset[];
+}
+export interface SnZoneInfoResp {
+    code: number;
+    zone: string;
+    bns_name: string;
+    relay_sn: string | null;
+    self_cert: boolean;
+    cert_checked_at: number | null;
+    cert_expires_at: number | null;
+    source_version: string | null;
+    updated_at: number;
+}
+export interface SnBindDomainResp {
     code: number;
     domain: string;
     pkx: string;
@@ -181,11 +267,11 @@ export interface SnDeviceEndpointUpdate {
     endpoint_id: string;
     protocol: SnEndpointProtocol;
     host: string;
-    port?: number | null;
+    port: number | null;
     scope: SnEndpointScope;
     priority: number;
     source: SnEndpointSource;
-    expires_at?: number | null;
+    expires_at: number | null;
 }
 export interface SnDeviceEndpoint {
     did: string;
@@ -217,14 +303,14 @@ export interface SnDeviceStateView {
     last_seen_at: number | null;
     expires_at: number | null;
 }
-export type SnDeviceStateResp = SnDeviceStateView & {
+export type SnDeviceOnlineResp = SnDeviceStateView & {
     code: number;
 };
 export interface SnDeviceOnlineReportReq {
     device_name: string;
     device_did?: string;
     device_ip: string;
-    device_info: Record<string, unknown> | string;
+    device_info: unknown;
     endpoints?: SnDeviceEndpointUpdate[];
     report_seq?: number;
     ttl?: number;
@@ -242,12 +328,13 @@ export interface SnDeviceListResp {
     code: number;
     items: SnDeviceStateView[];
 }
-export type SnOodConnectionState = 'active' | 'suspended' | 'disabled' | 'banned';
+export type SnOodState = 'active' | 'suspended' | 'disabled' | 'banned';
 export interface SnOodInfo {
     did_hostname: string;
+    canonical_device_id?: string;
     owner_id: string;
     self_cert: boolean;
-    state: SnOodConnectionState;
+    state: SnOodState;
 }
 export type SnBnsDnsTxtMode = 'add' | 'remove' | 'replace';
 export interface SnBnsPublishDnsTxtRecord {
@@ -281,10 +368,11 @@ export interface SnBnsProxyTxOutcome {
     nonce?: number;
     tx_hash?: string;
     raw_tx?: string;
-    status: string;
+    status: SnBnsProxyStatus;
     reused: boolean;
 }
-export type SnBnsProxyTxResp = SnBnsProxyTxOutcome & {
+export type SnBnsProxyStatus = 'submitted' | 'confirmed';
+export type SnBnsProxyResp = SnBnsProxyTxOutcome & {
     code: number;
 };
 export declare const SN_DEVICE_TOKEN_AUD = "sn-device";
@@ -301,25 +389,27 @@ export declare class SnClient {
     private call;
     checkUsername(name: string): Promise<SnCheckUsernameResp>;
     checkActiveCode(activeCode: string): Promise<SnCheckActiveCodeResp>;
-    register(req: SnAuthRegisterReq): Promise<SnAuthSessionResp>;
-    login(name: string, pwdHash: string): Promise<SnAuthSessionResp>;
+    register(req: SnAuthRegisterReq): Promise<SnAuthRegisterResp>;
+    login(req: SnAuthLoginReq): Promise<SnAuthLoginResp>;
     refresh(refreshToken: string): Promise<SnAuthRefreshResp>;
-    logout(refreshToken?: string): Promise<SnCodeResp>;
+    logout(refreshToken?: string): Promise<SnSuccessResp>;
     me(): Promise<SnUserProfileResp>;
     getProfile(): Promise<SnUserProfileResp>;
-    setSelfCert(selfCert: boolean, deviceDid?: string): Promise<SnCodeResp>;
-    addDnsRecord(req: SnAddDnsRecordReq): Promise<SnAddDnsRecordResp>;
-    removeDnsRecord(req: SnRemoveDnsRecordReq): Promise<SnCodeResp>;
-    listDnsRecords(): Promise<SnListDnsRecordsResp>;
-    bindDomain(domain: string): Promise<SnDomainBindResp>;
-    unbindDomain(domain: string): Promise<SnCodeResp>;
-    registerDeviceOnline(req: SnDeviceOnlineReportReq): Promise<SnDeviceStateResp>;
-    updateDeviceOnline(req: SnDeviceOnlineReportReq): Promise<SnDeviceStateResp>;
-    getDeviceOnline(query: SnDeviceGetReq): Promise<SnDeviceStateResp>;
+    setSelfCert(selfCert: boolean, deviceDid?: string): Promise<SnSuccessResp>;
+    addDnsRecord(req: SnDnsRecordReq): Promise<SnAddDnsRecordResp>;
+    removeDnsRecord(req: SnDnsRecordReq): Promise<SnRemoveDnsRecordResp>;
+    listDnsRecords(): Promise<SnDnsRecordListResp>;
+    getZoneInfo(): Promise<SnZoneInfoResp>;
+    bindDomain(domain: string): Promise<SnBindDomainResp>;
+    unbindDomain(domain: string): Promise<SnSuccessResp>;
+    registerDeviceOnline(req: SnDeviceOnlineReportReq): Promise<SnDeviceOnlineResp>;
+    updateDeviceOnline(req: SnDeviceOnlineReportReq): Promise<SnDeviceOnlineResp>;
+    getDeviceOnline(query: SnDeviceGetReq): Promise<SnDeviceOnlineResp>;
     listDevicesOnline(options?: SnDeviceListReq): Promise<SnDeviceListResp>;
     resolveOodByDid(sourceDeviceId: string): Promise<SnOodInfo>;
     resolveOodByHostname(destHost: string): Promise<SnOodInfo>;
-    publishDnsTxt(req: SnBnsPublishDnsTxtReq): Promise<SnBnsProxyTxResp>;
-    publishDocument(req: SnBnsPublishDocumentReq): Promise<SnBnsProxyTxResp>;
+    publishDnsTxt(req: SnBnsPublishDnsTxtReq): Promise<SnBnsProxyResp>;
+    publishDocument(req: SnBnsPublishDocumentReq): Promise<SnBnsProxyResp>;
 }
+export {};
 //# sourceMappingURL=sn_client.d.ts.map
