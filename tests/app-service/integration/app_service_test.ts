@@ -176,7 +176,7 @@ describeAppService('AppService runtime integration (via systest slot)', () => {
           'SystemConfigClient.get(boot/config)',
           'SystemConfigClient writes and reads back a namespaced key',
           'getAppSetting/setAppSetting round trip on namespaced key',
-          'TaskManagerClient creates/updates/queries/deletes a namespaced task',
+          'TaskManagerClient creates/runs/queries/archives a namespaced task',
         ]),
       )
     })

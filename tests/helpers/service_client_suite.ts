@@ -16,7 +16,7 @@
 
 import type { SystemConfigClient } from '../../src/system_config_client'
 import type { TaskManagerClient } from '../../src/task_mgr_client'
-import { TaskStatus } from '../../src/task_mgr_client'
+import { RAW_TASK_SCHEMA_ID, TaskOutcome, TaskPhase } from '../../src/task_mgr_client'
 
 /**
  * Structural shape of the `buckyos` module that this suite needs. Using a
@@ -36,7 +36,7 @@ export interface SharedSuiteContext {
   getSdk: () => BuckyosLikeModule
   /** App id used to namespace test data. */
   getAppId: () => string
-  /** Current logged-in user id; task manager create requires this. */
+  /** Current logged-in user id; used to namespace integration-test data. */
   getUserId: () => string
   /**
    * Skip the task manager case when the runtime/environment cannot
@@ -97,7 +97,7 @@ export function defineSharedServiceClientSuite(context: SharedSuiteContext): voi
     }
 
     if (!context.skipTaskManager) {
-      it('TaskManagerClient creates/updates/queries/deletes a namespaced task', async () => {
+      it('TaskManagerClient creates/runs/queries/archives a namespaced task', async () => {
         const sdk = context.getSdk()
         const client = sdk.getTaskManagerClient()
         const userId = context.getUserId()
@@ -105,23 +105,31 @@ export function defineSharedServiceClientSuite(context: SharedSuiteContext): voi
         const name = `test-websdk-${Date.now()}`
         const created = await client.createTask({
           name,
-          taskType: 'test',
-          data: { createdBy: 'websdk' },
-          userId,
-          appId,
+          schema_id: RAW_TASK_SCHEMA_ID,
+          input: { createdBy: 'websdk', userId },
+          executor: { kind: 'SelfApp' },
+          idempotency_key: `${appId}:${name}`,
         })
 
         try {
-          await client.updateTaskProgress(created.id, 1, 2)
-          await client.updateTaskStatus(created.id, TaskStatus.Completed)
+          await client.runnerStart(created.task_id)
+          await client.runnerProgress(created.task_id, { completed: 1, total: 2 })
+          await client.runnerComplete(created.task_id, { ok: true })
 
-          const fetched = await client.getTask(created.id)
-          const filtered = await client.listTasks({ filter: { root_id: String(created.id) } })
+          const fetched = await client.getTask(created.task_id)
+          const page = await client.listTasks({ root_id: created.root_id })
 
-          expect(fetched.status).toBe(TaskStatus.Completed)
-          expect(filtered.map((task) => task.id)).toContain(created.id)
+          expect(fetched.phase).toBe(TaskPhase.Terminal)
+          expect(fetched.outcome).toBe(TaskOutcome.Succeeded)
+          expect(page.tasks.map((task) => task.task_id)).toContain(created.task_id)
         } finally {
-          await client.deleteTask(created.id).catch(() => undefined)
+          const fresh = await client.getTask(created.task_id).catch(() => null)
+          if (fresh?.phase === TaskPhase.Terminal && fresh.archived_at === undefined) {
+            await client.archiveTask({
+              task_id: fresh.task_id,
+              expected_revision: fresh.revision,
+            }).catch(() => undefined)
+          }
         }
       })
     }

@@ -369,68 +369,208 @@ class VerifyHubClient {
     return response;
   }
 }
-function parseTaskStatus(status) {
-  switch (status) {
-    case "Pending":
-      return "Pending";
-    case "Running":
-      return "Running";
-    case "Paused":
-      return "Paused";
-    case "Completed":
-      return "Completed";
-    case "Failed":
-      return "Failed";
-    case "Canceled":
-      return "Canceled";
-    case "WaitingForApproval":
-      return "WaitingForApproval";
-    default:
-      throw new RPCError(`Invalid task status: ${status}`);
+const TASK_MANAGER_SERVICE_UNIQUE_ID = "task-manager";
+const TASK_MANAGER_SERVICE_NAME = "task-manager";
+const TASK_MANAGER_SERVICE_PORT = 3380;
+const TASK_POLICY_PRESET_COLLABORATIVE_TREE_V1 = "collaborative-tree/v1";
+const RAW_TASK_SCHEMA_ID = "raw/v1";
+const HUMAN_APPROVAL_SCHEMA_ID = "human.approval/v1";
+const DOWNLOAD_TASK_SCHEMA_ID = "download/v1";
+const SCHEDULER_DISPATCH_THUNK_TASK_SCHEMA_ID = "scheduler.dispatch_thunk/v1";
+const WORKFLOW_RUN_TREE_TASK_SCHEMA_ID = "workflow.run_tree/v1";
+const WORKFLOW_STEP_TASK_SCHEMA_ID = "workflow.step/v1";
+const WORKFLOW_MAP_SHARD_TASK_SCHEMA_ID = "workflow.map_shard/v1";
+const WORKFLOW_THUNK_TASK_SCHEMA_ID = "workflow.thunk/v1";
+const WORKFLOW_SCHEDULE_TASK_SCHEMA_ID = "workflow.schedule/v1";
+const WORKFLOW_SEND_MESSAGE_TASK_SCHEMA_ID = "workflow.send_message/v1";
+const WORKFLOW_EXECUTE_RPC_TASK_SCHEMA_ID = "workflow.execute_rpc/v1";
+const WORKFLOW_RUN_TARGET_TASK_SCHEMA_ID = "workflow.run/v1";
+const AGENT_DELEGATE_TASK_SCHEMA_ID = "agent.delegate/v1";
+const HUMAN_INPUT_TASK_SCHEMA_ID = "human.input/v1";
+const OPENDAN_ASYNC_TOOL_TASK_SCHEMA_ID = "opendan.async_tool/v1";
+const OPENDAN_COMMAND_TASK_SCHEMA_ID = "opendan.command/v1";
+const TOOL_EXEC_BASH_TASK_SCHEMA_ID = "tool.exec_bash/v1";
+const AICC_COMPUTE_TASK_SCHEMA_ID = "aicc.compute/v1";
+const APP_INSTALL_TASK_SCHEMA_ID = "app.install/v1";
+const APP_UNINSTALL_TASK_SCHEMA_ID = "app.uninstall/v1";
+const APP_START_TASK_SCHEMA_ID = "app.start/v1";
+const APP_UPDATE_TASK_SCHEMA_ID = "app.update/v1";
+const TASK_ERR_NOT_FOUND = "task_not_found";
+const TASK_ERR_PERMISSION_DENIED = "permission_denied";
+const TASK_ERR_REVISION_CONFLICT = "revision_conflict";
+const TASK_ERR_STALE_RUNNER_EPOCH = "stale_runner_epoch";
+const TASK_ERR_INVALID_PHASE = "invalid_task_phase";
+const TASK_ERR_CONTROL_NOT_AVAILABLE = "control_not_available";
+const TASK_ERR_CONTROL_ALREADY_PENDING = "control_already_pending";
+const TASK_ERR_ALREADY_COMPLETED = "task_already_completed";
+const TASK_ERR_INPUT_SCHEMA_MISMATCH = "input_schema_mismatch";
+const TASK_ERR_RESULT_SCHEMA_MISMATCH = "result_schema_mismatch";
+const TASK_ERR_IDEMPOTENCY_CONFLICT = "idempotency_conflict";
+const TASK_ERR_SCHEMA_NOT_FOUND = "task_schema_not_found";
+const TASK_MGR_ERROR_CODES = [
+  TASK_ERR_NOT_FOUND,
+  TASK_ERR_PERMISSION_DENIED,
+  TASK_ERR_REVISION_CONFLICT,
+  TASK_ERR_STALE_RUNNER_EPOCH,
+  TASK_ERR_INVALID_PHASE,
+  TASK_ERR_CONTROL_NOT_AVAILABLE,
+  TASK_ERR_CONTROL_ALREADY_PENDING,
+  TASK_ERR_ALREADY_COMPLETED,
+  TASK_ERR_INPUT_SCHEMA_MISMATCH,
+  TASK_ERR_RESULT_SCHEMA_MISMATCH,
+  TASK_ERR_IDEMPOTENCY_CONFLICT,
+  TASK_ERR_SCHEMA_NOT_FOUND
+];
+function taskMgrTaskEventPath(taskId) {
+  return `/task_mgr/${taskId}`;
+}
+function taskMgrTreeEventPath(rootId) {
+  return `/task_mgr/tree/${rootId}`;
+}
+function taskMgrErrorCode(error) {
+  const message = error instanceof Error ? error.message : String(error);
+  for (const code of TASK_MGR_ERROR_CODES) {
+    const index = message.indexOf(code);
+    if (index < 0) {
+      continue;
+    }
+    const before = index === 0 ? "" : message[index - 1];
+    const after = message[index + code.length] ?? "";
+    if ((!before || /[\s:]/.test(before)) && (!after || /[\s:]/.test(after))) {
+      return code;
+    }
   }
+  return null;
 }
-function isTerminalTaskStatus(status) {
-  return status === "Completed" || status === "Failed" || status === "Canceled";
+var TaskExecutorKind = /* @__PURE__ */ ((TaskExecutorKind2) => {
+  TaskExecutorKind2["Unbound"] = "Unbound";
+  TaskExecutorKind2["App"] = "App";
+  TaskExecutorKind2["HumanSet"] = "HumanSet";
+  return TaskExecutorKind2;
+})(TaskExecutorKind || {});
+var TaskPhase = /* @__PURE__ */ ((TaskPhase2) => {
+  TaskPhase2["Promised"] = "Promised";
+  TaskPhase2["Accepted"] = "Accepted";
+  TaskPhase2["Running"] = "Running";
+  TaskPhase2["Waiting"] = "Waiting";
+  TaskPhase2["Paused"] = "Paused";
+  TaskPhase2["Terminal"] = "Terminal";
+  return TaskPhase2;
+})(TaskPhase || {});
+function isTerminalTaskPhase(phase) {
+  return phase === "Terminal";
 }
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+var TaskWaitReasonKind = /* @__PURE__ */ ((TaskWaitReasonKind2) => {
+  TaskWaitReasonKind2["Dispatch"] = "Dispatch";
+  TaskWaitReasonKind2["Capacity"] = "Capacity";
+  TaskWaitReasonKind2["Authorization"] = "Authorization";
+  TaskWaitReasonKind2["HumanInput"] = "HumanInput";
+  TaskWaitReasonKind2["ChildTask"] = "ChildTask";
+  TaskWaitReasonKind2["Dependency"] = "Dependency";
+  TaskWaitReasonKind2["External"] = "External";
+  TaskWaitReasonKind2["Other"] = "Other";
+  return TaskWaitReasonKind2;
+})(TaskWaitReasonKind || {});
+var TaskOutcome = /* @__PURE__ */ ((TaskOutcome2) => {
+  TaskOutcome2["Succeeded"] = "Succeeded";
+  TaskOutcome2["Failed"] = "Failed";
+  TaskOutcome2["Canceled"] = "Canceled";
+  return TaskOutcome2;
+})(TaskOutcome || {});
+var TaskControlAction = /* @__PURE__ */ ((TaskControlAction2) => {
+  TaskControlAction2["Pause"] = "Pause";
+  TaskControlAction2["Resume"] = "Resume";
+  TaskControlAction2["Cancel"] = "Cancel";
+  return TaskControlAction2;
+})(TaskControlAction || {});
+function baselineTaskControlProfile(now) {
+  return {
+    pause: { kind: "Unavailable" },
+    resume: { kind: "Unavailable" },
+    cancel: { kind: "Interrupt" },
+    updated_at: now
+  };
 }
-function asRecord$5(value) {
+const DEFAULT_CHILD_CONTROL_POLICY = {
+  follow_pause: true,
+  follow_resume: true,
+  follow_cancel: true
+};
+var TaskAction = /* @__PURE__ */ ((TaskAction2) => {
+  TaskAction2["ReadMeta"] = "ReadMeta";
+  TaskAction2["ReadInput"] = "ReadInput";
+  TaskAction2["ReadResult"] = "ReadResult";
+  TaskAction2["ReportProgress"] = "ReportProgress";
+  TaskAction2["Control"] = "Control";
+  TaskAction2["Commit"] = "Commit";
+  TaskAction2["CreateChild"] = "CreateChild";
+  TaskAction2["Reassign"] = "Reassign";
+  TaskAction2["Grant"] = "Grant";
+  TaskAction2["Archive"] = "Archive";
+  return TaskAction2;
+})(TaskAction || {});
+var TaskGrantScope = /* @__PURE__ */ ((TaskGrantScope2) => {
+  TaskGrantScope2["SelfOnly"] = "SelfOnly";
+  TaskGrantScope2["Subtree"] = "Subtree";
+  TaskGrantScope2["WholeTree"] = "WholeTree";
+  return TaskGrantScope2;
+})(TaskGrantScope || {});
+var TaskDataScope = /* @__PURE__ */ ((TaskDataScope2) => {
+  TaskDataScope2["MetaOnly"] = "MetaOnly";
+  TaskDataScope2["Payload"] = "Payload";
+  TaskDataScope2["Full"] = "Full";
+  return TaskDataScope2;
+})(TaskDataScope || {});
+var TaskEventType = /* @__PURE__ */ ((TaskEventType2) => {
+  TaskEventType2["TaskCreated"] = "TaskCreated";
+  TaskEventType2["RunnerBound"] = "RunnerBound";
+  TaskEventType2["RunnerReleased"] = "RunnerReleased";
+  TaskEventType2["PhaseChanged"] = "PhaseChanged";
+  TaskEventType2["WaitReasonChanged"] = "WaitReasonChanged";
+  TaskEventType2["ProgressReported"] = "ProgressReported";
+  TaskEventType2["ControlProfileChanged"] = "ControlProfileChanged";
+  TaskEventType2["ControlRequested"] = "ControlRequested";
+  TaskEventType2["ControlSuperseded"] = "ControlSuperseded";
+  TaskEventType2["ControlApplied"] = "ControlApplied";
+  TaskEventType2["ControlRejected"] = "ControlRejected";
+  TaskEventType2["AssigneesChanged"] = "AssigneesChanged";
+  TaskEventType2["AccessGranted"] = "AccessGranted";
+  TaskEventType2["AccessRevoked"] = "AccessRevoked";
+  TaskEventType2["ResultCommitted"] = "ResultCommitted";
+  TaskEventType2["TaskFailed"] = "TaskFailed";
+  TaskEventType2["TaskCanceled"] = "TaskCanceled";
+  TaskEventType2["TaskArchived"] = "TaskArchived";
+  TaskEventType2["PayloadRedacted"] = "PayloadRedacted";
+  return TaskEventType2;
+})(TaskEventType || {});
+function asRecord$5(value, what) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new RPCError("Invalid RPC response format");
+    throw new RPCError(`Expected ${what} in TaskMgr response`);
   }
   return value;
 }
-function parseTask(value) {
-  const record = asRecord$5(value);
-  const id2 = record.id;
-  const status = record.status;
-  if (typeof id2 !== "number") {
-    throw new RPCError("Invalid task payload: missing id");
+function requiredField$1(value, field, what) {
+  const record = asRecord$5(value, what);
+  if (!(field in record)) {
+    throw new RPCError(`Expected ${field} in TaskMgr response`);
   }
-  if (typeof status !== "string") {
-    throw new RPCError("Invalid task payload: missing status");
-  }
-  return {
-    ...record,
-    status: parseTaskStatus(status)
-  };
+  return record[field];
 }
-function parseTasks(value) {
-  if (!Array.isArray(value)) {
-    throw new RPCError("Invalid tasks payload: expected array");
+function parseTaskResult(value) {
+  const task = requiredField$1(value, "task", "task result");
+  if (!task || typeof task !== "object" || typeof task.task_id !== "string") {
+    throw new RPCError("Expected a string task_id in TaskMgr response");
   }
-  return value.map((task) => parseTask(task));
+  return task;
 }
-function parseTaskListResult(value) {
-  if (Array.isArray(value)) {
-    return parseTasks(value);
+function randomControlRequestId() {
+  const cryptoApi = globalThis.crypto;
+  if (cryptoApi && typeof cryptoApi.getRandomValues === "function") {
+    const bytes2 = new Uint8Array(16);
+    cryptoApi.getRandomValues(bytes2);
+    return `ctl-${Array.from(bytes2, (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
   }
-  const parsed = asRecord$5(value);
-  if ("tasks" in parsed) {
-    return parseTasks(parsed.tasks);
-  }
-  throw new RPCError("Expected tasks in response");
+  return `ctl-${Date.now().toString(16)}${Math.random().toString(16).slice(2)}`;
 }
 class TaskManagerClient {
   constructor(rpcClient) {
@@ -439,229 +579,268 @@ class TaskManagerClient {
   setSeq(seq) {
     this.rpcClient.setSeq(seq);
   }
-  async createTask(params) {
-    const options = params.options ?? {};
-    const req = {
-      name: params.name,
-      task_type: params.taskType,
-      runner: options.runner ?? "",
-      data: params.data,
-      permissions: options.permissions,
-      parent_id: options.parent_id,
-      root_id: options.root_id,
-      priority: options.priority,
-      user_id: params.userId,
-      app_id: params.appId,
-      session_id: options.session_id,
-      app_name: params.appId || void 0
+  async callTask(method, request) {
+    const result = await this.rpcClient.call(method, request);
+    return parseTaskResult(result);
+  }
+  async createTask(request) {
+    return this.callTask("create_task", request);
+  }
+  async getTask(taskId) {
+    const result = await this.rpcClient.call("get_task", { task_id: taskId });
+    return parseTaskResult(result);
+  }
+  async listTasks(request = {}) {
+    const result = await this.rpcClient.call("list_tasks", request);
+    const tasks = requiredField$1(result, "tasks", "task summary page");
+    if (!Array.isArray(tasks)) {
+      throw new RPCError("Expected tasks array in TaskMgr response");
+    }
+    return result;
+  }
+  async getTaskTree(request) {
+    const result = await this.rpcClient.call("get_task_tree", request);
+    const tasks = requiredField$1(result, "tasks", "task tree page");
+    if (!Array.isArray(tasks)) {
+      throw new RPCError("Expected tasks array in TaskMgr response");
+    }
+    return result;
+  }
+  async getSubtasks(request) {
+    const result = await this.rpcClient.call("get_subtasks", request);
+    const tasks = requiredField$1(result, "tasks", "subtask page");
+    if (!Array.isArray(tasks)) {
+      throw new RPCError("Expected tasks array in TaskMgr response");
+    }
+    return result;
+  }
+  async archiveTask(request) {
+    return this.callTask("archive_task", request);
+  }
+  async requestControl(request) {
+    const result = await this.rpcClient.call("request_control", request);
+    const kind = requiredField$1(result, "kind", "control result");
+    if (kind !== "Task" && kind !== "Batch") {
+      throw new RPCError(`Invalid TaskMgr control result kind: ${kind}`);
+    }
+    return result;
+  }
+  async updateAssignees(request) {
+    return this.callTask("update_assignees", request);
+  }
+  async grantTaskAccess(request) {
+    return this.callTask("grant_task_access", request);
+  }
+  async revokeTaskAccess(request) {
+    return this.callTask("revoke_task_access", request);
+  }
+  async listTaskAccess(taskId) {
+    const result = await this.rpcClient.call("list_task_access", { task_id: taskId });
+    const grants = requiredField$1(result, "grants", "task access result");
+    if (!Array.isArray(grants)) {
+      throw new RPCError("Expected grants array in TaskMgr response");
+    }
+    return grants;
+  }
+  async reportStarted(request) {
+    return this.callTask("report_started", request);
+  }
+  async reportProgress(request) {
+    return this.callTask("report_progress", request);
+  }
+  async reportWaiting(request) {
+    return this.callTask("report_waiting", request);
+  }
+  async reportRunning(request) {
+    return this.callTask("report_running", request);
+  }
+  async updateControlProfile(request) {
+    return this.callTask("update_control_profile", request);
+  }
+  async ackControl(request) {
+    return this.callTask("ack_control", request);
+  }
+  async commitResult(request) {
+    return this.callTask("commit_result", request);
+  }
+  async failTask(request) {
+    return this.callTask("fail_task", request);
+  }
+  async createPromisedTask(request) {
+    return this.callTask("create_promised_task", request);
+  }
+  async setPromiseWait(request) {
+    return this.callTask("set_promise_wait", request);
+  }
+  async bindAppExecutor(request) {
+    return this.callTask("bind_app_executor", request);
+  }
+  async releaseAppExecutor(request) {
+    return this.callTask("release_app_executor", request);
+  }
+  async finishPromiseFailure(request) {
+    return this.callTask("finish_promise_failure", request);
+  }
+  async cancelPromisedTask(request) {
+    return this.callTask("cancel_promised_task", request);
+  }
+  async registerTaskSchema(definition) {
+    return this.rpcClient.call(
+      "register_task_schema",
+      { definition }
+    );
+  }
+  async getTaskSchema(schemaId, schemaVersion) {
+    return this.rpcClient.call(
+      "get_task_schema",
+      { schema_id: schemaId, schema_version: schemaVersion }
+    );
+  }
+  async listTaskSchemas(request = {}) {
+    const result = await this.rpcClient.call("list_task_schemas", request);
+    const schemas = requiredField$1(result, "schemas", "task schema list");
+    if (!Array.isArray(schemas)) {
+      throw new RPCError("Expected schemas array in TaskMgr response");
+    }
+    return schemas;
+  }
+  async setTaskSchemaEnabled(schemaId, schemaVersion, enabled) {
+    return this.rpcClient.call("set_task_schema_enabled", {
+      schema_id: schemaId,
+      schema_version: schemaVersion,
+      enabled
+    });
+  }
+  async listTaskEvents(request) {
+    const result = await this.rpcClient.call("list_task_events", request);
+    const events = requiredField$1(result, "events", "task event list");
+    if (!Array.isArray(events)) {
+      throw new RPCError("Expected events array in TaskMgr response");
+    }
+    return result;
+  }
+  async addTaskNote(request) {
+    const result = await this.rpcClient.call("add_task_note", request);
+    return requiredField$1(result, "note", "add task note result");
+  }
+  async listTaskNotes(taskId) {
+    const result = await this.rpcClient.call("list_task_notes", {
+      task_id: taskId
+    });
+    const notes = requiredField$1(result, "notes", "task note list");
+    if (!Array.isArray(notes)) {
+      throw new RPCError("Expected notes array in TaskMgr response");
+    }
+    return notes;
+  }
+  async cancelTask(taskId, recursive = false) {
+    return this.requestControl({
+      task_id: taskId,
+      action: "Cancel",
+      request_id: randomControlRequestId(),
+      recursive
+    });
+  }
+  snapshotEnvelope(task) {
+    return {
+      task_id: task.task_id,
+      app_instance_id: task.executor.kind === "App" ? task.executor.app_instance_id : void 0,
+      runner_epoch: task.runner_epoch,
+      expected_revision: task.revision
     };
-    const result = await this.rpcClient.call("create_task", req);
-    const parsed = asRecord$5(result);
-    if ("task" in parsed) {
-      return parseTask(parsed.task);
-    }
-    const taskId = parsed.task_id;
-    if (typeof taskId === "number") {
-      return this.getTask(taskId);
-    }
-    throw new RPCError("Expected CreateTaskResult response");
   }
-  async getTask(id2) {
-    const req = { id: id2 };
-    const result = await this.rpcClient.call("get_task", req);
-    const parsed = asRecord$5(result);
-    if ("task" in parsed) {
-      return parseTask(parsed.task);
+  async runnerStart(taskId) {
+    const task = await this.getTask(taskId);
+    let attempt;
+    if (task.phase === "Accepted") {
+      attempt = this.reportStarted(this.snapshotEnvelope(task));
+    } else if (task.phase === "Waiting") {
+      attempt = this.reportRunning(this.snapshotEnvelope(task));
+    } else {
+      return task;
     }
-    return parseTask(result);
-  }
-  async waitForTaskEnd(id2) {
-    return this.waitForTaskEndWithInterval(id2, 500);
-  }
-  async waitForTaskEndWithInterval(id2, pollIntervalMs) {
-    if (!Number.isFinite(pollIntervalMs) || pollIntervalMs <= 0) {
-      throw new RPCError("pollIntervalMs must be greater than 0");
-    }
-    while (true) {
-      const task = await this.getTask(id2);
-      if (isTerminalTaskStatus(task.status)) {
-        return task.status;
+    try {
+      return await attempt;
+    } catch (error) {
+      const code = taskMgrErrorCode(error);
+      if (code === TASK_ERR_REVISION_CONFLICT || code === TASK_ERR_INVALID_PHASE) {
+        return this.getTask(taskId);
       }
-      await sleep(pollIntervalMs);
+      throw error;
     }
   }
-  async listTasks(params = {}) {
-    const filter = params.filter ?? {};
-    const req = {
-      app_id: filter.app_id,
-      session_id: filter.session_id,
-      task_type: filter.task_type,
-      runner: filter.runner,
-      status: filter.status,
-      parent_id: filter.parent_id,
-      root_id: filter.root_id,
-      source_user_id: params.sourceUserId,
-      source_app_id: params.sourceAppId
-    };
-    const result = await this.rpcClient.call("list_tasks", req);
-    return parseTaskListResult(result);
-  }
-  async listTasksByTimeRange(params) {
-    const req = {
-      app_id: params.appId,
-      session_id: params.sessionId,
-      task_type: params.taskType,
-      source_user_id: params.sourceUserId,
-      source_app_id: params.sourceAppId,
-      start_time: params.startTime,
-      end_time: params.endTime
-    };
-    const result = await this.rpcClient.call("list_tasks_by_time_range", req);
-    return parseTaskListResult(result);
-  }
-  async updateTask(payload) {
-    const req = {
-      id: payload.id,
-      status: payload.status,
-      progress: payload.progress,
-      message: payload.message,
-      data: payload.data
-    };
-    await this.rpcClient.call("update_task", req);
-  }
-  async cancelTask(id2, recursive = false) {
-    const req = { id: id2, recursive };
-    await this.rpcClient.call("cancel_task", req);
-  }
-  async getSubtasks(parentId) {
-    const req = { parent_id: parentId };
-    const result = await this.rpcClient.call("get_subtasks", req);
-    return parseTaskListResult(result);
-  }
-  async updateTaskStatus(id2, status) {
-    const req = { id: id2, status };
-    await this.rpcClient.call("update_task_status", req);
-  }
-  async updateTaskProgress(id2, completedItems, totalItems) {
-    const req = {
-      id: id2,
-      completed_items: completedItems,
-      total_items: totalItems
-    };
-    await this.rpcClient.call("update_task_progress", req);
-  }
-  async updateTaskError(id2, errorMessage) {
-    const req = { id: id2, error_message: errorMessage };
-    await this.rpcClient.call("update_task_error", req);
-  }
-  async updateTaskData(id2, data) {
-    const req = { id: id2, data };
-    await this.rpcClient.call("update_task_data", req);
-  }
-  async deleteTask(id2) {
-    const req = { id: id2 };
-    await this.rpcClient.call("delete_task", req);
-  }
-  async deleteTasksBySession(sessionId, options = {}) {
-    const req = {
-      session_id: sessionId,
-      source_user_id: options.sourceUserId,
-      source_app_id: options.sourceAppId
-    };
-    const result = await this.rpcClient.call("delete_tasks_by_session", req);
-    const parsed = asRecord$5(result);
-    const deletedCount = parsed.deleted_count;
-    if (typeof deletedCount !== "number") {
-      throw new RPCError("Expected DeleteTasksResult response");
+  async runnerProgress(taskId, progress, message) {
+    const task = await this.getTask(taskId);
+    if (isTerminalTaskPhase(task.phase)) {
+      return task;
     }
-    return deletedCount;
-  }
-  async createDownloadTask(downloadUrl, userId, appId, options = {}, objid, downloadOptions) {
-    const req = {
-      download_url: downloadUrl,
-      objid,
-      download_options: downloadOptions,
-      parent_id: options.parent_id,
-      permissions: options.permissions,
-      root_id: options.root_id,
-      runner: options.runner,
-      priority: options.priority,
-      user_id: userId,
-      app_id: appId,
-      session_id: options.session_id,
-      app_name: appId || void 0
-    };
-    const result = await this.rpcClient.call("create_download_task", req);
-    const parsed = asRecord$5(result);
-    const taskId = parsed.task_id;
-    if (typeof taskId !== "number") {
-      throw new RPCError("Expected CreateDownloadTaskResult response");
+    try {
+      return await this.reportProgress({
+        ...this.snapshotEnvelope(task),
+        progress,
+        message
+      });
+    } catch (error) {
+      if (taskMgrErrorCode(error) !== TASK_ERR_REVISION_CONFLICT) {
+        throw error;
+      }
+      const fresh = await this.getTask(taskId);
+      return this.reportProgress({
+        ...this.snapshotEnvelope(fresh),
+        progress,
+        message
+      });
     }
-    return taskId;
   }
-  async pauseTask(id2) {
-    await this.updateTaskStatus(
-      id2,
-      "Paused"
-      /* Paused */
-    );
-  }
-  async resumeTask(id2) {
-    await this.updateTaskStatus(
-      id2,
-      "Running"
-      /* Running */
-    );
-  }
-  async completeTask(id2) {
-    await this.updateTaskStatus(
-      id2,
-      "Completed"
-      /* Completed */
-    );
-  }
-  async markTaskAsWaitingForApproval(id2) {
-    await this.updateTaskStatus(
-      id2,
-      "WaitingForApproval"
-      /* WaitingForApproval */
-    );
-  }
-  async markTaskAsFailed(id2, errorMessage) {
-    await this.updateTaskError(id2, errorMessage);
-    await this.updateTaskStatus(
-      id2,
-      "Failed"
-      /* Failed */
-    );
-  }
-  async pauseAllRunningTasks(options = {}) {
-    const runningTasks = await this.listTasks({
-      filter: {
-        status: "Running"
-        /* Running */
-      },
-      sourceUserId: options.sourceUserId,
-      sourceAppId: options.sourceAppId
+  async runnerWait(taskId, reason) {
+    const task = await this.runnerStart(taskId);
+    if (task.phase !== "Running") {
+      return task;
+    }
+    return this.reportWaiting({
+      ...this.snapshotEnvelope(task),
+      reason
     });
-    for (const task of runningTasks) {
-      await this.pauseTask(task.id);
+  }
+  async runnerComplete(taskId, result) {
+    const task = await this.getTask(taskId);
+    if (isTerminalTaskPhase(task.phase)) {
+      return task;
+    }
+    try {
+      return await this.commitResult({
+        task_id: task.task_id,
+        result,
+        app_instance_id: this.snapshotEnvelope(task).app_instance_id,
+        runner_epoch: task.runner_epoch,
+        expected_revision: task.revision
+      });
+    } catch (error) {
+      if (taskMgrErrorCode(error) !== TASK_ERR_REVISION_CONFLICT) {
+        throw error;
+      }
+      const fresh = await this.getTask(taskId);
+      if (isTerminalTaskPhase(fresh.phase)) {
+        return fresh;
+      }
+      return this.commitResult({
+        task_id: fresh.task_id,
+        result,
+        app_instance_id: this.snapshotEnvelope(fresh).app_instance_id,
+        runner_epoch: fresh.runner_epoch,
+        expected_revision: fresh.revision
+      });
     }
   }
-  async resumeLastPausedTask(options = {}) {
-    const pausedTasks = await this.listTasks({
-      filter: {
-        status: "Paused"
-        /* Paused */
-      },
-      sourceUserId: options.sourceUserId,
-      sourceAppId: options.sourceAppId
-    });
-    const lastPausedTask = pausedTasks[pausedTasks.length - 1];
-    if (!lastPausedTask) {
-      throw new RPCError("No paused tasks found");
+  async runnerFail(taskId, code, message, detail) {
+    const task = await this.getTask(taskId);
+    if (isTerminalTaskPhase(task.phase)) {
+      return task;
     }
-    await this.resumeTask(lastPausedTask.id);
+    return this.failTask({
+      ...this.snapshotEnvelope(task),
+      error: { code, message, detail }
+    });
   }
 }
 const WORKFLOW_SERVICE_NAME = "workflow";
@@ -28034,53 +28213,107 @@ const ndm_proxy = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.definePro
   unpinOwner
 }, Symbol.toStringTag, { value: "Module" }));
 export {
-  validateAiccMessages as $,
-  WorkflowScheduledTaskMisfirePolicy as A,
+  TASK_ERR_CONTROL_NOT_AVAILABLE as $,
+  WORKFLOW_SEND_MESSAGE_TASK_SCHEMA_ID as A,
   BS_SERVICE_VERIFY_HUB as B,
-  WorkflowScheduledTaskFireStatus as C,
-  WorkflowClient as D,
-  AICC_SERVICE_NAME as E,
-  AICC_SERVICE_UNIQUE_ID as F,
-  AICC_SERVICE_SERVICE_NAME as G,
-  AICC_SERVICE_SERVICE_PORT as H,
-  AICC_AI_METHODS as I,
-  AICC_CONTROL_METHODS as J,
-  AICC_FEATURES as K,
-  isAiccAiMethod as L,
+  WORKFLOW_EXECUTE_RPC_TASK_SCHEMA_ID as C,
+  DOWNLOAD_TASK_SCHEMA_ID as D,
+  WORKFLOW_RUN_TARGET_TASK_SCHEMA_ID as E,
+  AGENT_DELEGATE_TASK_SCHEMA_ID as F,
+  HUMAN_INPUT_TASK_SCHEMA_ID as G,
+  HUMAN_APPROVAL_SCHEMA_ID as H,
+  OPENDAN_COMMAND_TASK_SCHEMA_ID as I,
+  TOOL_EXEC_BASH_TASK_SCHEMA_ID as J,
+  AICC_COMPUTE_TASK_SCHEMA_ID as K,
+  APP_INSTALL_TASK_SCHEMA_ID as L,
   MsgQueueClient as M,
-  aiccTextMessage as N,
-  aiccMessageTextContent as O,
-  aiccMessageFirstText as P,
-  aiccResponseTextContent as Q,
+  APP_UNINSTALL_TASK_SCHEMA_ID as N,
+  OPENDAN_ASYNC_TOOL_TASK_SCHEMA_ID as O,
+  APP_START_TASK_SCHEMA_ID as P,
+  APP_UPDATE_TASK_SCHEMA_ID as Q,
   RuntimeType as R,
   SystemConfigClient as S,
-  TaskManagerClient as T,
-  aiccResponseToolCalls as U,
+  TASK_MANAGER_SERVICE_UNIQUE_ID as T,
+  TASK_ERR_NOT_FOUND as U,
   VerifyHubClient as V,
   WEB3_BRIDGE_HOST as W,
-  aiccResponseArtifacts as X,
-  aiccRenderMessageForDebug as Y,
-  aiccEstimateMessageTextLen as Z,
-  validateAiccMessage as _,
+  TASK_ERR_PERMISSION_DENIED as X,
+  TASK_ERR_REVISION_CONFLICT as Y,
+  TASK_ERR_STALE_RUNNER_EPOCH as Z,
+  TASK_ERR_INVALID_PHASE as _,
   ndm_proxy as a,
-  validateAiccResponse as a0,
-  AiccClient as a1,
-  KEventReader as a2,
-  KEventClient as a3,
-  BNS_EVM_DEFAULT_GAS_LIMIT as a4,
-  BNS_EVM_DEFAULT_MAX_FEE_PER_GAS as a5,
-  BNS_EVM_DEFAULT_MAX_PRIORITY_FEE_PER_GAS as a6,
-  BNS_MAX_INLINE_DOCUMENT_BYTES as a7,
-  BNS_DNS_TXT_DEFAULT_TTL as a8,
-  BNS_DNS_TXT_DOC_TYPE as a9,
-  BNS_PUBLISH_DOCUMENT_ABI as aa,
-  BnsEvmTxError as ab,
-  BnsEvmTxBuilder as ac,
-  decodeBnsPublishDocumentCalldata as ad,
-  BnsTxExecutorError as ae,
-  walletUserHasSnAccount as af,
-  BnsTxExecutor as ag,
+  BNS_DNS_TXT_DOC_TYPE as a$,
+  TASK_ERR_CONTROL_ALREADY_PENDING as a0,
+  TASK_ERR_ALREADY_COMPLETED as a1,
+  TASK_ERR_INPUT_SCHEMA_MISMATCH as a2,
+  TASK_ERR_RESULT_SCHEMA_MISMATCH as a3,
+  TASK_ERR_IDEMPOTENCY_CONFLICT as a4,
+  TASK_ERR_SCHEMA_NOT_FOUND as a5,
+  TASK_MGR_ERROR_CODES as a6,
+  taskMgrTaskEventPath as a7,
+  taskMgrTreeEventPath as a8,
+  taskMgrErrorCode as a9,
+  AICC_SERVICE_NAME as aA,
+  AICC_SERVICE_UNIQUE_ID as aB,
+  AICC_SERVICE_SERVICE_NAME as aC,
+  AICC_SERVICE_SERVICE_PORT as aD,
+  AICC_AI_METHODS as aE,
+  AICC_CONTROL_METHODS as aF,
+  AICC_FEATURES as aG,
+  isAiccAiMethod as aH,
+  aiccTextMessage as aI,
+  aiccMessageTextContent as aJ,
+  aiccMessageFirstText as aK,
+  aiccResponseTextContent as aL,
+  aiccResponseToolCalls as aM,
+  aiccResponseArtifacts as aN,
+  aiccRenderMessageForDebug as aO,
+  aiccEstimateMessageTextLen as aP,
+  validateAiccMessage as aQ,
+  validateAiccMessages as aR,
+  validateAiccResponse as aS,
+  AiccClient as aT,
+  KEventReader as aU,
+  KEventClient as aV,
+  BNS_EVM_DEFAULT_GAS_LIMIT as aW,
+  BNS_EVM_DEFAULT_MAX_FEE_PER_GAS as aX,
+  BNS_EVM_DEFAULT_MAX_PRIORITY_FEE_PER_GAS as aY,
+  BNS_MAX_INLINE_DOCUMENT_BYTES as aZ,
+  BNS_DNS_TXT_DEFAULT_TTL as a_,
+  TaskExecutorKind as aa,
+  TaskPhase as ab,
+  isTerminalTaskPhase as ac,
+  TaskWaitReasonKind as ad,
+  TaskOutcome as ae,
+  TaskControlAction as af,
+  baselineTaskControlProfile as ag,
+  DEFAULT_CHILD_CONTROL_POLICY as ah,
+  TaskAction as ai,
+  TaskGrantScope as aj,
+  TaskDataScope as ak,
+  TaskEventType as al,
+  TaskManagerClient as am,
+  WORKFLOW_SERVICE_NAME as an,
+  WorkflowStepType as ao,
+  WorkflowOutputMode as ap,
+  WorkflowJoinMode as aq,
+  WorkflowRetryFallback as ar,
+  WorkflowDefinitionStatus as as,
+  WorkflowRunStatus as at,
+  WorkflowNodeRunState as au,
+  WorkflowHumanActionKind as av,
+  WorkflowScheduledTaskStatus as aw,
+  WorkflowScheduledTaskMisfirePolicy as ax,
+  WorkflowScheduledTaskFireStatus as ay,
+  WorkflowClient as az,
   bns_client as b,
+  BNS_PUBLISH_DOCUMENT_ABI as b0,
+  BnsEvmTxError as b1,
+  BnsEvmTxBuilder as b2,
+  decodeBnsPublishDocumentCalldata as b3,
+  BnsTxExecutorError as b4,
+  walletUserHasSnAccount as b5,
+  BnsTxExecutor as b6,
   createSDKModule as c,
   BS_SERVICE_TASK_MANAGER as d,
   getActiveRuntimeType as e,
@@ -28091,19 +28324,19 @@ export {
   BuckyOSSDK as j,
   MsgCenterClient as k,
   RepoClient as l,
-  WORKFLOW_SERVICE_NAME as m,
+  TASK_MANAGER_SERVICE_NAME as m,
   ndm_client as n,
-  WorkflowStepType as o,
+  TASK_MANAGER_SERVICE_PORT as o,
   parseSessionTokenClaims as p,
-  WorkflowOutputMode as q,
+  TASK_POLICY_PRESET_COLLABORATIVE_TREE_V1 as q,
   resolveDidFromHost as r,
   sn_client as s,
-  WorkflowJoinMode as t,
-  WorkflowRetryFallback as u,
-  WorkflowDefinitionStatus as v,
-  WorkflowRunStatus as w,
-  WorkflowNodeRunState as x,
-  WorkflowHumanActionKind as y,
-  WorkflowScheduledTaskStatus as z
+  RAW_TASK_SCHEMA_ID as t,
+  SCHEDULER_DISPATCH_THUNK_TASK_SCHEMA_ID as u,
+  WORKFLOW_RUN_TREE_TASK_SCHEMA_ID as v,
+  WORKFLOW_STEP_TASK_SCHEMA_ID as w,
+  WORKFLOW_MAP_SHARD_TASK_SCHEMA_ID as x,
+  WORKFLOW_THUNK_TASK_SCHEMA_ID as y,
+  WORKFLOW_SCHEDULE_TASK_SCHEMA_ID as z
 };
-//# sourceMappingURL=ndm_proxy-b3565c32.mjs.map
+//# sourceMappingURL=ndm_proxy-e4aa1cde.mjs.map

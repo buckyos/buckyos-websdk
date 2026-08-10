@@ -8,23 +8,28 @@ type AppInstanceIdentity = {
 type JsonObject = Record<string, unknown>;
 
 type TaskLike = {
-  id: number;
-  status: string;
+  task_id: string;
+  root_id: string;
+  phase: string;
+  outcome?: string;
+  revision: number;
+  archived_at?: number;
 };
 
 type TaskManagerClientLike = {
   createTask: (params: {
     name: string;
-    taskType: string;
-    data: unknown;
-    userId: string;
-    appId: string;
+    schema_id: string;
+    input: unknown;
+    executor: { kind: "SelfApp" };
+    idempotency_key: string;
   }) => Promise<TaskLike>;
-  updateTaskProgress: (id: number, completedItems: number, totalItems: number) => Promise<void>;
-  updateTaskStatus: (id: number, status: string) => Promise<void>;
-  getTask: (id: number) => Promise<TaskLike>;
-  listTasks: (params: { filter?: Record<string, unknown> }) => Promise<TaskLike[]>;
-  deleteTask: (id: number) => Promise<void>;
+  runnerStart: (taskId: string) => Promise<TaskLike>;
+  runnerProgress: (taskId: string, progress?: unknown, message?: string) => Promise<TaskLike>;
+  runnerComplete: (taskId: string, result: unknown) => Promise<TaskLike>;
+  getTask: (taskId: string) => Promise<TaskLike>;
+  listTasks: (params: { root_id?: string }) => Promise<{ tasks: TaskLike[] }>;
+  archiveTask: (params: { task_id: string; expected_revision: number }) => Promise<TaskLike>;
 };
 
 type SystemConfigClientLike = {
@@ -57,10 +62,9 @@ type NodeSdkModule = {
   parseSessionTokenClaims: (token: string | null | undefined) => Record<string, unknown> | null;
 };
 
-// Mirrors the Completed value in src/task_mgr_client.ts. The TaskStatus enum
-// is currently not re-exported from the SDK barrel, so we hard-code the
-// string here. Keep in sync with src/task_mgr_client.ts.
-const TASK_STATUS_COMPLETED = "Completed";
+const TASK_PHASE_TERMINAL = "Terminal";
+const TASK_OUTCOME_SUCCEEDED = "Succeeded";
+const RAW_TASK_SCHEMA_ID = "raw/v1";
 
 type SelftestCaseResult = {
   name: string;
@@ -317,36 +321,41 @@ async function runSharedServiceClientSelftest(): Promise<{
 
   results.push(
     await runSelftestCase(
-      "TaskManagerClient creates/updates/queries/deletes a namespaced task",
+      "TaskManagerClient creates/runs/queries/archives a namespaced task",
       async () => {
         const client = sdk.buckyos.getTaskManagerClient();
         const name = `test-websdk-${nowStamp}`;
         const created = await client.createTask({
           name,
-          taskType: "test",
-          data: { createdBy: "websdk-systest" },
-          userId: identity.ownerUserId,
-          appId: identity.appId,
+          schema_id: RAW_TASK_SCHEMA_ID,
+          input: { createdBy: "websdk-systest", userId: identity.ownerUserId },
+          executor: { kind: "SelfApp" },
+          idempotency_key: `${identity.appId}:${name}`,
         });
         try {
-          await client.updateTaskProgress(created.id, 1, 2);
-          await client.updateTaskStatus(created.id, TASK_STATUS_COMPLETED);
-          const fetched = await client.getTask(created.id);
-          if (fetched.status !== TASK_STATUS_COMPLETED) {
+          await client.runnerStart(created.task_id);
+          await client.runnerProgress(created.task_id, { completed: 1, total: 2 });
+          await client.runnerComplete(created.task_id, { ok: true });
+          const fetched = await client.getTask(created.task_id);
+          if (fetched.phase !== TASK_PHASE_TERMINAL || fetched.outcome !== TASK_OUTCOME_SUCCEEDED) {
             throw new Error(
-              `expected task ${created.id} to be Completed, got ${fetched.status}`,
+              `expected task ${created.task_id} to succeed, got ${fetched.phase}/${fetched.outcome}`,
             );
           }
-          const filtered = await client.listTasks({
-            filter: { root_id: String(created.id) },
-          });
-          if (!filtered.some((task) => task.id === created.id)) {
-            throw new Error(`task ${created.id} missing from filtered list`);
+          const page = await client.listTasks({ root_id: created.root_id });
+          if (!page.tasks.some((task) => task.task_id === created.task_id)) {
+            throw new Error(`task ${created.task_id} missing from filtered list`);
           }
-          return { taskId: created.id };
+          return { taskId: created.task_id };
         } finally {
           try {
-            await client.deleteTask(created.id);
+            const fresh = await client.getTask(created.task_id);
+            if (fresh.phase === TASK_PHASE_TERMINAL && fresh.archived_at === undefined) {
+              await client.archiveTask({
+                task_id: fresh.task_id,
+                expected_revision: fresh.revision,
+              });
+            }
           } catch {
             // best-effort cleanup, ignore
           }

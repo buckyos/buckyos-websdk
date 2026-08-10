@@ -150,7 +150,7 @@ export { RuntimeType };
 export { parseSessionTokenClaims };
 export { VerifyHubClient };
 export { SystemConfigClient };
-export { TaskManagerClient };
+export * from './task_mgr_client';
 export * from './workflow_client';
 export * from './aicc_client';
 export { MsgQueueClient };
