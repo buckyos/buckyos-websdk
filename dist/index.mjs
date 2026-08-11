@@ -1,20 +1,28 @@
-import { c as createSDKModule } from "./sdk_core-752c1d01.mjs";
-import { b, a, B, d, O, R, S, T, V, W, h, p } from "./sdk_core-752c1d01.mjs";
+import { c as createSDKModule } from "./ndm_proxy-e4aa1cde.mjs";
+import { F, aE, K, aF, aG, aA, aC, aD, aB, L, P, N, Q, aT, a_, a$, aW, aX, aY, aZ, b0, d, B, b2, b1, b6, b4, j, ah, D, H, G, aV, aU, k, M, O, I, t, l, R, u, S, a1, a0, $, a4, a2, _, U, X, a3, Y, a5, Z, m, o, T, a6, q, J, ai, af, ak, al, aa, aj, am, ae, ab, ad, V, W, C, x, E, v, z, A, an, w, y, az, as, av, aq, au, ap, ar, at, ay, ax, aw, ao, aP, aK, aJ, aO, aN, aL, aM, aI, ag, b, b3, e, i, f, g, h, aH, ac, n, a, p, r, s, a9, a7, a8, aQ, aR, aS, b5 } from "./ndm_proxy-e4aa1cde.mjs";
+import { b as b7, D as D2, N as N2, t as t2, s as s2, j as j2, l as l2, h as h2, d as d2, g as g2, f as f2, c, e as e2, m as m2, k as k2, i as i2, n as n2, a as a10, r as r2, q as q2, o as o2, p as p2 } from "./ndn_types-76983121.mjs";
 const sdkModule = createSDKModule("universal");
 const buckyos = sdkModule.buckyos;
 const initBuckyOS = sdkModule.initBuckyOS;
 const getBuckyOSConfig = sdkModule.getBuckyOSConfig;
 const getRuntimeType = sdkModule.getRuntimeType;
 const getAppId = sdkModule.getAppId;
+const getKEventClient = sdkModule.getKEventClient;
+const createEventReader = sdkModule.createEventReader;
+const create_event_reader = sdkModule.create_event_reader;
+const subscribeKEvent = sdkModule.subscribeKEvent;
 const attachEvent = sdkModule.attachEvent;
 const removeEvent = sdkModule.removeEvent;
 const getAccountInfo = sdkModule.getAccountInfo;
-const doLogin = sdkModule.doLogin;
+const loginByPassword = sdkModule.loginByPassword;
+const loginByBrowserSSO = sdkModule.loginByBrowserSSO;
+const loginByRuntimeSession = sdkModule.loginByRuntimeSession;
 const login = sdkModule.login;
 const logout = sdkModule.logout;
 const getAppSetting = sdkModule.getAppSetting;
 const setAppSetting = sdkModule.setAppSetting;
 const getCurrentWalletUser = sdkModule.getCurrentWalletUser;
+const resolve_did = sdkModule.resolve_did;
 const walletSignWithActiveDid = sdkModule.walletSignWithActiveDid;
 const openExternalUrl = sdkModule.openExternalUrl;
 const getZoneHostName = sdkModule.getZoneHostName;
@@ -23,43 +31,192 @@ const getServiceRpcClient = sdkModule.getServiceRpcClient;
 const getVerifyHubClient = sdkModule.getVerifyHubClient;
 const getSystemConfigClient = sdkModule.getSystemConfigClient;
 const getTaskManagerClient = sdkModule.getTaskManagerClient;
-const getOpenDanClient = sdkModule.getOpenDanClient;
+const getWorkflowClient = sdkModule.getWorkflowClient;
+const getAiccClient = sdkModule.getAiccClient;
+const getMsgQueueClient = sdkModule.getMsgQueueClient;
+const getMsgCenterClient = sdkModule.getMsgCenterClient;
+const getRepoClient = sdkModule.getRepoClient;
 export {
-  b as BS_SERVICE_OPENDAN,
-  a as BS_SERVICE_TASK_MANAGER,
+  F as AGENT_DELEGATE_TASK_SCHEMA_ID,
+  aE as AICC_AI_METHODS,
+  K as AICC_COMPUTE_TASK_SCHEMA_ID,
+  aF as AICC_CONTROL_METHODS,
+  aG as AICC_FEATURES,
+  aA as AICC_SERVICE_NAME,
+  aC as AICC_SERVICE_SERVICE_NAME,
+  aD as AICC_SERVICE_SERVICE_PORT,
+  aB as AICC_SERVICE_UNIQUE_ID,
+  L as APP_INSTALL_TASK_SCHEMA_ID,
+  P as APP_START_TASK_SCHEMA_ID,
+  N as APP_UNINSTALL_TASK_SCHEMA_ID,
+  Q as APP_UPDATE_TASK_SCHEMA_ID,
+  aT as AiccClient,
+  a_ as BNS_DNS_TXT_DEFAULT_TTL,
+  a$ as BNS_DNS_TXT_DOC_TYPE,
+  aW as BNS_EVM_DEFAULT_GAS_LIMIT,
+  aX as BNS_EVM_DEFAULT_MAX_FEE_PER_GAS,
+  aY as BNS_EVM_DEFAULT_MAX_PRIORITY_FEE_PER_GAS,
+  aZ as BNS_MAX_INLINE_DOCUMENT_BYTES,
+  b0 as BNS_PUBLISH_DOCUMENT_ABI,
+  d as BS_SERVICE_TASK_MANAGER,
   B as BS_SERVICE_VERIFY_HUB,
-  d as BuckyOSSDK,
-  O as OpenDanClient,
+  b2 as BnsEvmTxBuilder,
+  b1 as BnsEvmTxError,
+  b6 as BnsTxExecutor,
+  b4 as BnsTxExecutorError,
+  j as BuckyOSSDK,
+  ah as DEFAULT_CHILD_CONTROL_POLICY,
+  b7 as DID_OBJECT_SERVICE_ID,
+  D2 as DID_OBJECT_SERVICE_TYPE,
+  D as DOWNLOAD_TASK_SCHEMA_ID,
+  H as HUMAN_APPROVAL_SCHEMA_ID,
+  G as HUMAN_INPUT_TASK_SCHEMA_ID,
+  aV as KEventClient,
+  aU as KEventReader,
+  k as MsgCenterClient,
+  M as MsgQueueClient,
+  N2 as NODE_IDENTITY_SCHEMA_V2,
+  O as OPENDAN_ASYNC_TOOL_TASK_SCHEMA_ID,
+  I as OPENDAN_COMMAND_TASK_SCHEMA_ID,
+  t as RAW_TASK_SCHEMA_ID,
+  l as RepoClient,
   R as RuntimeType,
+  u as SCHEDULER_DISPATCH_THUNK_TASK_SCHEMA_ID,
   S as SystemConfigClient,
-  T as TaskManagerClient,
+  a1 as TASK_ERR_ALREADY_COMPLETED,
+  a0 as TASK_ERR_CONTROL_ALREADY_PENDING,
+  $ as TASK_ERR_CONTROL_NOT_AVAILABLE,
+  a4 as TASK_ERR_IDEMPOTENCY_CONFLICT,
+  a2 as TASK_ERR_INPUT_SCHEMA_MISMATCH,
+  _ as TASK_ERR_INVALID_PHASE,
+  U as TASK_ERR_NOT_FOUND,
+  X as TASK_ERR_PERMISSION_DENIED,
+  a3 as TASK_ERR_RESULT_SCHEMA_MISMATCH,
+  Y as TASK_ERR_REVISION_CONFLICT,
+  a5 as TASK_ERR_SCHEMA_NOT_FOUND,
+  Z as TASK_ERR_STALE_RUNNER_EPOCH,
+  m as TASK_MANAGER_SERVICE_NAME,
+  o as TASK_MANAGER_SERVICE_PORT,
+  T as TASK_MANAGER_SERVICE_UNIQUE_ID,
+  a6 as TASK_MGR_ERROR_CODES,
+  q as TASK_POLICY_PRESET_COLLABORATIVE_TREE_V1,
+  J as TOOL_EXEC_BASH_TASK_SCHEMA_ID,
+  ai as TaskAction,
+  af as TaskControlAction,
+  ak as TaskDataScope,
+  al as TaskEventType,
+  aa as TaskExecutorKind,
+  aj as TaskGrantScope,
+  am as TaskManagerClient,
+  ae as TaskOutcome,
+  ab as TaskPhase,
+  ad as TaskWaitReasonKind,
   V as VerifyHubClient,
   W as WEB3_BRIDGE_HOST,
+  C as WORKFLOW_EXECUTE_RPC_TASK_SCHEMA_ID,
+  x as WORKFLOW_MAP_SHARD_TASK_SCHEMA_ID,
+  E as WORKFLOW_RUN_TARGET_TASK_SCHEMA_ID,
+  v as WORKFLOW_RUN_TREE_TASK_SCHEMA_ID,
+  z as WORKFLOW_SCHEDULE_TASK_SCHEMA_ID,
+  A as WORKFLOW_SEND_MESSAGE_TASK_SCHEMA_ID,
+  an as WORKFLOW_SERVICE_NAME,
+  w as WORKFLOW_STEP_TASK_SCHEMA_ID,
+  y as WORKFLOW_THUNK_TASK_SCHEMA_ID,
+  az as WorkflowClient,
+  as as WorkflowDefinitionStatus,
+  av as WorkflowHumanActionKind,
+  aq as WorkflowJoinMode,
+  au as WorkflowNodeRunState,
+  ap as WorkflowOutputMode,
+  ar as WorkflowRetryFallback,
+  at as WorkflowRunStatus,
+  ay as WorkflowScheduledTaskFireStatus,
+  ax as WorkflowScheduledTaskMisfirePolicy,
+  aw as WorkflowScheduledTaskStatus,
+  ao as WorkflowStepType,
+  aP as aiccEstimateMessageTextLen,
+  aK as aiccMessageFirstText,
+  aJ as aiccMessageTextContent,
+  aO as aiccRenderMessageForDebug,
+  aN as aiccResponseArtifacts,
+  aL as aiccResponseTextContent,
+  aM as aiccResponseToolCalls,
+  aI as aiccTextMessage,
   attachEvent,
+  ag as baselineTaskControlProfile,
+  b as bns,
   buckyos,
+  createEventReader,
   createSDKModule,
-  doLogin,
+  create_event_reader,
+  b3 as decodeBnsPublishDocumentCalldata,
   getAccountInfo,
+  e as getActiveRuntimeType,
+  i as getActiveSessionToken,
+  f as getActiveZoneGatewayOrigin,
+  getAiccClient,
   getAppId,
   getAppSetting,
   getBuckyOSConfig,
   getCurrentWalletUser,
-  getOpenDanClient,
+  g as getCurrentWalletUserFromHost,
+  t2 as getDidIdentifier,
+  s2 as getDidMethod,
+  getKEventClient,
+  getMsgCenterClient,
+  getMsgQueueClient,
+  getRepoClient,
   getRuntimeType,
   getServiceRpcClient,
   getSystemConfigClient,
   getTaskManagerClient,
   getVerifyHubClient,
+  getWorkflowClient,
   getZoneHostName,
   getZoneServiceURL,
   h as hashPassword,
   initBuckyOS,
+  aH as isAiccAiMethod,
+  j2 as isBuckyOSAgentDocument,
+  l2 as isBuckyOSDIDObjectCard,
+  h2 as isBuckyOSDeviceDocument,
+  d2 as isBuckyOSDeviceMiniDocument,
+  g2 as isBuckyOSLocalNodeIdentityConfig,
+  f2 as isBuckyOSNodeIdentityConfig,
+  c as isBuckyOSOwnerDocument,
+  e2 as isBuckyOSZoneBootDocument,
+  m2 as isBuckyOSZoneConfig,
+  k2 as isBuckyOSZoneDocument,
+  ac as isTerminalTaskPhase,
+  i2 as isW3CDIDDocumentBase,
   login,
+  loginByBrowserSSO,
+  loginByPassword,
+  loginByRuntimeSession,
   logout,
+  n2 as namelib,
+  n as ndm,
+  a as ndm_proxy,
+  a10 as ndn,
   openExternalUrl,
+  r2 as parseBuckyOSDIDDocument,
+  q2 as parseBuckyOSDeviceMiniDocument,
+  o2 as parseBuckyOSOwnerDocument,
   p as parseSessionTokenClaims,
+  p2 as parseW3CDIDDocumentBase,
   removeEvent,
+  r as resolveDidFromHost,
+  resolve_did,
   setAppSetting,
-  walletSignWithActiveDid
+  s as sn,
+  subscribeKEvent,
+  a9 as taskMgrErrorCode,
+  a7 as taskMgrTaskEventPath,
+  a8 as taskMgrTreeEventPath,
+  aQ as validateAiccMessage,
+  aR as validateAiccMessages,
+  aS as validateAiccResponse,
+  walletSignWithActiveDid,
+  b5 as walletUserHasSnAccount
 };
 //# sourceMappingURL=index.mjs.map

@@ -1,0 +1,25 @@
+{
+  "author": "did:bns:buckyos",
+  "categories": [
+    "service"
+  ],
+  "create_time": 1783272891,
+  "description": {
+    "detail": {
+      "en": "Scheduler"
+    }
+  },
+  "install_config_tips": {
+    "data_mount_point": [],
+    "local_cache_mount_point": [],
+    "rdb_instances": {},
+    "service_ports": {}
+  },
+  "last_update_time": 1783272891,
+  "name": "scheduler",
+  "owner": "did:bns:buckyos",
+  "pkg_list": {},
+  "selector_type": "single",
+  "show_name": "Scheduler",
+  "version": "0.7.0"
+}

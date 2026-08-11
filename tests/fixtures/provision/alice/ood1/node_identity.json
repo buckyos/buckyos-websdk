@@ -1,0 +1,13 @@
+{
+  "schema": "buckyos.node_identity.v2",
+  "zone_did": "did:bns:alice",
+  "owner_did": "did:bns:alice",
+  "owner_public_key": {
+    "kty": "OKP",
+    "crv": "Ed25519",
+    "x": "uh7RD37tflN65CrcJSUQ3vGnyU4vmC7_M8IkEEOHnds"
+  },
+  "device_name": "ood1",
+  "device_did": "did:bns:ood1.alice",
+  "zone_iat": 1743478939
+}

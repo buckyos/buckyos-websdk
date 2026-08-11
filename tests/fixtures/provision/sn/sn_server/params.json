@@ -1,0 +1,13 @@
+{
+  "params": {
+    "sn_boot_jwt": "eyJhbGciOiJFZERTQSJ9.eyJvb2RzIjpbInNuIl0sImV4cCI6MjA1ODgzODkzOX0.BloDlsA3eRbZ01CAzjv6_0Dnk7ABRP9z37gGCdi1qyZp1nVi3pthygPuDDt7wyNqXW_vg626k5jvzYuoxVHxCA",
+    "sn_cer": "fullchain.cert",
+    "sn_device_jwt": "eyJhbGciOiJFZERTQSJ9.eyJuIjoic24iLCJ4IjoiRlB2WTNXWFB4dVdQWUZ1d09ZMFFiaDBPNy1oaEtyNnRhMWpUY1g5T1JQSSIsImV4cCI6MjA1ODgzODkzOX0._QscAOPWldnQ4OTuC3YkprqPEb8N0nJGhAKwlY54BTwjUxfhxDrYKa9Eqc7X9HP8v64mrneDYFju0Zb6RZOLBw",
+    "sn_host": "devtests.org",
+    "sn_ip": "192.168.64.84",
+    "sn_owner_pk": "blzinUlTNGYcvCPFT1OfPKPbmjvteuXWMwQG55cTo7M",
+    "sn_pem": "fullchain.pem",
+    "web3_cer": "fullchain.cert",
+    "web3_pem": "fullchain.pem"
+  }
+}

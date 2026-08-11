@@ -34,9 +34,12 @@ cyfs-gateway对于需要http验证的请求，如果没有buckyos_token字段，
 
 ```javascript
 // at feedlist.excample.com
-let bucky_token,user_info = await buckyos.authClient.login();
-document.cookie = "buckyos_token="+bucky_token+"; Domain=.; Path=/";
-let user_id = user_info.userid;
+await buckyos.loginByBrowserSSO();
+// 当前窗口会跳转到 sys.$zoneid/sso/login
+// SSO 成功并跳回当前页后，再读取当前账号状态
+let user_info = await buckyos.getAccountInfo();
+let bucky_token = user_info?.session_token;
+let user_id = user_info?.user_id;
 let rpc_client = new buckyos.kRPCClient(feedlist_api_url,bucky_token);
 let user_feeds = rpc_client.get_user_feeds(user_id);
 ```
@@ -78,8 +81,8 @@ on_request(request,response){
 
 authClient主要靠系统的内置verify_hub服务来完成功能，其基本逻辑是
 
-1. 在弹出窗口中，加载标准的,auth.$zoneid 页面，该页面会根据login时的参数调整一些行为
-2. 用户在弹窗窗口中操作,并得到token，有2种方法
+1. 在当前窗口直接跳转到标准的 `sys.$zoneid/sso/login` 页面，该页面会根据 login 时的参数调整一些行为
+2. 用户在跳转后的页面中完成登录，有2种方法
     a. 使用用户名密码向verify_hub发起请求，verify_hub会根据其掌握的账号信息返回必要的jwt验证信息
     b. 要求用户输入一个加密后的私钥，当用户输入正确的解密密码后，可以用该私钥来构造jwt
        
@@ -99,6 +102,48 @@ authClient主要靠系统的内置verify_hub服务来完成功能，其基本逻
 ### 防御jwt的重放攻击
 
 因为会工作在http环境，因此会用明文发送jwt.
+
+## namelib 与 provision（身份文档构造）
+
+SDK 自带 Rust `name-lib` 的 TS 镜像（`namelib`，universal 导出），以及
+`buckycli` 构造侧命令的 TS 镜像（`buckyos/provision`，**node-only**，要求
+Node >= 22.13 或 Deno >= 2.2，依赖 `node:sqlite`）。格式与 Rust 端逐字节对齐
+（Ed25519 PKCS8 PEM / JWK / EdDSA JWT），由 golden fixture 单测保障
+（`tests/fixtures/provision/`）。
+
+### Quickstart：keygen → createUserEnv → createNodeConfigs
+
+```ts
+import { namelib } from 'buckyos'
+import { createUserEnv, createNodeConfigs, createSnConfigs } from 'buckyos/provision'
+
+// 1. 生成 Ed25519 身份密钥（私钥 PKCS8 PEM + 公钥 JWK）
+const { privateKeyPem, publicKeyJwk } = await namelib.generateEd25519KeyPair()
+
+// 2. 构造用户/zone 环境（user_config.json、zone_config.json、zone TXT record 等）
+await createUserEnv({
+  username: 'alice',
+  hostname: 'alice.bns.did',
+  oodName: 'ood1',
+  snBaseHost: 'devtests.org',
+  outputDir: '/tmp/alice-env',
+})
+
+// 3. 构造节点身份（node_identity.json、device_mini_config.jwt、start_config.json）
+await createNodeConfigs({ deviceName: 'ood1', envDir: '/tmp/alice-env' })
+```
+
+其它能力：`createSnConfigs` / `registerUserToSn` / `registerDeviceToSn`（SN 侧）、
+`setPkgMeta` / `MetaIndexDb`（pkg meta 索引库）、`buildDidDocs`（内核服务 did docs）、
+`createCa` / `createCertFromCa`（旧 CertManager 兼容 TLS 证书），以及
+`IdentityRoots` / `createIdentityCertFromCa`（按 identity path 协议写入
+`$BUCKYOS_IDENTITY_ROOT/{encoded raw host URI}/server.*` 和
+`$BUCKYOS_SECURITY_ROOT/{encoded raw host URI}/server.private.pem`；现阶段不生成
+`server.keyref.json`）。
+
+注意：`buckyos/provision` 导出的 `DEV_TEST_KEYS` / dev EVM account helper 是**仅供本地开发**
+的公开测试密钥，使用固定 dev 助记词按 Rust `name-lib` 的 mnemonic 派生规则构造，严禁用于
+真实激活流程；浏览器 bundle 不包含 provision。
 
 ## 构建与发布
 

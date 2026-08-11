@@ -1,0 +1,45 @@
+{
+  "@context": [
+    "https://www.w3.org/ns/did/v1",
+    "https://buckyos.org/ns/zone/v1"
+  ],
+  "id": "did:web:charlie.me",
+  "verificationMethod": [
+    {
+      "type": "Ed25519VerificationKey2020",
+      "id": "#main_key",
+      "controller": "did:bns:charlie",
+      "publicKeyJwk": {
+        "kty": "OKP",
+        "crv": "Ed25519",
+        "x": "cuFY7qeU1q96O1K5RRbXo7GXGR78szB-gmmkBXDMscE"
+      }
+    }
+  ],
+  "authentication": [
+    "#main_key"
+  ],
+  "assertionMethod": [
+    "#main_key"
+  ],
+  "capabilityInvocation": [
+    "#main_key"
+  ],
+  "service": [
+    {
+      "id": "did:web:charlie.me#lastDoc",
+      "type": "DIDDoc",
+      "serviceEndpoint": "https://charlie.me/resolve/this_zone"
+    }
+  ],
+  "exp": 2058838939,
+  "iat": 1901158939,
+  "version_seq": 0,
+  "hostname": "charlie.me",
+  "owner": "did:undefined:undefined",
+  "oods": [
+    "ood1@portmap"
+  ],
+  "boot_jwt": "eyJhbGciOiJFZERTQSJ9.eyJpZCI6ImRpZDp3ZWI6Y2hhcmxpZS5tZSIsIm9vZHMiOlsib29kMUBwb3J0bWFwIl0sInNuIjoic24uZGV2dGVzdHMub3JnIiwiZXhwIjoyMDU4ODM4OTM5fQ.QXTV3kk_RDWpSlQSS-MO08JVTFQB2GveHlkiuyxbquxn_1AMtBawsr2zIwFkUOJuu8LAPc34g19WEEoMnyRKBA",
+  "sn": "sn.devtests.org"
+}

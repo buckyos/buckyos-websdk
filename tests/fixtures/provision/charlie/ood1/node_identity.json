@@ -1,0 +1,13 @@
+{
+  "schema": "buckyos.node_identity.v2",
+  "zone_did": "did:web:charlie.me",
+  "owner_did": "did:bns:charlie",
+  "owner_public_key": {
+    "kty": "OKP",
+    "crv": "Ed25519",
+    "x": "cuFY7qeU1q96O1K5RRbXo7GXGR78szB-gmmkBXDMscE"
+  },
+  "device_name": "ood1",
+  "device_did": "did:web:ood1.charlie.me",
+  "zone_iat": 1743478939
+}

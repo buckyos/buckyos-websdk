@@ -1,0 +1,37 @@
+{
+  "@context": [
+    "https://www.w3.org/ns/did/v1",
+    "https://buckyos.org/ns/device/v1"
+  ],
+  "id": "did:dev:FPvY3WXPxuWPYFuwOY0Qbh0O7-hhKr6ta1jTcX9ORPI",
+  "verificationMethod": [
+    {
+      "type": "Ed25519VerificationKey2020",
+      "id": "#main_key",
+      "controller": "did:dev:FPvY3WXPxuWPYFuwOY0Qbh0O7-hhKr6ta1jTcX9ORPI",
+      "publicKeyJwk": {
+        "kty": "OKP",
+        "crv": "Ed25519",
+        "x": "FPvY3WXPxuWPYFuwOY0Qbh0O7-hhKr6ta1jTcX9ORPI"
+      }
+    }
+  ],
+  "authentication": [
+    "#main_key"
+  ],
+  "assertion_method": [
+    "#main_key"
+  ],
+  "capabilityInvocation": [
+    "#main_key"
+  ],
+  "exp": 2058838939,
+  "iat": 1901158939,
+  "version_seq": 0,
+  "zone_did": "did:web:sn.devtests.org",
+  "owner": "did:bns:sn",
+  "device_type": "ood",
+  "device_mini_document_jwt": "eyJhbGciOiJFZERTQSJ9.eyJuIjoic24iLCJ4IjoiRlB2WTNXWFB4dVdQWUZ1d09ZMFFiaDBPNy1oaEtyNnRhMWpUY1g5T1JQSSIsImV4cCI6MjA1ODgzODkzOX0._QscAOPWldnQ4OTuC3YkprqPEb8N0nJGhAKwlY54BTwjUxfhxDrYKa9Eqc7X9HP8v64mrneDYFju0Zb6RZOLBw",
+  "name": "sn",
+  "net_id": "wan"
+}

@@ -4,7 +4,8 @@ import {
   hashPassword,
   AccountInfo,
   cleanLocalAccountInfo,
-  getLocalAccountInfo,
+  getBrowserUserInfo,
+  saveBrowserUserInfo,
   saveLocalAccountInfo,
 } from './account'
 import {
@@ -16,20 +17,103 @@ import {
 } from './runtime'
 import { VerifyHubClient } from './verify-hub-client'
 import { TaskManagerClient } from './task_mgr_client'
-import { OpenDanClient } from './opendan_client'
+import { WorkflowClient } from './workflow_client'
 import { SystemConfigClient } from './system_config_client'
+import { AiccClient } from './aicc_client'
+import { MsgQueueClient } from './msg_queue_client'
+import { MsgCenterClient } from './msg_center_client'
+import { RepoClient } from './repo_client'
+import {
+  KEventClient,
+  KEvent,
+  KEventPatternInput,
+  KEventReader,
+  KEventReaderOptions,
+  KEventSubscribeOptions,
+  KEventSubscription,
+  KEventTransportMode,
+} from './kevent_client'
+import type { DidDocType } from './types'
+import type { EncodedDocument } from './namelib'
 
 export const WEB3_BRIDGE_HOST = 'web3.buckyos.ai'
 
 export const BS_SERVICE_VERIFY_HUB = 'verify-hub'
 export const BS_SERVICE_TASK_MANAGER = 'task-manager'
-export const BS_SERVICE_OPENDAN = 'opendan'
 
 export type SDKTarget = 'universal' | 'browser' | 'node'
+
+interface ActiveRuntimeContext {
+  runtime: BuckyOSRuntime | null
+}
+
+const activeRuntimeContext: ActiveRuntimeContext = {
+  runtime: null,
+}
 
 export interface WalletSignWithActiveDidResult {
   signatures: (string | null)[]
   pwd_hash: string | null
+}
+
+interface BuckyApiBridge {
+  getCurrentUser?: () => Promise<unknown> | unknown
+  resolve_did?: (did: string, docType?: DidDocType | null) => Promise<unknown> | unknown
+  signJsonWithActiveDid?: (payloads: Record<string, unknown>[]) => Promise<unknown> | unknown
+}
+
+function getBuckyApiBridge(): BuckyApiBridge | null {
+  if (typeof window === 'undefined') {
+    return null
+  }
+  const bridge = (window as unknown as { BuckyApi?: unknown }).BuckyApi
+  return bridge && typeof bridge === 'object' ? bridge as BuckyApiBridge : null
+}
+
+// Shared by BuckyOSSDK.getCurrentWalletUser() and runtime-aware helpers such
+// as BnsTxExecutor, so wallet availability is detected in exactly one place.
+export async function getCurrentWalletUserFromHost(): Promise<any | null> {
+  const bridge = getBuckyApiBridge()
+  const getCurrentUser = bridge?.getCurrentUser
+  if (typeof getCurrentUser !== 'function') {
+    return null
+  }
+
+  const result: any = await getCurrentUser.call(bridge)
+  if (result?.code === 0) {
+    return result.data ?? null
+  }
+
+  console.error('BuckyApi.getCurrentUser failed: ', result?.message)
+  return null
+}
+
+function isEncodedDocument(value: unknown): value is EncodedDocument {
+  if (!value || typeof value !== 'object') {
+    return false
+  }
+  const document = value as Record<string, unknown>
+  return (document.type === 'json' && Object.prototype.hasOwnProperty.call(document, 'value'))
+    || (document.type === 'jwt' && typeof document.jwt === 'string')
+}
+
+export async function resolveDidFromHost(
+  did: string,
+  docType: DidDocType | null = null,
+): Promise<EncodedDocument | null> {
+  const bridge = getBuckyApiBridge()
+  const resolveDid = bridge?.resolve_did
+  if (typeof resolveDid !== 'function') {
+    return null
+  }
+
+  const result: any = await resolveDid.call(bridge, did, docType)
+  if (result?.code === 0 && isEncodedDocument(result.data)) {
+    return result.data
+  }
+
+  console.error('BuckyApi.resolve_did failed: ', result?.message)
+  return null
 }
 
 function isBrowserRuntime(): boolean {
@@ -121,9 +205,64 @@ function inferNodeRuntimeType(): RuntimeType {
   return RuntimeType.AppClient
 }
 
+function detectHostRuntimeType(): RuntimeType {
+  if (typeof window !== 'undefined') {
+    if ((window as unknown as { BuckyApi?: unknown }).BuckyApi) {
+      return RuntimeType.AppRuntime
+    }
+    return RuntimeType.Browser
+  }
+
+  const runtimeProcess = (globalThis as { process?: { versions?: { node?: string } } }).process
+  if (runtimeProcess?.versions?.node) {
+    return RuntimeType.NodeJS
+  }
+
+  return RuntimeType.Unknown
+}
+
+function toAbsoluteOrigin(url: string): string | null {
+  try {
+    const base = typeof window !== 'undefined' ? window.location.origin : 'http://localhost'
+    return new URL(url, base).origin
+  } catch {
+    return null
+  }
+}
+
+function setActiveRuntime(runtime: BuckyOSRuntime | null) {
+  activeRuntimeContext.runtime = runtime
+}
+
+export function getActiveRuntimeType(): RuntimeType {
+  return activeRuntimeContext.runtime?.getConfig().runtimeType ?? detectHostRuntimeType()
+}
+
+export function getActiveZoneGatewayOrigin(): string | null {
+  const runtime = activeRuntimeContext.runtime
+  if (runtime) {
+    return toAbsoluteOrigin(runtime.getSystemConfigServiceURL())
+  }
+
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    return window.location.origin
+  }
+
+  return null
+}
+
+export async function getActiveSessionToken(): Promise<string | null> {
+  const runtime = activeRuntimeContext.runtime
+  if (!runtime) {
+    return null
+  }
+  return runtime.ensureSessionTokenReady()
+}
+
 export class BuckyOSSDK {
   private currentRuntime: BuckyOSRuntime | null = null
   private currentAccountInfo: AccountInfo | null = null
+  private currentKEventClient: KEventClient | null = null
   private readonly target: SDKTarget
 
   constructor(target: SDKTarget) {
@@ -134,19 +273,28 @@ export class BuckyOSSDK {
     const finalConfig = this.buildRuntimeConfig(appid, config)
 
     if (this.target !== 'node' && isBrowserRuntime() && !config) {
-      let zoneHostName = localStorage.getItem('zone_host_name')
+      // Cache key is versioned: pre-v2 entries were filled by a buggy
+      // tryGetZoneHostName that always pinned the zone host to whatever
+      // app subdomain the user happened to load (e.g. `sys-test.test.buckyos.io`
+      // instead of `test.buckyos.io`). Bumping the key forces a re-probe
+      // through the new identifier-doc-aware logic on first load and also
+      // clears the stale entry so it doesn't keep wasting localStorage space.
+      localStorage.removeItem('zone_host_name')
+      let zoneHostName = localStorage.getItem('zone_host_name_v2')
       if (zoneHostName) {
         finalConfig.zoneHost = zoneHostName
       } else {
         zoneHostName = await this.tryGetZoneHostName(appid, window.location.host, finalConfig.defaultProtocol)
-        localStorage.setItem('zone_host_name', zoneHostName)
+        localStorage.setItem('zone_host_name_v2', zoneHostName)
         finalConfig.zoneHost = zoneHostName
       }
     }
 
     this.currentRuntime?.stopAutoRenew()
+    this.currentKEventClient = null
     this.currentRuntime = new BuckyOSRuntime(finalConfig)
     await this.currentRuntime.initialize()
+    setActiveRuntime(this.currentRuntime)
     this.syncCurrentAccountInfoFromRuntime()
   }
 
@@ -182,12 +330,93 @@ export class BuckyOSSDK {
     void ignoredCookieId
   }
 
-  getAccountInfo(): AccountInfo | null {
+  getKEventClient(): KEventClient {
+    if (this.currentRuntime == null) {
+      throw new Error('BuckyOS WebSDK is not initialized,call initBuckyOS first')
+    }
+
+    if (this.currentKEventClient) {
+      return this.currentKEventClient
+    }
+
+    const runtimeType = this.currentRuntime.getConfig().runtimeType
+    const mode: KEventTransportMode = runtimeType === RuntimeType.Browser || runtimeType === RuntimeType.AppRuntime
+      ? 'browser'
+      : 'native'
+
+    this.currentKEventClient = new KEventClient({
+      mode,
+      streamUrl: this.currentRuntime.getZoneServiceURL('kevent'),
+      sessionTokenProvider: this.currentRuntime.ensureSessionTokenReady.bind(this.currentRuntime),
+    })
+
+    return this.currentKEventClient
+  }
+
+  async createEventReader(
+    patterns: KEventPatternInput,
+    options: KEventReaderOptions = {},
+  ): Promise<KEventReader> {
+    return this.getKEventClient().createEventReader(patterns, options)
+  }
+
+  async create_event_reader(
+    patterns: KEventPatternInput,
+    options: KEventReaderOptions = {},
+  ): Promise<KEventReader> {
+    return this.createEventReader(patterns, options)
+  }
+
+  async subscribeKEvent(
+    patterns: KEventPatternInput,
+    callback: (event: KEvent) => void | Promise<void>,
+    options: KEventSubscribeOptions = {},
+  ): Promise<KEventSubscription> {
+    return this.getKEventClient().subscribe(patterns, callback, options)
+  }
+
+  async getAccountInfo(): Promise<AccountInfo | null> {
+    if (this.currentRuntime == null) {
+      console.error('BuckyOS WebSDK is not initialized,call initBuckyOS first')
+      return null
+    }
+
     this.syncCurrentAccountInfoFromRuntime()
+    if (this.currentRuntime.getConfig().runtimeType !== RuntimeType.Browser) {
+      return this.currentAccountInfo
+    }
+
+    const cachedUserInfo = isBrowserStorageAvailable()
+      ? getBrowserUserInfo()
+      : null
+    if (cachedUserInfo) {
+      this.currentAccountInfo = {
+        user_name: cachedUserInfo.user_name,
+        user_id: cachedUserInfo.user_id,
+        user_type: cachedUserInfo.user_type,
+        session_token: this.currentRuntime.getSessionToken() ?? '',
+        refresh_token: undefined,
+      }
+      return this.currentAccountInfo
+    }
+
+    const refreshedUserInfo = await this.currentRuntime.refreshBrowserSession()
+    if (!refreshedUserInfo) {
+      return null
+    }
+
+    this.currentAccountInfo = {
+      user_name: refreshedUserInfo.user_name,
+      user_id: refreshedUserInfo.user_id,
+      user_type: refreshedUserInfo.user_type,
+      session_token: this.currentRuntime.getSessionToken() ?? '',
+      refresh_token: undefined,
+    }
     return this.currentAccountInfo
   }
 
-  async doLogin(username: string, password: string): Promise<AccountInfo | null> {
+  async loginByPassword(username: string, password: string): Promise<AccountInfo | null> {
+    // Explicit password login against verify-hub.
     const appId = this.getAppId()
     if (appId == null) {
       console.error('BuckyOS WebSDK is not initialized,call initBuckyOS first')
@@ -221,6 +450,11 @@ export class BuckyOSSDK {
 
       if (isBrowserStorageAvailable()) {
         saveLocalAccountInfo(appId, accountInfo)
+        saveBrowserUserInfo({
+          user_name: accountInfo.user_name,
+          user_id: accountInfo.user_id,
+          user_type: normalized.user_type,
+        })
       }
       this.currentAccountInfo = accountInfo
       this.currentRuntime?.setSessionToken(accountInfo.session_token)
@@ -232,33 +466,29 @@ export class BuckyOSSDK {
     }
   }
 
-  async login(autoLogin: boolean = true): Promise<AccountInfo | null> {
-    if (this.currentRuntime == null) {
+  async loginByRuntimeSession(): Promise<AccountInfo | null> {
+    const runtime = this.currentRuntime
+    if (runtime == null) {
       console.error('BuckyOS WebSDK is not initialized,call initBuckyOS first')
       return null
     }
 
-    const runtimeType = this.currentRuntime.getConfig().runtimeType
-    if (runtimeType === RuntimeType.AppClient || runtimeType === RuntimeType.AppService) {
-      await this.currentRuntime.login()
-      this.syncCurrentAccountInfoFromRuntime()
-      return this.currentAccountInfo
+    await runtime.login()
+    this.syncCurrentAccountInfoFromRuntime()
+    return this.currentAccountInfo
+  }
+
+  async loginByBrowserSSO(): Promise<void> {
+    const runtime = this.currentRuntime
+    if (runtime == null) {
+      console.error('BuckyOS WebSDK is not initialized,call initBuckyOS first')
+      return
     }
 
     const appId = this.getAppId()
     if (appId == null) {
       console.error('BuckyOS WebSDK is not initialized,call initBuckyOS first')
-      return null
-    }
-
-    if (autoLogin && isBrowserStorageAvailable()) {
-      const accountInfo = getLocalAccountInfo(appId)
-      if (accountInfo) {
-        this.currentAccountInfo = accountInfo
-        this.currentRuntime.setSessionToken(accountInfo.session_token)
-        this.currentRuntime.setRefreshToken(accountInfo.refresh_token ?? null)
-        return this.currentAccountInfo
-      }
+      return
     }
 
     if (isBrowserStorageAvailable()) {
@@ -268,25 +498,25 @@ export class BuckyOSSDK {
     const zoneHostName = this.getZoneHostName()
     if (zoneHostName == null) {
       console.error('BuckyOS WebSDK is not initialized,call initBuckyOS first')
-      return null
+      return
     }
 
     try {
       const authClient = new AuthClient(zoneHostName, appId)
-      const accountInfo = await authClient.login()
-      if (accountInfo) {
-        if (isBrowserStorageAvailable()) {
-          saveLocalAccountInfo(appId, accountInfo)
-        }
-        this.currentAccountInfo = accountInfo
-        this.currentRuntime.setSessionToken(accountInfo.session_token)
-        this.currentRuntime.setRefreshToken(accountInfo.refresh_token ?? null)
-      }
-      return accountInfo
+      await authClient.login()
     } catch (error) {
       console.error('login failed: ', error)
       throw error
     }
+  }
+
+  async login(): Promise<AccountInfo | null> {
+    if (this.usesRuntimeManagedSession()) {
+      return this.loginByRuntimeSession()
+    }
+
+    await this.loginByBrowserSSO()
+    return this.currentAccountInfo
   }
 
   logout(cleanAccountInfo: boolean = true) {
@@ -301,11 +531,16 @@ export class BuckyOSSDK {
       return
     }
 
+    if (cleanAccountInfo) {
+      void this.currentRuntime.logoutBrowserSSO()
+    }
+
     if (cleanAccountInfo && isBrowserStorageAvailable()) {
       cleanLocalAccountInfo(appId)
     }
 
     this.currentAccountInfo = null
+    this.currentKEventClient = null
     this.currentRuntime.clearAuthState()
   }
 
@@ -338,16 +573,14 @@ export class BuckyOSSDK {
     if (typeof window === 'undefined') {
       throw new Error('BuckyApi is only available in browser runtime')
     }
+    return getCurrentWalletUserFromHost()
+  }
 
-    return (async () => {
-      const result: any = await (window as any).BuckyApi.getCurrentUser()
-      if (result.code === 0) {
-        return result.data
-      }
-
-      console.error('BuckyApi.getCurrentUser failed: ', result.message)
-      return null
-    })()
+  resolve_did(did: string, docType: DidDocType | null = null): Promise<EncodedDocument | null> {
+    if (typeof window === 'undefined') {
+      throw new Error('BuckyApi is only available in browser runtime')
+    }
+    return resolveDidFromHost(did, docType)
   }
 
   walletSignWithActiveDid(payloads: Record<string, unknown>[]): Promise<WalletSignWithActiveDidResult | null> {
@@ -434,12 +667,40 @@ export class BuckyOSSDK {
     return this.currentRuntime.getTaskManagerClient()
   }
 
-  getOpenDanClient(): OpenDanClient {
+  getWorkflowClient(): WorkflowClient {
     if (this.currentRuntime == null) {
       console.error('BuckyOS WebSDK is not initialized,call initBuckyOS first')
       throw new Error('BuckyOS WebSDK is not initialized,call initBuckyOS first')
     }
-    return this.currentRuntime.getOpenDanClient()
+    return this.currentRuntime.getWorkflowClient()
+  }
+
+  getAiccClient(): AiccClient {
+    if (this.currentRuntime == null) {
+      throw new Error('BuckyOS WebSDK is not initialized,call initBuckyOS first')
+    }
+    return this.currentRuntime.getAiccClient()
+  }
+
+  getMsgQueueClient(): MsgQueueClient {
+    if (this.currentRuntime == null) {
+      throw new Error('BuckyOS WebSDK is not initialized,call initBuckyOS first')
+    }
+    return this.currentRuntime.getMsgQueueClient()
+  }
+
+  getMsgCenterClient(): MsgCenterClient {
+    if (this.currentRuntime == null) {
+      throw new Error('BuckyOS WebSDK is not initialized,call initBuckyOS first')
+    }
+    return this.currentRuntime.getMsgCenterClient()
+  }
+
+  getRepoClient(): RepoClient {
+    if (this.currentRuntime == null) {
+      throw new Error('BuckyOS WebSDK is not initialized,call initBuckyOS first')
+    }
+    return this.currentRuntime.getRepoClient()
   }
 
   private buildRuntimeConfig(appid: string, config: BuckyOSConfig | null): BuckyOSConfig {
@@ -498,10 +759,20 @@ export class BuckyOSSDK {
     const ignoredAppId = appid
     void ignoredAppId
 
-    let zoneDocUrl = defaultProtocol + host + '/1.0/identifiers/self'
-    let response = await fetch(zoneDocUrl)
-    if (response.status === 200) {
-      return host
+    // Inside a BuckyOS zone every app subdomain (e.g. `sys-test.test.buckyos.io`)
+    // serves the same `/1.0/identifiers/self` document as the zone root, so we
+    // cannot infer the zone host from "did this URL respond 200?" alone — that
+    // logic would happily pin the zone host to whatever app the user is
+    // currently visiting, and AuthClient would then build SSO URLs like
+    // `sys.<app>.<zone>/login` (wrong) instead of `sys.<zone>/login`.
+    //
+    // The DID document itself carries the canonical zone host in either the
+    // `hostname` field or the `did:web:<host>` form of `id`. Use that as the
+    // primary signal, and only fall back to the walk-up-the-DNS-tree probe
+    // when the document does not contain a hostname.
+    const zoneFromDoc = await this.fetchZoneHostFromIdentifierDoc(defaultProtocol + host + '/1.0/identifiers/self')
+    if (zoneFromDoc) {
+      return zoneFromDoc
     }
 
     const upHost = host.split('.').slice(1).join('.')
@@ -509,13 +780,36 @@ export class BuckyOSSDK {
       return host
     }
 
-    zoneDocUrl = defaultProtocol + upHost + '/1.0/identifiers/self'
-    response = await fetch(zoneDocUrl)
-    if (response.status === 200) {
-      return upHost
+    const zoneFromParent = await this.fetchZoneHostFromIdentifierDoc(defaultProtocol + upHost + '/1.0/identifiers/self')
+    if (zoneFromParent) {
+      return zoneFromParent
     }
 
     return host
+  }
+
+  private async fetchZoneHostFromIdentifierDoc(url: string): Promise<string | null> {
+    try {
+      const response = await fetch(url)
+      if (response.status !== 200) {
+        return null
+      }
+      const doc = await response.json() as { hostname?: unknown; id?: unknown }
+      const hostname = typeof doc.hostname === 'string' ? doc.hostname.trim() : ''
+      if (hostname.length > 0) {
+        return hostname
+      }
+      // Fallback: derive from `did:web:<host>` style id if `hostname` is missing.
+      if (typeof doc.id === 'string') {
+        const match = doc.id.match(/^did:web:([^/?#]+)/)
+        if (match && match[1]) {
+          return match[1]
+        }
+      }
+      return null
+    } catch {
+      return null
+    }
   }
 
   private syncCurrentAccountInfoFromRuntime() {
@@ -534,14 +828,28 @@ export class BuckyOSSDK {
       : typeof claims?.userid === 'string'
         ? claims.userid
         : this.currentRuntime.getOwnerUserId() ?? 'root'
+    const userType = typeof claims?.user_type === 'string'
+      ? claims.user_type
+      : this.currentRuntime.getConfig().runtimeType === RuntimeType.AppService
+        ? 'service'
+        : undefined
 
     this.currentAccountInfo = {
       user_name: userId,
       user_id: userId,
-      user_type: this.currentRuntime.getConfig().runtimeType === RuntimeType.AppService ? 'service' : 'root',
+      user_type: userType,
       session_token: sessionToken,
       refresh_token: this.currentRuntime.getRefreshToken() ?? undefined,
     }
+  }
+
+  private usesRuntimeManagedSession(): boolean {
+    if (this.currentRuntime == null) {
+      return false
+    }
+
+    const runtimeType = this.currentRuntime.getConfig().runtimeType
+    return runtimeType === RuntimeType.AppClient || runtimeType === RuntimeType.AppService
   }
 
   private detectEnvironmentRuntimeType(): RuntimeType {
@@ -584,15 +892,22 @@ export function createSDKModule(target: SDKTarget) {
     getBuckyOSConfig: sdk.getBuckyOSConfig.bind(sdk),
     getRuntimeType: sdk.getRuntimeType.bind(sdk),
     getAppId: sdk.getAppId.bind(sdk),
+    getKEventClient: sdk.getKEventClient.bind(sdk),
+    createEventReader: sdk.createEventReader.bind(sdk),
+    create_event_reader: sdk.create_event_reader.bind(sdk),
+    subscribeKEvent: sdk.subscribeKEvent.bind(sdk),
     attachEvent: sdk.attachEvent.bind(sdk),
     removeEvent: sdk.removeEvent.bind(sdk),
     getAccountInfo: sdk.getAccountInfo.bind(sdk),
-    doLogin: sdk.doLogin.bind(sdk),
+    loginByPassword: sdk.loginByPassword.bind(sdk),
+    loginByBrowserSSO: sdk.loginByBrowserSSO.bind(sdk),
+    loginByRuntimeSession: sdk.loginByRuntimeSession.bind(sdk),
     login: sdk.login.bind(sdk),
     logout: sdk.logout.bind(sdk),
     getAppSetting: sdk.getAppSetting.bind(sdk),
     setAppSetting: sdk.setAppSetting.bind(sdk),
     getCurrentWalletUser: sdk.getCurrentWalletUser.bind(sdk),
+    resolve_did: sdk.resolve_did.bind(sdk),
     walletSignWithActiveDid: sdk.walletSignWithActiveDid.bind(sdk),
     openExternalUrl: sdk.openExternalUrl.bind(sdk),
     getZoneHostName: sdk.getZoneHostName.bind(sdk),
@@ -601,7 +916,11 @@ export function createSDKModule(target: SDKTarget) {
     getVerifyHubClient: sdk.getVerifyHubClient.bind(sdk),
     getSystemConfigClient: sdk.getSystemConfigClient.bind(sdk),
     getTaskManagerClient: sdk.getTaskManagerClient.bind(sdk),
-    getOpenDanClient: sdk.getOpenDanClient.bind(sdk),
+    getWorkflowClient: sdk.getWorkflowClient.bind(sdk),
+    getAiccClient: sdk.getAiccClient.bind(sdk),
+    getMsgQueueClient: sdk.getMsgQueueClient.bind(sdk),
+    getMsgCenterClient: sdk.getMsgCenterClient.bind(sdk),
+    getRepoClient: sdk.getRepoClient.bind(sdk),
   }
 
   return {
@@ -620,5 +939,10 @@ export { RuntimeType }
 export { parseSessionTokenClaims }
 export { VerifyHubClient }
 export { SystemConfigClient }
-export { TaskManagerClient }
-export { OpenDanClient }
+export * from './task_mgr_client'
+export * from './workflow_client'
+export * from './aicc_client'
+export { MsgQueueClient }
+export { MsgCenterClient }
+export { RepoClient }
+export * from './kevent_client'

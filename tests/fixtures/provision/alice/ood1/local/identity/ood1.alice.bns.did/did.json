@@ -1,0 +1,36 @@
+{
+  "@context": [
+    "https://www.w3.org/ns/did/v1",
+    "https://buckyos.org/ns/device/v1"
+  ],
+  "id": "did:bns:ood1.alice",
+  "verificationMethod": [
+    {
+      "type": "Ed25519VerificationKey2020",
+      "id": "#main_key",
+      "controller": "did:bns:ood1.alice",
+      "publicKeyJwk": {
+        "kty": "OKP",
+        "crv": "Ed25519",
+        "x": "E1oQDYqzyX4ysrNgTJ5DAVaMgA3By8XpBa0e6r2gBqQ"
+      }
+    }
+  ],
+  "authentication": [
+    "#main_key"
+  ],
+  "assertion_method": [
+    "#main_key"
+  ],
+  "capabilityInvocation": [
+    "#main_key"
+  ],
+  "exp": 1940952891,
+  "iat": 1783272891,
+  "version_seq": 0,
+  "zone_did": "did:bns:alice",
+  "owner": "did:bns:alice",
+  "device_type": "ood",
+  "name": "ood1",
+  "net_id": "lan"
+}

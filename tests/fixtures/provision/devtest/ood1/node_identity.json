@@ -1,0 +1,13 @@
+{
+  "schema": "buckyos.node_identity.v2",
+  "zone_did": "did:web:test.buckyos.io",
+  "owner_did": "did:bns:devtest",
+  "owner_public_key": {
+    "kty": "OKP",
+    "crv": "Ed25519",
+    "x": "T4Quc1L6Ogu4N2tTKOvneV1yYnBcmhP89B_RsuFsJZ8"
+  },
+  "device_name": "ood1",
+  "device_did": "did:web:ood1.test.buckyos.io",
+  "zone_iat": 1743478939
+}

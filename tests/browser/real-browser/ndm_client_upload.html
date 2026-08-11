@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BuckyOS NDM Client Upload Integration Test</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: ui-monospace, "SFMono-Regular", "SF Mono", Menlo, Consolas, monospace;
+        background: #f2f4f7;
+        color: #111827;
+      }
+
+      body {
+        margin: 0;
+        padding: 24px;
+      }
+
+      main {
+        max-width: 960px;
+        margin: 0 auto;
+        background: #ffffff;
+        border: 1px solid #d0d7de;
+        border-radius: 12px;
+        padding: 20px;
+        box-shadow: 0 12px 36px rgba(15, 23, 42, 0.08);
+      }
+
+      h1 {
+        margin: 0 0 12px;
+        font-size: 24px;
+      }
+
+      p {
+        margin: 0 0 16px;
+        line-height: 1.5;
+      }
+
+      #status {
+        display: inline-block;
+        padding: 8px 12px;
+        border-radius: 999px;
+        font-weight: 700;
+      }
+
+      #status[data-state="running"] {
+        background: #fef3c7;
+        color: #92400e;
+      }
+
+      #status[data-state="ready"] {
+        background: #dbeafe;
+        color: #1e40af;
+      }
+
+      #status[data-state="passed"] {
+        background: #dcfce7;
+        color: #166534;
+      }
+
+      #status[data-state="failed"] {
+        background: #fee2e2;
+        color: #991b1b;
+      }
+
+      pre {
+        margin: 20px 0 0;
+        padding: 16px;
+        background: #0f172a;
+        color: #e2e8f0;
+        border-radius: 10px;
+        overflow: auto;
+        max-height: 60vh;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
+      button {
+        padding: 8px 16px;
+        border: 1px solid #d0d7de;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 14px;
+      }
+
+      button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>NDM Client Upload Integration Test</h1>
+      <p>
+        End-to-end integration test: SDK init &rarr; login &rarr; real browser
+        file picker (<code>pickupAndImport</code>) &rarr; materialization &rarr;
+        TUS upload &rarr; verify uploaded to named_store.
+      </p>
+      <div id="status" data-state="running">Initializing...</div>
+      <p>
+        <button id="pick-single-file" type="button" disabled>Pick Single File</button>
+        <button id="pick-multi-file" type="button" disabled>Pick Multi Files</button>
+      </p>
+      <pre id="result">Preparing...</pre>
+    </main>
+
+    <script type="module">
+      import { buckyos, RuntimeType, ndm } from './browser.mjs';
+
+      const statusNode = document.getElementById('status');
+      const resultNode = document.getElementById('result');
+      const pickSingleBtn = document.getElementById('pick-single-file');
+      const pickMultiBtn = document.getElementById('pick-multi-file');
+
+      function setStatus(state, text) {
+        statusNode.dataset.state = state;
+        statusNode.textContent = text;
+      }
+
+      function setResult(value) {
+        resultNode.textContent = JSON.stringify(value, null, 2);
+        window.__NDM_UPLOAD_TEST_RESULT__ = value;
+      }
+
+      function log(msg) {
+        resultNode.textContent += '\n' + (typeof msg === 'string' ? msg : JSON.stringify(msg, null, 2));
+      }
+
+      // ---- Phase 1: SDK Init + Login ----
+      async function initAndLogin() {
+        const appId = 'systest';
+
+        await buckyos.initBuckyOS(appId, {
+          appId,
+          runtimeType: RuntimeType.Browser,
+          zoneHost: 'test.buckyos.io',
+          defaultProtocol: 'https://',
+          autoRenew: false,
+        });
+
+        log('[init] SDK initialized, logging in...');
+
+        const accountInfo = await buckyos.loginByPassword('devtest', 'bucky2025');
+        if (!accountInfo || !accountInfo.session_token) {
+          throw new Error('Login failed: no session token received');
+        }
+
+        log('[login] Logged in as: ' + (accountInfo.user_id || 'unknown'));
+        return accountInfo;
+      }
+
+      // ---- Phase 2: pickupAndImport (real browser file picker) ----
+      async function doPickAndImport(mode) {
+        setStatus('running', 'Picking files...');
+        log(`[pick] Calling pickupAndImport({ mode: '${mode}' })...`);
+
+        const snapshot = await ndm.pickupAndImport({
+          mode,
+          autoStartUpload: false,
+        });
+
+        log('[pick] Materialization complete:');
+        log({
+          sessionId: snapshot.sessionId,
+          materializationStatus: snapshot.materializationStatus,
+          uploadStatus: snapshot.uploadStatus,
+          summary: snapshot.summary,
+          items: snapshot.items.map(item => ({
+            kind: item.kind,
+            name: item.name,
+            objectId: item.objectId,
+            size: item.kind === 'file' ? item.size : undefined,
+          })),
+        });
+
+        return snapshot;
+      }
+
+      // ---- Network diagnostics ----
+      const networkLog = [];
+      const origFetch = window.fetch.bind(window);
+      window.fetch = async function (...args) {
+        const url = typeof args[0] === 'string' ? args[0] : args[0]?.url || String(args[0]);
+        const method = args[1]?.method || 'GET';
+        const entry = { method, url, ts: Date.now() };
+        try {
+          const resp = await origFetch(...args);
+          entry.status = resp.status;
+          entry.statusText = resp.statusText;
+          // Capture response headers for TUS
+          if (url.includes('/ndm/') || url.includes('/uploads')) {
+            entry.respHeaders = {};
+            resp.headers.forEach((v, k) => { entry.respHeaders[k] = v; });
+          }
+          networkLog.push(entry);
+          log(`[net] ${method} ${url} → ${resp.status}`);
+          return resp;
+        } catch (err) {
+          entry.error = err.message;
+          networkLog.push(entry);
+          log(`[net] ${method} ${url} → ERROR: ${err.message}`);
+          throw err;
+        }
+      };
+
+      // ---- Phase 3: Upload ----
+      async function doUpload(sessionId) {
+        setStatus('running', 'Uploading...');
+        log('[upload] Starting upload for session: ' + sessionId);
+
+        const uploadResult = await ndm.startUpload(sessionId, { concurrency: 2 });
+        log('[upload] startUpload returned: ' + uploadResult.uploadStatus);
+
+        // Poll progress until completed or failed
+        const maxWaitMs = 120000;
+        const pollIntervalMs = 1000;
+        const startTime = Date.now();
+
+        while (Date.now() - startTime < maxWaitMs) {
+          await new Promise(r => setTimeout(r, pollIntervalMs));
+
+          const progress = await ndm.getUploadProgress(sessionId);
+          log(`[progress] ${progress.uploadedBytes}/${progress.totalBytes} bytes, ${progress.uploadedObjects}/${progress.totalObjects} objects, status=${progress.uploadStatus}`);
+
+          if (progress.uploadStatus === 'completed') {
+            return progress;
+          }
+          if (progress.uploadStatus === 'failed') {
+            // Collect per-object errors for diagnostics
+            const status = await ndm.getImportSessionStatus(sessionId);
+            const failedObjects = status.perObjectProgress
+              ? Object.values(status.perObjectProgress).filter(p => p.state === 'failed')
+              : [];
+            throw new Error(`Upload failed. failedObjects=${JSON.stringify(failedObjects)}, networkLog=${JSON.stringify(networkLog.slice(-10))}`);
+          }
+          if (progress.uploadStatus === 'not_required') {
+            return progress;
+          }
+        }
+
+        throw new Error('Upload timed out after ' + maxWaitMs + 'ms');
+      }
+
+      // ---- Wire up buttons ----
+      async function handlePick(mode) {
+        pickSingleBtn.disabled = true;
+        pickMultiBtn.disabled = true;
+
+        try {
+          const snapshot = await doPickAndImport(mode);
+          const finalProgress = await doUpload(snapshot.sessionId);
+
+          const finalStatus = await ndm.getImportSessionStatus(snapshot.sessionId);
+
+          const result = {
+            ok: true,
+            phase: 'completed',
+            sessionId: snapshot.sessionId,
+            materializationStatus: snapshot.materializationStatus,
+            uploadStatus: finalStatus.uploadStatus,
+            summary: finalStatus.summary,
+            progress: finalStatus.progress,
+            items: snapshot.items.map(item => ({
+              kind: item.kind,
+              name: item.name,
+              objectId: item.objectId,
+              size: item.kind === 'file' ? item.size : undefined,
+            })),
+          };
+
+          setStatus('passed', 'Passed');
+          setResult(result);
+        } catch (error) {
+          const result = {
+            ok: false,
+            phase: 'error',
+            error: {
+              name: error.name,
+              message: error.message,
+              code: error.code || null,
+              stack: error.stack || null,
+            },
+          };
+          setStatus('failed', 'Failed');
+          setResult(result);
+        }
+      }
+
+      pickSingleBtn.addEventListener('click', () => void handlePick('single_file'), { once: true });
+      pickMultiBtn.addEventListener('click', () => void handlePick('multi_file'), { once: true });
+
+      // ---- Boot ----
+      async function boot() {
+        try {
+          const accountInfo = await initAndLogin();
+          setStatus('ready', 'Ready');
+          setResult({
+            phase: 'ready',
+            userId: accountInfo.user_id,
+            origin: window.location.origin,
+          });
+          pickSingleBtn.disabled = false;
+          pickMultiBtn.disabled = false;
+        } catch (error) {
+          setStatus('failed', 'Init Failed');
+          setResult({
+            ok: false,
+            phase: 'init_error',
+            error: {
+              name: error.name,
+              message: error.message,
+              stack: error.stack || null,
+            },
+          });
+        }
+      }
+
+      void boot();
+    </script>
+  </body>
+</html>

@@ -1,0 +1,45 @@
+{
+  "@context": [
+    "https://www.w3.org/ns/did/v1",
+    "https://buckyos.org/ns/zone/v1"
+  ],
+  "id": "did:bns:alice",
+  "verificationMethod": [
+    {
+      "type": "Ed25519VerificationKey2020",
+      "id": "#main_key",
+      "controller": "did:bns:alice",
+      "publicKeyJwk": {
+        "kty": "OKP",
+        "crv": "Ed25519",
+        "x": "uh7RD37tflN65CrcJSUQ3vGnyU4vmC7_M8IkEEOHnds"
+      }
+    }
+  ],
+  "authentication": [
+    "#main_key"
+  ],
+  "assertionMethod": [
+    "#main_key"
+  ],
+  "capabilityInvocation": [
+    "#main_key"
+  ],
+  "service": [
+    {
+      "id": "did:bns:alice#lastDoc",
+      "type": "DIDDoc",
+      "serviceEndpoint": "https://alice.bns.did/resolve/this_zone"
+    }
+  ],
+  "exp": 2058838939,
+  "iat": 1901158939,
+  "version_seq": 0,
+  "hostname": "alice.bns.did",
+  "owner": "did:undefined:undefined",
+  "oods": [
+    "ood1"
+  ],
+  "boot_jwt": "eyJhbGciOiJFZERTQSJ9.eyJpZCI6ImRpZDpibnM6YWxpY2UiLCJvb2RzIjpbIm9vZDEiXSwic24iOiJzbi5kZXZ0ZXN0cy5vcmciLCJleHAiOjIwNTg4Mzg5Mzl9.f68oAAOVXzyu2-cU_DcvGQhtKVfnCJgtlGBq6-6PY4_Y_12cgV8KvWxYaM6VwpGxWjAoz9mXpZF9EDikdatuAA",
+  "sn": "sn.devtests.org"
+}

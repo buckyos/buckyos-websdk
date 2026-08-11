@@ -1,6 +1,6 @@
 {
   "name": "buckyos",
-  "version": "1.4.2",
+  "version": "0.7.109",
   "description": "BuckyOS WebSDK for browser and Node.js environments",
   "main": "dist/index.cjs",
   "module": "dist/index.mjs",
@@ -33,6 +33,14 @@
       "require": "./dist/node.cjs",
       "default": "./dist/node.mjs"
     },
+    "./provision": {
+      "types": "./dist/provision.d.ts",
+      "node": {
+        "import": "./dist/provision.mjs",
+        "require": "./dist/provision.cjs"
+      },
+      "default": "./dist/provision.mjs"
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -45,23 +53,34 @@
     "build:all": "pnpm run build",
     "dev": "vite",
     "demo:app-client": "pnpm exec ts-node examples/app_client_demo.ts",
+    "demo:app-service:debug": "pnpm exec ts-node examples/app_service_local_debug.ts",
+    "debug:systest": "bash ./tests/scripts/debug_systest.sh",
+    "test:app-service:debug": "bash ./tests/scripts/test_app_service_debug.sh",
     "test": "jest",
+    "test:browser:real:prepare": "node tests/scripts/prepare_real_browser_test.mjs",
+    "test:browser:real": "pnpm run build && pnpm run test:browser:real:prepare && npx playwright test tests/browser/real-browser/playwright.spec.js tests/browser/real-browser/ndn_types.spec.js tests/browser/real-browser/ndm_client.spec.js tests/browser/real-browser/ndm_client_upload.spec.js --reporter=line",
+    "test:app-client": "jest --runInBand tests/app-client",
+    "test:app-client:integration": "BUCKYOS_RUN_INTEGRATION_TESTS=1 jest --runInBand tests/app-client",
+    "test:app-service": "jest --runInBand tests/app-service",
+    "test:app-service:integration": "BUCKYOS_RUN_INTEGRATION_TESTS=1 jest --runInBand tests/app-service",
+    "test:all": "bash ./run_all_test.sh",
     "prepublishOnly": "pnpm run build:all"
   },
   "devDependencies": {
-    "@testing-library/jest-dom": "^6.6.3",
     "@types/jest": "^29.5.14",
     "jest": "^29.7.0",
-    "jest-environment-jsdom": "^29.7.0",
-    "jsdom": "^26.0.0",
     "ts-jest": "^29.2.5",
     "ts-node": "^10.9.2",
     "typescript": "^4.9.5",
     "vite": "^4.0.0"
   },
   "dependencies": {
+    "@peculiar/x509": "^1.14.3",
+    "canonicalize": "2.1.0",
+    "ethers": "^6.17.0",
     "jssha": "^3.3.1",
     "terser": "^5.36.0",
+    "tus-js-client": "^4.2.3",
     "unixcrypt": "^2.0.0"
   }
 }

@@ -8,15 +8,22 @@ export const initBuckyOS = sdkModule.initBuckyOS
 export const getBuckyOSConfig = sdkModule.getBuckyOSConfig
 export const getRuntimeType = sdkModule.getRuntimeType
 export const getAppId = sdkModule.getAppId
+export const getKEventClient = sdkModule.getKEventClient
+export const createEventReader = sdkModule.createEventReader
+export const create_event_reader = sdkModule.create_event_reader
+export const subscribeKEvent = sdkModule.subscribeKEvent
 export const attachEvent = sdkModule.attachEvent
 export const removeEvent = sdkModule.removeEvent
 export const getAccountInfo = sdkModule.getAccountInfo
-export const doLogin = sdkModule.doLogin
+export const loginByPassword = sdkModule.loginByPassword
+export const loginByBrowserSSO = sdkModule.loginByBrowserSSO
+export const loginByRuntimeSession = sdkModule.loginByRuntimeSession
 export const login = sdkModule.login
 export const logout = sdkModule.logout
 export const getAppSetting = sdkModule.getAppSetting
 export const setAppSetting = sdkModule.setAppSetting
 export const getCurrentWalletUser = sdkModule.getCurrentWalletUser
+export const resolve_did = sdkModule.resolve_did
 export const walletSignWithActiveDid = sdkModule.walletSignWithActiveDid
 export const openExternalUrl = sdkModule.openExternalUrl
 export const getZoneHostName = sdkModule.getZoneHostName
@@ -25,7 +32,20 @@ export const getServiceRpcClient = sdkModule.getServiceRpcClient
 export const getVerifyHubClient = sdkModule.getVerifyHubClient
 export const getSystemConfigClient = sdkModule.getSystemConfigClient
 export const getTaskManagerClient = sdkModule.getTaskManagerClient
-export const getOpenDanClient = sdkModule.getOpenDanClient
+export const getWorkflowClient = sdkModule.getWorkflowClient
+export const getAiccClient = sdkModule.getAiccClient
+export const getMsgQueueClient = sdkModule.getMsgQueueClient
+export const getMsgCenterClient = sdkModule.getMsgCenterClient
+export const getRepoClient = sdkModule.getRepoClient
 
 export { hashPassword }
 export * from './sdk_core'
+export * from './types'
+export * as namelib from './namelib'
+export * as bns from './bns_client'
+export * from './bns_evm_tx'
+export * from './bns_tx_executor'
+export * as sn from './sn_client'
+export * as ndn from './ndn_types'
+export * as ndm from './ndm_client'
+export * as ndm_proxy from './ndm_proxy'

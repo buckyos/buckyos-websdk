@@ -1,8 +1,13 @@
 import { kRPCClient } from './krpc_client';
 import { VerifyHubClient } from './verify-hub-client';
 import { TaskManagerClient } from './task_mgr_client';
-import { OpenDanClient } from './opendan_client';
+import { WorkflowClient } from './workflow_client';
 import { SystemConfigClient } from './system_config_client';
+import { AiccClient } from './aicc_client';
+import { MsgQueueClient } from './msg_queue_client';
+import { MsgCenterClient } from './msg_center_client';
+import { RepoClient } from './repo_client';
+import { BrowserUserInfo } from './account';
 export declare enum RuntimeType {
     Browser = "Browser",
     NodeJS = "NodeJS",
@@ -28,6 +33,7 @@ export interface BuckyOSConfig {
     appId: string;
     defaultProtocol: string;
     runtimeType: RuntimeType;
+    userid?: string | null;
     ownerUserId?: string | null;
     rootDir?: string;
     sessionToken?: string | null;
@@ -47,6 +53,7 @@ export declare class BuckyOSRuntime {
     private refreshToken;
     private renewTimer;
     private initialized;
+    private profile;
     constructor(config: BuckyOSConfig);
     initialize(): Promise<void>;
     login(): Promise<void>;
@@ -56,6 +63,9 @@ export declare class BuckyOSRuntime {
     getOwnerUserId(): string | null;
     getFullAppId(): string;
     getZoneHostName(): string;
+    getDefaultProtocol(): string;
+    getNodeGatewayPort(): number;
+    getConfiguredVerifyHubServiceUrl(): string | null;
     getZoneServiceURL(serviceName: string): string;
     getSystemConfigServiceURL(): string;
     setSessionToken(token: string | null): void;
@@ -68,24 +78,47 @@ export declare class BuckyOSRuntime {
     getSystemConfigClient(): SystemConfigClient;
     getVerifyHubClient(): VerifyHubClient;
     getTaskManagerClient(): TaskManagerClient;
-    getOpenDanClient(): OpenDanClient;
+    getWorkflowClient(): WorkflowClient;
+    getAiccClient(): AiccClient;
+    getMsgQueueClient(): MsgQueueClient;
+    getMsgCenterClient(): MsgCenterClient;
+    getRepoClient(): RepoClient;
     getMySettings(): Promise<unknown>;
     updateMySettings(jsonPath: string, settings: unknown): Promise<void>;
     updateAllMySettings(settings: unknown): Promise<void>;
     renewTokenFromVerifyHub(): Promise<void>;
-    private resolveNodeIdentityFromEnv;
-    private resolveZoneHostFromLocalConfig;
+    ensureSessionTokenReady(): Promise<string | null>;
+    ensureAppServiceSessionToken(): void;
+    ensureAppClientSessionToken(): Promise<void>;
+    resolveNodeIdentityFromEnv(): void;
+    resolveZoneHostFromLocalConfig(): Promise<void>;
     private validateSessionToken;
+    private ensureBrowserSessionToken;
+    private normalizeBrowserUserInfo;
+    refreshBrowserSession(): Promise<BrowserUserInfo | null>;
+    logoutBrowserSSO(): Promise<void>;
+    private refreshBrowserSessionToken;
     private needsRenew;
-    private startAutoRenewIfNeeded;
+    startAutoRenewIfNeeded(): void;
     private loadAppServiceSessionTokenFromEnv;
-    private createAppClientSessionToken;
+    private loadAppClientSessionTokenFromEnv;
+    createAppClientSessionToken(): Promise<string>;
     private loadLocalSigningMaterial;
     private getPrivateKeySearchRoots;
+    private getBuckyOSRootDir;
+    private getBuckyOSEtcDir;
+    private readPemFile;
+    private readNodeIdentityMetadata;
+    private extractDeviceNameFromIdentityPayload;
+    private readDeviceNameFromNodeIdentityPath;
+    private tryLoadDeviceSigningMaterial;
+    private deviceKeyPathCandidates;
+    private tryLoadUserSigningMaterial;
     private tryResolveDeviceNameFromSearchRoots;
     private tryResolveZoneHostFromSearchRoots;
     private getMySettingsPath;
-    private resolveLocalServiceHost;
+    private getConfiguredSystemConfigServiceUrl;
+    resolveAppServiceGatewayHost(): string;
     private signJwtWithEd25519;
 }
 //# sourceMappingURL=runtime.d.ts.map

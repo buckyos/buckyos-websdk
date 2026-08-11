@@ -1,8 +1,15 @@
 import { kRPCClient } from './krpc_client'
 import { VerifyHubClient } from './verify-hub-client'
 import { TaskManagerClient } from './task_mgr_client'
-import { OpenDanClient } from './opendan_client'
+import { WorkflowClient } from './workflow_client'
 import { SystemConfigClient } from './system_config_client'
+import { AiccClient } from './aicc_client'
+import { MsgQueueClient } from './msg_queue_client'
+import { MsgCenterClient } from './msg_center_client'
+import { RepoClient } from './repo_client'
+import { BrowserUserInfo, getBrowserUserInfo, saveBrowserUserInfo } from './account'
+import { parseBuckyOSOwnerDocument } from './types'
+import { DID } from './namelib'
 
 declare const require: undefined | ((name: string) => any)
 
@@ -10,7 +17,14 @@ const DEFAULT_NODE_GATEWAY_PORT = 3180
 const DEFAULT_SESSION_TOKEN_TTL_SECONDS = 15 * 60
 const DEFAULT_RENEW_INTERVAL_MS = 5_000
 const BUCKYOS_HOST_GATEWAY_ENV = 'BUCKYOS_HOST_GATEWAY'
+const BUCKYOS_APPCLIENT_SESSION_TOKEN_ENV = 'BUCKYOS_APPCLIENT_SESSION_TOKEN'
 const DEFAULT_DOCKER_HOST_GATEWAY = 'host.docker.internal'
+
+interface BrowserSSORefreshResponse {
+  access_token?: unknown
+  session_token?: unknown
+  user_info?: unknown
+}
 
 export enum RuntimeType {
   Browser = 'Browser',
@@ -39,6 +53,7 @@ export interface BuckyOSConfig {
   appId: string
   defaultProtocol: string
   runtimeType: RuntimeType
+  userid?: string | null
   ownerUserId?: string | null
   rootDir?: string
   sessionToken?: string | null
@@ -56,6 +71,7 @@ export const DEFAULT_CONFIG: BuckyOSConfig = {
   appId: '',
   defaultProtocol: 'http://',
   runtimeType: RuntimeType.Unknown,
+  userid: null,
   ownerUserId: null,
   rootDir: '',
   sessionToken: null,
@@ -75,6 +91,13 @@ interface LocalSigningMaterial {
   sourcePath: string
 }
 
+interface NodeIdentityMetadata {
+  deviceName: string | null
+  deviceDid: string | null
+  zoneDid: string | null
+  zoneName: string | null
+}
+
 function getProcessEnv(): Record<string, string | undefined> {
   const runtimeProcess = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process
   return runtimeProcess?.env ?? {}
@@ -83,6 +106,14 @@ function getProcessEnv(): Record<string, string | undefined> {
 function hasNodeRuntime(): boolean {
   const runtimeProcess = (globalThis as { process?: { versions?: { node?: string } } }).process
   return Boolean(runtimeProcess?.versions?.node)
+}
+
+function hasBrowserStorage(): boolean {
+  return typeof localStorage !== 'undefined'
+}
+
+function hasFetchRuntime(): boolean {
+  return typeof fetch === 'function'
 }
 
 function ensureBuffer(): {
@@ -153,16 +184,26 @@ function getFullAppId(appId: string, ownerUserId: string): string {
   return `${ownerUserId}-${appId}`
 }
 
-function getAppHostPrefix(appId: string, ownerUserId: string | null | undefined): string {
-  if (!ownerUserId) {
-    return appId
-  }
-  return `${appId}-${ownerUserId}`
-}
-
 function getSessionTokenEnvKey(appFullId: string, isAppService: boolean): string {
   const normalized = appFullId.toUpperCase().replace(/-/g, '_')
   return isAppService ? `${normalized}_TOKEN` : `${normalized}_SESSION_TOKEN`
+}
+
+function resolveZoneHostFromDid(zoneDid: string | null | undefined): string | null {
+  const normalized = trimToNull(zoneDid)
+  if (!normalized) {
+    return null
+  }
+
+  if (normalized.startsWith('did:web:')) {
+    return normalized.slice('did:web:'.length).replace(/:/g, '.')
+  }
+
+  if (normalized.startsWith('did:bns:')) {
+    return normalized.slice('did:bns:'.length)
+  }
+
+  return null
 }
 
 function parseAppIdentityFromInstanceConfig(appInstanceConfig: string): {
@@ -198,18 +239,200 @@ async function importNodeModule(moduleName: string): Promise<any> {
   return dynamicImport(moduleName) as Promise<any>
 }
 
+interface RuntimeProfile {
+  initialize(runtime: BuckyOSRuntime): Promise<void>
+  login(runtime: BuckyOSRuntime): Promise<void>
+  getZoneServiceURL(runtime: BuckyOSRuntime, servicePath: string): string
+  getSystemConfigServiceURL(runtime: BuckyOSRuntime): string
+  getMySettingsPath(runtime: BuckyOSRuntime): string
+  supportsManagedSessionRenewal(): boolean
+  shouldSkipVerifyHubRenewal(runtime: BuckyOSRuntime): boolean
+  getVerifyHubLoginJwt(runtime: BuckyOSRuntime, sessionToken: string): Promise<string>
+}
+
+abstract class BaseRuntimeProfile implements RuntimeProfile {
+  async initialize(runtime: BuckyOSRuntime): Promise<void> {
+    runtime.resolveNodeIdentityFromEnv()
+    await runtime.resolveZoneHostFromLocalConfig()
+  }
+
+  async login(runtime: BuckyOSRuntime): Promise<void> {
+    await runtime.initialize()
+    runtime.startAutoRenewIfNeeded()
+  }
+
+  supportsManagedSessionRenewal(): boolean {
+    return false
+  }
+
+  shouldSkipVerifyHubRenewal(_runtime: BuckyOSRuntime): boolean {
+    return false
+  }
+
+  async getVerifyHubLoginJwt(_runtime: BuckyOSRuntime, sessionToken: string): Promise<string> {
+    return sessionToken
+  }
+
+  abstract getZoneServiceURL(runtime: BuckyOSRuntime, servicePath: string): string
+
+  abstract getSystemConfigServiceURL(runtime: BuckyOSRuntime): string
+
+  abstract getMySettingsPath(runtime: BuckyOSRuntime): string
+}
+
+class BrowserRuntimeProfile extends BaseRuntimeProfile {
+  getRelativeZoneServiceURL(servicePath: string): string {
+    return `/kapi/${servicePath}/`
+  }
+
+  getRelativeSystemConfigServiceURL(): string {
+    return '/kapi/system_config'
+  }
+
+  getServiceSettingsPath(runtime: BuckyOSRuntime): string {
+    return `services/${runtime.getAppId()}/settings`
+  }
+
+  getZoneServiceURL(_runtime: BuckyOSRuntime, servicePath: string): string {
+    return this.getRelativeZoneServiceURL(servicePath)
+  }
+
+  getSystemConfigServiceURL(_runtime: BuckyOSRuntime): string {
+    return this.getRelativeSystemConfigServiceURL()
+  }
+
+  getMySettingsPath(runtime: BuckyOSRuntime): string {
+    return this.getServiceSettingsPath(runtime)
+  }
+}
+
+class AppRuntimeProfile extends BrowserRuntimeProfile {}
+
+abstract class ManagedSessionRuntimeProfile extends BaseRuntimeProfile {
+  async login(runtime: BuckyOSRuntime): Promise<void> {
+    await runtime.initialize()
+    await runtime.renewTokenFromVerifyHub()
+    runtime.startAutoRenewIfNeeded()
+  }
+
+  supportsManagedSessionRenewal(): boolean {
+    return true
+  }
+}
+
+class AppClientRuntimeProfile extends ManagedSessionRuntimeProfile {
+  async initialize(runtime: BuckyOSRuntime): Promise<void> {
+    await super.initialize(runtime)
+    await runtime.ensureAppClientSessionToken()
+  }
+
+  getZoneGatewayServiceURL(runtime: BuckyOSRuntime, servicePath: string): string {
+    const zoneHost = trimToNull(runtime.getZoneHostName())
+    if (!zoneHost) {
+      throw new Error('zoneHost is required in AppClient mode')
+    }
+    return `${runtime.getDefaultProtocol()}${zoneHost}/kapi/${servicePath}`
+  }
+
+  getZoneSystemConfigURL(runtime: BuckyOSRuntime): string {
+    const zoneHost = trimToNull(runtime.getZoneHostName())
+    if (!zoneHost) {
+      throw new Error('zoneHost is required in AppClient mode')
+    }
+    return `${runtime.getDefaultProtocol()}${zoneHost}/kapi/system_config`
+  }
+
+  getZoneServiceURL(runtime: BuckyOSRuntime, servicePath: string): string {
+    return this.getZoneGatewayServiceURL(runtime, servicePath)
+  }
+
+  getSystemConfigServiceURL(runtime: BuckyOSRuntime): string {
+    return this.getZoneSystemConfigURL(runtime)
+  }
+
+  getMySettingsPath(): string {
+    throw new Error('AppClient not support getMySettingsPath')
+  }
+
+  shouldSkipVerifyHubRenewal(runtime: BuckyOSRuntime): boolean {
+    return !trimToNull(runtime.getZoneHostName()) && !runtime.getConfiguredVerifyHubServiceUrl()
+  }
+
+  async getVerifyHubLoginJwt(runtime: BuckyOSRuntime, _sessionToken: string): Promise<string> {
+    return runtime.createAppClientSessionToken()
+  }
+}
+
+class AppServiceRuntimeProfile extends ManagedSessionRuntimeProfile {
+  async initialize(runtime: BuckyOSRuntime): Promise<void> {
+    await super.initialize(runtime)
+    runtime.ensureAppServiceSessionToken()
+  }
+
+  getNodeGatewayServiceURL(runtime: BuckyOSRuntime, servicePath: string): string {
+    const port = runtime.getNodeGatewayPort()
+    return `http://${runtime.resolveAppServiceGatewayHost()}:${port}/kapi/${servicePath}`
+  }
+
+  getNodeGatewaySystemConfigURL(runtime: BuckyOSRuntime): string {
+    const port = runtime.getNodeGatewayPort()
+    return `http://${runtime.resolveAppServiceGatewayHost()}:${port}/kapi/system_config`
+  }
+
+  getUserAppSettingsPath(runtime: BuckyOSRuntime): string {
+    const ownerUserId = runtime.getOwnerUserId()
+    if (!ownerUserId) {
+      throw new Error('ownerUserId is required for AppService settings')
+    }
+    return `users/${ownerUserId}/apps/${runtime.getAppId()}/settings`
+  }
+
+  getZoneServiceURL(runtime: BuckyOSRuntime, servicePath: string): string {
+    return this.getNodeGatewayServiceURL(runtime, servicePath)
+  }
+
+  getSystemConfigServiceURL(runtime: BuckyOSRuntime): string {
+    return this.getNodeGatewaySystemConfigURL(runtime)
+  }
+
+  getMySettingsPath(runtime: BuckyOSRuntime): string {
+    return this.getUserAppSettingsPath(runtime)
+  }
+}
+
+function createRuntimeProfile(runtimeType: RuntimeType): RuntimeProfile {
+  switch (runtimeType) {
+    case RuntimeType.AppClient:
+      return new AppClientRuntimeProfile()
+    case RuntimeType.AppService:
+      return new AppServiceRuntimeProfile()
+    case RuntimeType.AppRuntime:
+      return new AppRuntimeProfile()
+    case RuntimeType.Browser:
+    case RuntimeType.NodeJS:
+    case RuntimeType.Unknown:
+    default:
+      return new BrowserRuntimeProfile()
+  }
+}
+
 export class BuckyOSRuntime {
   private config: BuckyOSConfig
   private sessionToken: string | null
+  //在browser runtime里，总是取不到的
   private refreshToken: string | null
   private renewTimer: ReturnType<typeof setInterval> | null
   private initialized: boolean
+  private profile: RuntimeProfile
 
   constructor(config: BuckyOSConfig) {
+    const normalizedOwnerUserId = trimToNull(config.ownerUserId) ?? trimToNull(config.userid)
     this.config = {
       ...DEFAULT_CONFIG,
       ...config,
       appId: config.appId,
+      userid: normalizedOwnerUserId,
+      ownerUserId: normalizedOwnerUserId,
       zoneHost: config.zoneHost ?? '',
       defaultProtocol: config.defaultProtocol ?? DEFAULT_CONFIG.defaultProtocol,
     }
@@ -217,6 +440,7 @@ export class BuckyOSRuntime {
     this.refreshToken = trimToNull(config.refreshToken)
     this.renewTimer = null
     this.initialized = false
+    this.profile = createRuntimeProfile(this.config.runtimeType)
   }
 
   async initialize(): Promise<void> {
@@ -224,37 +448,25 @@ export class BuckyOSRuntime {
       return
     }
 
-    this.resolveNodeIdentityFromEnv()
-    await this.resolveZoneHostFromLocalConfig()
-
-    if (!this.sessionToken) {
-      if (this.config.runtimeType === RuntimeType.AppClient) {
-        this.sessionToken = await this.createAppClientSessionToken()
-      } else if (this.config.runtimeType === RuntimeType.AppService) {
-        this.sessionToken = this.loadAppServiceSessionTokenFromEnv()
-      }
-    }
-
+    await this.profile.initialize(this)
     this.validateSessionToken()
     this.initialized = true
   }
 
   async login(): Promise<void> {
-    await this.initialize()
-
-    if (this.config.runtimeType === RuntimeType.AppClient || this.config.runtimeType === RuntimeType.AppService) {
-      await this.renewTokenFromVerifyHub()
-    }
-
-    this.startAutoRenewIfNeeded()
+    await this.profile.login(this)
   }
 
   setConfig(config: BuckyOSConfig) {
+    const normalizedOwnerUserId = trimToNull(config.ownerUserId) ?? trimToNull(config.userid)
     this.config = {
       ...DEFAULT_CONFIG,
       ...config,
       appId: config.appId,
+      userid: normalizedOwnerUserId,
+      ownerUserId: normalizedOwnerUserId,
     }
+    this.profile = createRuntimeProfile(this.config.runtimeType)
   }
 
   getConfig(): BuckyOSConfig {
@@ -281,44 +493,29 @@ export class BuckyOSRuntime {
     return this.config.zoneHost
   }
 
+  getDefaultProtocol(): string {
+    return this.config.defaultProtocol
+  }
+
+  getNodeGatewayPort(): number {
+    return this.config.nodeGatewayPort ?? DEFAULT_NODE_GATEWAY_PORT
+  }
+
+  getConfiguredVerifyHubServiceUrl(): string | null {
+    return trimToNull(this.config.verifyHubServiceUrl)
+  }
+
   getZoneServiceURL(serviceName: string): string {
     const servicePath = normalizeServicePath(serviceName)
-
-    if (this.config.runtimeType === RuntimeType.AppService) {
-      const port = this.config.nodeGatewayPort ?? DEFAULT_NODE_GATEWAY_PORT
-      return `http://${this.resolveLocalServiceHost()}:${port}/kapi/${servicePath}`
-    }
-
-    if (this.config.runtimeType === RuntimeType.AppClient) {
-      if (!this.config.zoneHost) {
-        throw new Error('zoneHost is required in AppClient mode')
-      }
-      const appHostPrefix = getAppHostPrefix(this.config.appId, this.getOwnerUserId())
-      return `${this.config.defaultProtocol}${appHostPrefix}.${this.config.zoneHost}/kapi/${servicePath}`
-    }
-
-    return `/kapi/${servicePath}/`
+    return this.profile.getZoneServiceURL(this, servicePath)
   }
 
   getSystemConfigServiceURL(): string {
-    const configuredUrl = trimToNull(this.config.systemConfigServiceUrl)
+    const configuredUrl = this.getConfiguredSystemConfigServiceUrl()
     if (configuredUrl) {
       return configuredUrl
     }
-
-    if (this.config.runtimeType === RuntimeType.AppService) {
-      const port = this.config.nodeGatewayPort ?? DEFAULT_NODE_GATEWAY_PORT
-      return `http://${this.resolveLocalServiceHost()}:${port}/kapi/system_config`
-    }
-
-    if (this.config.runtimeType === RuntimeType.AppClient) {
-      if (!this.config.zoneHost) {
-        throw new Error('zoneHost is required in AppClient mode')
-      }
-      return `${this.config.defaultProtocol}${this.config.zoneHost}/kapi/system_config`
-    }
-
-    return '/kapi/system_config'
+    return this.profile.getSystemConfigServiceURL(this)
   }
 
   setSessionToken(token: string | null) {
@@ -351,15 +548,21 @@ export class BuckyOSRuntime {
   }
 
   getServiceRpcClient(serviceName: string): kRPCClient {
-    return new kRPCClient(this.getZoneServiceURL(serviceName), this.sessionToken)
+    return new kRPCClient(this.getZoneServiceURL(serviceName), this.sessionToken, null, {
+      sessionTokenProvider: this.ensureSessionTokenReady.bind(this),
+      onSessionTokenChanged: this.setSessionToken.bind(this),
+    })
   }
 
   getSystemConfigClient(): SystemConfigClient {
-    return new SystemConfigClient(this.getSystemConfigServiceURL(), this.sessionToken)
+    return new SystemConfigClient(this.getSystemConfigServiceURL(), this.sessionToken, {
+      sessionTokenProvider: this.ensureSessionTokenReady.bind(this),
+      onSessionTokenChanged: this.setSessionToken.bind(this),
+    })
   }
 
   getVerifyHubClient(): VerifyHubClient {
-    const configuredUrl = trimToNull(this.config.verifyHubServiceUrl)
+    const configuredUrl = this.getConfiguredVerifyHubServiceUrl()
     const rpcClient = new kRPCClient(configuredUrl ?? this.getZoneServiceURL('verify-hub'), this.sessionToken)
     return new VerifyHubClient(rpcClient)
   }
@@ -369,9 +572,25 @@ export class BuckyOSRuntime {
     return new TaskManagerClient(rpcClient)
   }
 
-  getOpenDanClient(): OpenDanClient {
-    const rpcClient = this.getServiceRpcClient('opendan')
-    return new OpenDanClient(rpcClient)
+  getWorkflowClient(): WorkflowClient {
+    const rpcClient = this.getServiceRpcClient('workflow')
+    return new WorkflowClient(rpcClient)
+  }
+
+  getAiccClient(): AiccClient {
+    return new AiccClient(this.getServiceRpcClient('aicc'))
+  }
+
+  getMsgQueueClient(): MsgQueueClient {
+    return new MsgQueueClient(this.getServiceRpcClient('kmsg'))
+  }
+
+  getMsgCenterClient(): MsgCenterClient {
+    return new MsgCenterClient(this.getServiceRpcClient('msg-center'))
+  }
+
+  getRepoClient(): RepoClient {
+    return new RepoClient(this.getServiceRpcClient('repo-service'))
   }
 
   async getMySettings(): Promise<unknown> {
@@ -393,7 +612,7 @@ export class BuckyOSRuntime {
   }
 
   async renewTokenFromVerifyHub(): Promise<void> {
-    if (this.config.runtimeType !== RuntimeType.AppService && this.config.runtimeType !== RuntimeType.AppClient) {
+    if (!this.profile.supportsManagedSessionRenewal()) {
       return
     }
 
@@ -407,26 +626,17 @@ export class BuckyOSRuntime {
       return
     }
 
-    if (
-      this.config.runtimeType === RuntimeType.AppClient
-      && !trimToNull(this.config.zoneHost)
-      && !trimToNull(this.config.verifyHubServiceUrl)
-    ) {
+    if (this.profile.shouldSkipVerifyHubRenewal(this)) {
       return
     }
 
     const verifyHubClient = this.getVerifyHubClient()
-    const fallbackJwt = async (): Promise<string> => {
-      if (this.config.runtimeType !== RuntimeType.AppClient) {
-        return sessionToken
-      }
-      return this.createAppClientSessionToken()
-    }
-
     const tokenPair = claims.iss === 'verify-hub'
       ? this.refreshToken
         ? await verifyHubClient.refreshToken({ refresh_token: this.refreshToken })
-        : await verifyHubClient.loginByJwt({ jwt: await fallbackJwt() })
+        : await verifyHubClient.loginByJwt({
+          jwt: await this.profile.getVerifyHubLoginJwt(this, sessionToken),
+        })
       : await verifyHubClient.loginByJwt({ jwt: sessionToken })
 
     this.sessionToken = trimToNull(tokenPair.session_token)
@@ -434,7 +644,34 @@ export class BuckyOSRuntime {
     this.validateSessionToken()
   }
 
-  private resolveNodeIdentityFromEnv() {
+  async ensureSessionTokenReady(): Promise<string | null> {
+    if (this.config.runtimeType === RuntimeType.Browser) {
+      return this.ensureBrowserSessionToken()
+    }
+
+    if (this.profile.supportsManagedSessionRenewal()) {
+      await this.renewTokenFromVerifyHub()
+    }
+    return this.sessionToken
+  }
+
+  ensureAppServiceSessionToken() {
+    if (!this.sessionToken) {
+      this.sessionToken = this.loadAppServiceSessionTokenFromEnv()
+    }
+  }
+
+  async ensureAppClientSessionToken(): Promise<void> {
+    if (!this.sessionToken) {
+      this.sessionToken = this.loadAppClientSessionTokenFromEnv()
+    }
+
+    if (!this.sessionToken) {
+      this.sessionToken = await this.createAppClientSessionToken()
+    }
+  }
+
+  resolveNodeIdentityFromEnv() {
     if (!hasNodeRuntime()) {
       return
     }
@@ -462,7 +699,7 @@ export class BuckyOSRuntime {
     }
   }
 
-  private async resolveZoneHostFromLocalConfig(): Promise<void> {
+  async resolveZoneHostFromLocalConfig(): Promise<void> {
     if (!hasNodeRuntime()) {
       return
     }
@@ -495,6 +732,128 @@ export class BuckyOSRuntime {
     }
   }
 
+  private async ensureBrowserSessionToken(): Promise<string | null> {
+    const claims = parseSessionTokenClaims(this.sessionToken)
+    if (this.sessionToken && claims && !this.needsRenew(claims)) {
+      return this.sessionToken
+    }
+
+    return this.refreshBrowserSessionToken()
+  }
+
+  private normalizeBrowserUserInfo(raw: unknown): BrowserUserInfo | null {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+      return null
+    }
+
+    const parsed = raw as {
+      show_name?: unknown
+      user_name?: unknown
+      user_id?: unknown
+      user_type?: unknown
+    }
+    const userId = typeof parsed.user_id === 'string' ? parsed.user_id.trim() : ''
+    const userType = typeof parsed.user_type === 'string' ? parsed.user_type.trim() : ''
+    const userName = typeof parsed.user_name === 'string'
+      ? parsed.user_name.trim()
+      : typeof parsed.show_name === 'string'
+        ? parsed.show_name.trim()
+        : ''
+
+    if (!userId || !userType) {
+      return null
+    }
+
+    return {
+      user_name: userName || userId,
+      user_id: userId,
+      user_type: userType,
+    }
+  }
+
+  async refreshBrowserSession(): Promise<BrowserUserInfo | null> {
+    const sessionToken = await this.refreshBrowserSessionToken()
+    if (!sessionToken) {
+      return null
+    }
+
+    return hasBrowserStorage()
+      ? getBrowserUserInfo()
+      : null
+  }
+
+  async logoutBrowserSSO(): Promise<void> {
+    if (this.config.runtimeType !== RuntimeType.Browser && this.config.runtimeType !== RuntimeType.AppRuntime) {
+      return
+    }
+
+    if (!hasFetchRuntime()) {
+      return
+    }
+
+    try {
+      const response = await fetch('/sso_logout', {
+        method: 'POST',
+        credentials: 'include',
+        cache: 'no-store',
+        keepalive: true,
+      })
+
+      if (!response.ok) {
+        console.warn('BuckyOS browser sso_logout failed:', response.status)
+      }
+    } catch (error) {
+      console.warn('BuckyOS browser sso_logout failed:', error)
+    }
+  }
+
+  private async refreshBrowserSessionToken(): Promise<string | null> {
+    if (!hasFetchRuntime()) {
+      return this.sessionToken
+    }
+
+    const cachedUserInfo = hasBrowserStorage()
+      ? getBrowserUserInfo()
+      : null
+
+    try {
+      const response = await fetch('/sso_refresh', {
+        method: 'POST',
+        credentials: 'include',
+        cache: 'no-store',
+      })
+
+      if (!response.ok) {
+        this.sessionToken = null
+        return null
+      }
+
+      const payload = await response.json() as BrowserSSORefreshResponse
+      const sessionToken = trimToNull(
+        typeof payload.access_token === 'string'
+          ? payload.access_token
+          : typeof payload.session_token === 'string'
+            ? payload.session_token
+            : null,
+      )
+      const userInfo = this.normalizeBrowserUserInfo(payload.user_info) ?? cachedUserInfo
+      if (!sessionToken || !userInfo) {
+        this.sessionToken = null
+        return null
+      }
+
+      this.sessionToken = sessionToken
+      this.refreshToken = null
+      saveBrowserUserInfo(userInfo)
+      this.validateSessionToken()
+      return this.sessionToken
+    } catch (error) {
+      console.warn('BuckyOS browser sso_refresh failed:', error)
+      this.sessionToken = null
+      return null
+    }
+  }
+
   private needsRenew(claims: SessionTokenClaims): boolean {
     if (claims.iss && claims.iss !== 'verify-hub') {
       return true
@@ -508,11 +867,8 @@ export class BuckyOSRuntime {
     return now >= claims.exp - 30
   }
 
-  private startAutoRenewIfNeeded() {
-    if (
-      (this.config.runtimeType !== RuntimeType.AppService && this.config.runtimeType !== RuntimeType.AppClient)
-      || this.config.autoRenew === false
-    ) {
+  startAutoRenewIfNeeded() {
+    if (!this.profile.supportsManagedSessionRenewal() || this.config.autoRenew === false) {
       return
     }
 
@@ -556,7 +912,11 @@ export class BuckyOSRuntime {
     throw new Error(`failed to load app-service session token, tried keys: ${uniqueKeys.join(', ')}`)
   }
 
-  private async createAppClientSessionToken(): Promise<string> {
+  private loadAppClientSessionTokenFromEnv(): string | null {
+    return trimToNull(getProcessEnv()[BUCKYOS_APPCLIENT_SESSION_TOKEN_ENV])
+  }
+
+  async createAppClientSessionToken(): Promise<string> {
     if (!hasNodeRuntime()) {
       throw new Error('AppClient mode requires Node.js')
     }
@@ -584,49 +944,41 @@ export class BuckyOSRuntime {
   private async loadLocalSigningMaterial(): Promise<LocalSigningMaterial> {
     const fs = await importNodeModule('node:fs/promises')
     const path = await importNodeModule('node:path')
-    const env = getProcessEnv()
+    const configuredUserId = this.getOwnerUserId()
+    if (!configuredUserId) {
+      const etcDir = await this.getBuckyOSEtcDir()
+      const deviceName = await this.readDeviceNameFromNodeIdentityPath(path.join(etcDir, 'node_identity.json'))
+      if (!deviceName) {
+        throw new Error(`failed to resolve userid from ${path.join(etcDir, 'node_identity.json')} device_mini_doc_jwt`)
+      }
+
+      const keyPem = await this.readPemFile(path.join(etcDir, 'node_private_key.pem'))
+      if (!keyPem) {
+        throw new Error(`failed to load node_private_key.pem from ${etcDir}`)
+      }
+
+      this.config.userid = deviceName
+      this.config.ownerUserId = deviceName
+      return {
+        keyPem,
+        issuer: deviceName,
+        subject: deviceName,
+        sourcePath: path.join(etcDir, 'node_private_key.pem'),
+      }
+    }
 
     const roots = await this.getPrivateKeySearchRoots()
-    for (const root of roots) {
-      const userKeyPath = root.endsWith('.pem') ? root : path.join(root, 'user_private_key.pem')
-      try {
-        const keyPem = (await fs.readFile(userKeyPath, 'utf8')).trim()
-        if (keyPem) {
-          return {
-            keyPem,
-            issuer: 'root',
-            subject: 'root',
-            sourcePath: userKeyPath,
-          }
-        }
-      } catch {
-        // Skip missing key files.
-      }
+    const deviceMaterial = await this.tryLoadDeviceSigningMaterial(configuredUserId, roots)
+    if (deviceMaterial) {
+      return deviceMaterial
     }
 
-    const deviceName = trimToNull(env.BUCKYOS_DEVICE_NAME) ?? await this.tryResolveDeviceNameFromSearchRoots(roots)
-    if (!deviceName) {
-      throw new Error('failed to find user_private_key.pem and no device name is available for node_private_key.pem fallback')
+    const userMaterial = await this.tryLoadUserSigningMaterial(configuredUserId, roots)
+    if (userMaterial) {
+      return userMaterial
     }
 
-    for (const root of roots) {
-      const deviceKeyPath = root.endsWith('.pem') ? root : path.join(root, 'node_private_key.pem')
-      try {
-        const keyPem = (await fs.readFile(deviceKeyPath, 'utf8')).trim()
-        if (keyPem) {
-          return {
-            keyPem,
-            issuer: deviceName,
-            subject: deviceName,
-            sourcePath: deviceKeyPath,
-          }
-        }
-      } catch {
-        // Skip missing key files.
-      }
-    }
-
-    throw new Error(`failed to find private key in AppClient search roots: ${roots.join(', ')}`)
+    throw new Error(`failed to find AppClient private key for userid=${configuredUserId} in search roots: ${roots.join(', ')}`)
   }
 
   private async getPrivateKeySearchRoots(): Promise<string[]> {
@@ -660,8 +1012,188 @@ export class BuckyOSRuntime {
     return Array.from(new Set(roots))
   }
 
-  private async tryResolveDeviceNameFromSearchRoots(roots: string[]): Promise<string | null> {
+  private async getBuckyOSRootDir(): Promise<string> {
+    const env = getProcessEnv()
+    return trimToNull(this.config.rootDir) ?? trimToNull(env.BUCKYOS_ROOT) ?? '/opt/buckyos'
+  }
+
+  private async getBuckyOSEtcDir(): Promise<string> {
+    const path = await importNodeModule('node:path')
+    return path.join(await this.getBuckyOSRootDir(), 'etc')
+  }
+
+  private async readPemFile(filePath: string): Promise<string | null> {
     const fs = await importNodeModule('node:fs/promises')
+    try {
+      const keyPem = (await fs.readFile(filePath, 'utf8')).trim()
+      return keyPem || null
+    } catch {
+      return null
+    }
+  }
+
+  private async readNodeIdentityMetadata(nodeIdentityPath: string): Promise<NodeIdentityMetadata | null> {
+    const fs = await importNodeModule('node:fs/promises')
+    try {
+      const raw = await fs.readFile(nodeIdentityPath, 'utf8')
+      const parsed = JSON.parse(raw) as {
+        device_name?: unknown
+        device_did?: unknown
+        zone_did?: unknown
+        zone_name?: unknown
+        device_mini_doc_jwt?: unknown
+        device_doc_jwt?: unknown
+      }
+
+      const deviceName = this.extractDeviceNameFromIdentityPayload(parsed)
+      return {
+        deviceName,
+        deviceDid: typeof parsed.device_did === 'string' ? parsed.device_did.trim() || null : null,
+        zoneDid: typeof parsed.zone_did === 'string' ? parsed.zone_did.trim() || null : null,
+        zoneName: typeof parsed.zone_name === 'string' ? parsed.zone_name.trim() || null : null,
+      }
+    } catch {
+      return null
+    }
+  }
+
+  private extractDeviceNameFromIdentityPayload(payload: {
+    device_name?: unknown
+    device_mini_doc_jwt?: unknown
+    device_doc_jwt?: unknown
+  }): string | null {
+    // node_identity schema v2 (buckyos.node_identity.v2) carries the device
+    // name directly.
+    const directName = typeof payload.device_name === 'string' ? payload.device_name.trim() : ''
+    if (directName) {
+      return directName
+    }
+
+    // Legacy v1 identity files embed the device jwts instead. Lenient
+    // extraction: any JWT that carries an "n" claim is enough to learn the
+    // device name.
+    const miniDocJwt = typeof payload.device_mini_doc_jwt === 'string' ? payload.device_mini_doc_jwt : null
+    const miniDocClaims = parseSessionTokenClaims(miniDocJwt)
+    const miniDocName = typeof miniDocClaims?.n === 'string' ? miniDocClaims.n.trim() : ''
+    if (miniDocName) {
+      return miniDocName
+    }
+
+    const deviceDocJwt = typeof payload.device_doc_jwt === 'string' ? payload.device_doc_jwt : null
+    const deviceDocClaims = parseSessionTokenClaims(deviceDocJwt)
+    for (const claimKey of ['name', 'sub'] as const) {
+      const claimValue = deviceDocClaims?.[claimKey]
+      const candidate = typeof claimValue === 'string' ? claimValue.trim() : ''
+      if (candidate) {
+        return candidate
+      }
+    }
+
+    return null
+  }
+
+  private async readDeviceNameFromNodeIdentityPath(nodeIdentityPath: string): Promise<string | null> {
+    const metadata = await this.readNodeIdentityMetadata(nodeIdentityPath)
+    return metadata?.deviceName ?? null
+  }
+
+  private async tryLoadDeviceSigningMaterial(userId: string, roots: string[]): Promise<LocalSigningMaterial | null> {
+    const path = await importNodeModule('node:path')
+
+    const candidateDirs = [
+      await this.getBuckyOSEtcDir(),
+      ...roots.filter((root) => !root.endsWith('.pem')),
+    ]
+
+    for (const dir of Array.from(new Set(candidateDirs))) {
+      const metadata = await this.readNodeIdentityMetadata(path.join(dir, 'node_identity.json'))
+      const deviceName = metadata?.deviceName ?? null
+      if (!deviceName || deviceName !== userId) {
+        continue
+      }
+
+      for (const keyPath of await this.deviceKeyPathCandidates(dir, metadata?.deviceDid ?? null)) {
+        const keyPem = await this.readPemFile(keyPath)
+        if (!keyPem) {
+          continue
+        }
+
+        return {
+          keyPem,
+          issuer: deviceName,
+          subject: deviceName,
+          sourcePath: keyPath,
+        }
+      }
+    }
+
+    return null
+  }
+
+  // node_identity schema v2 stores the device authentication key in the
+  // identity-roots security dir (keyed by the device DID); v1 layouts keep a
+  // node_private_key.pem next to node_identity.json.
+  private async deviceKeyPathCandidates(identityDir: string, deviceDid: string | null): Promise<string[]> {
+    const path = await importNodeModule('node:path')
+    const candidates: string[] = []
+
+    if (deviceDid) {
+      try {
+        const dirName = DID.fromStr(deviceDid).toFilename()
+        const keyFileName = 'authentication.private.pem'
+        // dev/test layout: security root under the node dir itself
+        candidates.push(path.join(identityDir, 'security', dirName, keyFileName))
+        // deployed layout: $BUCKYOS_SECURITY_ROOT or $BUCKYOS_ROOT/security
+        const env = getProcessEnv()
+        const securityRoot = trimToNull(env.BUCKYOS_SECURITY_ROOT)
+          ?? path.join(trimToNull(env.BUCKYOS_ROOT) ?? '/opt/buckyos', 'security')
+        candidates.push(path.join(securityRoot, dirName, keyFileName))
+      } catch {
+        // Malformed device did: fall through to the legacy key path.
+      }
+    }
+
+    candidates.push(path.join(identityDir, 'node_private_key.pem'))
+    return candidates
+  }
+
+  private async tryLoadUserSigningMaterial(userId: string, roots: string[]): Promise<LocalSigningMaterial | null> {
+    const fs = await importNodeModule('node:fs/promises')
+    const path = await importNodeModule('node:path')
+
+    for (const root of roots) {
+      const userKeyPath = root.endsWith('.pem') ? root : path.join(root, 'user_private_key.pem')
+      const userConfigDir = root.endsWith('.pem') ? path.dirname(root) : root
+      const userConfigPath = path.join(userConfigDir, 'user_config.json')
+
+      try {
+        const raw = await fs.readFile(userConfigPath, 'utf8')
+        const ownerDoc = parseBuckyOSOwnerDocument(JSON.parse(raw))
+        const configUserId = ownerDoc?.name?.trim()
+        if (!configUserId || configUserId !== userId) {
+          continue
+        }
+
+        const keyPem = await this.readPemFile(userKeyPath)
+        if (!keyPem) {
+          continue
+        }
+
+        return {
+          keyPem,
+          issuer: userId,
+          subject: userId,
+          sourcePath: userKeyPath,
+        }
+      } catch {
+        // Ignore malformed or missing user configs.
+      }
+    }
+
+    return null
+  }
+
+  private async tryResolveDeviceNameFromSearchRoots(roots: string[]): Promise<string | null> {
     const path = await importNodeModule('node:path')
     const env = getProcessEnv()
 
@@ -687,21 +1219,9 @@ export class BuckyOSRuntime {
 
     for (const root of roots) {
       const nodeIdentityPath = path.join(root, 'node_identity.json')
-      try {
-        const raw = await fs.readFile(nodeIdentityPath, 'utf8')
-        const parsed = JSON.parse(raw) as { device_doc_jwt?: unknown }
-        if (typeof parsed.device_doc_jwt !== 'string') {
-          continue
-        }
-        const claims = parseSessionTokenClaims(parsed.device_doc_jwt)
-        if (typeof claims?.name === 'string' && claims.name.trim().length > 0) {
-          return claims.name.trim()
-        }
-        if (typeof claims?.sub === 'string' && claims.sub.trim().length > 0) {
-          return claims.sub.trim()
-        }
-      } catch {
-        // Ignore missing node identity files.
+      const deviceName = await this.readDeviceNameFromNodeIdentityPath(nodeIdentityPath)
+      if (deviceName) {
+        return deviceName
       }
     }
 
@@ -720,45 +1240,33 @@ export class BuckyOSRuntime {
 
     for (const root of roots) {
       const nodeIdentityPath = path.join(root, 'node_identity.json')
-      try {
-        const raw = await fs.readFile(nodeIdentityPath, 'utf8')
-        const parsed = JSON.parse(raw) as { zone_did?: unknown; zone_name?: unknown }
-
-        if (typeof parsed.zone_name === 'string' && parsed.zone_name.trim().length > 0) {
-          return parsed.zone_name.trim()
-        }
-
-        if (typeof parsed.zone_did !== 'string') {
-          continue
-        }
-
-        if (parsed.zone_did.startsWith('did:web:')) {
-          return parsed.zone_did.slice('did:web:'.length).replace(/:/g, '.')
-        }
-
-        if (parsed.zone_did.startsWith('did:bns:')) {
-          return parsed.zone_did.slice('did:bns:'.length)
-        }
-      } catch {
-        // Ignore missing node identity files.
+      const metadata = await this.readNodeIdentityMetadata(nodeIdentityPath)
+      if (!metadata) {
+        continue
       }
+
+      if (metadata.zoneName) {
+        return metadata.zoneName
+      }
+
+      if (!metadata.zoneDid) {
+        continue
+      }
+
+      return resolveZoneHostFromDid(metadata.zoneDid)
     }
 
     for (const root of roots) {
       const userConfigPath = path.join(root, 'user_config.json')
       try {
         const raw = await fs.readFile(userConfigPath, 'utf8')
-        const parsed = JSON.parse(raw) as { default_zone_did?: unknown }
-        const zoneDid = typeof parsed.default_zone_did === 'string' ? parsed.default_zone_did.trim() : ''
-        if (!zoneDid) {
+        const ownerDoc = parseBuckyOSOwnerDocument(JSON.parse(raw))
+        // The default zone is the first entry of binded_zone_list.
+        const zoneHost = resolveZoneHostFromDid(ownerDoc?.binded_zone_list?.[0])
+        if (!zoneHost) {
           continue
         }
-        if (zoneDid.startsWith('did:web:')) {
-          return zoneDid.slice('did:web:'.length).replace(/:/g, '.')
-        }
-        if (zoneDid.startsWith('did:bns:')) {
-          return zoneDid.slice('did:bns:'.length)
-        }
+        return zoneHost
       } catch {
         // Ignore missing user config files.
       }
@@ -768,26 +1276,15 @@ export class BuckyOSRuntime {
   }
 
   private getMySettingsPath(): string {
-    switch (this.config.runtimeType) {
-      case RuntimeType.AppClient:
-        throw new Error('AppClient not support getMySettingsPath')
-      case RuntimeType.AppService: {
-        const ownerUserId = this.getOwnerUserId()
-        if (!ownerUserId) {
-          throw new Error('ownerUserId is required for AppService settings')
-        }
-        return `users/${ownerUserId}/apps/${this.config.appId}/settings`
-      }
-      default:
-        return `services/${this.config.appId}/settings`
-    }
+    return this.profile.getMySettingsPath(this)
   }
 
-  private resolveLocalServiceHost(): string {
-    if (this.config.runtimeType === RuntimeType.AppService) {
-      return trimToNull(getProcessEnv()[BUCKYOS_HOST_GATEWAY_ENV]) ?? DEFAULT_DOCKER_HOST_GATEWAY
-    }
-    return '127.0.0.1'
+  private getConfiguredSystemConfigServiceUrl(): string | null {
+    return trimToNull(this.config.systemConfigServiceUrl)
+  }
+
+  resolveAppServiceGatewayHost(): string {
+    return trimToNull(getProcessEnv()[BUCKYOS_HOST_GATEWAY_ENV]) ?? DEFAULT_DOCKER_HOST_GATEWAY
   }
 
   private async signJwtWithEd25519(header: Record<string, unknown>, payload: Record<string, unknown>, privateKeyPem: string): Promise<string> {

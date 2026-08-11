@@ -16,7 +16,7 @@ describe('VerifyHubClient', () => {
       sys: [7],
     }))
 
-    const rpcClient = new kRPCClient('/kapi/verify-hub/', 'init-token', 7, fetcher)
+    const rpcClient = new kRPCClient('/kapi/verify-hub/', 'init-token', 7, { fetcher: fetcher })
     rpcClient.setSessionToken('stale-token')
 
     const client = new VerifyHubClient(rpcClient)
@@ -46,7 +46,7 @@ describe('VerifyHubClient', () => {
       sys: [11],
     }))
 
-    const rpcClient = new kRPCClient('/kapi/verify-hub/', 'init-token', 11, fetcher)
+    const rpcClient = new kRPCClient('/kapi/verify-hub/', 'init-token', 11, { fetcher: fetcher })
     rpcClient.setSessionToken('stale-token')
 
     const client = new VerifyHubClient(rpcClient)
@@ -68,17 +68,20 @@ describe('VerifyHubClient', () => {
       .fn()
       .mockResolvedValueOnce(makeResponse({
         result: { session_token: 'session-2', refresh_token: 'refresh-2' },
-        sys: [21, 'session-2'],
+        sys: [21],
       }))
       .mockResolvedValueOnce(makeResponse({
         result: true,
         sys: [22],
       }))
 
-    const rpcClient = new kRPCClient('/kapi/verify-hub/', 'session-1', 21, fetcher)
+    const rpcClient = new kRPCClient('/kapi/verify-hub/', 'session-1', 21, { fetcher: fetcher })
     const client = new VerifyHubClient(rpcClient)
 
     const refreshed = await client.refreshToken({ refresh_token: 'refresh-1' })
+    // Beta2.2 responses never rotate the session token via sys; adopting the
+    // refreshed token is the caller's job.
+    rpcClient.setSessionToken(refreshed.session_token)
     const verified = await client.verifyToken({ session_token: 'session-2', appid: 'buckycli' })
 
     expect(refreshed).toEqual({ session_token: 'session-2', refresh_token: 'refresh-2' })
