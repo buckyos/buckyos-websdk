@@ -292,6 +292,7 @@ export class BuckyOSSDK {
 
     this.currentRuntime?.stopAutoRenew()
     this.currentKEventClient = null
+    this.currentAccountInfo = null
     this.currentRuntime = new BuckyOSRuntime(finalConfig)
     await this.currentRuntime.initialize()
     setActiveRuntime(this.currentRuntime)
@@ -382,34 +383,25 @@ export class BuckyOSSDK {
     }
 
     this.syncCurrentAccountInfoFromRuntime()
-    if (this.currentRuntime.getConfig().runtimeType !== RuntimeType.Browser) {
+    const runtimeType = this.currentRuntime.getConfig().runtimeType
+    if (runtimeType !== RuntimeType.Browser && runtimeType !== RuntimeType.AppRuntime) {
       return this.currentAccountInfo
     }
 
-    const cachedUserInfo = isBrowserStorageAvailable()
+    const sessionToken = await this.currentRuntime.ensureSessionTokenReady()
+    const userInfo = isBrowserStorageAvailable()
       ? getBrowserUserInfo()
       : null
-    if (cachedUserInfo) {
-      this.currentAccountInfo = {
-        user_name: cachedUserInfo.user_name,
-        user_id: cachedUserInfo.user_id,
-        user_type: cachedUserInfo.user_type,
-        session_token: this.currentRuntime.getSessionToken() ?? '',
-        refresh_token: undefined,
-      }
-      return this.currentAccountInfo
-    }
-
-    const refreshedUserInfo = await this.currentRuntime.refreshBrowserSession()
-    if (!refreshedUserInfo) {
+    if (!sessionToken || !userInfo) {
+      this.currentAccountInfo = null
       return null
     }
 
     this.currentAccountInfo = {
-      user_name: refreshedUserInfo.user_name,
-      user_id: refreshedUserInfo.user_id,
-      user_type: refreshedUserInfo.user_type,
-      session_token: this.currentRuntime.getSessionToken() ?? '',
+      user_name: userInfo.user_name,
+      user_id: userInfo.user_id,
+      user_type: userInfo.user_type,
+      session_token: sessionToken,
       refresh_token: undefined,
     }
     return this.currentAccountInfo

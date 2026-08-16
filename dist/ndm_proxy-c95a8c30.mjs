@@ -2575,6 +2575,8 @@ class BuckyOSRuntime {
     this.sessionToken = trimToNull$2(config.sessionToken);
     this.refreshToken = trimToNull$2(config.refreshToken);
     this.renewTimer = null;
+    this.browserRefreshPromise = null;
+    this.authStateRevision = 0;
     this.initialized = false;
     this.profile = createRuntimeProfile(this.config.runtimeType);
   }
@@ -2640,7 +2642,11 @@ class BuckyOSRuntime {
     return this.profile.getSystemConfigServiceURL(this);
   }
   setSessionToken(token) {
-    this.sessionToken = trimToNull$2(token);
+    const sessionToken = trimToNull$2(token);
+    if (sessionToken !== this.sessionToken) {
+      this.authStateRevision += 1;
+    }
+    this.sessionToken = sessionToken;
   }
   setRefreshToken(token) {
     this.refreshToken = trimToNull$2(token);
@@ -2652,6 +2658,7 @@ class BuckyOSRuntime {
     return this.refreshToken;
   }
   clearAuthState() {
+    this.authStateRevision += 1;
     this.sessionToken = null;
     this.refreshToken = null;
     this.stopAutoRenew();
@@ -2738,8 +2745,12 @@ class BuckyOSRuntime {
     this.validateSessionToken();
   }
   async ensureSessionTokenReady() {
-    if (this.config.runtimeType === "Browser") {
-      return this.ensureBrowserSessionToken();
+    if (this.usesBrowserSessionRefresh()) {
+      const sessionToken = await this.ensureBrowserSessionToken();
+      if (sessionToken) {
+        this.startAutoRenewIfNeeded();
+      }
+      return sessionToken;
     }
     if (this.profile.supportsManagedSessionRenewal()) {
       await this.renewTokenFromVerifyHub();
@@ -2858,6 +2869,21 @@ class BuckyOSRuntime {
     }
   }
   async refreshBrowserSessionToken() {
+    if (this.browserRefreshPromise) {
+      return this.browserRefreshPromise;
+    }
+    const authStateRevision = this.authStateRevision;
+    const refreshPromise = this.requestBrowserSessionToken(authStateRevision);
+    this.browserRefreshPromise = refreshPromise;
+    try {
+      return await refreshPromise;
+    } finally {
+      if (this.browserRefreshPromise === refreshPromise) {
+        this.browserRefreshPromise = null;
+      }
+    }
+  }
+  async requestBrowserSessionToken(authStateRevision) {
     if (!hasFetchRuntime()) {
       return this.sessionToken;
     }
@@ -2869,7 +2895,9 @@ class BuckyOSRuntime {
         cache: "no-store"
       });
       if (!response.ok) {
-        this.sessionToken = null;
+        if (authStateRevision === this.authStateRevision) {
+          this.sessionToken = null;
+        }
         return null;
       }
       const payload = await response.json();
@@ -2878,7 +2906,12 @@ class BuckyOSRuntime {
       );
       const userInfo = this.normalizeBrowserUserInfo(payload.user_info) ?? cachedUserInfo;
       if (!sessionToken || !userInfo) {
-        this.sessionToken = null;
+        if (authStateRevision === this.authStateRevision) {
+          this.sessionToken = null;
+        }
+        return null;
+      }
+      if (authStateRevision !== this.authStateRevision) {
         return null;
       }
       this.sessionToken = sessionToken;
@@ -2888,9 +2921,14 @@ class BuckyOSRuntime {
       return this.sessionToken;
     } catch (error) {
       console.warn("BuckyOS browser sso_refresh failed:", error);
-      this.sessionToken = null;
+      if (authStateRevision === this.authStateRevision) {
+        this.sessionToken = null;
+      }
       return null;
     }
+  }
+  usesBrowserSessionRefresh() {
+    return this.config.runtimeType === "Browser" || this.config.runtimeType === "AppRuntime";
   }
   needsRenew(claims) {
     if (claims.iss && claims.iss !== "verify-hub") {
@@ -2903,7 +2941,8 @@ class BuckyOSRuntime {
     return now >= claims.exp - 30;
   }
   startAutoRenewIfNeeded() {
-    if (!this.profile.supportsManagedSessionRenewal() || this.config.autoRenew === false) {
+    const usesBrowserSessionRefresh = this.usesBrowserSessionRefresh();
+    if (!usesBrowserSessionRefresh && !this.profile.supportsManagedSessionRenewal() || this.config.autoRenew === false) {
       return;
     }
     if (this.renewTimer) {
@@ -2912,15 +2951,22 @@ class BuckyOSRuntime {
     const interval = this.config.renewIntervalMs ?? DEFAULT_RENEW_INTERVAL_MS;
     const tick = async () => {
       try {
-        await this.renewTokenFromVerifyHub();
+        if (usesBrowserSessionRefresh) {
+          const sessionToken = await this.ensureBrowserSessionToken();
+          if (!sessionToken) {
+            this.stopAutoRenew();
+          }
+        } else {
+          await this.renewTokenFromVerifyHub();
+        }
       } catch (error) {
         console.warn("BuckyOS token renew failed:", error);
       }
     };
-    void tick();
     this.renewTimer = setInterval(() => {
       void tick();
     }, interval);
+    void tick();
   }
   loadAppServiceSessionTokenFromEnv() {
     const env = getProcessEnv();
@@ -4180,6 +4226,7 @@ class BuckyOSSDK {
     }
     (_a2 = this.currentRuntime) == null ? void 0 : _a2.stopAutoRenew();
     this.currentKEventClient = null;
+    this.currentAccountInfo = null;
     this.currentRuntime = new BuckyOSRuntime(finalConfig);
     await this.currentRuntime.initialize();
     setActiveRuntime(this.currentRuntime);
@@ -4237,29 +4284,21 @@ class BuckyOSSDK {
       return null;
     }
     this.syncCurrentAccountInfoFromRuntime();
-    if (this.currentRuntime.getConfig().runtimeType !== RuntimeType.Browser) {
+    const runtimeType = this.currentRuntime.getConfig().runtimeType;
+    if (runtimeType !== RuntimeType.Browser && runtimeType !== RuntimeType.AppRuntime) {
       return this.currentAccountInfo;
     }
-    const cachedUserInfo = isBrowserStorageAvailable() ? getBrowserUserInfo() : null;
-    if (cachedUserInfo) {
-      this.currentAccountInfo = {
-        user_name: cachedUserInfo.user_name,
-        user_id: cachedUserInfo.user_id,
-        user_type: cachedUserInfo.user_type,
-        session_token: this.currentRuntime.getSessionToken() ?? "",
-        refresh_token: void 0
-      };
-      return this.currentAccountInfo;
-    }
-    const refreshedUserInfo = await this.currentRuntime.refreshBrowserSession();
-    if (!refreshedUserInfo) {
+    const sessionToken = await this.currentRuntime.ensureSessionTokenReady();
+    const userInfo = isBrowserStorageAvailable() ? getBrowserUserInfo() : null;
+    if (!sessionToken || !userInfo) {
+      this.currentAccountInfo = null;
       return null;
     }
     this.currentAccountInfo = {
-      user_name: refreshedUserInfo.user_name,
-      user_id: refreshedUserInfo.user_id,
-      user_type: refreshedUserInfo.user_type,
-      session_token: this.currentRuntime.getSessionToken() ?? "",
+      user_name: userInfo.user_name,
+      user_id: userInfo.user_id,
+      user_type: userInfo.user_type,
+      session_token: sessionToken,
       refresh_token: void 0
     };
     return this.currentAccountInfo;
@@ -28339,4 +28378,4 @@ export {
   WORKFLOW_THUNK_TASK_SCHEMA_ID as y,
   WORKFLOW_SCHEDULE_TASK_SCHEMA_ID as z
 };
-//# sourceMappingURL=ndm_proxy-e4aa1cde.mjs.map
+//# sourceMappingURL=ndm_proxy-c95a8c30.mjs.map

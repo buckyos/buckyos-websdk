@@ -422,6 +422,8 @@ export class BuckyOSRuntime {
   //在browser runtime里，总是取不到的
   private refreshToken: string | null
   private renewTimer: ReturnType<typeof setInterval> | null
+  private browserRefreshPromise: Promise<string | null> | null
+  private authStateRevision: number
   private initialized: boolean
   private profile: RuntimeProfile
 
@@ -439,6 +441,8 @@ export class BuckyOSRuntime {
     this.sessionToken = trimToNull(config.sessionToken)
     this.refreshToken = trimToNull(config.refreshToken)
     this.renewTimer = null
+    this.browserRefreshPromise = null
+    this.authStateRevision = 0
     this.initialized = false
     this.profile = createRuntimeProfile(this.config.runtimeType)
   }
@@ -519,7 +523,11 @@ export class BuckyOSRuntime {
   }
 
   setSessionToken(token: string | null) {
-    this.sessionToken = trimToNull(token)
+    const sessionToken = trimToNull(token)
+    if (sessionToken !== this.sessionToken) {
+      this.authStateRevision += 1
+    }
+    this.sessionToken = sessionToken
   }
 
   setRefreshToken(token: string | null) {
@@ -535,6 +543,7 @@ export class BuckyOSRuntime {
   }
 
   clearAuthState() {
+    this.authStateRevision += 1
     this.sessionToken = null
     this.refreshToken = null
     this.stopAutoRenew()
@@ -645,8 +654,12 @@ export class BuckyOSRuntime {
   }
 
   async ensureSessionTokenReady(): Promise<string | null> {
-    if (this.config.runtimeType === RuntimeType.Browser) {
-      return this.ensureBrowserSessionToken()
+    if (this.usesBrowserSessionRefresh()) {
+      const sessionToken = await this.ensureBrowserSessionToken()
+      if (sessionToken) {
+        this.startAutoRenewIfNeeded()
+      }
+      return sessionToken
     }
 
     if (this.profile.supportsManagedSessionRenewal()) {
@@ -808,6 +821,24 @@ export class BuckyOSRuntime {
   }
 
   private async refreshBrowserSessionToken(): Promise<string | null> {
+    if (this.browserRefreshPromise) {
+      return this.browserRefreshPromise
+    }
+
+    const authStateRevision = this.authStateRevision
+    const refreshPromise = this.requestBrowserSessionToken(authStateRevision)
+    this.browserRefreshPromise = refreshPromise
+
+    try {
+      return await refreshPromise
+    } finally {
+      if (this.browserRefreshPromise === refreshPromise) {
+        this.browserRefreshPromise = null
+      }
+    }
+  }
+
+  private async requestBrowserSessionToken(authStateRevision: number): Promise<string | null> {
     if (!hasFetchRuntime()) {
       return this.sessionToken
     }
@@ -824,7 +855,9 @@ export class BuckyOSRuntime {
       })
 
       if (!response.ok) {
-        this.sessionToken = null
+        if (authStateRevision === this.authStateRevision) {
+          this.sessionToken = null
+        }
         return null
       }
 
@@ -838,7 +871,13 @@ export class BuckyOSRuntime {
       )
       const userInfo = this.normalizeBrowserUserInfo(payload.user_info) ?? cachedUserInfo
       if (!sessionToken || !userInfo) {
-        this.sessionToken = null
+        if (authStateRevision === this.authStateRevision) {
+          this.sessionToken = null
+        }
+        return null
+      }
+
+      if (authStateRevision !== this.authStateRevision) {
         return null
       }
 
@@ -849,9 +888,16 @@ export class BuckyOSRuntime {
       return this.sessionToken
     } catch (error) {
       console.warn('BuckyOS browser sso_refresh failed:', error)
-      this.sessionToken = null
+      if (authStateRevision === this.authStateRevision) {
+        this.sessionToken = null
+      }
       return null
     }
+  }
+
+  private usesBrowserSessionRefresh(): boolean {
+    return this.config.runtimeType === RuntimeType.Browser
+      || this.config.runtimeType === RuntimeType.AppRuntime
   }
 
   private needsRenew(claims: SessionTokenClaims): boolean {
@@ -868,7 +914,11 @@ export class BuckyOSRuntime {
   }
 
   startAutoRenewIfNeeded() {
-    if (!this.profile.supportsManagedSessionRenewal() || this.config.autoRenew === false) {
+    const usesBrowserSessionRefresh = this.usesBrowserSessionRefresh()
+    if (
+      (!usesBrowserSessionRefresh && !this.profile.supportsManagedSessionRenewal())
+      || this.config.autoRenew === false
+    ) {
       return
     }
 
@@ -879,16 +929,23 @@ export class BuckyOSRuntime {
     const interval = this.config.renewIntervalMs ?? DEFAULT_RENEW_INTERVAL_MS
     const tick = async () => {
       try {
-        await this.renewTokenFromVerifyHub()
+        if (usesBrowserSessionRefresh) {
+          const sessionToken = await this.ensureBrowserSessionToken()
+          if (!sessionToken) {
+            this.stopAutoRenew()
+          }
+        } else {
+          await this.renewTokenFromVerifyHub()
+        }
       } catch (error) {
         console.warn('BuckyOS token renew failed:', error)
       }
     }
 
-    void tick()
     this.renewTimer = setInterval(() => {
       void tick()
     }, interval)
+    void tick()
   }
 
   private loadAppServiceSessionTokenFromEnv(): string {

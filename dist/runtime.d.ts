@@ -52,6 +52,8 @@ export declare class BuckyOSRuntime {
     private sessionToken;
     private refreshToken;
     private renewTimer;
+    private browserRefreshPromise;
+    private authStateRevision;
     private initialized;
     private profile;
     constructor(config: BuckyOSConfig);
@@ -98,6 +100,8 @@ export declare class BuckyOSRuntime {
     refreshBrowserSession(): Promise<BrowserUserInfo | null>;
     logoutBrowserSSO(): Promise<void>;
     private refreshBrowserSessionToken;
+    private requestBrowserSessionToken;
+    private usesBrowserSessionRefresh;
     private needsRenew;
     startAutoRenewIfNeeded(): void;
     private loadAppServiceSessionTokenFromEnv;
