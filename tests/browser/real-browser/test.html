@@ -122,7 +122,7 @@
             autoRenew: false,
           });
 
-          const authClient = new buckyos.AuthClient('test.buckyos.io', appId);
+          const authClient = new buckyos.AuthClient('test.buckyos.io');
           const ssoLoginUrl = authClient.buildLoginURL();
 
           loginButton.disabled = false;

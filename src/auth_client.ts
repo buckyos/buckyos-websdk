@@ -10,14 +10,12 @@ function ensureSSOEnvironment() {
 
 export class AuthClient {
   zoneHostname: string
-  clientId: string
   private readonly navigate: (url: string) => void
 
-  constructor(zoneBaseUrl: string, appId: string, options: AuthClientOptions = {}) {
+  constructor(zoneBaseUrl: string, options: AuthClientOptions = {}) {
     ensureSSOEnvironment()
 
     this.zoneHostname = zoneBaseUrl
-    this.clientId = appId
     this.navigate = options.navigate ?? ((url: string) => {
       window.location.assign(url)
     })
@@ -28,7 +26,7 @@ export class AuthClient {
 
     const redirectTarget = redirectUri ?? window.location.href
     const ssoURL = `${window.location.protocol}//sys.${this.zoneHostname}/login`
-    return `${ssoURL}?client_id=${this.clientId}&redirect_url=${encodeURIComponent(redirectTarget)}`
+    return `${ssoURL}?redirect_url=${encodeURIComponent(redirectTarget)}`
   }
 
   async login(redirectUri: string | null = null): Promise<void> {

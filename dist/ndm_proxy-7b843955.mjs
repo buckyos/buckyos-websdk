@@ -195,10 +195,9 @@ function ensureSSOEnvironment() {
   }
 }
 class AuthClient {
-  constructor(zoneBaseUrl, appId, options = {}) {
+  constructor(zoneBaseUrl, options = {}) {
     ensureSSOEnvironment();
     this.zoneHostname = zoneBaseUrl;
-    this.clientId = appId;
     this.navigate = options.navigate ?? ((url) => {
       window.location.assign(url);
     });
@@ -207,7 +206,7 @@ class AuthClient {
     ensureSSOEnvironment();
     const redirectTarget = redirectUri ?? window.location.href;
     const ssoURL = `${window.location.protocol}//sys.${this.zoneHostname}/login`;
-    return `${ssoURL}?client_id=${this.clientId}&redirect_url=${encodeURIComponent(redirectTarget)}`;
+    return `${ssoURL}?redirect_url=${encodeURIComponent(redirectTarget)}`;
   }
   async login(redirectUri = null) {
     const authURL = this.buildLoginURL(redirectUri);
@@ -4509,7 +4508,7 @@ class BuckyOSSDK {
       return;
     }
     try {
-      const authClient = new AuthClient(zoneHostName, appId);
+      const authClient = new AuthClient(zoneHostName);
       await authClient.login();
     } catch (error) {
       console.error("login failed: ", error);
@@ -28517,4 +28516,4 @@ export {
   WORKFLOW_THUNK_TASK_SCHEMA_ID as y,
   WORKFLOW_SCHEDULE_TASK_SCHEMA_ID as z
 };
-//# sourceMappingURL=ndm_proxy-e760d535.mjs.map
+//# sourceMappingURL=ndm_proxy-7b843955.mjs.map

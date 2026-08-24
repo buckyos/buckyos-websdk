@@ -86,7 +86,7 @@
 浏览器登录逻辑变化较大：
 
 - `AuthClient` 从弹窗 + `postMessage` 获取 token 改为当前窗口跳转。
-- SSO URL 从旧的 `/sso/login` 语义调整为 `sys.$zone/login`，参数使用 `client_id` 和 `redirect_url`。
+- SSO URL 从旧的 `/sso/login` 语义调整为 `sys.$zone/login`，并由 `redirect_url` 的 Gateway 路由确定登录目标。
 - `loginByBrowserSSO()` 触发跳转，本身不再返回 account/token。
 - SSO 回跳后，调用方通过 `getAccountInfo()` 读取当前登录态。
 - 浏览器侧新增 `user_info` localStorage 解析/缓存，`AccountInfo.user_type` 变为可选。

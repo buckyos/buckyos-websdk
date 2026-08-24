@@ -511,7 +511,7 @@ export class BuckyOSSDK {
     }
 
     try {
-      const authClient = new AuthClient(zoneHostName, appId)
+      const authClient = new AuthClient(zoneHostName)
       await authClient.login()
     } catch (error) {
       console.error('login failed: ', error)

@@ -1,5 +1,5 @@
-import { c as createSDKModule } from "./ndm_proxy-e760d535.mjs";
-import { F, aF, K, aG, aH, aB, aD, aE, aC, L, P, N, U, Q, aU, b4, b5, b0, b1, b2, b3, b6, d, B, b8, b7, bc, ba, j, ai, D, H, G, aW, aV, k, M, O, I, t, l, R, u, S, a2, a1, a0, a5, a3, $, X, Y, a4, Z, a6, _, m, o, T, a7, q, J, aj, ag, al, am, ab, ak, an, af, ac, ae, V, W, C, x, E, v, z, A, ao, w, y, aA, at, aw, ar, av, aq, as, au, az, ay, ax, ap, aQ, aL, aK, aP, aO, aM, aN, aJ, aZ, aX, ah, b, a_, b9, e, i, f, g, h, aI, ad, n, a, aY, a$, p, r, s, aa, a8, a9, aR, aS, aT, bb } from "./ndm_proxy-e760d535.mjs";
+import { c as createSDKModule } from "./ndm_proxy-7b843955.mjs";
+import { F, aF, K, aG, aH, aB, aD, aE, aC, L, P, N, U, Q, aU, b4, b5, b0, b1, b2, b3, b6, d, B, b8, b7, bc, ba, j, ai, D, H, G, aW, aV, k, M, O, I, t, l, R, u, S, a2, a1, a0, a5, a3, $, X, Y, a4, Z, a6, _, m, o, T, a7, q, J, aj, ag, al, am, ab, ak, an, af, ac, ae, V, W, C, x, E, v, z, A, ao, w, y, aA, at, aw, ar, av, aq, as, au, az, ay, ax, ap, aQ, aL, aK, aP, aO, aM, aN, aJ, aZ, aX, ah, b, a_, b9, e, i, f, g, h, aI, ad, n, a, aY, a$, p, r, s, aa, a8, a9, aR, aS, aT, bb } from "./ndm_proxy-7b843955.mjs";
 import { b as b10, D as D2, N as N2, t as t2, s as s2, j as j2, l as l2, h as h2, d as d2, g as g2, f as f2, c, e as e2, m as m2, k as k2, i as i2, n as n2, a as a10, r as r2, q as q2, o as o2, p as p2 } from "./ndn_types-ca94286b.mjs";
 const sdkModule = createSDKModule("browser");
 const buckyos = sdkModule.buckyos;

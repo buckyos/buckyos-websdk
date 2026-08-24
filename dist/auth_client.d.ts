@@ -3,9 +3,8 @@ interface AuthClientOptions {
 }
 export declare class AuthClient {
     zoneHostname: string;
-    clientId: string;
     private readonly navigate;
-    constructor(zoneBaseUrl: string, appId: string, options?: AuthClientOptions);
+    constructor(zoneBaseUrl: string, options?: AuthClientOptions);
     buildLoginURL(redirectUri?: string | null): string;
     login(redirectUri?: string | null): Promise<void>;
 }

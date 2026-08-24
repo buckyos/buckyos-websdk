@@ -83,7 +83,8 @@ SDK 初始化时会校验这些字段彼此一致，并通过 `getAppDid()`、`g
 ## AuthClient 的边界
 
 - `AuthClient` 只应该在浏览器 SSO 环境里创建
-- 它的职责是构造 SSO 登录跳转 URL，并触发当前窗口跳转
+- 它只接收 Zone hostname，构造仅带 `redirect_url` 的 SSO 登录 URL，登录目标由 Gateway 路由确定
+- 它会触发当前窗口跳转
 - 不再担弹窗通信或跨窗口 `postMessage` 回传 token 的逻辑
 
 ## 访问系统服务的方法
