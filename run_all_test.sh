@@ -13,7 +13,7 @@ set -euo pipefail
 #
 #   Phase 3 — AppService integration tests (THE non-trivial init order)
 #             AppService cannot be initialized inside the jest process —
-#             the <OWNER>_<APP>_TOKEN must be issued by service_debug.tsx
+#             BUCKYOS_APP_TOKEN must be issued by service_debug.tsx
 #             at the moment systest comes up. The required sequence is:
 #               a) start the Deno systest (debug_systest.sh -> service_debug.tsx)
 #               b) wait for /sdk/appservice/healthz to return ok
@@ -21,7 +21,7 @@ set -euo pipefail
 #
 #   Phase 4 — real browser playwright tests
 #             When Phase 3 is enabled, Phase 4 must reuse the same local
-#             `buckyos_systest` slot. Otherwise the gateway host
+#             `buckyos-systest.buckyos.bns.did` slot. Otherwise the gateway host
 #             `https://systest.test.buckyos.io/*.html` points at an empty
 #             slot (docker is intentionally stopped in local-debug mode) and
 #             the browser pages fail with 500.
@@ -35,9 +35,9 @@ Usage:
                   [--skip-unit] [--skip-app-client]
                   [--skip-app-service] [--skip-browser]
 
-If --port is omitted, the buckyos_systest port is read from
+If --port is omitted, the buckyos-systest.buckyos.bns.did port is read from
 ${BUCKYOS_ROOT:-/opt/buckyos}/etc/node_gateway_info.json (the entry whose
-app_id == "buckyos_systest"). The script aborts if it cannot be resolved.
+app_id == "buckyos-systest.buckyos.bns.did"). The script aborts if it cannot be resolved.
 
 Examples:
   ./run_all_test.sh
@@ -55,7 +55,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TESTS_SCRIPTS_DIR="${REPO_ROOT}/tests/scripts"
 BUCKYOS_ROOT="${BUCKYOS_ROOT:-/opt/buckyos}"
 DEBUG_SYSTEST_SCRIPT="${TESTS_SCRIPTS_DIR}/debug_systest.sh"
-APP_ID="buckyos_systest"
+APP_ID="buckyos-systest.buckyos.bns.did"
 PLAYWRIGHT_REAL_BROWSER_TESTS=(
   tests/browser/real-browser/playwright.spec.js
   tests/browser/real-browser/ndn_types.spec.js
@@ -65,7 +65,7 @@ PLAYWRIGHT_REAL_BROWSER_TESTS=(
 
 OWNER_USER_ID="devtest"
 # PORT is resolved from ${BUCKYOS_ROOT}/etc/node_gateway_info.json (the entry
-# whose app_id == "buckyos_systest") unless --port is explicitly given. We do
+# whose app_id == "buckyos-systest.buckyos.bns.did") unless --port is explicitly given. We do
 # not keep a hard-coded fallback — the gateway routing is the source of truth,
 # and a stale guess silently breaks the gateway smoke checks in Phase 3.
 PORT=""
@@ -105,7 +105,7 @@ done
 
 cd "${REPO_ROOT}"
 
-# Resolve the buckyos_systest port from the live gateway info file, so the
+# Resolve the buckyos-systest.buckyos.bns.did port from the live gateway info file, so the
 # test always uses whatever port the BuckyOS scheduler actually wired the
 # `systest.test.buckyos.io` virtual host to. We refuse to fall back to a
 # guessed default — see the PORT comment above.
@@ -119,7 +119,7 @@ resolve_systest_port() {
     echo "[run_all_test] python3 is required to read ${gateway_info}" >&2
     return 1
   fi
-  python3 - "${gateway_info}" buckyos_systest <<'PY'
+  python3 - "${gateway_info}" buckyos-systest.buckyos.bns.did <<'PY'
 import json, sys
 path, app_id = sys.argv[1], sys.argv[2]
 with open(path) as f:
@@ -139,10 +139,10 @@ PY
 
 if [[ -z "${PORT}" ]]; then
   if ! PORT="$(resolve_systest_port)"; then
-    echo "[run_all_test] could not resolve buckyos_systest port from ${BUCKYOS_ROOT}/etc/node_gateway_info.json" >&2
+    echo "[run_all_test] could not resolve buckyos-systest.buckyos.bns.did port from ${BUCKYOS_ROOT}/etc/node_gateway_info.json" >&2
     exit 2
   fi
-  echo "[run_all_test] resolved buckyos_systest port from gateway info: ${PORT}"
+  echo "[run_all_test] resolved buckyos-systest.buckyos.bns.did port from gateway info: ${PORT}"
 fi
 
 step() {
@@ -200,7 +200,7 @@ kill_test_services() {
   #    port directly but can still hold child processes / file locks.
   if command -v pkill >/dev/null 2>&1; then
     pkill -f 'service_debug\.tsx'                  >/dev/null 2>&1 || true
-    pkill -f 'buckyos_systest/main\.ts'            >/dev/null 2>&1 || true
+    pkill -f 'buckyos-systest\.buckyos\.bns\.did/main\.ts' >/dev/null 2>&1 || true
     pkill -f 'tests/app-service/systest/main\.ts'  >/dev/null 2>&1 || true
   fi
 }
@@ -316,7 +316,7 @@ fi
 
 # When AppService integration is enabled, keep the local systest slot alive
 # across both Phase 3 and Phase 4. The browser tests are served by the same
-# `buckyos_systest` host slot, so tearing the debug service down after the
+# `buckyos-systest.buckyos.bns.did` host slot, so tearing the debug service down after the
 # Jest phase leaves `https://systest.test.buckyos.io/*.html` pointing at an
 # empty gateway target and causes 500s.
 if [[ "${SKIP_APP_SERVICE}" -eq 0 && "${SKIP_BROWSER}" -eq 0 ]]; then

@@ -1,5 +1,6 @@
 import { kRPCClient, RPCError } from '../src/krpc_client'
 import {
+  APP_UPDATE_BATCH_TASK_SCHEMA_ID,
   RAW_TASK_SCHEMA_ID,
   TASK_ERR_REVISION_CONFLICT,
   TaskControlAction,
@@ -138,9 +139,12 @@ describe('TaskManagerClient 2.0', () => {
 
     await expect(client.getTask('task-01')).resolves.toMatchObject({ task_id: 'task-01' })
     await expect(client.listTasks({
+      idempotency_key: 'idem-01',
       schema_id: RAW_TASK_SCHEMA_ID,
       phase: TaskPhase.Running,
       executor_kind: TaskExecutorKind.App,
+      runner_app_id: 'runner-app',
+      runner_target_id: 'node-01',
       include_archived: true,
       limit: 10,
     })).resolves.toMatchObject({ next_cursor: 'cursor-2' })
@@ -153,14 +157,21 @@ describe('TaskManagerClient 2.0', () => {
 
     expect(requestBody(fetcher, 0).params).toEqual({ task_id: 'task-01' })
     expect(requestBody(fetcher, 1).params).toEqual({
+      idempotency_key: 'idem-01',
       schema_id: RAW_TASK_SCHEMA_ID,
       phase: 'Running',
       executor_kind: 'App',
+      runner_app_id: 'runner-app',
+      runner_target_id: 'node-01',
       include_archived: true,
       limit: 10,
     })
     expect(requestBody(fetcher, 2).params).toEqual({ root_id: 'task-01', depth: 2 })
     expect(requestBody(fetcher, 3).params).toEqual({ task_id: 'task-01', limit: 5 })
+  })
+
+  it('exports the current app update-batch schema id', () => {
+    expect(APP_UPDATE_BATCH_TASK_SCHEMA_ID).toBe('app.update_batch/v1')
   })
 
   it('sends flattened runner fencing fields and returns updated task snapshots', async () => {

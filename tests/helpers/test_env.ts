@@ -87,14 +87,6 @@ export function getAppHostPrefix(appId: string, ownerUserId?: string | null): st
   return `${appId}-${ownerUserId}`
 }
 
-export function getRustStyleFullAppId(appId: string, ownerUserId: string): string {
-  return `${ownerUserId}-${appId}`
-}
-
-export function getRustStyleAppServiceTokenEnvKey(appId: string, ownerUserId: string): string {
-  return `${getRustStyleFullAppId(appId, ownerUserId).toUpperCase().replace(/-/g, '_')}_TOKEN`
-}
-
 export function getServiceUrl(
   appId: string,
   zoneHost: string,

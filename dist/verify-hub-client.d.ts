@@ -29,11 +29,13 @@ export interface LoginByPasswordParams {
     username: string;
     password: string;
     appid: string;
+    app_instance_id: string;
     source_url?: string;
 }
 export interface VerifyTokenParams {
     session_token: string;
     appid?: string;
+    app_instance_id?: string;
 }
 export interface RefreshTokenParams {
     refresh_token: string;

@@ -139,7 +139,7 @@ test('config-less init derives the zone host, caches it under the v2 key and reu
     window.localStorage.removeItem('zone_host_name_v2');
 
     const sdk = await import('./browser.mjs?case=zone-host-derive');
-    await sdk.initBuckyOS('systest');
+    await sdk.initBuckyOS('buckyos-systest.buckyos.bns.did');
 
     return {
       zoneHostName: sdk.getZoneHostName(),
@@ -159,7 +159,7 @@ test('config-less init derives the zone host, caches it under the v2 key and reu
     window.localStorage.setItem('zone_host_name_v2', 'cached-zone.buckyos.io');
 
     const sdk = await import('./browser.mjs?case=zone-host-cached');
-    await sdk.initBuckyOS('systest');
+    await sdk.initBuckyOS('buckyos-systest.buckyos.bns.did');
 
     return {
       zoneHostName: sdk.getZoneHostName(),

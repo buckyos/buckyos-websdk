@@ -63,6 +63,10 @@ import {
 } from '../src/ndm_client'
 import { createSDKModule, RuntimeType } from '../src/sdk_core'
 import { FileObject as NdnFileObject, ObjId } from '../src/ndn_types'
+import {
+    installTestAppServiceEnv,
+    TEST_APP_SERVICE_TOKEN,
+} from './helpers/app_service_env'
 
 describe('ndm_client (shared cases)', () => {
     for (const c of NDM_CLIENT_TEST_CASES) {
@@ -104,11 +108,13 @@ describe('ndm_client (jest-only)', () => {
     let originalProvider: ImportProvider
     const sdk = createSDKModule('universal')
     const originalFetch = global.fetch
+    const originalEnv = { ...process.env }
 
     beforeAll(() => { originalProvider = getImportProvider() })
     afterEach(() => {
         setImportProvider(originalProvider)
         global.fetch = originalFetch
+        process.env = { ...originalEnv }
         mockTusUpload.mockReset()
     })
 
@@ -129,10 +135,11 @@ describe('ndm_client (jest-only)', () => {
     })
 
     it('uploads multi-chunk files with distinct chunk_index metadata per chunk session', async () => {
+        installTestAppServiceEnv()
         await sdk.initBuckyOS('test-app', {
             appId: 'test-app',
             runtimeType: RuntimeType.AppService,
-            sessionToken: 'session-token-123',
+            sessionToken: TEST_APP_SERVICE_TOKEN,
             ownerUserId: 'alice',
             zoneHost: 'example.com',
             defaultProtocol: 'https://',
@@ -241,10 +248,11 @@ describe('ndm_client (jest-only)', () => {
     })
 
     it('structured store APIs send POST JSON and attach session token when available', async () => {
+        installTestAppServiceEnv()
         await sdk.initBuckyOS('test-app', {
             appId: 'test-app',
             runtimeType: RuntimeType.AppService,
-            sessionToken: 'session-token-123',
+            sessionToken: TEST_APP_SERVICE_TOKEN,
             ownerUserId: 'alice',
             zoneHost: 'example.com',
             defaultProtocol: 'https://',
@@ -283,17 +291,18 @@ describe('ndm_client (jest-only)', () => {
                 headers: expect.objectContaining({
                     Accept: 'application/json',
                     'Content-Type': 'application/json',
-                    Authorization: 'Bearer session-token-123',
+                    Authorization: `Bearer ${TEST_APP_SERVICE_TOKEN}`,
                 }),
             }),
         )
     })
 
     it('structured store APIs derive endpoint from active runtime when omitted', async () => {
+        installTestAppServiceEnv()
         await sdk.initBuckyOS('test-app', {
             appId: 'test-app',
             runtimeType: RuntimeType.AppService,
-            sessionToken: 'service-token',
+            sessionToken: TEST_APP_SERVICE_TOKEN,
             ownerUserId: 'alice',
             zoneHost: 'example.com',
             defaultProtocol: 'https://',
@@ -322,10 +331,11 @@ describe('ndm_client (jest-only)', () => {
     })
 
     it('structured store APIs surface JSON errors with status and error code', async () => {
+        installTestAppServiceEnv()
         await sdk.initBuckyOS('test-app', {
             appId: 'test-app',
             runtimeType: RuntimeType.AppService,
-            sessionToken: 'service-token',
+            sessionToken: TEST_APP_SERVICE_TOKEN,
             ownerUserId: 'alice',
             zoneHost: 'example.com',
             defaultProtocol: 'https://',

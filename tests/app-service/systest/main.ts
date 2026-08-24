@@ -1,8 +1,11 @@
 import { serveDir } from "jsr:@std/http/file-server";
 
 type AppInstanceIdentity = {
+  appDid: string;
   appId: string;
+  appInstanceId: string;
   ownerUserId: string;
+  dataDir: string;
 };
 
 type JsonObject = Record<string, unknown>;
@@ -50,6 +53,9 @@ type NodeSdkModule = {
       } | null
     >;
     getZoneHostName: () => string | null;
+    getAppDid: () => string | null;
+    getAppInstanceId: () => string | null;
+    getAppDataDir: () => string | null;
     getZoneServiceURL: (serviceName: string) => string;
     getAppSetting: (settingName?: string | null) => Promise<unknown>;
     setAppSetting: (settingName: string | null, settingValue: string) => Promise<void>;
@@ -96,32 +102,27 @@ async function pathExists(path: string): Promise<boolean> {
   }
 }
 
-function parseAppInstanceIdentity(appInstanceConfig: string): AppInstanceIdentity {
-  const parsed = JSON.parse(appInstanceConfig) as {
-    app_spec?: {
-      user_id?: unknown;
-      app_doc?: {
-        name?: unknown;
-      };
-    };
-  };
-
-  const appId = typeof parsed.app_spec?.app_doc?.name === "string"
-    ? parsed.app_spec.app_doc.name.trim()
-    : "";
-  const ownerUserId = typeof parsed.app_spec?.user_id === "string"
-    ? parsed.app_spec.user_id.trim()
-    : "";
-
-  if (!appId || !ownerUserId) {
-    throw new Error("app_instance_config is missing app_spec.user_id or app_spec.app_doc.name");
+function requireEnv(name: string): string {
+  const value = getEnv(name);
+  if (!value) {
+    throw new Error(`missing ${name}; start systest through the current service_debug.tsx`);
   }
-
-  return { appId, ownerUserId };
+  return value;
 }
 
-function getRustStyleAppServiceTokenEnvKey(identity: AppInstanceIdentity): string {
-  return `${identity.ownerUserId}-${identity.appId}`.toUpperCase().replaceAll("-", "_") + "_TOKEN";
+function resolveAppInstanceIdentity(): AppInstanceIdentity {
+  const appDid = requireEnv("BUCKYOS_APP_DID");
+  const appId = requireEnv("BUCKYOS_APP_ID");
+  const appInstanceId = requireEnv("BUCKYOS_APP_INSTANCE_ID");
+  const ownerUserId = requireEnv("BUCKYOS_OWNER_USER_ID");
+  const dataDir = requireEnv("BUCKYOS_DATA_DIR");
+
+  if (appInstanceId !== `${appId}@${ownerUserId}`) {
+    throw new Error("BUCKYOS_APP_INSTANCE_ID is inconsistent with app and owner identity");
+  }
+  requireEnv("BUCKYOS_APP_TOKEN");
+
+  return { appDid, appId, appInstanceId, ownerUserId, dataDir };
 }
 
 async function resolveWebSdkRoot(): Promise<string> {
@@ -193,21 +194,11 @@ function jsonResponse(payload: unknown, status = 200): Response {
 }
 
 async function bootstrapSdk() {
-  const appInstanceConfig = getEnv("app_instance_config");
-  if (!appInstanceConfig) {
-    throw new Error("missing app_instance_config; start systest through service_debug.tsx");
-  }
-
-  const identity = parseAppInstanceIdentity(appInstanceConfig);
-  const expectedTokenKey = getRustStyleAppServiceTokenEnvKey(identity);
-  if (!getEnv(expectedTokenKey)) {
-    throw new Error(`missing ${expectedTokenKey}; service_debug.tsx should inject it`);
-  }
+  const identity = resolveAppInstanceIdentity();
 
   const sdk = await loadSdkModule();
   await sdk.buckyos.initBuckyOS("", {
     appId: "",
-    ownerUserId: identity.ownerUserId,
     runtimeType: sdk.RuntimeType.AppService,
     zoneHost: getEnv("BUCKYOS_ZONE_HOST") ?? "",
     defaultProtocol: "https://",
@@ -393,11 +384,14 @@ Deno.serve({
       return jsonResponse({
         ok: true,
         mode: "app-service-local-debug",
+        appDid: sdk.buckyos.getAppDid(),
         appId: identity.appId,
+        appInstanceId: sdk.buckyos.getAppInstanceId(),
         ownerUserId: identity.ownerUserId,
+        dataDir: sdk.buckyos.getAppDataDir(),
         zoneHost: sdk.buckyos.getZoneHostName(),
         hostGateway: getEnv("BUCKYOS_HOST_GATEWAY"),
-        expectedTokenEnvKey: getRustStyleAppServiceTokenEnvKey(identity),
+        tokenEnvKey: "BUCKYOS_APP_TOKEN",
         serviceUrls: {
           verifyHub: sdk.buckyos.getZoneServiceURL("verify-hub"),
           taskManager: sdk.buckyos.getZoneServiceURL("task-manager"),

@@ -127,6 +127,11 @@ describe('DID (mirror of did.rs unit tests)', () => {
     expect(did.method).toBe('dev')
     expect(did.id).toBe('abcdef')
     expect(did.toString()).toBe('did:dev:abcdef')
+
+    const nestedBnsDid = DID.fromHostName('filebrowser.buckyos.bns.did')!
+    expect(nestedBnsDid.method).toBe('bns')
+    expect(nestedBnsDid.id).toBe('filebrowser.buckyos')
+    expect(nestedBnsDid.toString()).toBe('did:bns:filebrowser.buckyos')
   })
 
   test('from_host_name_by_bridge', () => {

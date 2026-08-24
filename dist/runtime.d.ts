@@ -8,6 +8,13 @@ import { MsgQueueClient } from './msg_queue_client';
 import { MsgCenterClient } from './msg_center_client';
 import { RepoClient } from './repo_client';
 import { BrowserUserInfo } from './account';
+import { AppDID, AppId, AppInstanceId } from './app_identity';
+export declare const BUCKYOS_APP_DID_ENV = "BUCKYOS_APP_DID";
+export declare const BUCKYOS_APP_ID_ENV = "BUCKYOS_APP_ID";
+export declare const BUCKYOS_APP_INSTANCE_ID_ENV = "BUCKYOS_APP_INSTANCE_ID";
+export declare const BUCKYOS_OWNER_USER_ID_ENV = "BUCKYOS_OWNER_USER_ID";
+export declare const BUCKYOS_DATA_DIR_ENV = "BUCKYOS_DATA_DIR";
+export declare const BUCKYOS_APP_TOKEN_ENV = "BUCKYOS_APP_TOKEN";
 export declare enum RuntimeType {
     Browser = "Browser",
     NodeJS = "NodeJS",
@@ -26,11 +33,16 @@ export interface SessionTokenClaims {
     session?: number;
     token_type?: string;
     userid?: string;
+    app_instance_id?: string;
+    app_owner_user_id?: string;
     [key: string]: unknown;
 }
 export interface BuckyOSConfig {
     zoneHost: string;
-    appId: string;
+    appId: AppId;
+    appDid?: AppDID | null;
+    appInstanceId?: AppInstanceId | null;
+    dataDir?: string | null;
     defaultProtocol: string;
     runtimeType: RuntimeType;
     userid?: string | null;
@@ -61,9 +73,11 @@ export declare class BuckyOSRuntime {
     login(): Promise<void>;
     setConfig(config: BuckyOSConfig): void;
     getConfig(): BuckyOSConfig;
-    getAppId(): string;
+    getAppId(): AppId;
     getOwnerUserId(): string | null;
-    getFullAppId(): string;
+    getAppDid(): AppDID | null;
+    getAppInstanceId(): AppInstanceId | null;
+    getDataDir(): string | null;
     getZoneHostName(): string;
     getDefaultProtocol(): string;
     getNodeGatewayPort(): number;
@@ -92,7 +106,7 @@ export declare class BuckyOSRuntime {
     ensureSessionTokenReady(): Promise<string | null>;
     ensureAppServiceSessionToken(): void;
     ensureAppClientSessionToken(): Promise<void>;
-    resolveNodeIdentityFromEnv(): void;
+    resolveAppServiceIdentityFromEnv(): Promise<void>;
     resolveZoneHostFromLocalConfig(): Promise<void>;
     private validateSessionToken;
     private ensureBrowserSessionToken;

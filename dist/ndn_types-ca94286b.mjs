@@ -1105,9 +1105,10 @@ class DID {
   }
   static fromHostName(hostName) {
     if (hostName.endsWith(".did")) {
-      const parts = hostName.split(".");
-      if (parts.length === 3) {
-        return new DID(parts[1], parts[0]);
+      const withoutSuffix = hostName.slice(0, -".did".length);
+      const separator = withoutSuffix.lastIndexOf(".");
+      if (separator > 0 && separator < withoutSuffix.length - 1) {
+        return new DID(withoutSuffix.slice(separator + 1), withoutSuffix.slice(0, separator));
       }
     }
     if (knownWeb3BridgeConfig) {
@@ -1130,9 +1131,10 @@ class DID {
       return new DID(method, id);
     }
     if (hostName.endsWith(".did")) {
-      const parts = hostName.split(".");
-      if (parts.length === 3) {
-        return new DID(parts[1], parts[0]);
+      const withoutSuffix = hostName.slice(0, -".did".length);
+      const separator = withoutSuffix.lastIndexOf(".");
+      if (separator > 0 && separator < withoutSuffix.length - 1) {
+        return new DID(withoutSuffix.slice(separator + 1), withoutSuffix.slice(0, separator));
       }
     }
     return new DID("web", hostName);
@@ -3657,4 +3659,4 @@ export {
   sha256Bytes as y,
   DirObject as z
 };
-//# sourceMappingURL=ndn_types-76983121.mjs.map
+//# sourceMappingURL=ndn_types-ca94286b.mjs.map

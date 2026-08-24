@@ -24,6 +24,7 @@ describe('VerifyHubClient', () => {
       username: 'devtest',
       password: 'hashed-password',
       appid: 'buckycli',
+      app_instance_id: 'buckycli@devtest',
       source_url: 'https://buckycli.test.buckyos.io/',
     })
 
@@ -34,6 +35,7 @@ describe('VerifyHubClient', () => {
         username: 'devtest',
         password: 'hashed-password',
         appid: 'buckycli',
+        app_instance_id: 'buckycli@devtest',
         source_url: 'https://buckycli.test.buckyos.io/',
       },
       sys: [7, 'init-token'],

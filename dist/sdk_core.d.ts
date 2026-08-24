@@ -32,10 +32,13 @@ export declare class BuckyOSSDK {
     private currentKEventClient;
     private readonly target;
     constructor(target: SDKTarget);
-    initBuckyOS(appid: string, config?: BuckyOSConfig | null): Promise<void>;
+    initBuckyOS(appid?: string, config?: BuckyOSConfig | null): Promise<void>;
     getBuckyOSConfig(): BuckyOSConfig | null;
     getRuntimeType(): RuntimeType;
     getAppId(): string | null;
+    getAppDid(): string | null;
+    getAppInstanceId(): string | null;
+    getAppDataDir(): string | null;
     attachEvent(eventName: string, callback: Function): void;
     removeEvent(cookieId: string): void;
     getKEventClient(): KEventClient;
@@ -75,10 +78,13 @@ export declare class BuckyOSSDK {
 export declare function createSDKModule(target: SDKTarget): {
     buckyos: {
         hashPassword: typeof hashPassword;
-        initBuckyOS: (appid: string, config?: BuckyOSConfig | null) => Promise<void>;
+        initBuckyOS: (appid?: string, config?: BuckyOSConfig | null) => Promise<void>;
         getBuckyOSConfig: () => BuckyOSConfig | null;
         getRuntimeType: () => RuntimeType;
         getAppId: () => string | null;
+        getAppDid: () => string | null;
+        getAppInstanceId: () => string | null;
+        getAppDataDir: () => string | null;
         getKEventClient: () => KEventClient;
         createEventReader: (patterns: KEventPatternInput, options?: KEventReaderOptions) => Promise<KEventReader>;
         create_event_reader: (patterns: KEventPatternInput, options?: KEventReaderOptions) => Promise<KEventReader>;
@@ -111,10 +117,13 @@ export declare function createSDKModule(target: SDKTarget): {
         kRPCClient: typeof kRPCClient;
         AuthClient: typeof AuthClient;
     };
-    initBuckyOS: (appid: string, config?: BuckyOSConfig | null) => Promise<void>;
+    initBuckyOS: (appid?: string, config?: BuckyOSConfig | null) => Promise<void>;
     getBuckyOSConfig: () => BuckyOSConfig | null;
     getRuntimeType: () => RuntimeType;
     getAppId: () => string | null;
+    getAppDid: () => string | null;
+    getAppInstanceId: () => string | null;
+    getAppDataDir: () => string | null;
     getKEventClient: () => KEventClient;
     createEventReader: (patterns: KEventPatternInput, options?: KEventReaderOptions) => Promise<KEventReader>;
     create_event_reader: (patterns: KEventPatternInput, options?: KEventReaderOptions) => Promise<KEventReader>;

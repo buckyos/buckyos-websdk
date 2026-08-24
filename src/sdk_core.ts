@@ -199,7 +199,7 @@ function parseSettingValue(settingValue: string): unknown {
 
 function inferNodeRuntimeType(): RuntimeType {
   const env = getNodeEnv()
-  if (trimToNull(env.app_instance_config)) {
+  if (trimToNull(env.BUCKYOS_APP_INSTANCE_ID)) {
     return RuntimeType.AppService
   }
   return RuntimeType.AppClient
@@ -269,7 +269,7 @@ export class BuckyOSSDK {
     this.target = target
   }
 
-  async initBuckyOS(appid: string, config: BuckyOSConfig | null = null): Promise<void> {
+  async initBuckyOS(appid: string = '', config: BuckyOSConfig | null = null): Promise<void> {
     const finalConfig = this.buildRuntimeConfig(appid, config)
 
     if (this.target !== 'node' && isBrowserRuntime() && !config) {
@@ -317,6 +317,18 @@ export class BuckyOSSDK {
 
     console.error('BuckyOS WebSDK is not initialized,call initBuckyOS first')
     return null
+  }
+
+  getAppDid(): string | null {
+    return this.currentRuntime?.getAppDid() ?? null
+  }
+
+  getAppInstanceId(): string | null {
+    return this.currentRuntime?.getAppInstanceId() ?? null
+  }
+
+  getAppDataDir(): string | null {
+    return this.currentRuntime?.getDataDir() ?? null
   }
 
   attachEvent(eventName: string, callback: Function) {
@@ -414,6 +426,10 @@ export class BuckyOSSDK {
       console.error('BuckyOS WebSDK is not initialized,call initBuckyOS first')
       return null
     }
+    const appInstanceId = this.currentRuntime?.getAppInstanceId()
+    if (!appInstanceId) {
+      throw new Error('loginByPassword requires BuckyOSConfig.appInstanceId')
+    }
 
     const loginNonce = Date.now()
     const passwordHash = hashPassword(username, password, loginNonce)
@@ -428,6 +444,7 @@ export class BuckyOSSDK {
         username,
         password: passwordHash,
         appid: appId,
+        app_instance_id: appInstanceId,
         source_url: typeof window !== 'undefined' ? window.location.href : undefined,
       })
 
@@ -884,6 +901,9 @@ export function createSDKModule(target: SDKTarget) {
     getBuckyOSConfig: sdk.getBuckyOSConfig.bind(sdk),
     getRuntimeType: sdk.getRuntimeType.bind(sdk),
     getAppId: sdk.getAppId.bind(sdk),
+    getAppDid: sdk.getAppDid.bind(sdk),
+    getAppInstanceId: sdk.getAppInstanceId.bind(sdk),
+    getAppDataDir: sdk.getAppDataDir.bind(sdk),
     getKEventClient: sdk.getKEventClient.bind(sdk),
     createEventReader: sdk.createEventReader.bind(sdk),
     create_event_reader: sdk.create_event_reader.bind(sdk),

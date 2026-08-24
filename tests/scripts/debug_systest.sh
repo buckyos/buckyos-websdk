@@ -22,7 +22,7 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 BUCKYOS_ROOT="${BUCKYOS_ROOT:-/opt/buckyos}"
-APP_ID="buckyos_systest"
+APP_ID="buckyos-systest.buckyos.bns.did"
 OWNER_USER_ID="devtest"
 
 if [[ $# -gt 0 && "${1}" != -* ]]; then

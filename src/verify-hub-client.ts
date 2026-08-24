@@ -35,12 +35,14 @@ export interface LoginByPasswordParams {
   username: string
   password: string
   appid: string
+  app_instance_id: string
   source_url?: string
 }
 
 export interface VerifyTokenParams {
   session_token: string
   appid?: string
+  app_instance_id?: string
 }
 
 export interface RefreshTokenParams {
@@ -77,6 +79,7 @@ export class VerifyHubClient {
       username: params.username,
       password: params.password,
       appid: params.appid,
+      app_instance_id: params.app_instance_id,
     }
     if (params.source_url) {
       payload.source_url = params.source_url

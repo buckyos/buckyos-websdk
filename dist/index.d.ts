@@ -1,10 +1,13 @@
 import { hashPassword } from './account';
 export declare const buckyos: {
     hashPassword: typeof hashPassword;
-    initBuckyOS: (appid: string, config?: import("./runtime").BuckyOSConfig | null) => Promise<void>;
+    initBuckyOS: (appid?: string, config?: import("./runtime").BuckyOSConfig | null) => Promise<void>;
     getBuckyOSConfig: () => import("./runtime").BuckyOSConfig | null;
     getRuntimeType: () => import("./runtime").RuntimeType;
     getAppId: () => string | null;
+    getAppDid: () => string | null;
+    getAppInstanceId: () => string | null;
+    getAppDataDir: () => string | null;
     getKEventClient: () => import("./kevent_client").KEventClient;
     createEventReader: (patterns: import("./kevent_client").KEventPatternInput, options?: import("./kevent_client").KEventReaderOptions) => Promise<import("./kevent_client").KEventReader>;
     create_event_reader: (patterns: import("./kevent_client").KEventPatternInput, options?: import("./kevent_client").KEventReaderOptions) => Promise<import("./kevent_client").KEventReader>;
@@ -37,10 +40,13 @@ export declare const buckyos: {
     kRPCClient: typeof import("./krpc_client").kRPCClient;
     AuthClient: typeof import("./auth_client").AuthClient;
 };
-export declare const initBuckyOS: (appid: string, config?: import("./runtime").BuckyOSConfig | null) => Promise<void>;
+export declare const initBuckyOS: (appid?: string, config?: import("./runtime").BuckyOSConfig | null) => Promise<void>;
 export declare const getBuckyOSConfig: () => import("./runtime").BuckyOSConfig | null;
 export declare const getRuntimeType: () => import("./runtime").RuntimeType;
 export declare const getAppId: () => string | null;
+export declare const getAppDid: () => string | null;
+export declare const getAppInstanceId: () => string | null;
+export declare const getAppDataDir: () => string | null;
 export declare const getKEventClient: () => import("./kevent_client").KEventClient;
 export declare const createEventReader: (patterns: import("./kevent_client").KEventPatternInput, options?: import("./kevent_client").KEventReaderOptions) => Promise<import("./kevent_client").KEventReader>;
 export declare const create_event_reader: (patterns: import("./kevent_client").KEventPatternInput, options?: import("./kevent_client").KEventReaderOptions) => Promise<import("./kevent_client").KEventReader>;
@@ -73,6 +79,7 @@ export declare const getRepoClient: () => import("./repo_client").RepoClient;
 export { hashPassword };
 export * from './sdk_core';
 export * from './types';
+export * from './app_identity';
 export * as namelib from './namelib';
 export * as bns from './bns_client';
 export * from './bns_evm_tx';

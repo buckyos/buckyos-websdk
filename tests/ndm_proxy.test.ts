@@ -7,20 +7,27 @@ import {
     queryChunkState,
     NdmProxyApiError,
 } from '../src/ndm_proxy'
+import {
+    installTestAppServiceEnv,
+    TEST_APP_SERVICE_TOKEN,
+} from './helpers/app_service_env'
 
 describe('ndm_proxy', () => {
     const sdk = createSDKModule('universal')
     const originalFetch = global.fetch
+    const originalEnv = { ...process.env }
 
     afterEach(() => {
         global.fetch = originalFetch
+        process.env = { ...originalEnv }
     })
 
     async function initAppService() {
+        installTestAppServiceEnv()
         await sdk.initBuckyOS('test-app', {
             appId: 'test-app',
             runtimeType: RuntimeType.AppService,
-            sessionToken: 'session-token-123',
+            sessionToken: TEST_APP_SERVICE_TOKEN,
             ownerUserId: 'alice',
             zoneHost: 'example.com',
             defaultProtocol: 'https://',
@@ -63,7 +70,7 @@ describe('ndm_proxy', () => {
                 headers: expect.objectContaining({
                     Accept: 'application/json',
                     'Content-Type': 'application/json',
-                    Authorization: 'Bearer session-token-123',
+                    Authorization: `Bearer ${TEST_APP_SERVICE_TOKEN}`,
                 }),
             }),
         )
