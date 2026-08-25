@@ -26,21 +26,78 @@ export interface LegacyLoginByPasswordResponse {
   refresh_token?: string
 }
 
+export interface AppAuthTarget {
+  kind: 'app'
+  app_instance_id: string
+}
+
+export interface SystemAuthTarget {
+  kind: 'system'
+  service_id: string
+}
+
+export type AuthTarget = AppAuthTarget | SystemAuthTarget
+
+function serializeAuthTarget(target: AuthTarget): AuthTarget {
+  if (!target || typeof target !== 'object') {
+    throw new RPCError('verify-hub auth target is required')
+  }
+  if (target.kind === 'app' && typeof target.app_instance_id === 'string' && target.app_instance_id.length > 0) {
+    return {
+      kind: 'app',
+      app_instance_id: target.app_instance_id,
+    }
+  }
+  if (target.kind === 'system' && typeof target.service_id === 'string' && target.service_id.length > 0) {
+    return {
+      kind: 'system',
+      service_id: target.service_id,
+    }
+  }
+  throw new RPCError('invalid verify-hub auth target')
+}
+
+export function getAuthTargetAppId(target: AuthTarget): string {
+  const normalized = serializeAuthTarget(target)
+  if (normalized.kind === 'system') {
+    return normalized.service_id
+  }
+
+  const separator = normalized.app_instance_id.lastIndexOf('@')
+  if (separator <= 0 || separator === normalized.app_instance_id.length - 1) {
+    throw new RPCError('app auth target must use `<appId>@<ownerUserId>`')
+  }
+  return normalized.app_instance_id.slice(0, separator)
+}
+
 export interface LoginByJwtParams {
   jwt: string
-  login_params?: Record<string, unknown>
+  target: AuthTarget
 }
 
 export interface LoginByPasswordParams {
   username: string
   password: string
-  appid: string
+  target: AuthTarget
+  login_nonce?: number
   source_url?: string
+}
+
+export interface SudoByPasswordParams {
+  username: string
+  password: string
+  target: AuthTarget
+  aud?: string
+  login_nonce?: number
+}
+
+export interface SudoByPasswordResponse {
+  session_token: string
 }
 
 export interface VerifyTokenParams {
   session_token: string
-  appid?: string
+  expected_target?: AuthTarget
 }
 
 export interface RefreshTokenParams {
@@ -60,14 +117,11 @@ export class VerifyHubClient {
 
   async loginByJwt(params: LoginByJwtParams): Promise<TokenPair> {
     this.rpcClient.resetSessionToken()
-    const payload: Record<string, unknown> = {
+    return this.rpcClient.call<TokenPair, LoginByJwtParams & { type: 'jwt' }>('login_by_jwt', {
       type: 'jwt',
       jwt: params.jwt,
-    }
-    if (params.login_params) {
-      Object.assign(payload, params.login_params)
-    }
-    return this.rpcClient.call<TokenPair, Record<string, unknown>>('login_by_jwt', payload)
+      target: serializeAuthTarget(params.target),
+    })
   }
 
   async loginByPassword(params: LoginByPasswordParams): Promise<LoginByPasswordResponse | LegacyLoginByPasswordResponse> {
@@ -76,7 +130,10 @@ export class VerifyHubClient {
       type: 'password',
       username: params.username,
       password: params.password,
-      appid: params.appid,
+      target: serializeAuthTarget(params.target),
+    }
+    if (params.login_nonce !== undefined) {
+      payload.login_nonce = params.login_nonce
     }
     if (params.source_url) {
       payload.source_url = params.source_url
@@ -84,12 +141,36 @@ export class VerifyHubClient {
     return this.rpcClient.call<LoginByPasswordResponse | LegacyLoginByPasswordResponse, Record<string, unknown>>('login_by_password', payload)
   }
 
+  async sudoByPassword(params: SudoByPasswordParams): Promise<SudoByPasswordResponse> {
+    this.rpcClient.resetSessionToken()
+    const payload: Record<string, unknown> = {
+      username: params.username,
+      password: params.password,
+      target: serializeAuthTarget(params.target),
+    }
+    if (params.aud !== undefined) {
+      payload.aud = params.aud
+    }
+    if (params.login_nonce !== undefined) {
+      payload.login_nonce = params.login_nonce
+    }
+    return this.rpcClient.call<SudoByPasswordResponse, Record<string, unknown>>('sudo_by_password', payload)
+  }
+
   async refreshToken(params: RefreshTokenParams): Promise<TokenPair> {
-    return this.rpcClient.call<TokenPair, RefreshTokenParams>('refresh_token', params)
+    return this.rpcClient.call<TokenPair, RefreshTokenParams>('refresh_token', {
+      refresh_token: params.refresh_token,
+    })
   }
 
   async verifyToken(params: VerifyTokenParams): Promise<boolean> {
-    return this.rpcClient.call<boolean, VerifyTokenParams>('verify_token', params)
+    const payload: VerifyTokenParams = {
+      session_token: params.session_token,
+    }
+    if (params.expected_target !== undefined) {
+      payload.expected_target = serializeAuthTarget(params.expected_target)
+    }
+    return this.rpcClient.call<boolean, VerifyTokenParams>('verify_token', payload)
   }
 
   static normalizeLoginResponse(response: LoginByPasswordResponse | LegacyLoginByPasswordResponse): LegacyLoginByPasswordResponse {

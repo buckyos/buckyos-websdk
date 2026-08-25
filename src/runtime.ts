@@ -1,5 +1,5 @@
 import { kRPCClient } from './krpc_client'
-import { VerifyHubClient } from './verify-hub-client'
+import { AuthTarget, getAuthTargetAppId, VerifyHubClient } from './verify-hub-client'
 import { TaskManagerClient } from './task_mgr_client'
 import { WorkflowClient } from './workflow_client'
 import { SystemConfigClient } from './system_config_client'
@@ -53,6 +53,7 @@ export interface BuckyOSConfig {
   appId: string
   defaultProtocol: string
   runtimeType: RuntimeType
+  authTarget?: AuthTarget
   userid?: string | null
   ownerUserId?: string | null
   rootDir?: string
@@ -493,6 +494,29 @@ export class BuckyOSRuntime {
     return getFullAppId(this.config.appId, ownerUserId)
   }
 
+  getAuthTarget(): AuthTarget {
+    if (this.config.authTarget) {
+      const targetAppId = getAuthTargetAppId(this.config.authTarget)
+      if (targetAppId !== this.config.appId) {
+        throw new Error(`auth target appid mismatch: ${targetAppId} != ${this.config.appId}`)
+      }
+      return { ...this.config.authTarget }
+    }
+
+    if (this.config.runtimeType === RuntimeType.AppClient || this.config.runtimeType === RuntimeType.AppService) {
+      const ownerUserId = this.getOwnerUserId()
+      if (!ownerUserId) {
+        throw new Error('ownerUserId is required to build an App auth target')
+      }
+      return {
+        kind: 'app',
+        app_instance_id: `${this.config.appId}@${ownerUserId}`,
+      }
+    }
+
+    throw new Error('authTarget must be configured for this runtime')
+  }
+
   getZoneHostName(): string {
     return this.config.zoneHost
   }
@@ -645,8 +669,12 @@ export class BuckyOSRuntime {
         ? await verifyHubClient.refreshToken({ refresh_token: this.refreshToken })
         : await verifyHubClient.loginByJwt({
           jwt: await this.profile.getVerifyHubLoginJwt(this, sessionToken),
+          target: this.getAuthTarget(),
         })
-      : await verifyHubClient.loginByJwt({ jwt: sessionToken })
+      : await verifyHubClient.loginByJwt({
+        jwt: sessionToken,
+        target: this.getAuthTarget(),
+      })
 
     this.sessionToken = trimToNull(tokenPair.session_token)
     this.refreshToken = trimToNull(tokenPair.refresh_token)

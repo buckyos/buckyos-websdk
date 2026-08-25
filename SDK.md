@@ -60,6 +60,17 @@ sdk --local_http--> cyfs-gateway --rtcp-->service
   - 触发跳转后不需要判断返回值；SSO 成功跳回原页面后，再通过 `getAccountInfo()` 读取当前登录态
 - `loginByPassword()`
   - 显式表示“走 verify-hub.login_by_password”
+  - 必须传入结构化 `AuthTarget`；普通 App 使用
+    `{ kind: 'app', app_instance_id: '<appId>@<ownerUserId>' }`，系统服务使用
+    `{ kind: 'system', service_id: '<serviceId>' }`
+
+`VerifyHubClient` 的 `loginByJwt()`、`loginByPassword()` 和 `sudoByPassword()` 同样要求
+`target`，`verifyToken()` 使用可选的 `expected_target`。客户端只序列化协议声明的字段，以匹配
+verify-hub 的严格字段解析。
+
+Runtime 自动为 `AppClient` / `AppService` 构造 `<appId>@<ownerUserId>` App target；需要 System
+身份的调用方必须通过 `BuckyOSConfig.authTarget` 明确提供 System target，并确保 `service_id`
+与 runtime 的 `appId` 一致。
 
 兼容层可以保留：
 

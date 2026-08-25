@@ -109,6 +109,41 @@ describe('runtime unit behavior', () => {
     expect(parseSessionTokenClaims(null)).toBeNull()
   })
 
+  it('uses an explicitly configured System auth target without inventing an app instance', () => {
+    const runtime = new BuckyOSRuntime({
+      appId: 'kernel',
+      authTarget: {
+        kind: 'system',
+        service_id: 'kernel',
+      },
+      runtimeType: RuntimeType.AppClient,
+      zoneHost: 'test.buckyos.io',
+      defaultProtocol: 'https://',
+      autoRenew: false,
+    })
+
+    expect(runtime.getAuthTarget()).toEqual({
+      kind: 'system',
+      service_id: 'kernel',
+    })
+  })
+
+  it('rejects an explicitly configured auth target for another app', () => {
+    const runtime = new BuckyOSRuntime({
+      appId: 'kernel',
+      authTarget: {
+        kind: 'system',
+        service_id: 'control-panel',
+      },
+      runtimeType: RuntimeType.AppClient,
+      zoneHost: 'test.buckyos.io',
+      defaultProtocol: 'https://',
+      autoRenew: false,
+    })
+
+    expect(() => runtime.getAuthTarget()).toThrow('auth target appid mismatch: control-panel != kernel')
+  })
+
   it('AppClient initialize loads local signing material and resolves zone host from search roots', async () => {
     const root = await createAppClientRoot({
       userId: 'alice',

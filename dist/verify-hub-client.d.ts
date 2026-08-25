@@ -21,19 +21,40 @@ export interface LegacyLoginByPasswordResponse {
     session_token: string;
     refresh_token?: string;
 }
+export interface AppAuthTarget {
+    kind: 'app';
+    app_instance_id: string;
+}
+export interface SystemAuthTarget {
+    kind: 'system';
+    service_id: string;
+}
+export type AuthTarget = AppAuthTarget | SystemAuthTarget;
+export declare function getAuthTargetAppId(target: AuthTarget): string;
 export interface LoginByJwtParams {
     jwt: string;
-    login_params?: Record<string, unknown>;
+    target: AuthTarget;
 }
 export interface LoginByPasswordParams {
     username: string;
     password: string;
-    appid: string;
+    target: AuthTarget;
+    login_nonce?: number;
     source_url?: string;
+}
+export interface SudoByPasswordParams {
+    username: string;
+    password: string;
+    target: AuthTarget;
+    aud?: string;
+    login_nonce?: number;
+}
+export interface SudoByPasswordResponse {
+    session_token: string;
 }
 export interface VerifyTokenParams {
     session_token: string;
-    appid?: string;
+    expected_target?: AuthTarget;
 }
 export interface RefreshTokenParams {
     refresh_token: string;
@@ -44,6 +65,7 @@ export declare class VerifyHubClient {
     setSeq(seq: number): void;
     loginByJwt(params: LoginByJwtParams): Promise<TokenPair>;
     loginByPassword(params: LoginByPasswordParams): Promise<LoginByPasswordResponse | LegacyLoginByPasswordResponse>;
+    sudoByPassword(params: SudoByPasswordParams): Promise<SudoByPasswordResponse>;
     refreshToken(params: RefreshTokenParams): Promise<TokenPair>;
     verifyToken(params: VerifyTokenParams): Promise<boolean>;
     static normalizeLoginResponse(response: LoginByPasswordResponse | LegacyLoginByPasswordResponse): LegacyLoginByPasswordResponse;

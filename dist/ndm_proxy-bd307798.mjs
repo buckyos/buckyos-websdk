@@ -316,6 +316,35 @@ function saveBrowserUserInfo(userInfo) {
 function getBrowserUserInfo() {
   return parseBrowserUserInfo(localStorage.getItem(BROWSER_USER_INFO_STORAGE_KEY));
 }
+function serializeAuthTarget(target) {
+  if (!target || typeof target !== "object") {
+    throw new RPCError("verify-hub auth target is required");
+  }
+  if (target.kind === "app" && typeof target.app_instance_id === "string" && target.app_instance_id.length > 0) {
+    return {
+      kind: "app",
+      app_instance_id: target.app_instance_id
+    };
+  }
+  if (target.kind === "system" && typeof target.service_id === "string" && target.service_id.length > 0) {
+    return {
+      kind: "system",
+      service_id: target.service_id
+    };
+  }
+  throw new RPCError("invalid verify-hub auth target");
+}
+function getAuthTargetAppId(target) {
+  const normalized = serializeAuthTarget(target);
+  if (normalized.kind === "system") {
+    return normalized.service_id;
+  }
+  const separator = normalized.app_instance_id.lastIndexOf("@");
+  if (separator <= 0 || separator === normalized.app_instance_id.length - 1) {
+    throw new RPCError("app auth target must use `<appId>@<ownerUserId>`");
+  }
+  return normalized.app_instance_id.slice(0, separator);
+}
 class VerifyHubClient {
   constructor(rpcClient) {
     this.rpcClient = rpcClient;
@@ -325,14 +354,11 @@ class VerifyHubClient {
   }
   async loginByJwt(params) {
     this.rpcClient.resetSessionToken();
-    const payload = {
+    return this.rpcClient.call("login_by_jwt", {
       type: "jwt",
-      jwt: params.jwt
-    };
-    if (params.login_params) {
-      Object.assign(payload, params.login_params);
-    }
-    return this.rpcClient.call("login_by_jwt", payload);
+      jwt: params.jwt,
+      target: serializeAuthTarget(params.target)
+    });
   }
   async loginByPassword(params) {
     this.rpcClient.resetSessionToken();
@@ -340,18 +366,44 @@ class VerifyHubClient {
       type: "password",
       username: params.username,
       password: params.password,
-      appid: params.appid
+      target: serializeAuthTarget(params.target)
     };
+    if (params.login_nonce !== void 0) {
+      payload.login_nonce = params.login_nonce;
+    }
     if (params.source_url) {
       payload.source_url = params.source_url;
     }
     return this.rpcClient.call("login_by_password", payload);
   }
+  async sudoByPassword(params) {
+    this.rpcClient.resetSessionToken();
+    const payload = {
+      username: params.username,
+      password: params.password,
+      target: serializeAuthTarget(params.target)
+    };
+    if (params.aud !== void 0) {
+      payload.aud = params.aud;
+    }
+    if (params.login_nonce !== void 0) {
+      payload.login_nonce = params.login_nonce;
+    }
+    return this.rpcClient.call("sudo_by_password", payload);
+  }
   async refreshToken(params) {
-    return this.rpcClient.call("refresh_token", params);
+    return this.rpcClient.call("refresh_token", {
+      refresh_token: params.refresh_token
+    });
   }
   async verifyToken(params) {
-    return this.rpcClient.call("verify_token", params);
+    const payload = {
+      session_token: params.session_token
+    };
+    if (params.expected_target !== void 0) {
+      payload.expected_target = serializeAuthTarget(params.expected_target);
+    }
+    return this.rpcClient.call("verify_token", payload);
   }
   static normalizeLoginResponse(response) {
     if ("user_info" in response) {
@@ -2618,6 +2670,26 @@ class BuckyOSRuntime {
     }
     return getFullAppId(this.config.appId, ownerUserId);
   }
+  getAuthTarget() {
+    if (this.config.authTarget) {
+      const targetAppId = getAuthTargetAppId(this.config.authTarget);
+      if (targetAppId !== this.config.appId) {
+        throw new Error(`auth target appid mismatch: ${targetAppId} != ${this.config.appId}`);
+      }
+      return { ...this.config.authTarget };
+    }
+    if (this.config.runtimeType === "AppClient" || this.config.runtimeType === "AppService") {
+      const ownerUserId = this.getOwnerUserId();
+      if (!ownerUserId) {
+        throw new Error("ownerUserId is required to build an App auth target");
+      }
+      return {
+        kind: "app",
+        app_instance_id: `${this.config.appId}@${ownerUserId}`
+      };
+    }
+    throw new Error("authTarget must be configured for this runtime");
+  }
   getZoneHostName() {
     return this.config.zoneHost;
   }
@@ -2738,8 +2810,12 @@ class BuckyOSRuntime {
     }
     const verifyHubClient = this.getVerifyHubClient();
     const tokenPair = claims.iss === "verify-hub" ? this.refreshToken ? await verifyHubClient.refreshToken({ refresh_token: this.refreshToken }) : await verifyHubClient.loginByJwt({
-      jwt: await this.profile.getVerifyHubLoginJwt(this, sessionToken)
-    }) : await verifyHubClient.loginByJwt({ jwt: sessionToken });
+      jwt: await this.profile.getVerifyHubLoginJwt(this, sessionToken),
+      target: this.getAuthTarget()
+    }) : await verifyHubClient.loginByJwt({
+      jwt: sessionToken,
+      target: this.getAuthTarget()
+    });
     this.sessionToken = trimToNull$2(tokenPair.session_token);
     this.refreshToken = trimToNull$2(tokenPair.refresh_token);
     this.validateSessionToken();
@@ -4303,12 +4379,16 @@ class BuckyOSSDK {
     };
     return this.currentAccountInfo;
   }
-  async loginByPassword(username, password) {
+  async loginByPassword(username, password, target) {
     var _a2, _b;
     const appId = this.getAppId();
     if (appId == null) {
       console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
       return null;
+    }
+    const targetAppId = getAuthTargetAppId(target);
+    if (targetAppId !== appId) {
+      throw new Error(`auth target appid mismatch: ${targetAppId} != ${appId}`);
     }
     const loginNonce = Date.now();
     const passwordHash = hashPassword(username, password, loginNonce);
@@ -4321,7 +4401,8 @@ class BuckyOSSDK {
       const accountResponse = await verifyHubClient.loginByPassword({
         username,
         password: passwordHash,
-        appid: appId,
+        target,
+        login_nonce: loginNonce,
         source_url: typeof window !== "undefined" ? window.location.href : void 0
       });
       const normalized = VerifyHubClient.normalizeLoginResponse(accountResponse);
@@ -28378,4 +28459,4 @@ export {
   WORKFLOW_THUNK_TASK_SCHEMA_ID as y,
   WORKFLOW_SCHEDULE_TASK_SCHEMA_ID as z
 };
-//# sourceMappingURL=ndm_proxy-c95a8c30.mjs.map
+//# sourceMappingURL=ndm_proxy-bd307798.mjs.map

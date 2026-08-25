@@ -1,5 +1,5 @@
 import { kRPCClient } from './krpc_client';
-import { VerifyHubClient } from './verify-hub-client';
+import { AuthTarget, VerifyHubClient } from './verify-hub-client';
 import { TaskManagerClient } from './task_mgr_client';
 import { WorkflowClient } from './workflow_client';
 import { SystemConfigClient } from './system_config_client';
@@ -33,6 +33,7 @@ export interface BuckyOSConfig {
     appId: string;
     defaultProtocol: string;
     runtimeType: RuntimeType;
+    authTarget?: AuthTarget;
     userid?: string | null;
     ownerUserId?: string | null;
     rootDir?: string;
@@ -64,6 +65,7 @@ export declare class BuckyOSRuntime {
     getAppId(): string;
     getOwnerUserId(): string | null;
     getFullAppId(): string;
+    getAuthTarget(): AuthTarget;
     getZoneHostName(): string;
     getDefaultProtocol(): string;
     getNodeGatewayPort(): number;

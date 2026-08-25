@@ -23,7 +23,11 @@ describe('VerifyHubClient', () => {
     await client.loginByPassword({
       username: 'devtest',
       password: 'hashed-password',
-      appid: 'buckycli',
+      target: {
+        kind: 'app',
+        app_instance_id: 'buckycli@devtest',
+      },
+      login_nonce: 7,
       source_url: 'https://buckycli.test.buckyos.io/',
     })
 
@@ -33,14 +37,18 @@ describe('VerifyHubClient', () => {
         type: 'password',
         username: 'devtest',
         password: 'hashed-password',
-        appid: 'buckycli',
+        target: {
+          kind: 'app',
+          app_instance_id: 'buckycli@devtest',
+        },
+        login_nonce: 7,
         source_url: 'https://buckycli.test.buckyos.io/',
       },
       sys: [7, 'init-token'],
     })
   })
 
-  it('loginByJwt sends type and extra params', async () => {
+  it('loginByJwt sends the required structured target', async () => {
     const fetcher = jest.fn().mockResolvedValue(makeResponse({
       result: { session_token: 'session', refresh_token: 'refresh' },
       sys: [11],
@@ -50,20 +58,41 @@ describe('VerifyHubClient', () => {
     rpcClient.setSessionToken('stale-token')
 
     const client = new VerifyHubClient(rpcClient)
-    await client.loginByJwt({ jwt: 'jwt-1', login_params: { extra: 'value' } })
+    const targetWithUnknownField = {
+      kind: 'system',
+      service_id: 'kernel',
+      unexpected: true,
+    } as const
+    await client.loginByJwt({
+      jwt: 'jwt-1',
+      target: targetWithUnknownField,
+    })
 
     expect(JSON.parse((fetcher.mock.calls[0][1] as RequestInit).body as string)).toEqual({
       method: 'login_by_jwt',
       params: {
         type: 'jwt',
         jwt: 'jwt-1',
-        extra: 'value',
+        target: {
+          kind: 'system',
+          service_id: 'kernel',
+        },
       },
       sys: [11, 'init-token'],
     })
   })
 
-  it('refreshToken and verifyToken send the expected rpc methods', async () => {
+  it('loginByJwt rejects a missing target before sending a request', async () => {
+    const fetcher = jest.fn()
+    const client = new VerifyHubClient(new kRPCClient('/kapi/verify-hub/', null, 12, { fetcher }))
+
+    await expect(client.loginByJwt({ jwt: 'jwt-1' } as never)).rejects.toThrow(
+      'verify-hub auth target is required',
+    )
+    expect(fetcher).not.toHaveBeenCalled()
+  })
+
+  it('refreshToken and verifyToken send the expected rpc methods and target', async () => {
     const fetcher = jest
       .fn()
       .mockResolvedValueOnce(makeResponse({
@@ -82,7 +111,13 @@ describe('VerifyHubClient', () => {
     // Beta2.2 responses never rotate the session token via sys; adopting the
     // refreshed token is the caller's job.
     rpcClient.setSessionToken(refreshed.session_token)
-    const verified = await client.verifyToken({ session_token: 'session-2', appid: 'buckycli' })
+    const verified = await client.verifyToken({
+      session_token: 'session-2',
+      expected_target: {
+        kind: 'app',
+        app_instance_id: 'buckycli@devtest',
+      },
+    })
 
     expect(refreshed).toEqual({ session_token: 'session-2', refresh_token: 'refresh-2' })
     expect(verified).toBe(true)
@@ -93,8 +128,52 @@ describe('VerifyHubClient', () => {
     })
     expect(JSON.parse((fetcher.mock.calls[1][1] as RequestInit).body as string)).toEqual({
       method: 'verify_token',
-      params: { session_token: 'session-2', appid: 'buckycli' },
+      params: {
+        session_token: 'session-2',
+        expected_target: {
+          kind: 'app',
+          app_instance_id: 'buckycli@devtest',
+        },
+      },
       sys: [22, 'session-2'],
+    })
+  })
+
+  it('sudoByPassword sends the structured target and resets inherited session token', async () => {
+    const fetcher = jest.fn().mockResolvedValue(makeResponse({
+      result: { session_token: 'sudo-session' },
+      sys: [31],
+    }))
+
+    const rpcClient = new kRPCClient('/kapi/verify-hub/', 'init-token', 31, { fetcher })
+    rpcClient.setSessionToken('stale-token')
+
+    const client = new VerifyHubClient(rpcClient)
+    const response = await client.sudoByPassword({
+      username: 'devtest',
+      password: 'hashed-password',
+      target: {
+        kind: 'system',
+        service_id: 'control-panel',
+      },
+      aud: 'system-config',
+      login_nonce: 123,
+    })
+
+    expect(response).toEqual({ session_token: 'sudo-session' })
+    expect(JSON.parse((fetcher.mock.calls[0][1] as RequestInit).body as string)).toEqual({
+      method: 'sudo_by_password',
+      params: {
+        username: 'devtest',
+        password: 'hashed-password',
+        target: {
+          kind: 'system',
+          service_id: 'control-panel',
+        },
+        aud: 'system-config',
+        login_nonce: 123,
+      },
+      sys: [31, 'init-token'],
     })
   })
 

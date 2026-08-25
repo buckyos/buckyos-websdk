@@ -15,7 +15,7 @@ import {
   RuntimeType,
   parseSessionTokenClaims,
 } from './runtime'
-import { VerifyHubClient } from './verify-hub-client'
+import { AuthTarget, getAuthTargetAppId, VerifyHubClient } from './verify-hub-client'
 import { TaskManagerClient } from './task_mgr_client'
 import { WorkflowClient } from './workflow_client'
 import { SystemConfigClient } from './system_config_client'
@@ -407,12 +407,16 @@ export class BuckyOSSDK {
     return this.currentAccountInfo
   }
 
-  async loginByPassword(username: string, password: string): Promise<AccountInfo | null> {
+  async loginByPassword(username: string, password: string, target: AuthTarget): Promise<AccountInfo | null> {
     // Explicit password login against verify-hub.
     const appId = this.getAppId()
     if (appId == null) {
       console.error('BuckyOS WebSDK is not initialized,call initBuckyOS first')
       return null
+    }
+    const targetAppId = getAuthTargetAppId(target)
+    if (targetAppId !== appId) {
+      throw new Error(`auth target appid mismatch: ${targetAppId} != ${appId}`)
     }
 
     const loginNonce = Date.now()
@@ -427,7 +431,8 @@ export class BuckyOSSDK {
       const accountResponse = await verifyHubClient.loginByPassword({
         username,
         password: passwordHash,
-        appid: appId,
+        target,
+        login_nonce: loginNonce,
         source_url: typeof window !== 'undefined' ? window.location.href : undefined,
       })
 
@@ -930,6 +935,18 @@ export type { BuckyOSConfig }
 export { RuntimeType }
 export { parseSessionTokenClaims }
 export { VerifyHubClient }
+export type {
+  AppAuthTarget,
+  AuthTarget,
+  LoginByJwtParams,
+  LoginByPasswordParams,
+  RefreshTokenParams,
+  SudoByPasswordParams,
+  SudoByPasswordResponse,
+  SystemAuthTarget,
+  TokenPair,
+  VerifyTokenParams,
+} from './verify-hub-client'
 export { SystemConfigClient }
 export * from './task_mgr_client'
 export * from './workflow_client'

@@ -224,6 +224,19 @@ describe('AppClient getAccountInfo unit behavior', () => {
 
     const accountInfo = await sdk.login()
 
+    expect(JSON.parse(((globalThis.fetch as jest.Mock).mock.calls[0][1] as RequestInit).body as string)).toEqual({
+      method: 'login_by_jwt',
+      params: {
+        type: 'jwt',
+        jwt: expect.any(String),
+        target: {
+          kind: 'app',
+          app_instance_id: 'buckycli@devtest',
+        },
+      },
+      sys: expect.any(Array),
+    })
+
     expect(accountInfo).toEqual(expect.objectContaining({
       user_name: 'devtest',
       user_id: 'devtest',

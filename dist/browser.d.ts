@@ -12,7 +12,7 @@ export declare const buckyos: {
     attachEvent: (eventName: string, callback: Function) => void;
     removeEvent: (cookieId: string) => void;
     getAccountInfo: () => Promise<import("./account").AccountInfo | null>;
-    loginByPassword: (username: string, password: string) => Promise<import("./account").AccountInfo | null>;
+    loginByPassword: (username: string, password: string, target: import("./verify-hub-client").AuthTarget) => Promise<import("./account").AccountInfo | null>;
     loginByBrowserSSO: () => Promise<void>;
     loginByRuntimeSession: () => Promise<import("./account").AccountInfo | null>;
     login: () => Promise<import("./account").AccountInfo | null>;
@@ -48,7 +48,7 @@ export declare const subscribeKEvent: (patterns: import("./kevent_client").KEven
 export declare const attachEvent: (eventName: string, callback: Function) => void;
 export declare const removeEvent: (cookieId: string) => void;
 export declare const getAccountInfo: () => Promise<import("./account").AccountInfo | null>;
-export declare const loginByPassword: (username: string, password: string) => Promise<import("./account").AccountInfo | null>;
+export declare const loginByPassword: (username: string, password: string, target: import("./verify-hub-client").AuthTarget) => Promise<import("./account").AccountInfo | null>;
 export declare const loginByBrowserSSO: () => Promise<void>;
 export declare const loginByRuntimeSession: () => Promise<import("./account").AccountInfo | null>;
 export declare const login: () => Promise<import("./account").AccountInfo | null>;

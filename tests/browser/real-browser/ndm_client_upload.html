@@ -142,7 +142,10 @@
 
         log('[init] SDK initialized, logging in...');
 
-        const accountInfo = await buckyos.loginByPassword('devtest', 'bucky2025');
+        const accountInfo = await buckyos.loginByPassword('devtest', 'bucky2025', {
+          kind: 'app',
+          app_instance_id: 'systest@devtest',
+        });
         if (!accountInfo || !accountInfo.session_token) {
           throw new Error('Login failed: no session token received');
         }
