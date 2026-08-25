@@ -9,7 +9,7 @@ const distDir = join(repoRoot, 'dist');
 const distTestsDir = join(repoRoot, 'dist-tests');
 const realBrowserDir = join(repoRoot, 'tests', 'browser', 'real-browser');
 const buckyosRoot = process.env.BUCKYOS_ROOT?.trim() || '/opt/buckyos';
-const systestDistDir = join(buckyosRoot, 'bin', 'buckyos_systest', 'dist');
+const systestDistDir = join(buckyosRoot, 'bin', 'buckyos-systest.buckyos.bns.did', 'dist');
 
 const importPatterns = [
   /from\s+['"](\.\/[^'"]+\.(?:mjs|js))['"]/g,

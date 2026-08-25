@@ -1,7 +1,7 @@
 // Real-browser regression for the ndn_types runtime.
 //
 // Loads the standalone ndn_types.html page (served by systest from
-// /opt/buckyos/bin/buckyos_systest/dist/ndn_types.html) and asserts that the
+// /opt/buckyos/bin/buckyos-systest.buckyos.bns.did/dist/ndn_types.html) and asserts that the
 // shared ndn_types_cases test suite passes inside a real Chromium tab.
 // The HTML/runner bundle is produced + copied by
 // `tests/scripts/prepare_real_browser_test.mjs`.

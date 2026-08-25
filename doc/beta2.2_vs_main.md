@@ -86,7 +86,7 @@
 浏览器登录逻辑变化较大：
 
 - `AuthClient` 从弹窗 + `postMessage` 获取 token 改为当前窗口跳转。
-- SSO URL 从旧的 `/sso/login` 语义调整为 `sys.$zone/login`，参数使用 `client_id` 和 `redirect_url`。
+- SSO URL 从旧的 `/sso/login` 语义调整为 `sys.$zone/login`，并由 `redirect_url` 的 Gateway 路由确定登录目标。
 - `loginByBrowserSSO()` 触发跳转，本身不再返回 account/token。
 - SSO 回跳后，调用方通过 `getAccountInfo()` 读取当前登录态。
 - 浏览器侧新增 `user_info` localStorage 解析/缓存，`AccountInfo.user_type` 变为可选。
@@ -258,7 +258,7 @@ Runtime 会使用这些解析函数从本地配置中解析 zone host、zone DID
 3. AppService 本地 systest 集成测试
 4. 真实浏览器 Playwright 测试
 
-脚本会从 `${BUCKYOS_ROOT:-/opt/buckyos}/etc/node_gateway_info.json` 解析 `buckyos_systest` 实际端口，不再依赖硬编码默认端口。
+脚本会从 `${BUCKYOS_ROOT:-/opt/buckyos}/etc/node_gateway_info.json` 解析 `buckyos-systest.buckyos.bns.did` 实际端口，不再依赖硬编码默认端口。
 
 ## 示例、文档和配置
 
@@ -303,6 +303,8 @@ Runtime 会使用这些解析函数从本地配置中解析 zone host、zone DID
 6. Jest 默认运行环境变为 node，浏览器相关测试要放到真实浏览器 harness 中。
 7. `SystemConfigClient` 缓存变为实例级，依赖跨实例共享缓存的代码行为会变化。
 8. 当前 diff 中包含 `__pycache__/run_script_in_docker.cpython-314.pyc`，这是 Python 字节码产物，通常不应进入源码分支；建议在合并前确认是否需要删除并加入忽略规则。
+9. AppService 不再从 `app_instance_config.app_spec.app_doc.name` 推导 AppId，也不再读取动态 `<OWNER>_<APP>_TOKEN`；调用方应使用固定 `BUCKYOS_APP_*` / `BUCKYOS_OWNER_USER_ID` 环境契约。
+10. `loginByPassword` 现在必须在 SDK 初始化配置中提供 `appInstanceId`，并会把它作为 `app_instance_id` 发送给 verify-hub。
 
 ## 建议 review 顺序
 

@@ -10,6 +10,15 @@ import { RepoClient } from './repo_client'
 import { BrowserUserInfo, getBrowserUserInfo, saveBrowserUserInfo } from './account'
 import { parseBuckyOSOwnerDocument } from './types'
 import { DID } from './namelib'
+import {
+  AppDID,
+  AppId,
+  AppInstanceId,
+  appIdFromDid,
+  createAppInstanceId,
+  parseAppId,
+  parseAppInstanceId,
+} from './app_identity'
 
 declare const require: undefined | ((name: string) => any)
 
@@ -19,6 +28,13 @@ const DEFAULT_RENEW_INTERVAL_MS = 5_000
 const BUCKYOS_HOST_GATEWAY_ENV = 'BUCKYOS_HOST_GATEWAY'
 const BUCKYOS_APPCLIENT_SESSION_TOKEN_ENV = 'BUCKYOS_APPCLIENT_SESSION_TOKEN'
 const DEFAULT_DOCKER_HOST_GATEWAY = 'host.docker.internal'
+
+export const BUCKYOS_APP_DID_ENV = 'BUCKYOS_APP_DID'
+export const BUCKYOS_APP_ID_ENV = 'BUCKYOS_APP_ID'
+export const BUCKYOS_APP_INSTANCE_ID_ENV = 'BUCKYOS_APP_INSTANCE_ID'
+export const BUCKYOS_OWNER_USER_ID_ENV = 'BUCKYOS_OWNER_USER_ID'
+export const BUCKYOS_DATA_DIR_ENV = 'BUCKYOS_DATA_DIR'
+export const BUCKYOS_APP_TOKEN_ENV = 'BUCKYOS_APP_TOKEN'
 
 interface BrowserSSORefreshResponse {
   access_token?: unknown
@@ -45,12 +61,17 @@ export interface SessionTokenClaims {
   session?: number
   token_type?: string
   userid?: string
+  app_instance_id?: string
+  app_owner_user_id?: string
   [key: string]: unknown
 }
 
 export interface BuckyOSConfig {
   zoneHost: string
-  appId: string
+  appId: AppId
+  appDid?: AppDID | null
+  appInstanceId?: AppInstanceId | null
+  dataDir?: string | null
   defaultProtocol: string
   runtimeType: RuntimeType
   authTarget?: AuthTarget
@@ -70,6 +91,9 @@ export interface BuckyOSConfig {
 export const DEFAULT_CONFIG: BuckyOSConfig = {
   zoneHost: '',
   appId: '',
+  appDid: null,
+  appInstanceId: null,
+  dataDir: null,
   defaultProtocol: 'http://',
   runtimeType: RuntimeType.Unknown,
   userid: null,
@@ -181,15 +205,6 @@ function normalizeServicePath(serviceName: string): string {
   return serviceName
 }
 
-function getFullAppId(appId: string, ownerUserId: string): string {
-  return `${ownerUserId}-${appId}`
-}
-
-function getSessionTokenEnvKey(appFullId: string, isAppService: boolean): string {
-  const normalized = appFullId.toUpperCase().replace(/-/g, '_')
-  return isAppService ? `${normalized}_TOKEN` : `${normalized}_SESSION_TOKEN`
-}
-
 function resolveZoneHostFromDid(zoneDid: string | null | undefined): string | null {
   const normalized = trimToNull(zoneDid)
   if (!normalized) {
@@ -205,30 +220,6 @@ function resolveZoneHostFromDid(zoneDid: string | null | undefined): string | nu
   }
 
   return null
-}
-
-function parseAppIdentityFromInstanceConfig(appInstanceConfig: string): {
-  appId: string
-  ownerUserId: string
-} | null {
-  try {
-    const parsed = JSON.parse(appInstanceConfig) as {
-      app_spec?: {
-        user_id?: unknown
-        app_doc?: {
-          name?: unknown
-        }
-      }
-    }
-    const appId = typeof parsed.app_spec?.app_doc?.name === 'string' ? parsed.app_spec.app_doc.name.trim() : ''
-    const ownerUserId = typeof parsed.app_spec?.user_id === 'string' ? parsed.app_spec.user_id.trim() : ''
-    if (!appId || !ownerUserId) {
-      return null
-    }
-    return { appId, ownerUserId }
-  } catch {
-    return null
-  }
 }
 
 async function importNodeModule(moduleName: string): Promise<any> {
@@ -253,7 +244,7 @@ interface RuntimeProfile {
 
 abstract class BaseRuntimeProfile implements RuntimeProfile {
   async initialize(runtime: BuckyOSRuntime): Promise<void> {
-    runtime.resolveNodeIdentityFromEnv()
+    await runtime.resolveAppServiceIdentityFromEnv()
     await runtime.resolveZoneHostFromLocalConfig()
   }
 
@@ -434,6 +425,9 @@ export class BuckyOSRuntime {
       ...DEFAULT_CONFIG,
       ...config,
       appId: config.appId,
+      appDid: trimToNull(config.appDid),
+      appInstanceId: trimToNull(config.appInstanceId),
+      dataDir: trimToNull(config.dataDir),
       userid: normalizedOwnerUserId,
       ownerUserId: normalizedOwnerUserId,
       zoneHost: config.zoneHost ?? '',
@@ -468,6 +462,9 @@ export class BuckyOSRuntime {
       ...DEFAULT_CONFIG,
       ...config,
       appId: config.appId,
+      appDid: trimToNull(config.appDid),
+      appInstanceId: trimToNull(config.appInstanceId),
+      dataDir: trimToNull(config.dataDir),
       userid: normalizedOwnerUserId,
       ownerUserId: normalizedOwnerUserId,
     }
@@ -478,7 +475,7 @@ export class BuckyOSRuntime {
     return { ...this.config }
   }
 
-  getAppId(): string {
+  getAppId(): AppId {
     return this.config.appId
   }
 
@@ -486,12 +483,16 @@ export class BuckyOSRuntime {
     return trimToNull(this.config.ownerUserId)
   }
 
-  getFullAppId(): string {
-    const ownerUserId = this.getOwnerUserId()
-    if (!ownerUserId) {
-      return this.config.appId
-    }
-    return getFullAppId(this.config.appId, ownerUserId)
+  getAppDid(): AppDID | null {
+    return trimToNull(this.config.appDid)
+  }
+
+  getAppInstanceId(): AppInstanceId | null {
+    return trimToNull(this.config.appInstanceId)
+  }
+
+  getDataDir(): string | null {
+    return trimToNull(this.config.dataDir)
   }
 
   getAuthTarget(): AuthTarget {
@@ -503,6 +504,18 @@ export class BuckyOSRuntime {
       return { ...this.config.authTarget }
     }
 
+    const appInstanceId = this.getAppInstanceId()
+    if (appInstanceId) {
+      const identity = parseAppInstanceId(appInstanceId)
+      if (identity.appId !== this.config.appId) {
+        throw new Error(`auth target appid mismatch: ${identity.appId} != ${this.config.appId}`)
+      }
+      return {
+        kind: 'app',
+        app_instance_id: appInstanceId,
+      }
+    }
+
     if (this.config.runtimeType === RuntimeType.AppClient || this.config.runtimeType === RuntimeType.AppService) {
       const ownerUserId = this.getOwnerUserId()
       if (!ownerUserId) {
@@ -510,11 +523,11 @@ export class BuckyOSRuntime {
       }
       return {
         kind: 'app',
-        app_instance_id: `${this.config.appId}@${ownerUserId}`,
+        app_instance_id: createAppInstanceId(this.config.appId, ownerUserId),
       }
     }
 
-    throw new Error('authTarget must be configured for this runtime')
+    throw new Error('authTarget or appInstanceId must be configured for this runtime')
   }
 
   getZoneHostName(): string {
@@ -712,7 +725,7 @@ export class BuckyOSRuntime {
     }
   }
 
-  resolveNodeIdentityFromEnv() {
+  async resolveAppServiceIdentityFromEnv(): Promise<void> {
     if (!hasNodeRuntime()) {
       return
     }
@@ -722,22 +735,65 @@ export class BuckyOSRuntime {
     }
 
     const env = getProcessEnv()
-    const appInstanceConfig = trimToNull(env.app_instance_config)
-    if (!appInstanceConfig) {
-      return
+    const required = (name: string): string => {
+      const value = trimToNull(env[name])
+      if (!value) {
+        throw new Error(`${name} is required for AppService runtime`)
+      }
+      return value
     }
 
-    const identity = parseAppIdentityFromInstanceConfig(appInstanceConfig)
-    if (!identity) {
-      return
+    const appDid = required(BUCKYOS_APP_DID_ENV)
+    const appId = parseAppId(required(BUCKYOS_APP_ID_ENV))
+    const appInstanceId = required(BUCKYOS_APP_INSTANCE_ID_ENV)
+    const ownerUserId = required(BUCKYOS_OWNER_USER_ID_ENV)
+    const dataDir = required(BUCKYOS_DATA_DIR_ENV)
+    const identity = parseAppInstanceId(appInstanceId)
+    const path = await importNodeModule('node:path')
+
+    if (!path.isAbsolute(dataDir)) {
+      throw new Error(`${BUCKYOS_DATA_DIR_ENV} must be an absolute path`)
+    }
+    if (
+      appIdFromDid(appDid) !== appId ||
+      identity.appId !== appId ||
+      identity.ownerUserId !== ownerUserId ||
+      createAppInstanceId(appId, ownerUserId) !== appInstanceId
+    ) {
+      throw new Error('AppService identity environment variables are inconsistent')
     }
 
-    if (!this.config.appId) {
-      this.config.appId = identity.appId
+    const configuredAppId = trimToNull(this.config.appId)
+    const configuredAppDid = trimToNull(this.config.appDid)
+    const configuredAppInstanceId = trimToNull(this.config.appInstanceId)
+    const configuredOwnerUserId = this.getOwnerUserId()
+    const configuredDataDir = trimToNull(this.config.dataDir)
+    if (configuredAppId && configuredAppId !== appId) {
+      throw new Error(`runtime appId ${configuredAppId} does not match ${BUCKYOS_APP_ID_ENV} ${appId}`)
     }
-    if (!trimToNull(this.config.ownerUserId)) {
-      this.config.ownerUserId = identity.ownerUserId
+    if (configuredAppDid && configuredAppDid !== appDid) {
+      throw new Error(`runtime appDid ${configuredAppDid} does not match ${BUCKYOS_APP_DID_ENV} ${appDid}`)
     }
+    if (configuredAppInstanceId && configuredAppInstanceId !== appInstanceId) {
+      throw new Error(
+        `runtime appInstanceId ${configuredAppInstanceId} does not match ${BUCKYOS_APP_INSTANCE_ID_ENV} ${appInstanceId}`,
+      )
+    }
+    if (configuredOwnerUserId && configuredOwnerUserId !== ownerUserId) {
+      throw new Error(
+        `runtime ownerUserId ${configuredOwnerUserId} does not match ${BUCKYOS_OWNER_USER_ID_ENV} ${ownerUserId}`,
+      )
+    }
+    if (configuredDataDir && configuredDataDir !== dataDir) {
+      throw new Error(`runtime dataDir ${configuredDataDir} does not match ${BUCKYOS_DATA_DIR_ENV} ${dataDir}`)
+    }
+
+    this.config.appDid = appDid
+    this.config.appId = appId
+    this.config.appInstanceId = appInstanceId
+    this.config.ownerUserId = ownerUserId
+    this.config.userid = ownerUserId
+    this.config.dataDir = dataDir
   }
 
   async resolveZoneHostFromLocalConfig(): Promise<void> {
@@ -762,6 +818,9 @@ export class BuckyOSRuntime {
     }
 
     const claims = parseSessionTokenClaims(this.sessionToken)
+    if (this.config.runtimeType === RuntimeType.AppService && !claims) {
+      throw new Error('AppService session token must be a JWT with identity claims')
+    }
     const tokenAppId = typeof claims?.appid === 'string'
       ? claims.appid
       : typeof claims?.aud === 'string'
@@ -770,6 +829,21 @@ export class BuckyOSRuntime {
 
     if (tokenAppId && tokenAppId !== this.config.appId) {
       throw new Error(`session token appid mismatch: ${tokenAppId} != ${this.config.appId}`)
+    }
+
+    if (this.config.runtimeType === RuntimeType.AppService && claims) {
+      const expectedAppInstanceId = this.getAppInstanceId()
+      if (!expectedAppInstanceId || claims.app_instance_id !== expectedAppInstanceId) {
+        throw new Error(
+          `session token app_instance_id mismatch: ${String(claims.app_instance_id)} != ${String(expectedAppInstanceId)}`,
+        )
+      }
+      const ownerUserId = this.getOwnerUserId()
+      if (!ownerUserId || claims.app_owner_user_id !== ownerUserId) {
+        throw new Error(
+          `session token app_owner_user_id mismatch: ${String(claims.app_owner_user_id)} != ${String(ownerUserId)}`,
+        )
+      }
     }
   }
 
@@ -977,24 +1051,11 @@ export class BuckyOSRuntime {
   }
 
   private loadAppServiceSessionTokenFromEnv(): string {
-    const env = getProcessEnv()
-    const ownerUserId = this.getOwnerUserId()
-    const sessionTokenKeys: string[] = []
-
-    if (ownerUserId) {
-      sessionTokenKeys.push(getSessionTokenEnvKey(getFullAppId(this.config.appId, ownerUserId), true))
+    const token = trimToNull(getProcessEnv()[BUCKYOS_APP_TOKEN_ENV])
+    if (token) {
+      return token
     }
-    sessionTokenKeys.push(getSessionTokenEnvKey(this.config.appId, true))
-
-    const uniqueKeys = Array.from(new Set(sessionTokenKeys))
-    for (const key of uniqueKeys) {
-      const token = trimToNull(env[key])
-      if (token) {
-        return token
-      }
-    }
-
-    throw new Error(`failed to load app-service session token, tried keys: ${uniqueKeys.join(', ')}`)
+    throw new Error(`${BUCKYOS_APP_TOKEN_ENV} is required for AppService runtime`)
   }
 
   private loadAppClientSessionTokenFromEnv(): string | null {

@@ -27,6 +27,7 @@ export declare const APP_INSTALL_TASK_SCHEMA_ID = "app.install/v1";
 export declare const APP_UNINSTALL_TASK_SCHEMA_ID = "app.uninstall/v1";
 export declare const APP_START_TASK_SCHEMA_ID = "app.start/v1";
 export declare const APP_UPDATE_TASK_SCHEMA_ID = "app.update/v1";
+export declare const APP_UPDATE_BATCH_TASK_SCHEMA_ID = "app.update_batch/v1";
 export declare const TASK_ERR_NOT_FOUND = "task_not_found";
 export declare const TASK_ERR_PERMISSION_DENIED = "permission_denied";
 export declare const TASK_ERR_REVISION_CONFLICT = "revision_conflict";
@@ -347,10 +348,13 @@ export interface GetTaskReq {
 export interface ListTasksReq {
     creator_user_id?: string;
     creator_app_id?: string;
+    idempotency_key?: string;
     schema_id?: string;
     phase?: TaskPhase;
     root_id?: TaskId;
     executor_kind?: TaskExecutorKind;
+    runner_app_id?: string;
+    runner_target_id?: string;
     created_after?: number;
     created_before?: number;
     include_archived?: boolean;

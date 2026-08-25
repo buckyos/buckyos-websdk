@@ -199,7 +199,7 @@ function parseSettingValue(settingValue: string): unknown {
 
 function inferNodeRuntimeType(): RuntimeType {
   const env = getNodeEnv()
-  if (trimToNull(env.app_instance_config)) {
+  if (trimToNull(env.BUCKYOS_APP_INSTANCE_ID)) {
     return RuntimeType.AppService
   }
   return RuntimeType.AppClient
@@ -269,7 +269,7 @@ export class BuckyOSSDK {
     this.target = target
   }
 
-  async initBuckyOS(appid: string, config: BuckyOSConfig | null = null): Promise<void> {
+  async initBuckyOS(appid: string = '', config: BuckyOSConfig | null = null): Promise<void> {
     const finalConfig = this.buildRuntimeConfig(appid, config)
 
     if (this.target !== 'node' && isBrowserRuntime() && !config) {
@@ -317,6 +317,18 @@ export class BuckyOSSDK {
 
     console.error('BuckyOS WebSDK is not initialized,call initBuckyOS first')
     return null
+  }
+
+  getAppDid(): string | null {
+    return this.currentRuntime?.getAppDid() ?? null
+  }
+
+  getAppInstanceId(): string | null {
+    return this.currentRuntime?.getAppInstanceId() ?? null
+  }
+
+  getAppDataDir(): string | null {
+    return this.currentRuntime?.getDataDir() ?? null
   }
 
   attachEvent(eventName: string, callback: Function) {
@@ -407,14 +419,18 @@ export class BuckyOSSDK {
     return this.currentAccountInfo
   }
 
-  async loginByPassword(username: string, password: string, target: AuthTarget): Promise<AccountInfo | null> {
+  async loginByPassword(username: string, password: string, target?: AuthTarget): Promise<AccountInfo | null> {
     // Explicit password login against verify-hub.
     const appId = this.getAppId()
     if (appId == null) {
       console.error('BuckyOS WebSDK is not initialized,call initBuckyOS first')
       return null
     }
-    const targetAppId = getAuthTargetAppId(target)
+    const resolvedTarget = target ?? this.currentRuntime?.getAuthTarget()
+    if (!resolvedTarget) {
+      throw new Error('loginByPassword requires an AuthTarget')
+    }
+    const targetAppId = getAuthTargetAppId(resolvedTarget)
     if (targetAppId !== appId) {
       throw new Error(`auth target appid mismatch: ${targetAppId} != ${appId}`)
     }
@@ -431,7 +447,7 @@ export class BuckyOSSDK {
       const accountResponse = await verifyHubClient.loginByPassword({
         username,
         password: passwordHash,
-        target,
+        target: resolvedTarget,
         login_nonce: loginNonce,
         source_url: typeof window !== 'undefined' ? window.location.href : undefined,
       })
@@ -499,7 +515,7 @@ export class BuckyOSSDK {
     }
 
     try {
-      const authClient = new AuthClient(zoneHostName, appId)
+      const authClient = new AuthClient(zoneHostName)
       await authClient.login()
     } catch (error) {
       console.error('login failed: ', error)
@@ -889,6 +905,9 @@ export function createSDKModule(target: SDKTarget) {
     getBuckyOSConfig: sdk.getBuckyOSConfig.bind(sdk),
     getRuntimeType: sdk.getRuntimeType.bind(sdk),
     getAppId: sdk.getAppId.bind(sdk),
+    getAppDid: sdk.getAppDid.bind(sdk),
+    getAppInstanceId: sdk.getAppInstanceId.bind(sdk),
+    getAppDataDir: sdk.getAppDataDir.bind(sdk),
     getKEventClient: sdk.getKEventClient.bind(sdk),
     createEventReader: sdk.createEventReader.bind(sdk),
     create_event_reader: sdk.create_event_reader.bind(sdk),

@@ -130,10 +130,12 @@
 
       // ---- Phase 1: SDK Init + Login ----
       async function initAndLogin() {
-        const appId = 'systest';
+        const appId = 'buckyos-systest.buckyos.bns.did';
+        const appInstanceId = `${appId}@devtest`;
 
         await buckyos.initBuckyOS(appId, {
           appId,
+          appInstanceId,
           runtimeType: RuntimeType.Browser,
           zoneHost: 'test.buckyos.io',
           defaultProtocol: 'https://',
@@ -144,7 +146,7 @@
 
         const accountInfo = await buckyos.loginByPassword('devtest', 'bucky2025', {
           kind: 'app',
-          app_instance_id: 'systest@devtest',
+          app_instance_id: appInstanceId,
         });
         if (!accountInfo || !accountInfo.session_token) {
           throw new Error('Login failed: no session token received');

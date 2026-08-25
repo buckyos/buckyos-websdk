@@ -1,7 +1,7 @@
 // Real-browser regression for the ndm_client module.
 //
 // Loads the standalone ndm_client.html page (served by systest from
-// /opt/buckyos/bin/buckyos_systest/dist/ndm_client.html) and asserts that the
+// /opt/buckyos/bin/buckyos-systest.buckyos.bns.did/dist/ndm_client.html) and asserts that the
 // shared ndm_client_cases test suite passes inside a real Chromium tab.
 // The HTML/runner bundle is produced + copied by
 // `tests/scripts/prepare_real_browser_test.mjs`.

@@ -2,8 +2,11 @@ import http from 'node:http'
 import { buckyos, RuntimeType, parseSessionTokenClaims } from '../src/node'
 
 type AppInstanceIdentity = {
+  appDid: string
   appId: string
+  appInstanceId: string
   ownerUserId: string
+  dataDir: string
 }
 
 type JsonObject = Record<string, unknown>
@@ -26,52 +29,27 @@ function getPort(): number {
   return port
 }
 
-function parseAppInstanceIdentity(appInstanceConfig: string): AppInstanceIdentity {
-  const parsed = JSON.parse(appInstanceConfig) as {
-    app_spec?: {
-      user_id?: unknown
-      app_doc?: {
-        name?: unknown
-      }
-    }
+function requireEnv(name: string): string {
+  const value = getEnv(name)
+  if (!value) {
+    throw new Error(`missing ${name}; start this demo through the current service_debug.tsx`)
   }
-
-  const appId = typeof parsed.app_spec?.app_doc?.name === 'string' ? parsed.app_spec.app_doc.name.trim() : ''
-  const ownerUserId = typeof parsed.app_spec?.user_id === 'string' ? parsed.app_spec.user_id.trim() : ''
-  if (!appId || !ownerUserId) {
-    throw new Error('app_instance_config is missing app_spec.user_id or app_spec.app_doc.name')
-  }
-
-  return { appId, ownerUserId }
-}
-
-function getRustStyleAppServiceTokenEnvKey(identity: AppInstanceIdentity): string {
-  return `${identity.ownerUserId}-${identity.appId}`.toUpperCase().replace(/-/g, '_') + '_TOKEN'
-}
-
-function getCompatTokenEnvKey(appId: string): string {
-  return `${appId.toUpperCase().replace(/-/g, '_')}_TOKEN`
+  return value
 }
 
 function ensureDebugEnvironment(): AppInstanceIdentity {
-  const appInstanceConfig = getEnv('app_instance_config')
-  if (!appInstanceConfig) {
-    throw new Error('missing app_instance_config; start this demo through service_debug.tsx')
+  const appDid = requireEnv('BUCKYOS_APP_DID')
+  const appId = requireEnv('BUCKYOS_APP_ID')
+  const appInstanceId = requireEnv('BUCKYOS_APP_INSTANCE_ID')
+  const ownerUserId = requireEnv('BUCKYOS_OWNER_USER_ID')
+  const dataDir = requireEnv('BUCKYOS_DATA_DIR')
+  requireEnv('BUCKYOS_APP_TOKEN')
+
+  if (appInstanceId !== `${appId}@${ownerUserId}`) {
+    throw new Error('BUCKYOS_APP_INSTANCE_ID is inconsistent with app and owner identity')
   }
 
-  const identity = parseAppInstanceIdentity(appInstanceConfig)
-  const expectedTokenKey = getRustStyleAppServiceTokenEnvKey(identity)
-  const hasOwnerScopedToken = Boolean(getEnv(expectedTokenKey))
-  const compatTokenKey = getCompatTokenEnvKey(identity.appId)
-  const hasCompatToken = Boolean(getEnv(compatTokenKey))
-
-  if (!hasOwnerScopedToken && !hasCompatToken) {
-    throw new Error(
-      `missing app service token env; service_debug.tsx should inject ${expectedTokenKey} (preferred) or ${compatTokenKey}`,
-    )
-  }
-
-  return identity
+  return { appDid, appId, appInstanceId, ownerUserId, dataDir }
 }
 
 function serializeSettingValue(value: unknown): string {
@@ -132,8 +110,11 @@ function buildRuntimeSummary(identity: AppInstanceIdentity) {
 
   return {
     mode: 'app-service-local-debug',
-    appId: identity.appId,
+    appDid: buckyos.getAppDid(),
+    appId: buckyos.getAppId(),
+    appInstanceId: buckyos.getAppInstanceId(),
     ownerUserId: identity.ownerUserId,
+    dataDir: buckyos.getAppDataDir(),
     runtimeType: RuntimeType.AppService,
     zoneHost: buckyos.getZoneHostName(),
     serviceUrls: {
@@ -148,7 +129,7 @@ function buildRuntimeSummary(identity: AppInstanceIdentity) {
       }
       : null,
     tokenClaims,
-    expectedTokenEnvKey: getRustStyleAppServiceTokenEnvKey(identity),
+    tokenEnvKey: 'BUCKYOS_APP_TOKEN',
     hostGateway: getEnv('BUCKYOS_HOST_GATEWAY') ?? 'host.docker.internal',
     routes: {
       health: 'GET /healthz',
@@ -163,7 +144,6 @@ function buildRuntimeSummary(identity: AppInstanceIdentity) {
 async function bootstrapSdk(identity: AppInstanceIdentity) {
   await buckyos.initBuckyOS('', {
     appId: '',
-    ownerUserId: identity.ownerUserId,
     runtimeType: RuntimeType.AppService,
     zoneHost: getEnv('BUCKYOS_ZONE_HOST') ?? '',
     defaultProtocol: 'https://',
@@ -257,8 +237,9 @@ async function main(): Promise<void> {
       host,
       port,
       appId: identity.appId,
+      appInstanceId: identity.appInstanceId,
       ownerUserId: identity.ownerUserId,
-      expectedTokenEnvKey: getRustStyleAppServiceTokenEnvKey(identity),
+      tokenEnvKey: 'BUCKYOS_APP_TOKEN',
       hostGateway: getEnv('BUCKYOS_HOST_GATEWAY') ?? 'host.docker.internal',
       exampleUrls: {
         root: `http://127.0.0.1:${port}/`,

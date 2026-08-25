@@ -4,8 +4,8 @@
  * AppService runtime integration test (driven through the `systest` slot).
  *
  * Design note: the previous version of this file tried to initialize the
- * SDK as AppService directly inside the Jest process by setting
- * `process.env.app_instance_config` and `<OWNER>_<APP>_TOKEN` manually.
+ * SDK as AppService directly inside the Jest process by setting the
+ * app-loader environment manually.
  * That approach turned out to be unworkable on the real DV environment —
  * the required tokens are short-lived and must be issued by the buckyos
  * node-daemon / service_debug.tsx harness at the moment the AppService
@@ -27,7 +27,7 @@
  *      ServiceClient suite in-process inside systest (mirrors
  *      `defineSharedServiceClientSuite` 1:1) and assert every case passed.
  *   3) Phase 3 — AppService-specific assertions about host gateway routing
- *      and the token env naming convention, read back from `/runtime`.
+ *      and the fixed app identity/token contract, read back from `/runtime`.
  *
  * To run:
  *   ./tests/scripts/test_app_service_debug.sh devtest --port 10176
@@ -72,11 +72,14 @@ interface SelftestReport {
 interface RuntimeReport {
   ok: boolean
   mode: string
+  appDid: string
   appId: string
+  appInstanceId: string
   ownerUserId: string
+  dataDir: string
   zoneHost: string | null
   hostGateway: string | null
-  expectedTokenEnvKey: string
+  tokenEnvKey: string
   serviceUrls: {
     verifyHub: string
     taskManager: string
@@ -201,11 +204,13 @@ describeAppService('AppService runtime integration (via systest slot)', () => {
       expect(runtimeReport.serviceUrls.systemConfig).toContain(hostGateway)
     })
 
-    it('uses the Rust-style <OWNER>_<APP>_TOKEN env key naming', () => {
-      const expected = `${runtimeReport.ownerUserId}-${runtimeReport.appId}`
-        .toUpperCase()
-        .replace(/-/g, '_') + '_TOKEN'
-      expect(runtimeReport.expectedTokenEnvKey).toBe(expected)
+    it('reports the canonical identity and fixed token env key', () => {
+      expect(runtimeReport.appDid).toBeTruthy()
+      expect(runtimeReport.appInstanceId).toBe(
+        `${runtimeReport.appId}@${runtimeReport.ownerUserId}`,
+      )
+      expect(runtimeReport.dataDir).toMatch(/^\//)
+      expect(runtimeReport.tokenEnvKey).toBe('BUCKYOS_APP_TOKEN')
     })
 
     it('reports a logged in account that matches the identity', () => {

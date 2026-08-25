@@ -46,6 +46,19 @@ sdk --local_http--> cyfs-gateway --rtcp-->service
 
 > 获得身份还包括获得当前的zoneid,appid等基础runtime信息
 
+### AppService 身份契约
+
+AppService 不从 `AppDoc.name` 或 `app_instance_config` 推导身份。node-daemon/app_loader 必须注入：
+
+- `BUCKYOS_APP_DID`：规范 App DID
+- `BUCKYOS_APP_ID`：AppDID 的 raw hostname
+- `BUCKYOS_APP_INSTANCE_ID`：`${appId}@${ownerUserId}`
+- `BUCKYOS_OWNER_USER_ID`
+- `BUCKYOS_DATA_DIR`：绝对路径
+- `BUCKYOS_APP_TOKEN`：包含 `app_instance_id` 与 `app_owner_user_id` claim 的 JWT
+
+SDK 初始化时会校验这些字段彼此一致，并通过 `getAppDid()`、`getAppId()`、`getAppInstanceId()`、`getAppDataDir()` 暴露解析结果。
+
 ## 建议的 SDK API 命名
 
 为了避免在一个函数内部反复区分 `RuntimeType`，SDK 实现建议按登录链路直接暴露不同名字的入口：
@@ -60,17 +73,18 @@ sdk --local_http--> cyfs-gateway --rtcp-->service
   - 触发跳转后不需要判断返回值；SSO 成功跳回原页面后，再通过 `getAccountInfo()` 读取当前登录态
 - `loginByPassword()`
   - 显式表示“走 verify-hub.login_by_password”
-  - 必须传入结构化 `AuthTarget`；普通 App 使用
+  - 底层请求必须包含结构化 `AuthTarget`；普通 App 使用
     `{ kind: 'app', app_instance_id: '<appId>@<ownerUserId>' }`，系统服务使用
     `{ kind: 'system', service_id: '<serviceId>' }`
+  - 高层 SDK 可从初始化配置中的 `appInstanceId` 构造 App target，也允许调用方显式传入 target
 
 `VerifyHubClient` 的 `loginByJwt()`、`loginByPassword()` 和 `sudoByPassword()` 同样要求
 `target`，`verifyToken()` 使用可选的 `expected_target`。客户端只序列化协议声明的字段，以匹配
 verify-hub 的严格字段解析。
 
-Runtime 自动为 `AppClient` / `AppService` 构造 `<appId>@<ownerUserId>` App target；需要 System
-身份的调用方必须通过 `BuckyOSConfig.authTarget` 明确提供 System target，并确保 `service_id`
-与 runtime 的 `appId` 一致。
+Runtime 优先使用 `appInstanceId`，并可为 `AppClient` / `AppService` 从
+`appId + ownerUserId` 构造 App target；需要 System 身份的调用方必须通过
+`BuckyOSConfig.authTarget` 明确提供 System target，并确保 `service_id` 与 runtime 的 `appId` 一致。
 
 兼容层可以保留：
 
@@ -80,7 +94,8 @@ Runtime 自动为 `AppClient` / `AppService` 构造 `<appId>@<ownerUserId>` App 
 ## AuthClient 的边界
 
 - `AuthClient` 只应该在浏览器 SSO 环境里创建
-- 它的职责是构造 SSO 登录跳转 URL，并触发当前窗口跳转
+- 它只接收 Zone hostname，构造仅带 `redirect_url` 的 SSO 登录 URL，登录目标由 Gateway 路由确定
+- 它会触发当前窗口跳转
 - 不再担弹窗通信或跨窗口 `postMessage` 回传 token 的逻辑
 
 ## 访问系统服务的方法

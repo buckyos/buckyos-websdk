@@ -35,7 +35,7 @@ var __privateMethod = (obj, member, method) => {
   return method;
 };
 var _listener, _listeners, _cancelled, _allowInsecure, _gzip, _headers, _method, _timeout, _url, _body, _bodyType, _creds, _preflight, _process, _retry, _signal, _throttle, _getUrlFunc, _send, send_fn, _statusCode, _statusMessage, _headers2, _body2, _request, _error, _names, _data, _dataLength, _writeData, writeData_fn, _data2, _offset, _bytesRead, _parent, _maxInflation, _incrementBytesRead, incrementBytesRead_fn, _peekBytes, peekBytes_fn, _r, _s, _v, _networkV, _privateKey, _options, _type, _to, _data3, _nonce, _gasLimit, _gasPrice, _maxPriorityFeePerGas, _maxFeePerGas, _value, _chainId, _sig, _accessList, _maxFeePerBlobGas, _blobVersionedHashes, _kzg, _blobs, _auths, _blobWrapperVersion, _getSerialized, getSerialized_fn, _types, _fullTypes, _encoderCache, _getEncoder, getEncoder_fn, _offset2, _tokens, _subTokenString, subTokenString_fn, _walkAsync, walkAsync_fn, _getCoder, getCoder_fn, _errors, _events, _functions, _abiCoder, _getFunction, getFunction_fn, _getEvent, getEvent_fn, _transactions, _logs, _startBlock, _iface, _iface2, _filter, _a, _supports2544, _resolver, _fetch, fetch_fn, _getResolver, getResolver_fn, _url2, _processFunc, _name, _chainId2, _plugins, _provider, _poller, _interval, _blockNumber, _poll, poll_fn, _provider2, _poll2, _running, _tag, _lastBlock, _filter2, _hash, _provider3, _filter3, _poller2, _running2, _blockNumber2, _poll3, poll_fn2, _subs, _plugins2, _pausedState, _destroyed, _networkPromise, _anyNetwork, _performCache, _lastBlockNumber, _nextTimer, _timers, _disableCcipRead, _requestRate, _requestTimes, _options2, _getDelay, getDelay_fn, _perform, perform_fn, _call, call_fn, _checkNetwork, checkNetwork_fn, _getAccountValue, getAccountValue_fn, _getBlock, getBlock_fn, _hasSub, hasSub_fn, _getSub, getSub_fn, _throwUnsupported, throwUnsupported_fn, _provider4, _filterIdPromise, _poller3, _running3, _network, _hault, _poll4, poll_fn3, _teardown, teardown_fn, _event, _options3, _nextId, _payloads, _drainTimer, _notReady, _network2, _pendingDetectNetwork, _scheduleDrain, scheduleDrain_fn, _pollingInterval, _connect, _signingKey, _data4, _checksum, _words, _loadWords, loadWords_fn, _account, account_fn, _fromSeed, fromSeed_fn, _fromAccount, fromAccount_fn;
-import { u as ht, v as DID, o as parseBuckyOSOwnerDocument, w as canonicalize, x as signJwtEdDSA, O as ObjId, C as ChunkId, F as FileObject, y as sha256Bytes, z as DirObject, S as SimpleChunkList } from "./ndn_types-76983121.mjs";
+import { u as ht, v as DID, o as parseBuckyOSOwnerDocument, w as canonicalize, x as signJwtEdDSA, O as ObjId, C as ChunkId, F as FileObject, y as sha256Bytes, z as DirObject, S as SimpleChunkList } from "./ndn_types-ca94286b.mjs";
 class RPCError extends Error {
   constructor(message) {
     super(message);
@@ -195,10 +195,9 @@ function ensureSSOEnvironment() {
   }
 }
 class AuthClient {
-  constructor(zoneBaseUrl, appId, options = {}) {
+  constructor(zoneBaseUrl, options = {}) {
     ensureSSOEnvironment();
     this.zoneHostname = zoneBaseUrl;
-    this.clientId = appId;
     this.navigate = options.navigate ?? ((url) => {
       window.location.assign(url);
     });
@@ -207,7 +206,7 @@ class AuthClient {
     ensureSSOEnvironment();
     const redirectTarget = redirectUri ?? window.location.href;
     const ssoURL = `${window.location.protocol}//sys.${this.zoneHostname}/login`;
-    return `${ssoURL}?client_id=${this.clientId}&redirect_url=${encodeURIComponent(redirectTarget)}`;
+    return `${ssoURL}?redirect_url=${encodeURIComponent(redirectTarget)}`;
   }
   async login(redirectUri = null) {
     const authURL = this.buildLoginURL(redirectUri);
@@ -447,6 +446,7 @@ const APP_INSTALL_TASK_SCHEMA_ID = "app.install/v1";
 const APP_UNINSTALL_TASK_SCHEMA_ID = "app.uninstall/v1";
 const APP_START_TASK_SCHEMA_ID = "app.start/v1";
 const APP_UPDATE_TASK_SCHEMA_ID = "app.update/v1";
+const APP_UPDATE_BATCH_TASK_SCHEMA_ID = "app.update_batch/v1";
 const TASK_ERR_NOT_FOUND = "task_not_found";
 const TASK_ERR_PERMISSION_DENIED = "permission_denied";
 const TASK_ERR_REVISION_CONFLICT = "revision_conflict";
@@ -2345,12 +2345,90 @@ class RepoClient {
     return asBoolean(result, "announce response");
   }
 }
+function validateDnsHostname(value) {
+  if (!value || value.length > 253 || value.includes("@")) {
+    throw new Error("hostname must be 1..=253 bytes and must not contain `@`");
+  }
+  if (value !== value.toLowerCase() || !/^[\x00-\x7f]+$/.test(value)) {
+    throw new Error("hostname must be canonical lowercase ASCII");
+  }
+  for (const label of value.split(".")) {
+    if (!label || label.length > 63 || label.startsWith("-") || label.endsWith("-") || !/^[a-z0-9-]+$/.test(label)) {
+      throw new Error(`invalid DNS label \`${label}\``);
+    }
+  }
+}
+function canonicalAppIdFromDid(appDid) {
+  const match = /^did:([^:]+):(.+)$/.exec(appDid);
+  if (!match) {
+    throw new Error("AppDID must be a canonical DID");
+  }
+  const [, method, id2] = match;
+  if (!method || !id2 || method !== method.toLowerCase() || id2 !== id2.toLowerCase() || id2.includes(":") || id2.includes("#") || id2.includes("%")) {
+    throw new Error(
+      "AppDID must be a canonical lowercase hostname-form DID without path, port, encoding, or fragment"
+    );
+  }
+  const did = new DID(method, id2);
+  const appId = did.toRawHostName();
+  validateDnsHostname(appId);
+  if (method === "web" && appId.endsWith(".did")) {
+    throw new Error("AppDID did:web hostnames ending in `.did` are reserved");
+  }
+  if (DID.fromStr(appId).toString() !== appDid) {
+    throw new Error("AppDID raw hostname does not round-trip");
+  }
+  return appId;
+}
+function appIdFromDid(appDid) {
+  return canonicalAppIdFromDid(appDid.trim());
+}
+function parseAppId(value) {
+  const appId = value.trim();
+  validateDnsHostname(appId);
+  const appDid = DID.fromStr(appId).toString();
+  const canonical = canonicalAppIdFromDid(appDid);
+  if (canonical !== appId) {
+    throw new Error("AppId is not a canonical AppDID raw hostname");
+  }
+  return canonical;
+}
+function appDidFromId(value) {
+  return DID.fromStr(parseAppId(value)).toString();
+}
+function validateOwnerUserId(value) {
+  if (!value || value.length > 64 || !/^[a-z0-9._-]+$/.test(value)) {
+    throw new Error("owner_user_id must be lowercase ASCII and contain only [a-z0-9._-]");
+  }
+}
+function createAppInstanceId(appId, ownerUserId) {
+  const parsedAppId = parseAppId(appId);
+  validateOwnerUserId(ownerUserId);
+  return `${parsedAppId}@${ownerUserId}`;
+}
+function parseAppInstanceId(value) {
+  const normalized = value.trim();
+  const separator = normalized.lastIndexOf("@");
+  if (separator <= 0 || separator === normalized.length - 1) {
+    throw new Error("AppInstanceId must be `{app_id}@{owner_user_id}`");
+  }
+  const appId = parseAppId(normalized.slice(0, separator));
+  const ownerUserId = normalized.slice(separator + 1);
+  validateOwnerUserId(ownerUserId);
+  return { appId, ownerUserId };
+}
 const DEFAULT_NODE_GATEWAY_PORT = 3180;
 const DEFAULT_SESSION_TOKEN_TTL_SECONDS = 15 * 60;
 const DEFAULT_RENEW_INTERVAL_MS = 5e3;
 const BUCKYOS_HOST_GATEWAY_ENV = "BUCKYOS_HOST_GATEWAY";
 const BUCKYOS_APPCLIENT_SESSION_TOKEN_ENV = "BUCKYOS_APPCLIENT_SESSION_TOKEN";
 const DEFAULT_DOCKER_HOST_GATEWAY = "host.docker.internal";
+const BUCKYOS_APP_DID_ENV = "BUCKYOS_APP_DID";
+const BUCKYOS_APP_ID_ENV = "BUCKYOS_APP_ID";
+const BUCKYOS_APP_INSTANCE_ID_ENV = "BUCKYOS_APP_INSTANCE_ID";
+const BUCKYOS_OWNER_USER_ID_ENV = "BUCKYOS_OWNER_USER_ID";
+const BUCKYOS_DATA_DIR_ENV = "BUCKYOS_DATA_DIR";
+const BUCKYOS_APP_TOKEN_ENV = "BUCKYOS_APP_TOKEN";
 var RuntimeType = /* @__PURE__ */ ((RuntimeType2) => {
   RuntimeType2["Browser"] = "Browser";
   RuntimeType2["NodeJS"] = "NodeJS";
@@ -2363,6 +2441,9 @@ var RuntimeType = /* @__PURE__ */ ((RuntimeType2) => {
 const DEFAULT_CONFIG = {
   zoneHost: "",
   appId: "",
+  appDid: null,
+  appInstanceId: null,
+  dataDir: null,
   defaultProtocol: "http://",
   runtimeType: "Unknown",
   userid: null,
@@ -2440,13 +2521,6 @@ function normalizeServicePath(serviceName) {
   }
   return serviceName;
 }
-function getFullAppId(appId, ownerUserId) {
-  return `${ownerUserId}-${appId}`;
-}
-function getSessionTokenEnvKey(appFullId, isAppService) {
-  const normalized = appFullId.toUpperCase().replace(/-/g, "_");
-  return isAppService ? `${normalized}_TOKEN` : `${normalized}_SESSION_TOKEN`;
-}
 function resolveZoneHostFromDid(zoneDid) {
   const normalized = trimToNull$2(zoneDid);
   if (!normalized) {
@@ -2460,20 +2534,6 @@ function resolveZoneHostFromDid(zoneDid) {
   }
   return null;
 }
-function parseAppIdentityFromInstanceConfig(appInstanceConfig) {
-  var _a2, _b, _c;
-  try {
-    const parsed = JSON.parse(appInstanceConfig);
-    const appId = typeof ((_b = (_a2 = parsed.app_spec) == null ? void 0 : _a2.app_doc) == null ? void 0 : _b.name) === "string" ? parsed.app_spec.app_doc.name.trim() : "";
-    const ownerUserId = typeof ((_c = parsed.app_spec) == null ? void 0 : _c.user_id) === "string" ? parsed.app_spec.user_id.trim() : "";
-    if (!appId || !ownerUserId) {
-      return null;
-    }
-    return { appId, ownerUserId };
-  } catch {
-    return null;
-  }
-}
 async function importNodeModule$1(moduleName) {
   if (hasNodeRuntime$1() && typeof require === "function") {
     return require(moduleName);
@@ -2483,7 +2543,7 @@ async function importNodeModule$1(moduleName) {
 }
 class BaseRuntimeProfile {
   async initialize(runtime) {
-    runtime.resolveNodeIdentityFromEnv();
+    await runtime.resolveAppServiceIdentityFromEnv();
     await runtime.resolveZoneHostFromLocalConfig();
   }
   async login(runtime) {
@@ -2619,6 +2679,9 @@ class BuckyOSRuntime {
       ...DEFAULT_CONFIG,
       ...config,
       appId: config.appId,
+      appDid: trimToNull$2(config.appDid),
+      appInstanceId: trimToNull$2(config.appInstanceId),
+      dataDir: trimToNull$2(config.dataDir),
       userid: normalizedOwnerUserId,
       ownerUserId: normalizedOwnerUserId,
       zoneHost: config.zoneHost ?? "",
@@ -2649,6 +2712,9 @@ class BuckyOSRuntime {
       ...DEFAULT_CONFIG,
       ...config,
       appId: config.appId,
+      appDid: trimToNull$2(config.appDid),
+      appInstanceId: trimToNull$2(config.appInstanceId),
+      dataDir: trimToNull$2(config.dataDir),
       userid: normalizedOwnerUserId,
       ownerUserId: normalizedOwnerUserId
     };
@@ -2663,12 +2729,14 @@ class BuckyOSRuntime {
   getOwnerUserId() {
     return trimToNull$2(this.config.ownerUserId);
   }
-  getFullAppId() {
-    const ownerUserId = this.getOwnerUserId();
-    if (!ownerUserId) {
-      return this.config.appId;
-    }
-    return getFullAppId(this.config.appId, ownerUserId);
+  getAppDid() {
+    return trimToNull$2(this.config.appDid);
+  }
+  getAppInstanceId() {
+    return trimToNull$2(this.config.appInstanceId);
+  }
+  getDataDir() {
+    return trimToNull$2(this.config.dataDir);
   }
   getAuthTarget() {
     if (this.config.authTarget) {
@@ -2678,6 +2746,17 @@ class BuckyOSRuntime {
       }
       return { ...this.config.authTarget };
     }
+    const appInstanceId = this.getAppInstanceId();
+    if (appInstanceId) {
+      const identity = parseAppInstanceId(appInstanceId);
+      if (identity.appId !== this.config.appId) {
+        throw new Error(`auth target appid mismatch: ${identity.appId} != ${this.config.appId}`);
+      }
+      return {
+        kind: "app",
+        app_instance_id: appInstanceId
+      };
+    }
     if (this.config.runtimeType === "AppClient" || this.config.runtimeType === "AppService") {
       const ownerUserId = this.getOwnerUserId();
       if (!ownerUserId) {
@@ -2685,10 +2764,10 @@ class BuckyOSRuntime {
       }
       return {
         kind: "app",
-        app_instance_id: `${this.config.appId}@${ownerUserId}`
+        app_instance_id: createAppInstanceId(this.config.appId, ownerUserId)
       };
     }
-    throw new Error("authTarget must be configured for this runtime");
+    throw new Error("authTarget or appInstanceId must be configured for this runtime");
   }
   getZoneHostName() {
     return this.config.zoneHost;
@@ -2846,7 +2925,7 @@ class BuckyOSRuntime {
       this.sessionToken = await this.createAppClientSessionToken();
     }
   }
-  resolveNodeIdentityFromEnv() {
+  async resolveAppServiceIdentityFromEnv() {
     if (!hasNodeRuntime$1()) {
       return;
     }
@@ -2854,20 +2933,56 @@ class BuckyOSRuntime {
       return;
     }
     const env = getProcessEnv();
-    const appInstanceConfig = trimToNull$2(env.app_instance_config);
-    if (!appInstanceConfig) {
-      return;
+    const required = (name) => {
+      const value = trimToNull$2(env[name]);
+      if (!value) {
+        throw new Error(`${name} is required for AppService runtime`);
+      }
+      return value;
+    };
+    const appDid = required(BUCKYOS_APP_DID_ENV);
+    const appId = parseAppId(required(BUCKYOS_APP_ID_ENV));
+    const appInstanceId = required(BUCKYOS_APP_INSTANCE_ID_ENV);
+    const ownerUserId = required(BUCKYOS_OWNER_USER_ID_ENV);
+    const dataDir = required(BUCKYOS_DATA_DIR_ENV);
+    const identity = parseAppInstanceId(appInstanceId);
+    const path = await importNodeModule$1("node:path");
+    if (!path.isAbsolute(dataDir)) {
+      throw new Error(`${BUCKYOS_DATA_DIR_ENV} must be an absolute path`);
     }
-    const identity = parseAppIdentityFromInstanceConfig(appInstanceConfig);
-    if (!identity) {
-      return;
+    if (appIdFromDid(appDid) !== appId || identity.appId !== appId || identity.ownerUserId !== ownerUserId || createAppInstanceId(appId, ownerUserId) !== appInstanceId) {
+      throw new Error("AppService identity environment variables are inconsistent");
     }
-    if (!this.config.appId) {
-      this.config.appId = identity.appId;
+    const configuredAppId = trimToNull$2(this.config.appId);
+    const configuredAppDid = trimToNull$2(this.config.appDid);
+    const configuredAppInstanceId = trimToNull$2(this.config.appInstanceId);
+    const configuredOwnerUserId = this.getOwnerUserId();
+    const configuredDataDir = trimToNull$2(this.config.dataDir);
+    if (configuredAppId && configuredAppId !== appId) {
+      throw new Error(`runtime appId ${configuredAppId} does not match ${BUCKYOS_APP_ID_ENV} ${appId}`);
     }
-    if (!trimToNull$2(this.config.ownerUserId)) {
-      this.config.ownerUserId = identity.ownerUserId;
+    if (configuredAppDid && configuredAppDid !== appDid) {
+      throw new Error(`runtime appDid ${configuredAppDid} does not match ${BUCKYOS_APP_DID_ENV} ${appDid}`);
     }
+    if (configuredAppInstanceId && configuredAppInstanceId !== appInstanceId) {
+      throw new Error(
+        `runtime appInstanceId ${configuredAppInstanceId} does not match ${BUCKYOS_APP_INSTANCE_ID_ENV} ${appInstanceId}`
+      );
+    }
+    if (configuredOwnerUserId && configuredOwnerUserId !== ownerUserId) {
+      throw new Error(
+        `runtime ownerUserId ${configuredOwnerUserId} does not match ${BUCKYOS_OWNER_USER_ID_ENV} ${ownerUserId}`
+      );
+    }
+    if (configuredDataDir && configuredDataDir !== dataDir) {
+      throw new Error(`runtime dataDir ${configuredDataDir} does not match ${BUCKYOS_DATA_DIR_ENV} ${dataDir}`);
+    }
+    this.config.appDid = appDid;
+    this.config.appId = appId;
+    this.config.appInstanceId = appInstanceId;
+    this.config.ownerUserId = ownerUserId;
+    this.config.userid = ownerUserId;
+    this.config.dataDir = dataDir;
   }
   async resolveZoneHostFromLocalConfig() {
     if (!hasNodeRuntime$1()) {
@@ -2887,9 +3002,26 @@ class BuckyOSRuntime {
       return;
     }
     const claims = parseSessionTokenClaims(this.sessionToken);
+    if (this.config.runtimeType === "AppService" && !claims) {
+      throw new Error("AppService session token must be a JWT with identity claims");
+    }
     const tokenAppId = typeof (claims == null ? void 0 : claims.appid) === "string" ? claims.appid : typeof (claims == null ? void 0 : claims.aud) === "string" ? claims.aud : null;
     if (tokenAppId && tokenAppId !== this.config.appId) {
       throw new Error(`session token appid mismatch: ${tokenAppId} != ${this.config.appId}`);
+    }
+    if (this.config.runtimeType === "AppService" && claims) {
+      const expectedAppInstanceId = this.getAppInstanceId();
+      if (!expectedAppInstanceId || claims.app_instance_id !== expectedAppInstanceId) {
+        throw new Error(
+          `session token app_instance_id mismatch: ${String(claims.app_instance_id)} != ${String(expectedAppInstanceId)}`
+        );
+      }
+      const ownerUserId = this.getOwnerUserId();
+      if (!ownerUserId || claims.app_owner_user_id !== ownerUserId) {
+        throw new Error(
+          `session token app_owner_user_id mismatch: ${String(claims.app_owner_user_id)} != ${String(ownerUserId)}`
+        );
+      }
     }
   }
   async ensureBrowserSessionToken() {
@@ -3045,21 +3177,11 @@ class BuckyOSRuntime {
     void tick();
   }
   loadAppServiceSessionTokenFromEnv() {
-    const env = getProcessEnv();
-    const ownerUserId = this.getOwnerUserId();
-    const sessionTokenKeys = [];
-    if (ownerUserId) {
-      sessionTokenKeys.push(getSessionTokenEnvKey(getFullAppId(this.config.appId, ownerUserId), true));
+    const token = trimToNull$2(getProcessEnv()[BUCKYOS_APP_TOKEN_ENV]);
+    if (token) {
+      return token;
     }
-    sessionTokenKeys.push(getSessionTokenEnvKey(this.config.appId, true));
-    const uniqueKeys = Array.from(new Set(sessionTokenKeys));
-    for (const key of uniqueKeys) {
-      const token = trimToNull$2(env[key]);
-      if (token) {
-        return token;
-      }
-    }
-    throw new Error(`failed to load app-service session token, tried keys: ${uniqueKeys.join(", ")}`);
+    throw new Error(`${BUCKYOS_APP_TOKEN_ENV} is required for AppService runtime`);
   }
   loadAppClientSessionTokenFromEnv() {
     return trimToNull$2(getProcessEnv()[BUCKYOS_APPCLIENT_SESSION_TOKEN_ENV]);
@@ -4227,7 +4349,7 @@ function parseSettingValue(settingValue) {
 }
 function inferNodeRuntimeType() {
   const env = getNodeEnv();
-  if (trimToNull$1(env.app_instance_config)) {
+  if (trimToNull$1(env.BUCKYOS_APP_INSTANCE_ID)) {
     return RuntimeType.AppService;
   }
   return RuntimeType.AppClient;
@@ -4286,7 +4408,7 @@ class BuckyOSSDK {
     this.currentKEventClient = null;
     this.target = target;
   }
-  async initBuckyOS(appid, config = null) {
+  async initBuckyOS(appid = "", config = null) {
     var _a2;
     const finalConfig = this.buildRuntimeConfig(appid, config);
     if (this.target !== "node" && isBrowserRuntime() && !config) {
@@ -4324,6 +4446,18 @@ class BuckyOSSDK {
     }
     console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
     return null;
+  }
+  getAppDid() {
+    var _a2;
+    return ((_a2 = this.currentRuntime) == null ? void 0 : _a2.getAppDid()) ?? null;
+  }
+  getAppInstanceId() {
+    var _a2;
+    return ((_a2 = this.currentRuntime) == null ? void 0 : _a2.getAppInstanceId()) ?? null;
+  }
+  getAppDataDir() {
+    var _a2;
+    return ((_a2 = this.currentRuntime) == null ? void 0 : _a2.getDataDir()) ?? null;
   }
   attachEvent(eventName, callback) {
   }
@@ -4380,13 +4514,17 @@ class BuckyOSSDK {
     return this.currentAccountInfo;
   }
   async loginByPassword(username, password, target) {
-    var _a2, _b;
+    var _a2, _b, _c;
     const appId = this.getAppId();
     if (appId == null) {
       console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
       return null;
     }
-    const targetAppId = getAuthTargetAppId(target);
+    const resolvedTarget = target ?? ((_a2 = this.currentRuntime) == null ? void 0 : _a2.getAuthTarget());
+    if (!resolvedTarget) {
+      throw new Error("loginByPassword requires an AuthTarget");
+    }
+    const targetAppId = getAuthTargetAppId(resolvedTarget);
     if (targetAppId !== appId) {
       throw new Error(`auth target appid mismatch: ${targetAppId} != ${appId}`);
     }
@@ -4401,7 +4539,7 @@ class BuckyOSSDK {
       const accountResponse = await verifyHubClient.loginByPassword({
         username,
         password: passwordHash,
-        target,
+        target: resolvedTarget,
         login_nonce: loginNonce,
         source_url: typeof window !== "undefined" ? window.location.href : void 0
       });
@@ -4422,8 +4560,8 @@ class BuckyOSSDK {
         });
       }
       this.currentAccountInfo = accountInfo;
-      (_a2 = this.currentRuntime) == null ? void 0 : _a2.setSessionToken(accountInfo.session_token);
-      (_b = this.currentRuntime) == null ? void 0 : _b.setRefreshToken(accountInfo.refresh_token ?? null);
+      (_b = this.currentRuntime) == null ? void 0 : _b.setSessionToken(accountInfo.session_token);
+      (_c = this.currentRuntime) == null ? void 0 : _c.setRefreshToken(accountInfo.refresh_token ?? null);
       return accountInfo;
     } catch (error) {
       console.error("login failed: ", error);
@@ -4460,7 +4598,7 @@ class BuckyOSSDK {
       return;
     }
     try {
-      const authClient = new AuthClient(zoneHostName, appId);
+      const authClient = new AuthClient(zoneHostName);
       await authClient.login();
     } catch (error) {
       console.error("login failed: ", error);
@@ -4770,6 +4908,9 @@ function createSDKModule(target) {
     getBuckyOSConfig: sdk.getBuckyOSConfig.bind(sdk),
     getRuntimeType: sdk.getRuntimeType.bind(sdk),
     getAppId: sdk.getAppId.bind(sdk),
+    getAppDid: sdk.getAppDid.bind(sdk),
+    getAppInstanceId: sdk.getAppInstanceId.bind(sdk),
+    getAppDataDir: sdk.getAppDataDir.bind(sdk),
     getKEventClient: sdk.getKEventClient.bind(sdk),
     createEventReader: sdk.createEventReader.bind(sdk),
     create_event_reader: sdk.create_event_reader.bind(sdk),
@@ -27612,7 +27753,7 @@ async function uploadChunkViaTus(endpoint, file, chunkInfo, chunkIndex, appId, f
   const logicalPath = `${appId}/${chunkInfo.chunkId}`;
   let tusModule;
   try {
-    tusModule = await import("./tus_client-f6db1120.mjs");
+    tusModule = await import("./tus_client-f1532e14.mjs");
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new NdmError("UPLOAD_FAILED", `Failed to load tus-js-client: ${message}`);
@@ -28333,7 +28474,7 @@ const ndm_proxy = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.definePro
   unpinOwner
 }, Symbol.toStringTag, { value: "Module" }));
 export {
-  TASK_ERR_CONTROL_NOT_AVAILABLE as $,
+  TASK_ERR_INVALID_PHASE as $,
   WORKFLOW_SEND_MESSAGE_TASK_SCHEMA_ID as A,
   BS_SERVICE_VERIFY_HUB as B,
   WORKFLOW_EXECUTE_RPC_TASK_SCHEMA_ID as C,
@@ -28354,86 +28495,92 @@ export {
   RuntimeType as R,
   SystemConfigClient as S,
   TASK_MANAGER_SERVICE_UNIQUE_ID as T,
-  TASK_ERR_NOT_FOUND as U,
+  APP_UPDATE_BATCH_TASK_SCHEMA_ID as U,
   VerifyHubClient as V,
   WEB3_BRIDGE_HOST as W,
-  TASK_ERR_PERMISSION_DENIED as X,
-  TASK_ERR_REVISION_CONFLICT as Y,
-  TASK_ERR_STALE_RUNNER_EPOCH as Z,
-  TASK_ERR_INVALID_PHASE as _,
+  TASK_ERR_NOT_FOUND as X,
+  TASK_ERR_PERMISSION_DENIED as Y,
+  TASK_ERR_REVISION_CONFLICT as Z,
+  TASK_ERR_STALE_RUNNER_EPOCH as _,
   ndm_proxy as a,
-  BNS_DNS_TXT_DOC_TYPE as a$,
-  TASK_ERR_CONTROL_ALREADY_PENDING as a0,
-  TASK_ERR_ALREADY_COMPLETED as a1,
-  TASK_ERR_INPUT_SCHEMA_MISMATCH as a2,
-  TASK_ERR_RESULT_SCHEMA_MISMATCH as a3,
-  TASK_ERR_IDEMPOTENCY_CONFLICT as a4,
-  TASK_ERR_SCHEMA_NOT_FOUND as a5,
-  TASK_MGR_ERROR_CODES as a6,
-  taskMgrTaskEventPath as a7,
-  taskMgrTreeEventPath as a8,
-  taskMgrErrorCode as a9,
-  AICC_SERVICE_NAME as aA,
-  AICC_SERVICE_UNIQUE_ID as aB,
-  AICC_SERVICE_SERVICE_NAME as aC,
-  AICC_SERVICE_SERVICE_PORT as aD,
-  AICC_AI_METHODS as aE,
-  AICC_CONTROL_METHODS as aF,
-  AICC_FEATURES as aG,
-  isAiccAiMethod as aH,
-  aiccTextMessage as aI,
-  aiccMessageTextContent as aJ,
-  aiccMessageFirstText as aK,
-  aiccResponseTextContent as aL,
-  aiccResponseToolCalls as aM,
-  aiccResponseArtifacts as aN,
-  aiccRenderMessageForDebug as aO,
-  aiccEstimateMessageTextLen as aP,
-  validateAiccMessage as aQ,
-  validateAiccMessages as aR,
-  validateAiccResponse as aS,
-  AiccClient as aT,
-  KEventReader as aU,
-  KEventClient as aV,
-  BNS_EVM_DEFAULT_GAS_LIMIT as aW,
-  BNS_EVM_DEFAULT_MAX_FEE_PER_GAS as aX,
-  BNS_EVM_DEFAULT_MAX_PRIORITY_FEE_PER_GAS as aY,
-  BNS_MAX_INLINE_DOCUMENT_BYTES as aZ,
-  BNS_DNS_TXT_DEFAULT_TTL as a_,
-  TaskExecutorKind as aa,
-  TaskPhase as ab,
-  isTerminalTaskPhase as ac,
-  TaskWaitReasonKind as ad,
-  TaskOutcome as ae,
-  TaskControlAction as af,
-  baselineTaskControlProfile as ag,
-  DEFAULT_CHILD_CONTROL_POLICY as ah,
-  TaskAction as ai,
-  TaskGrantScope as aj,
-  TaskDataScope as ak,
-  TaskEventType as al,
-  TaskManagerClient as am,
-  WORKFLOW_SERVICE_NAME as an,
-  WorkflowStepType as ao,
-  WorkflowOutputMode as ap,
-  WorkflowJoinMode as aq,
-  WorkflowRetryFallback as ar,
-  WorkflowDefinitionStatus as as,
-  WorkflowRunStatus as at,
-  WorkflowNodeRunState as au,
-  WorkflowHumanActionKind as av,
-  WorkflowScheduledTaskStatus as aw,
-  WorkflowScheduledTaskMisfirePolicy as ax,
-  WorkflowScheduledTaskFireStatus as ay,
-  WorkflowClient as az,
+  parseAppInstanceId as a$,
+  TASK_ERR_CONTROL_NOT_AVAILABLE as a0,
+  TASK_ERR_CONTROL_ALREADY_PENDING as a1,
+  TASK_ERR_ALREADY_COMPLETED as a2,
+  TASK_ERR_INPUT_SCHEMA_MISMATCH as a3,
+  TASK_ERR_RESULT_SCHEMA_MISMATCH as a4,
+  TASK_ERR_IDEMPOTENCY_CONFLICT as a5,
+  TASK_ERR_SCHEMA_NOT_FOUND as a6,
+  TASK_MGR_ERROR_CODES as a7,
+  taskMgrTaskEventPath as a8,
+  taskMgrTreeEventPath as a9,
+  WorkflowClient as aA,
+  AICC_SERVICE_NAME as aB,
+  AICC_SERVICE_UNIQUE_ID as aC,
+  AICC_SERVICE_SERVICE_NAME as aD,
+  AICC_SERVICE_SERVICE_PORT as aE,
+  AICC_AI_METHODS as aF,
+  AICC_CONTROL_METHODS as aG,
+  AICC_FEATURES as aH,
+  isAiccAiMethod as aI,
+  aiccTextMessage as aJ,
+  aiccMessageTextContent as aK,
+  aiccMessageFirstText as aL,
+  aiccResponseTextContent as aM,
+  aiccResponseToolCalls as aN,
+  aiccResponseArtifacts as aO,
+  aiccRenderMessageForDebug as aP,
+  aiccEstimateMessageTextLen as aQ,
+  validateAiccMessage as aR,
+  validateAiccMessages as aS,
+  validateAiccResponse as aT,
+  AiccClient as aU,
+  KEventReader as aV,
+  KEventClient as aW,
+  appIdFromDid as aX,
+  parseAppId as aY,
+  appDidFromId as aZ,
+  createAppInstanceId as a_,
+  taskMgrErrorCode as aa,
+  TaskExecutorKind as ab,
+  TaskPhase as ac,
+  isTerminalTaskPhase as ad,
+  TaskWaitReasonKind as ae,
+  TaskOutcome as af,
+  TaskControlAction as ag,
+  baselineTaskControlProfile as ah,
+  DEFAULT_CHILD_CONTROL_POLICY as ai,
+  TaskAction as aj,
+  TaskGrantScope as ak,
+  TaskDataScope as al,
+  TaskEventType as am,
+  TaskManagerClient as an,
+  WORKFLOW_SERVICE_NAME as ao,
+  WorkflowStepType as ap,
+  WorkflowOutputMode as aq,
+  WorkflowJoinMode as ar,
+  WorkflowRetryFallback as as,
+  WorkflowDefinitionStatus as at,
+  WorkflowRunStatus as au,
+  WorkflowNodeRunState as av,
+  WorkflowHumanActionKind as aw,
+  WorkflowScheduledTaskStatus as ax,
+  WorkflowScheduledTaskMisfirePolicy as ay,
+  WorkflowScheduledTaskFireStatus as az,
   bns_client as b,
-  BNS_PUBLISH_DOCUMENT_ABI as b0,
-  BnsEvmTxError as b1,
-  BnsEvmTxBuilder as b2,
-  decodeBnsPublishDocumentCalldata as b3,
-  BnsTxExecutorError as b4,
-  walletUserHasSnAccount as b5,
-  BnsTxExecutor as b6,
+  BNS_EVM_DEFAULT_GAS_LIMIT as b0,
+  BNS_EVM_DEFAULT_MAX_FEE_PER_GAS as b1,
+  BNS_EVM_DEFAULT_MAX_PRIORITY_FEE_PER_GAS as b2,
+  BNS_MAX_INLINE_DOCUMENT_BYTES as b3,
+  BNS_DNS_TXT_DEFAULT_TTL as b4,
+  BNS_DNS_TXT_DOC_TYPE as b5,
+  BNS_PUBLISH_DOCUMENT_ABI as b6,
+  BnsEvmTxError as b7,
+  BnsEvmTxBuilder as b8,
+  decodeBnsPublishDocumentCalldata as b9,
+  BnsTxExecutorError as ba,
+  walletUserHasSnAccount as bb,
+  BnsTxExecutor as bc,
   createSDKModule as c,
   BS_SERVICE_TASK_MANAGER as d,
   getActiveRuntimeType as e,
@@ -28459,4 +28606,4 @@ export {
   WORKFLOW_THUNK_TASK_SCHEMA_ID as y,
   WORKFLOW_SCHEDULE_TASK_SCHEMA_ID as z
 };
-//# sourceMappingURL=ndm_proxy-bd307798.mjs.map
+//# sourceMappingURL=ndm_proxy-a719bc58.mjs.map

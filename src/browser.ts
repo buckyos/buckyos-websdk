@@ -8,6 +8,9 @@ export const initBuckyOS = sdkModule.initBuckyOS
 export const getBuckyOSConfig = sdkModule.getBuckyOSConfig
 export const getRuntimeType = sdkModule.getRuntimeType
 export const getAppId = sdkModule.getAppId
+export const getAppDid = sdkModule.getAppDid
+export const getAppInstanceId = sdkModule.getAppInstanceId
+export const getAppDataDir = sdkModule.getAppDataDir
 export const getKEventClient = sdkModule.getKEventClient
 export const createEventReader = sdkModule.createEventReader
 export const create_event_reader = sdkModule.create_event_reader
@@ -37,6 +40,7 @@ export const getWorkflowClient = sdkModule.getWorkflowClient
 export { hashPassword }
 export * from './sdk_core'
 export * from './types'
+export * from './app_identity'
 export * as namelib from './namelib'
 export * as bns from './bns_client'
 export * from './bns_evm_tx'

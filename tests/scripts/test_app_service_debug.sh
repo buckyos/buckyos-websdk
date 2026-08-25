@@ -6,9 +6,9 @@ usage() {
 Usage:
   test_app_service_debug.sh [owner_user_id] [--port <port>]
 
-If --port is omitted, the buckyos_systest port is read from
+If --port is omitted, the buckyos-systest.buckyos.bns.did port is read from
 ${BUCKYOS_ROOT:-/opt/buckyos}/etc/node_gateway_info.json (the entry whose
-app_id == "buckyos_systest"). The script aborts if it cannot be resolved.
+app_id == "buckyos-systest.buckyos.bns.did"). The script aborts if it cannot be resolved.
 
 Examples:
   ./tests/scripts/test_app_service_debug.sh
@@ -26,7 +26,7 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 BUCKYOS_ROOT="${BUCKYOS_ROOT:-/opt/buckyos}"
 OWNER_USER_ID="devtest"
 # PORT is resolved from ${BUCKYOS_ROOT}/etc/node_gateway_info.json (the entry
-# whose app_id == "buckyos_systest") unless --port is given. We do not keep a
+# whose app_id == "buckyos-systest.buckyos.bns.did") unless --port is given. We do not keep a
 # hard-coded default — the gateway routing is the source of truth, and a
 # stale guess silently breaks the gateway smoke checks below.
 PORT=""
@@ -68,7 +68,7 @@ resolve_systest_port() {
     echo "[test_app_service_debug] python3 is required to read ${gateway_info}" >&2
     return 1
   fi
-  python3 - "${gateway_info}" buckyos_systest <<'PY'
+  python3 - "${gateway_info}" buckyos-systest.buckyos.bns.did <<'PY'
 import json, sys
 path, app_id = sys.argv[1], sys.argv[2]
 with open(path) as f:
@@ -88,14 +88,14 @@ PY
 
 if [[ -z "${PORT}" ]]; then
   if ! PORT="$(resolve_systest_port)"; then
-    echo "[test_app_service_debug] could not resolve buckyos_systest port from ${BUCKYOS_ROOT}/etc/node_gateway_info.json" >&2
+    echo "[test_app_service_debug] could not resolve buckyos-systest.buckyos.bns.did port from ${BUCKYOS_ROOT}/etc/node_gateway_info.json" >&2
     exit 2
   fi
-  echo "[test_app_service_debug] resolved buckyos_systest port from gateway info: ${PORT}"
+  echo "[test_app_service_debug] resolved buckyos-systest.buckyos.bns.did port from gateway info: ${PORT}"
 fi
 
 DEBUG_SYSTEST_SCRIPT="${REPO_ROOT}/tests/scripts/debug_systest.sh"
-APP_ID="buckyos_systest"
+APP_ID="buckyos-systest.buckyos.bns.did"
 SYSTEST_BASE_URL="http://127.0.0.1:${PORT}"
 HEALTH_URL="${SYSTEST_BASE_URL}/sdk/appservice/healthz"
 RUNTIME_URL="http://systest.test.buckyos.io/sdk/appservice/runtime"
@@ -160,7 +160,7 @@ cleanup() {
 trap cleanup EXIT
 
 # Start the real AppService through service_debug.tsx. This injects the same
-# env (app_instance_config, <OWNER>_<APP>_TOKEN, BUCKYOS_HOST_GATEWAY) that a
+# fixed BUCKYOS_APP_* / BUCKYOS_OWNER_USER_ID env contract that a
 # production node-daemon would pass, which is why the Jest side no longer
 # tries to synthesize that env on its own.
 echo "[test_app_service_debug] starting systest AppService on port ${PORT}"

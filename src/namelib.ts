@@ -465,9 +465,10 @@ export class DID {
 
   static fromHostName(hostName: string): DID | null {
     if (hostName.endsWith('.did')) {
-      const parts = hostName.split('.')
-      if (parts.length === 3) {
-        return new DID(parts[1], parts[0])
+      const withoutSuffix = hostName.slice(0, -'.did'.length)
+      const separator = withoutSuffix.lastIndexOf('.')
+      if (separator > 0 && separator < withoutSuffix.length - 1) {
+        return new DID(withoutSuffix.slice(separator + 1), withoutSuffix.slice(0, separator))
       }
     }
 
@@ -494,9 +495,10 @@ export class DID {
     }
 
     if (hostName.endsWith('.did')) {
-      const parts = hostName.split('.')
-      if (parts.length === 3) {
-        return new DID(parts[1], parts[0])
+      const withoutSuffix = hostName.slice(0, -'.did'.length)
+      const separator = withoutSuffix.lastIndexOf('.')
+      if (separator > 0 && separator < withoutSuffix.length - 1) {
+        return new DID(withoutSuffix.slice(separator + 1), withoutSuffix.slice(0, separator))
       }
     }
 

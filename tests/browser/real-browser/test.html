@@ -102,7 +102,7 @@
       }
 
       async function run() {
-        const appId = 'systest';
+        const appId = 'buckyos-systest.buckyos.bns.did';
         const summary = {
           origin: window.location.origin,
           href: window.location.href,
@@ -122,7 +122,7 @@
             autoRenew: false,
           });
 
-          const authClient = new buckyos.AuthClient('test.buckyos.io', appId);
+          const authClient = new buckyos.AuthClient('test.buckyos.io');
           const ssoLoginUrl = authClient.buildLoginURL();
 
           loginButton.disabled = false;
