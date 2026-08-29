@@ -1,6 +1,6 @@
 {
   "name": "buckyos",
-  "version": "0.7.113",
+  "version": "0.7.114",
   "description": "BuckyOS WebSDK for browser and Node.js environments",
   "license": "MIT",
   "repository": {
