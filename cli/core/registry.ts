@@ -6,6 +6,13 @@ const KEBAB_CASE = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/
 
 const GLOBAL_OPTIONS = [
   { name: 'config-dir', property: 'configDir', type: 'string', scope: 'process' },
+  {
+    name: 'allow-read',
+    property: 'allowRead',
+    type: 'string',
+    scope: 'process',
+    repeatable: true,
+  },
   { name: 'profile', property: 'profile', type: 'string', scope: 'session' },
   { name: 'zone', property: 'zone', type: 'string', scope: 'session' },
   { name: 'endpoint', property: 'endpoint', type: 'string', scope: 'session' },

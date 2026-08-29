@@ -43,6 +43,21 @@ Deno.test('distribution policy grants Docker only to pikg and excludes the syste
     ...common,
     argv: ['pikg', 'build', externalMeta],
   })
+  const explicitReadOne = host.path.resolve(host.homeDir(), 'explicit-read-one')
+  const explicitReadTwo = host.path.resolve(host.cwd(), '../explicit-read-two')
+  const explicitRead = buildDistributionPolicy({
+    ...common,
+    argv: [
+      '--allow-read',
+      explicitReadOne,
+      `--allow-read=${explicitReadTwo}`,
+      '--allow-read',
+      explicitReadOne,
+      'pikg',
+      'build',
+      './dapp_meta',
+    ],
+  })
   const topLevel = buildDistributionPolicy({ ...common, argv: ['--version'] })
   const online = buildDistributionPolicy({ ...common, argv: ['system', 'status'] })
   assertEquals(pikg.subprocesses, ['docker'])
@@ -57,6 +72,11 @@ Deno.test('distribution policy grants Docker only to pikg and excludes the syste
   )
   assertEquals(pikg.readPaths.includes('/opt/buckyos'), false)
   assertEquals(pikg.environment.includes('BUCKYOS_ROOT'), false)
+  assertEquals(explicitRead.readPaths.includes(explicitReadOne), true)
+  assertEquals(explicitRead.readPaths.includes(explicitReadTwo), true)
+  assertEquals(explicitRead.readPaths.filter((path) => path === explicitReadOne).length, 1)
+  assertEquals(explicitRead.writePaths.includes(explicitReadOne), false)
+  assertEquals(explicitRead.writePaths.includes(explicitReadTwo), false)
 })
 
 Deno.test('invalid token errors are not misclassified as missing resources', () => {

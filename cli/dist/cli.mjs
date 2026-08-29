@@ -104,6 +104,9 @@ const STRING_GLOBALS = /* @__PURE__ */ new Map([
   ["trace-id", "traceId"],
   ["idempotency-key", "idempotencyKey"]
 ]);
+const REPEATABLE_STRING_GLOBALS = /* @__PURE__ */ new Map([
+  ["allow-read", "allowRead"]
+]);
 const BOOLEAN_GLOBALS = /* @__PURE__ */ new Map([
   ["cli", "cli"],
   ["wait", "wait"],
@@ -149,11 +152,16 @@ function parseInvocation(argv) {
       continue;
     }
     const stringProperty = STRING_GLOBALS.get(parsed.name);
-    if (!stringProperty) {
+    const repeatableStringProperty = REPEATABLE_STRING_GLOBALS.get(parsed.name);
+    if (!stringProperty && !repeatableStringProperty) {
       throw new UsageError("UNKNOWN_OPTION", `unknown global option: --${parsed.name}`);
     }
     const { value, consumed } = readOptionValue(argv, index, parsed);
-    setGlobal(global, stringProperty, normalizeGlobalValue(parsed.name, value));
+    if (repeatableStringProperty === "allowRead") {
+      global.allowRead = [...global.allowRead ?? [], value];
+    } else {
+      setGlobal(global, stringProperty, normalizeGlobalValue(parsed.name, value));
+    }
     index += consumed;
   }
   const module = argv[index];
@@ -214,7 +222,7 @@ function parseCommandArgs(command, argv, inputObject, allowReplScopedGlobals = f
       index += consumed2;
       continue;
     }
-    if (allowReplScopedGlobals && (STRING_GLOBALS.has(parsed.name) || BOOLEAN_GLOBALS.has(parsed.name))) {
+    if (allowReplScopedGlobals && (STRING_GLOBALS.has(parsed.name) || REPEATABLE_STRING_GLOBALS.has(parsed.name) || BOOLEAN_GLOBALS.has(parsed.name))) {
       throw new UsageError(
         "SESSION_OPTION_FROZEN",
         `--${parsed.name} is frozen for the interactive session`
@@ -593,6 +601,8 @@ function collectArgumentPaths(argv) {
       if (name === "config-dir") {
         read.push(value);
         write.push(value);
+      } else if (name === "allow-read") {
+        read.push(value);
       } else if (["input", "session-token-file", "identity-root", "security-root", "pikg"].includes(name)) {
         if (value !== "-")
           read.push(value);
@@ -1984,6 +1994,13 @@ function displayValue(value) {
 const KEBAB_CASE = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 const GLOBAL_OPTIONS = [
   { name: "config-dir", property: "configDir", type: "string", scope: "process" },
+  {
+    name: "allow-read",
+    property: "allowRead",
+    type: "string",
+    scope: "process",
+    repeatable: true
+  },
   { name: "profile", property: "profile", type: "string", scope: "session" },
   { name: "zone", property: "zone", type: "string", scope: "session" },
   { name: "endpoint", property: "endpoint", type: "string", scope: "session" },
@@ -4741,7 +4758,7 @@ function invalid(stage, message, entry) {
 function stableJsonDigest(value) {
   return sha256Bytes(new TextEncoder().encode(ndn.toCanonicalJsonString(value)));
 }
-const PACKAGE_VERSION = "0.7.115";
+const PACKAGE_VERSION = "0.7.116";
 const TOOL_VERSION = PACKAGE_VERSION;
 const SDK_VERSION = PACKAGE_VERSION;
 const PROTOCOL_VERSION = "1";
@@ -8795,6 +8812,7 @@ function topLevelHelp(registry) {
     "",
     "Global options:",
     "  --config-dir <path>  --profile <name>  --zone <host-or-did>",
+    "  --allow-read <path>  Add a readable filesystem root (repeatable)",
     "  --endpoint <url>      --identity <did-or-name>",
     "  --session-token <token> | --session-token-file <path>",
     "    Prefer --session-token-file for automation; argv tokens may appear in process listings.",

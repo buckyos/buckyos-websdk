@@ -17,6 +17,20 @@ Deno.test('two-stage parser keeps global options before the command', () => {
   assertEquals(parsed.verb, 'status')
 })
 
+Deno.test('global allow-read is repeatable', () => {
+  const parsed = parseInvocation([
+    '--allow-read',
+    './first',
+    '--allow-read=../second',
+    'pikg',
+    'build',
+    './dapp_meta',
+  ])
+  assertEquals(parsed.global.allowRead, ['./first', '../second'])
+  assertEquals(parsed.module, 'pikg')
+  assertEquals(parsed.verb, 'build')
+})
+
 Deno.test('argv and input JSON produce the same typed command input', () => {
   const command = createRegistry().get('config', 'set')
   const fromArgv = parseCommandArgs(command, [

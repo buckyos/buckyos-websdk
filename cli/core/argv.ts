@@ -7,6 +7,7 @@ export type OutputFormat = typeof OUTPUT_FORMATS[number]
 
 export interface GlobalOptions {
   configDir?: string
+  allowRead?: string[]
   profile?: string
   zone?: string
   endpoint?: string
@@ -60,6 +61,10 @@ const STRING_GLOBALS = new Map<string, keyof GlobalOptions>([
   ['idempotency-key', 'idempotencyKey'],
 ])
 
+const REPEATABLE_STRING_GLOBALS = new Map<string, keyof GlobalOptions>([
+  ['allow-read', 'allowRead'],
+])
+
 const BOOLEAN_GLOBALS = new Map<string, keyof GlobalOptions>([
   ['cli', 'cli'],
   ['wait', 'wait'],
@@ -106,11 +111,16 @@ export function parseInvocation(argv: string[]): Invocation {
       continue
     }
     const stringProperty = STRING_GLOBALS.get(parsed.name)
-    if (!stringProperty) {
+    const repeatableStringProperty = REPEATABLE_STRING_GLOBALS.get(parsed.name)
+    if (!stringProperty && !repeatableStringProperty) {
       throw new UsageError('UNKNOWN_OPTION', `unknown global option: --${parsed.name}`)
     }
     const { value, consumed } = readOptionValue(argv, index, parsed)
-    setGlobal(global, stringProperty, normalizeGlobalValue(parsed.name, value))
+    if (repeatableStringProperty === 'allowRead') {
+      global.allowRead = [...(global.allowRead ?? []), value]
+    } else {
+      setGlobal(global, stringProperty!, normalizeGlobalValue(parsed.name, value))
+    }
     index += consumed
   }
 
@@ -183,7 +193,8 @@ export function parseCommandArgs(
     }
     if (
       allowReplScopedGlobals &&
-      (STRING_GLOBALS.has(parsed.name) || BOOLEAN_GLOBALS.has(parsed.name))
+      (STRING_GLOBALS.has(parsed.name) || REPEATABLE_STRING_GLOBALS.has(parsed.name) ||
+        BOOLEAN_GLOBALS.has(parsed.name))
     ) {
       throw new UsageError(
         'SESSION_OPTION_FROZEN',

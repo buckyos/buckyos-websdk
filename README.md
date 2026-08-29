@@ -17,6 +17,14 @@ npx buckyos app status example
 npx buckyos log tail --app example
 ```
 
+当命令需要读取项目目录和 Tool 包目录之外的源码时，通过可重复的全局参数显式授权：
+
+```bash
+npx buckyos --allow-read ../shared-assets --allow-read /opt/app-source pikg build ./dapp_meta
+```
+
+`--allow-read` 只增加读权限，不会增加写权限。
+
 `npx buckyos` 和 npm scripts 中的 `buckyos` 固定使用项目 lockfile 对应的 Tool。PATH 中裸 `buckyos`
 由 BuckyOS 系统安装器管理并指向 `$BUCKYOS_ROOT/bin/buckyos`；文档不推荐全局
 `npm install -g buckyos`。两种分发运行同一套命令实现，互不覆盖、互不调用、也不会自更新。

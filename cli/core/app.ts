@@ -487,6 +487,7 @@ function topLevelHelp(registry: CommandRegistry): string {
     '',
     'Global options:',
     '  --config-dir <path>  --profile <name>  --zone <host-or-did>',
+    '  --allow-read <path>  Add a readable filesystem root (repeatable)',
     '  --endpoint <url>      --identity <did-or-name>',
     '  --session-token <token> | --session-token-file <path>',
     '    Prefer --session-token-file for automation; argv tokens may appear in process listings.',

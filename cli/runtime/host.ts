@@ -324,6 +324,8 @@ function collectArgumentPaths(argv: string[]): {
       if (name === 'config-dir') {
         read.push(value)
         write.push(value)
+      } else if (name === 'allow-read') {
+        read.push(value)
       } else if (
         ['input', 'session-token-file', 'identity-root', 'security-root', 'pikg'].includes(name)
       ) {

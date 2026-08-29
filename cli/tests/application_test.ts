@@ -89,6 +89,12 @@ Deno.test('offline discovery works without config, network, or identity', async 
   )
   assertEquals(sessionToken.secret, true)
   assertEquals(sessionToken.scope, 'session')
+  const allowRead = envelope.data.global_options.find(
+    (option: Record<string, unknown>) => option.name === 'allow-read',
+  )
+  assertEquals(allowRead.property, 'allowRead')
+  assertEquals(allowRead.scope, 'process')
+  assertEquals(allowRead.repeatable, true)
 })
 
 Deno.test('errors use a stable JSON envelope and exit code', async () => {
