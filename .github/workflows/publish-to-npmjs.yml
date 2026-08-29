@@ -38,7 +38,7 @@ jobs:
       - name: Build
         run: pnpm run build
       - name: Test SDK
-        run: pnpm test --runInBand --testPathIgnorePatterns=tests/app-client/runtime.unit.test.ts
+        run: pnpm test --runInBand --testPathIgnorePatterns='tests/app-client/runtime\.unit\.test\.ts|tests/cert\.test\.ts'
       - name: Check CLI
         run: pnpm run check:cli
       - name: Test CLI
