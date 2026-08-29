@@ -1,0 +1,55 @@
+name: SDK and Tool
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  sdk-tool:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner:
+          - ubuntu-24.04
+          - ubuntu-24.04-arm
+          - macos-15-intel
+          - macos-15
+          - windows-2025
+          - windows-11-arm
+        node: [22.13.0, 24.x]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.18.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.9.4
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run build
+      - run: pnpm test --runInBand
+      - run: pnpm run check:cli
+      - run: pnpm run test:cli
+      - run: pnpm run test:cli-conformance
+      - run: pnpm run test:tarball
+      - run: pnpm run test:release-manifest
+
+  alpine-node-only:
+    runs-on: ubuntu-latest
+    container: node:22.13-alpine
+    steps:
+      - uses: actions/checkout@v4
+      - run: corepack enable
+      - run: corepack prepare pnpm@11.18.0 --activate
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run build
+      - run: pnpm run check:cli-boundary
+      - run: pnpm run test:tarball

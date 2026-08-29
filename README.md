@@ -1,22 +1,47 @@
-# BuckyOS SDK (typescript Web端)
+# BuckyOS SDK 与 Tool
+
+`buckyos` npm 包同时提供 browser/node/provision SDK 和项目本地 CLI。App 开发者只需项目已有的
+Node.js，不需要安装 Deno，也不需要 checkout BuckyOS 或本仓库：
+
+```bash
+npm install buckyos
+npx buckyos --version
+npx buckyos pikg init . --owner did:bns:alice --kind static-web --source ./dist
+npm run build
+npx buckyos pikg build ./dapp_meta
+npx buckyos pikg pack ./dapp_dist
+npx buckyos pikg info ./dapp_dist/example-0.1.0.pikg
+npx buckyos app install ./dapp_dist/example-0.1.0.pikg --policy local-developer
+npx buckyos task wait <task-id>
+npx buckyos app status example
+npx buckyos log tail --app example
+```
+
+`npx buckyos` 和 npm scripts 中的 `buckyos` 固定使用项目 lockfile 对应的 Tool。PATH 中裸 `buckyos`
+由 BuckyOS 系统安装器管理并指向 `$BUCKYOS_ROOT/bin/buckyos`；文档不推荐全局
+`npm install -g buckyos`。两种分发运行同一套命令实现，互不覆盖、互不调用、也不会自更新。
+
+遇到本地构建或目标配置问题，先运行 `npx buckyos pikg doctor`。`--version --verbose` 会打印 实际
+executable、Node/Deno host、distribution、Tool/SDK/协议版本和本地 policy。
 
 ## 身份验证
 
 然后在浏览器中允许的,属于dApp的页面，都应使用BuckyOS SDK提供的登陆功能来获得一个有效身份。
 身份验证流程如下：
 
-路径1：1.浏览器发送请求 --HTTPs--> 2.cyfs-gateway进行验证 --Local HTTP--> 3.dApp Server使用BuckyOS Rust SDK进行验证。
-路径2：1. App -->http@bdt--> 2.cyfs-gateway进行验证 -- Local HTTP--> 3.dApp Server使用BuckyOS Rust SDK进行验证。
-**路径2 依赖有客户端身份的App/CYFS 浏览器，暂未实现**
+路径1：1.浏览器发送请求 --HTTPs--> 2.cyfs-gateway进行验证 --Local HTTP--> 3.dApp Server使用BuckyOS
+Rust SDK进行验证。 路径2：1. App -->http@bdt--> 2.cyfs-gateway进行验证 -- Local HTTP--> 3.dApp
+Server使用BuckyOS Rust SDK进行验证。 **路径2 依赖有客户端身份的App/CYFS 浏览器，暂未实现**
 路径3：1.App Service --RPC@http--> 2. system_service(验证rpc.token,系统调用验证，不走cyfs-gateway)
-
 
 ### cyfs-gateway的验证
 
-cyfs-gateway会根据HTTP Request的Host字段和cookie中的buckyos_token字段来进行验证。 该buckyos_token通常是有相对较长有效期的普通权限jwt.
+cyfs-gateway会根据HTTP Request的Host字段和cookie中的buckyos_token字段来进行验证。
+该buckyos_token通常是有相对较长有效期的普通权限jwt.
 对POST请求，验证首先要得到jwt格式的rpc.token，然后进一步验证该rpc请求是否有正确的授权。涉及到敏感操作的rpc.jwt通常是短期的，甚至是一次性的,并有sudo级别权限。
 
-验证方根据buckyos_token / rpc_token得到appid,userid,resource,OP组成四元组，到RBAC库中查询对应权限，并进行验证。
+验证方根据buckyos_token /
+rpc_token得到appid,userid,resource,OP组成四元组，到RBAC库中查询对应权限，并进行验证。
 RBCL需要的四元组:
 
 ```
@@ -34,14 +59,14 @@ cyfs-gateway对于需要http验证的请求，如果没有buckyos_token字段，
 
 ```javascript
 // at feedlist.excample.com
-await buckyos.loginByBrowserSSO();
+await buckyos.loginByBrowserSSO()
 // 当前窗口会跳转到 sys.$zoneid/sso/login
 // SSO 成功并跳回当前页后，再读取当前账号状态
-let user_info = await buckyos.getAccountInfo();
-let bucky_token = user_info?.session_token;
-let user_id = user_info?.user_id;
-let rpc_client = new buckyos.kRPCClient(feedlist_api_url,bucky_token);
-let user_feeds = rpc_client.get_user_feeds(user_id);
+let user_info = await buckyos.getAccountInfo()
+let bucky_token = user_info?.session_token
+let user_id = user_info?.user_id
+let rpc_client = new buckyos.kRPCClient(feedlist_api_url, bucky_token)
+let user_feeds = rpc_client.get_user_feeds(user_id)
 ```
 
 执行高权限操作
@@ -54,7 +79,6 @@ on_click_change_password(){
     //高权限操作的所有参数都在bucky_token的payload中
     rpc_client.change_password(bucky_token);
 }
-
 ```
 
 下面是feedlist_api的实现
@@ -82,13 +106,14 @@ on_request(request,response){
 authClient主要靠系统的内置verify_hub服务来完成功能，其基本逻辑是
 
 1. 在当前窗口直接跳转到标准的 `sys.$zoneid/sso/login` 页面，该页面会根据 login 时的参数调整一些行为
-2. 用户在跳转后的页面中完成登录，有2种方法
-    a. 使用用户名密码向verify_hub发起请求，verify_hub会根据其掌握的账号信息返回必要的jwt验证信息
-    b. 要求用户输入一个加密后的私钥，当用户输入正确的解密密码后，可以用该私钥来构造jwt
-       
+2. 用户在跳转后的页面中完成登录，有2种方法 a.
+   使用用户名密码向verify_hub发起请求，verify_hub会根据其掌握的账号信息返回必要的jwt验证信息 b.
+   要求用户输入一个加密后的私钥，当用户输入正确的解密密码后，可以用该私钥来构造jwt
 
 ### bucky_token jwt payload的内容
+
 签名都是verify_hub服务完成的
+
 ```
 {
     "appid": "$appid",
@@ -105,17 +130,16 @@ authClient主要靠系统的内置verify_hub服务来完成功能，其基本逻
 
 ## namelib 与 provision（身份文档构造）
 
-SDK 自带 Rust `name-lib` 的 TS 镜像（`namelib`，universal 导出），以及
-`buckycli` 构造侧命令的 TS 镜像（`buckyos/provision`，**node-only**，要求
-Node >= 22.13 或 Deno >= 2.2，依赖 `node:sqlite`）。格式与 Rust 端逐字节对齐
-（Ed25519 PKCS8 PEM / JWK / EdDSA JWT），由 golden fixture 单测保障
-（`tests/fixtures/provision/`）。
+SDK 自带 Rust `name-lib` 的 TS 镜像（`namelib`，universal 导出），以及 `buckycli` 构造侧命令的 TS
+镜像（`buckyos/provision`，**node-only**，要求 Node >= 22.13 或 Deno >= 2.2，依赖
+`node:sqlite`）。格式与 Rust 端逐字节对齐 （Ed25519 PKCS8 PEM / JWK / EdDSA JWT），由 golden fixture
+单测保障 （`tests/fixtures/provision/`）。
 
 ### Quickstart：keygen → createUserEnv → createNodeConfigs
 
 ```ts
 import { namelib } from 'buckyos'
-import { createUserEnv, createNodeConfigs, createSnConfigs } from 'buckyos/provision'
+import { createNodeConfigs, createSnConfigs, createUserEnv } from 'buckyos/provision'
 
 // 1. 生成 Ed25519 身份密钥（私钥 PKCS8 PEM + 公钥 JWK）
 const { privateKeyPem, publicKeyJwk } = await namelib.generateEd25519KeyPair()
@@ -133,10 +157,10 @@ await createUserEnv({
 await createNodeConfigs({ deviceName: 'ood1', envDir: '/tmp/alice-env' })
 ```
 
-其它能力：`createSnConfigs` / `registerUserToSn` / `registerDeviceToSn`（SN 侧）、
-`setPkgMeta` / `MetaIndexDb`（pkg meta 索引库）、`buildDidDocs`（内核服务 did docs）、
-`createCa` / `createCertFromCa`（旧 CertManager 兼容 TLS 证书），以及
-`IdentityRoots` / `createIdentityCertFromCa`（按 identity path 协议写入
+其它能力：`createSnConfigs` / `registerUserToSn` / `registerDeviceToSn`（SN 侧）、 `setPkgMeta` /
+`MetaIndexDb`（pkg meta 索引库）、`buildDidDocs`（内核服务 did docs）、 `createCa` /
+`createCertFromCa`（旧 CertManager 兼容 TLS 证书），以及 `IdentityRoots` /
+`createIdentityCertFromCa`（按 identity path 协议写入
 `$BUCKYOS_IDENTITY_ROOT/{encoded raw host URI}/server.*` 和
 `$BUCKYOS_SECURITY_ROOT/{encoded raw host URI}/server.private.pem`；现阶段不生成
 `server.keyref.json`）。
@@ -160,16 +184,19 @@ npm run build:all
 ```
 
 该命令会执行以下操作：
+
 1. 运行 `vite build` 构建项目，生成 `dist/index.*`、`dist/browser.*`、`dist/node.*`
 2. 运行 `tsc -p tsconfig.build.json` 生成对应的 TypeScript 类型定义文件
+3. 生成与 package version 一致的 Tool 版本文件，并构建 Node CLI bundle
 
 构建产物位于 `dist/` 目录。
 
 ### AppClient Demo
 
-仓库里带了一个最小可运行的 AppClient 示例：[examples/app_client_demo.ts](/Users/liuzhicong/project/buckyos-websdk/examples/app_client_demo.ts)。
+仓库里带了一个最小可运行的 AppClient 示例：`examples/app_client_demo.ts`。
 
 它会：
+
 1. 使用本机私钥目录初始化 `AppClient`
 2. 向真实运行中的 `system_config` 读取 `boot/config`
 3. 打印当前 `session_token` 的 claims 和 `boot/config` 的顶层 key
@@ -230,16 +257,27 @@ git push --tags
 4. 填写 Release 标题和描述
 5. 上传构建产物（`dist/` 目录下的文件）作为附件（可选）
 
-### 发布到 npm（可选）
+### 发布到 npm
 
-如果要将包发布到 npm 仓库：
+发布工作流使用 npm Trusted Publishing/provenance、最小权限和 npm 账号 2FA。首次包含 Tool 的
+版本只能进入 `next`/`beta`，不得直接覆盖 `latest`：
 
 ```bash
-# 登录 npm（首次发布需要）
-npm login
-
-# 发布（会自动执行 prepublishOnly 钩子进行构建）
-npm publish
+pnpm run build
+pnpm run check:cli
+pnpm run test:cli
+pnpm run test:cli-conformance
+pnpm run test:tarball
+pnpm run test:release-manifest
+npm publish --tag next --provenance
 ```
 
-注意：`prepublishOnly` 钩子会在发布前自动执行 `pnpm run build:all`，确保发布的是最新构建产物。
+系统打包必须固定这次 CI 生成的原始 npm tarball、CycloneDX SBOM、release manifest 和 Deno
+digest，不得重新 checkout 或重建。真实 App/DV、系统离线安装、升级和回滚验收通过后，只移动 dist-tag：
+
+```bash
+npm dist-tag add buckyos@<已验证版本> latest
+```
+
+回滚 dist-tag 不会改变已经安装的 BuckyOS system Tool；系统 Tool 只随 installer/updater 事务
+更新或回滚。

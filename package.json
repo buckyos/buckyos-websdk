@@ -2,6 +2,29 @@
   "name": "buckyos",
   "version": "0.7.113",
   "description": "BuckyOS WebSDK for browser and Node.js environments",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/buckyos/buckyos-websdk.git"
+  },
+  "homepage": "https://github.com/buckyos/buckyos-websdk#readme",
+  "bugs": {
+    "url": "https://github.com/buckyos/buckyos-websdk/issues"
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "packageManager": "pnpm@11.18.0",
+  "keywords": [
+    "buckyos",
+    "sdk",
+    "cli",
+    "pikg",
+    "decentralized-app"
+  ],
+  "bin": {
+    "buckyos": "./cli/launcher.mjs"
+  },
   "main": "dist/index.cjs",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
@@ -45,11 +68,23 @@
   },
   "files": [
     "dist",
-    "README.md"
+    "cli/launcher.mjs",
+    "cli/system_bootstrap.ts",
+    "cli/system_launcher.ts",
+    "cli/main.ts",
+    "cli/version.ts",
+    "cli/deno.json",
+    "cli/core",
+    "cli/modules",
+    "cli/runtime",
+    "cli/fixtures",
+    "cli/dist",
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
-    "build": "rm -rf dist && vite build && tsc -p tsconfig.build.json",
-    "types": "rm -rf dist && tsc -p tsconfig.build.json",
+    "build": "node scripts/clean-build.mjs all && node scripts/generate-cli-version.mjs && vite build && tsc -p tsconfig.build.json && vite build --config vite.cli.config.ts",
+    "types": "node scripts/clean-build.mjs sdk && tsc -p tsconfig.build.json",
     "build:all": "pnpm run build",
     "dev": "vite",
     "demo:app-client": "pnpm exec ts-node examples/app_client_demo.ts",
@@ -57,6 +92,16 @@
     "debug:systest": "bash ./tests/scripts/debug_systest.sh",
     "test:app-service:debug": "bash ./tests/scripts/test_app_service_debug.sh",
     "test": "jest",
+    "check:cli-boundary": "node scripts/check-cli-boundary.mjs",
+    "lint:cli": "deno lint cli/core cli/modules cli/runtime cli/tests cli/main.ts cli/system_bootstrap.ts cli/system_launcher.ts scripts/*.mjs",
+    "check:cli": "pnpm run check:cli-boundary && pnpm run lint:cli && deno check --config cli/deno.json cli/system_bootstrap.ts cli/system_launcher.ts cli/tests/*.ts",
+    "test:cli": "deno test --config cli/deno.json --allow-read --allow-write --allow-env --allow-run=docker cli/tests/",
+    "test:cli-conformance": "node scripts/test-cli-conformance.mjs",
+    "test:tarball": "node scripts/test-npm-tarball.mjs",
+    "test:release-manifest": "node scripts/test-release-manifest.mjs",
+    "pack:check": "npm pack --dry-run",
+    "release:sbom": "node scripts/create-sbom.mjs",
+    "release:manifest": "node scripts/create-release-manifest.mjs",
     "test:browser:real:prepare": "node tests/scripts/prepare_real_browser_test.mjs",
     "test:browser:real": "pnpm run build && pnpm run test:browser:real:prepare && npx playwright test tests/browser/real-browser/playwright.spec.js tests/browser/real-browser/ndn_types.spec.js tests/browser/real-browser/ndm_client.spec.js tests/browser/real-browser/ndm_client_upload.spec.js --reporter=line",
     "test:app-client": "jest --runInBand tests/app-client",
