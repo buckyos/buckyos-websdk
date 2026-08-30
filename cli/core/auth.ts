@@ -5,9 +5,16 @@ import {
   VerifyHubClient,
 } from 'buckyos/node'
 import { type Environment, readEnvironment, type ResolvedConfig } from './config.ts'
+import {
+  type DevelopmentModeDecision,
+  type DevelopmentModeReader,
+  readTargetDevelopmentMode,
+} from './development_mode.ts'
 import { EXIT_AUTH, sanitizeMessage, ToolError } from './errors.ts'
 import {
+  IDENTITY_CANDIDATE_LIMIT,
   IDENTITY_REJECTION_CODES,
+  type IdentityCandidate,
   type IdentityMaterial,
   resolveIdentityMaterial,
   scanIdentityCandidates,
@@ -57,6 +64,7 @@ export interface AuthenticationDependencies {
   transport?: AuthenticationTransport
   readPassword?: (prompt: string) => Promise<string>
   readUsername?: (prompt: string) => Promise<string>
+  readDevelopmentMode?: DevelopmentModeReader
   now?: () => number
 }
 
@@ -78,9 +86,11 @@ export class AuthenticationSession implements SessionController {
   readonly #transport: AuthenticationTransport
   readonly #readPassword: (prompt: string) => Promise<string>
   readonly #readUsername: (prompt: string) => Promise<string>
+  readonly #readDevelopmentMode: DevelopmentModeReader
   readonly #now: () => number
   #session?: AuthenticatedSession
   #acceptedIdentity?: IdentityMaterial
+  #developmentMode?: DevelopmentModeDecision
   #identityAttempts: Array<{ identity: string; code: string; message: string }> = []
 
   constructor(
@@ -93,6 +103,7 @@ export class AuthenticationSession implements SessionController {
     this.#transport = dependencies.transport ?? new SdkAuthenticationTransport()
     this.#readPassword = dependencies.readPassword ?? readSecret
     this.#readUsername = dependencies.readUsername ?? readVisible
+    this.#readDevelopmentMode = dependencies.readDevelopmentMode ?? readTargetDevelopmentMode
     this.#now = dependencies.now ?? Date.now
   }
 
@@ -146,6 +157,7 @@ export class AuthenticationSession implements SessionController {
       renewable: session.renewable,
       expires_at: expiresAt ?? null,
       remaining_seconds: remainingSeconds,
+      developer_mode: this.#developmentMode?.state ?? null,
       identity_attempts: this.#identityAttempts,
     }
   }
@@ -180,34 +192,43 @@ export class AuthenticationSession implements SessionController {
     const injected = this.#environment.BUCKYOS_APPCLIENT_SESSION_TOKEN?.trim()
     if (injected) return externalSession(injected, 'environment', this.#now())
 
-    if (this.#acceptedIdentity) return await this.#loginWithIdentity(this.#acceptedIdentity)
+    if (this.#acceptedIdentity) {
+      if (this.#acceptedIdentity.source === 'buckycli-home') {
+        await this.#requireDeveloperIdentityAccess()
+      }
+      return await this.#loginWithIdentity(this.#acceptedIdentity)
+    }
 
     if (this.config.identity) {
-      const material = await resolveIdentityMaterial(
-        this.config.identity,
-        this.config,
-        this.#environment,
-      )
+      const material = await this.#resolveExplicitIdentity(this.config.identity)
       const session = await this.#loginWithIdentity(material)
       this.#acceptedIdentity = material
       return session
     }
 
-    const candidates = await scanIdentityCandidates(this.config, this.#environment)
     this.#identityAttempts = []
-    for (const candidate of candidates.candidates) {
-      try {
-        const session = await this.#loginWithIdentity(candidate.material)
-        this.#acceptedIdentity = candidate.material
-        return session
-      } catch (error) {
-        if (!isIdentityRejection(error)) throw error
-        this.#identityAttempts.push({
-          identity: candidate.material.did,
-          code: error.code,
-          message: sanitizeMessage(error.message),
-        })
-      }
+    const operations = await scanIdentityCandidates(this.config, this.#environment)
+    const operationsSession = await this.#tryIdentityCandidates(operations.candidates)
+    if (operationsSession) return operationsSession
+
+    const developmentMode = await this.#checkDevelopmentMode()
+    if (
+      developmentMode.state === 'enabled' &&
+      operations.candidates.length < IDENTITY_CANDIDATE_LIMIT
+    ) {
+      const operationsDids = new Set(
+        operations.candidates.map((candidate) => candidate.material.did),
+      )
+      const developer = await scanIdentityCandidates(this.config, this.#environment, {
+        includeOperations: false,
+        includeDeveloper: true,
+      })
+      const remaining = IDENTITY_CANDIDATE_LIMIT - operations.candidates.length
+      const candidates = developer.candidates.filter((candidate) =>
+        !operationsDids.has(candidate.material.did)
+      ).slice(0, remaining)
+      const developerSession = await this.#tryIdentityCandidates(candidates)
+      if (developerSession) return developerSession
     }
     if (this.#identityAttempts.length > 0) {
       throw new ToolError(
@@ -241,6 +262,44 @@ export class AuthenticationSession implements SessionController {
     return authenticatedSession(token, 'password', true, this.#now())
   }
 
+  async #resolveExplicitIdentity(selectedIdentity: string): Promise<IdentityMaterial> {
+    if (this.config.implicitDeviceIdentity) {
+      return await resolveIdentityMaterial(selectedIdentity, this.config, this.#environment)
+    }
+
+    try {
+      return await resolveIdentityMaterial(selectedIdentity, this.config, this.#environment)
+    } catch (error) {
+      if (!(error instanceof ToolError) || error.code !== 'IDENTITY_NOT_FOUND') throw error
+    }
+
+    await this.#requireDeveloperIdentityAccess()
+    return await resolveIdentityMaterial(selectedIdentity, this.config, this.#environment, {
+      includeOperations: false,
+      includeDeveloper: true,
+    })
+  }
+
+  async #tryIdentityCandidates(
+    candidates: readonly IdentityCandidate[],
+  ): Promise<AuthenticatedSession | undefined> {
+    for (const candidate of candidates) {
+      try {
+        const session = await this.#loginWithIdentity(candidate.material)
+        this.#acceptedIdentity = candidate.material
+        return session
+      } catch (error) {
+        if (!isIdentityRejection(error)) throw error
+        this.#identityAttempts.push({
+          identity: candidate.material.did,
+          code: error.code,
+          message: sanitizeMessage(error.message),
+        })
+      }
+    }
+    return undefined
+  }
+
   async #loginWithIdentity(material: IdentityMaterial): Promise<AuthenticatedSession> {
     const loginJwt = await createLoginJwt(
       material.subject,
@@ -255,6 +314,31 @@ export class AuthenticationSession implements SessionController {
       this.config.timeoutMs,
     )
     return authenticatedSession(token, 'identity', true, this.#now())
+  }
+
+  async #checkDevelopmentMode(): Promise<DevelopmentModeDecision> {
+    this.#developmentMode = await this.#readDevelopmentMode(this.config)
+    return this.#developmentMode
+  }
+
+  async #requireDeveloperIdentityAccess(): Promise<void> {
+    const decision = await this.#checkDevelopmentMode()
+    if (decision.state === 'enabled') return
+    this.#acceptedIdentity = undefined
+    if (decision.state === 'disabled') {
+      throw new ToolError(
+        'DEVELOPER_IDENTITY_DISABLED',
+        'the target Zone has developer mode disabled; local developer identities are unavailable',
+        EXIT_AUTH,
+      )
+    }
+    throw new ToolError(
+      'DEVELOPER_MODE_UNAVAILABLE',
+      'the target Zone developer-mode configuration could not be verified',
+      EXIT_AUTH,
+      true,
+      { reason: sanitizeMessage(decision.reason) },
+    )
   }
 }
 

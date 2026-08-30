@@ -17,12 +17,18 @@ export interface IdentityMaterial {
   documentPath: string
   privateKeyPath: string
   privateKeyPem: string
+  source: IdentityRootPair['source']
 }
 
 export interface IdentityRootPair {
   publicRoot: string
   securityRoot: string
-  source: 'explicit' | 'tool' | 'environment' | 'buckyos-root'
+  source: 'buckyos-home' | 'buckycli-home' | 'current-device'
+}
+
+export interface IdentityRootOptions {
+  includeOperations?: boolean
+  includeDeveloper?: boolean
 }
 
 export const IDENTITY_CANDIDATE_LIMIT = 8
@@ -137,37 +143,31 @@ export async function readCurrentDeviceIdentity(
 export function identityRootPairs(
   config: ResolvedConfig,
   environment: Environment = readEnvironment(),
+  options: IdentityRootOptions = {},
 ): IdentityRootPair[] {
+  const device = config.implicitDeviceIdentity
+  if (device) {
+    return [{
+      publicRoot: device.publicRoot,
+      securityRoot: device.securityRoot,
+      source: 'current-device',
+    }]
+  }
+
+  const home = environment.HOME ?? environment.USERPROFILE ?? getHost().homeDir()
   const pairs: IdentityRootPair[] = []
-  if (config.identityRoot && config.securityRoot) {
+  if (options.includeOperations ?? true) {
     pairs.push({
-      publicRoot: config.identityRoot,
-      securityRoot: config.securityRoot,
-      source: 'explicit',
+      publicRoot: join(home, '.buckyos', 'local', 'identity'),
+      securityRoot: join(home, '.buckyos', 'security'),
+      source: 'buckyos-home',
     })
   }
-  pairs.push({
-    publicRoot: join(config.configDir, 'local', 'identity'),
-    securityRoot: join(config.configDir, 'security'),
-    source: 'tool',
-  })
-  if (environment.BUCKYOS_IDENTITY_ROOT && environment.BUCKYOS_SECURITY_ROOT) {
-    const duplicate = config.identityRoot === environment.BUCKYOS_IDENTITY_ROOT &&
-      config.securityRoot === environment.BUCKYOS_SECURITY_ROOT
-    if (!duplicate) {
-      pairs.push({
-        publicRoot: environment.BUCKYOS_IDENTITY_ROOT,
-        securityRoot: environment.BUCKYOS_SECURITY_ROOT,
-        source: 'environment',
-      })
-    }
-  }
-  if (getHost().policy.distribution === 'system') {
-    const buckyosRoot = environment.BUCKYOS_ROOT ?? defaultBuckyOSRoot(environment)
+  if (options.includeDeveloper ?? false) {
     pairs.push({
-      publicRoot: join(buckyosRoot, 'local', 'identity'),
-      securityRoot: join(buckyosRoot, 'security'),
-      source: 'buckyos-root',
+      publicRoot: join(home, '.buckycli', 'local', 'identity'),
+      securityRoot: join(home, '.buckycli', 'security'),
+      source: 'buckycli-home',
     })
   }
   return deduplicatePairs(pairs)
@@ -177,11 +177,12 @@ export async function resolveIdentityMaterial(
   selectedIdentity: string,
   config: ResolvedConfig,
   environment: Environment = readEnvironment(),
+  options: IdentityRootOptions = {},
 ): Promise<IdentityMaterial> {
   const selected = selectedIdentity.trim()
   if (!selected) throw new UsageError('IDENTITY_REQUIRED', 'identity is empty')
 
-  for (const roots of identityRootPairs(config, environment)) {
+  for (const roots of identityRootPairs(config, environment, options)) {
     for (const directory of await candidateDirectories(roots.publicRoot, selected)) {
       const material = await loadIdentityMaterial(roots, directory, selected)
       if (material) return material
@@ -198,11 +199,12 @@ export async function resolveIdentityMaterial(
 export async function scanIdentityCandidates(
   config: ResolvedConfig,
   environment: Environment = readEnvironment(),
+  options: IdentityRootOptions = {},
 ): Promise<IdentityCandidateScan> {
   const candidates: IdentityCandidate[] = []
   const skipped: IdentityCandidateScan['skipped'] = []
   const seen = new Set<string>()
-  const roots = identityRootPairs(config, environment)
+  const roots = identityRootPairs(config, environment, options)
   for (const pair of roots) {
     let directories: string[]
     try {
@@ -256,7 +258,7 @@ export async function scanIdentityCandidates(
     if (candidates.length >= IDENTITY_CANDIDATE_LIMIT) break
   }
   return {
-    order: Object.freeze(['explicit', 'tool', 'environment', 'buckyos-root']),
+    order: Object.freeze(roots.map((pair) => pair.source)),
     limit: IDENTITY_CANDIDATE_LIMIT,
     candidates,
     skipped,
@@ -266,10 +268,13 @@ export async function scanIdentityCandidates(
 export async function identityCandidateView(
   config: ResolvedConfig,
   environment: Environment = readEnvironment(),
+  developerModeEnabled = false,
 ): Promise<Record<string, unknown>> {
   if (config.identity) {
     try {
-      const material = await resolveIdentityMaterial(config.identity, config, environment)
+      const material = await resolveIdentityMaterial(config.identity, config, environment, {
+        includeDeveloper: developerModeEnabled,
+      })
       return {
         mode: 'explicit',
         order: [material.did],
@@ -294,7 +299,9 @@ export async function identityCandidateView(
       }
     }
   }
-  const scan = await scanIdentityCandidates(config, environment)
+  const scan = await scanIdentityCandidates(config, environment, {
+    includeDeveloper: developerModeEnabled,
+  })
   return {
     mode: 'search',
     order: scan.order,
@@ -336,6 +343,7 @@ async function loadIdentityMaterial(
       documentPath,
       privateKeyPath,
       privateKeyPem,
+      source: roots.source,
     }
   } catch (error) {
     if (!isHostError(error, 'NotFound')) throw error

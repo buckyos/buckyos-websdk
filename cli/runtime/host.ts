@@ -184,8 +184,6 @@ export const TOOL_ENVIRONMENT_NAMES = [
   'BUCKYOS_TOOL_ENDPOINT',
   'BUCKYOS_TOOL_IDENTITY',
   'BUCKYOS_TOOL_OUTPUT',
-  'BUCKYOS_IDENTITY_ROOT',
-  'BUCKYOS_SECURITY_ROOT',
   'BUCKYOS_APPCLIENT_SESSION_TOKEN',
   'BUCKYOS_ROOT',
   'SOURCE_DATE_EPOCH',
@@ -210,13 +208,15 @@ export function buildDistributionPolicy(options: PolicyOptions): DistributionPol
   const configRoot = path.resolve(
     environment.BUCKYOS_TOOL_CONFIG_DIR ?? path.join(homeDir, '.buckyos_tool'),
   )
-  const readPaths = new Set([path.resolve(packageRoot), path.resolve(cwd), configRoot])
+  const readPaths = new Set([
+    path.resolve(packageRoot),
+    path.resolve(cwd),
+    configRoot,
+    path.resolve(path.join(homeDir, '.buckyos')),
+    path.resolve(path.join(homeDir, '.buckycli')),
+  ])
   const writePaths = new Set([path.resolve(cwd), configRoot])
   if (options.distribution === 'system') readPaths.add(buckyosRoot)
-  if (environment.BUCKYOS_IDENTITY_ROOT && environment.BUCKYOS_SECURITY_ROOT) {
-    readPaths.add(path.resolve(environment.BUCKYOS_IDENTITY_ROOT))
-    readPaths.add(path.resolve(environment.BUCKYOS_SECURITY_ROOT))
-  }
 
   const parsed = collectArgumentPaths(argv)
   for (const candidate of parsed.read) readPaths.add(resolveInputPath(candidate, cwd, path))
@@ -326,9 +326,7 @@ function collectArgumentPaths(argv: string[]): {
         write.push(value)
       } else if (name === 'allow-read') {
         read.push(value)
-      } else if (
-        ['input', 'session-token-file', 'identity-root', 'security-root', 'pikg'].includes(name)
-      ) {
+      } else if (['input', 'session-token-file', 'pikg'].includes(name)) {
         if (value !== '-') read.push(value)
       } else if (name === 'source' && module === 'pikg') {
         read.push(value)

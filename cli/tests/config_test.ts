@@ -54,14 +54,33 @@ Deno.test('interactive output defaults to table unless explicitly selected', asy
   }
 })
 
-Deno.test('identity roots never include legacy buckycli paths', () => {
-  const pairs = identityRootPairs(
-    testConfig({ configDir: '/home/alice/.buckyos_tool' }),
-    { BUCKYOS_ROOT: '/opt/buckyos' },
-  )
-  assert(pairs.every((pair) => !pair.publicRoot.includes('.buckycli')))
-  assert(pairs.every((pair) => !pair.securityRoot.includes('.buckycli')))
-  assertEquals(pairs[0].publicRoot, '/home/alice/.buckyos_tool/local/identity')
+Deno.test('operations and developer identity roots are fixed and selected separately', () => {
+  const config = testConfig({
+    configDir: '/home/alice/.buckyos_tool',
+    identityRoot: '/untrusted/identity',
+    securityRoot: '/untrusted/security',
+  })
+  const environment = { HOME: '/home/alice', BUCKYOS_ROOT: '/opt/buckyos' }
+  const operations = identityRootPairs(config, environment)
+  assertEquals(operations, [
+    {
+      publicRoot: '/home/alice/.buckyos/local/identity',
+      securityRoot: '/home/alice/.buckyos/security',
+      source: 'buckyos-home',
+    },
+  ])
+  const developer = identityRootPairs(config, environment, {
+    includeOperations: false,
+    includeDeveloper: true,
+  })
+  assertEquals(developer, [
+    {
+      publicRoot: '/home/alice/.buckycli/local/identity',
+      securityRoot: '/home/alice/.buckycli/security',
+      source: 'buckycli-home',
+    },
+  ])
+  assert([...operations, ...developer].every((pair) => !pair.publicRoot.startsWith('/untrusted')))
 })
 
 Deno.test('config files reject secret or unknown fields', async () => {

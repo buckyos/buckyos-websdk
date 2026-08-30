@@ -44,16 +44,20 @@ build scripts. Set `SOURCE_DATE_EPOCH` for byte-reproducible Node/Deno PIKG buil
 
 ## Policy and identity
 
-The developer policy grants the package root, cwd, Tool config, and explicit input/output paths. It
-does not include `$BUCKYOS_ROOT` or scan system credentials. The system policy additionally grants
-its paired BuckyOS root. Both policies constrain environment names and subprocesses; only PIKG
-Docker inputs may invoke `docker`.
+The developer policy grants the package root, cwd, Tool config, the read-only `~/.buckyos` and
+`~/.buckycli` roots, and explicit non-identity input/output paths. It does not include
+`$BUCKYOS_ROOT` or scan system credentials. The system policy additionally grants its paired BuckyOS
+root. Both policies constrain environment names and subprocesses; only PIKG Docker inputs may invoke
+`docker`.
 
-An explicitly selected identity is tried once. Without an explicit identity, readable candidate
-roots are scanned in the frozen source order `explicit`, `tool`, `environment`, `buckyos-root`, with
-directories sorted and a maximum of eight usable candidates. Rotation occurs only during session
-creation and only for `IDENTITY_KIND_NOT_ACCEPTED` or `AUTHENTICATION_REJECTED`; timeouts, network
-errors, capability mismatches and RBAC denial never rotate. Private keys and tokens are never shown.
+`~/.buckyos` is the regular operations identity root and is always eligible. Before touching the
+developer-only `~/.buckycli` root, the Tool reads `system.dev_mode.get` from the target Zone and
+requires a valid `BuckyOSDevConfig` with `enabled: true`. Automatic discovery tries `~/.buckyos`
+first and consults developer mode only if no operations identity succeeds; the combined search is
+limited to eight usable candidates. An explicitly selected identity is tried once. Rotation occurs
+only during session creation and only for
+`IDENTITY_KIND_NOT_ACCEPTED` or `AUTHENTICATION_REJECTED`; timeouts, network errors, capability
+mismatches and RBAC denial never rotate. Private keys and tokens are never shown.
 
 ## Verification
 

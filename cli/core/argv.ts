@@ -12,8 +12,6 @@ export interface GlobalOptions {
   zone?: string
   endpoint?: string
   identity?: string
-  identityRoot?: string
-  securityRoot?: string
   sessionToken?: string
   sessionTokenFile?: string
   cli?: boolean
@@ -50,8 +48,6 @@ const STRING_GLOBALS = new Map<string, keyof GlobalOptions>([
   ['zone', 'zone'],
   ['endpoint', 'endpoint'],
   ['identity', 'identity'],
-  ['identity-root', 'identityRoot'],
-  ['security-root', 'securityRoot'],
   ['session-token', 'sessionToken'],
   ['session-token-file', 'sessionTokenFile'],
   ['output', 'output'],

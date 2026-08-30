@@ -158,8 +158,6 @@ PIKG 模块按开发者对发行物的领域习惯使用 `init`、`build`、`pac
 | `--zone <host-or-did>` | 覆盖 profile 中的目标 Zone |
 | `--endpoint <url>` | 覆盖自动解析出的 API 入口，主要用于诊断 |
 | `--identity <did-or-name>` | 选择本地身份；优先按 DID 解析 |
-| `--identity-root <path>` | 显式指定本次命令的 public identity root |
-| `--security-root <path>` | 显式指定本次命令的 security root |
 | `--session-token <token>` | 直接使用外部 session token |
 | `--session-token-file <path>` | 从文件读取临时 session token |
 | `--cli` | 解析连接与身份后进入有状态的交互命令行 |
@@ -205,7 +203,7 @@ input schema 和 handler 处理，不允许维护第二套命令实现。REPL pa
 通用参数在交互模式下分为两类：
 
 - session 参数：`--config-dir`、`--profile`、`--zone`、`--endpoint`、`--identity`、
-  `--identity-root`、`--security-root`、`--session-token`、`--session-token-file` 等在进入时解析
+  `--session-token`、`--session-token-file` 等在进入时解析
   并冻结，禁止在某一条命令里隐式切换 Zone 或身份；需要切换时退出并重建 session；
 - command 参数：`--input`、`--timeout`、`--trace-id`、`--idempotency-key`、`--no-wait`、`--yes`、
   `--output` 可以作为当前命令的 action options 出现在 verb 之后，只影响当前命令。trace id
@@ -257,29 +255,22 @@ core 至少提供以下冒号前缀的 REPL 内置命令，避免与业务 modul
 ├── config.json
 ├── profiles/
 │   └── <profile>.json
-├── local/
-│   └── identity/
-│       └── <encoded-did>/
-├── security/
-│   └── <encoded-did>/
 ├── cache/
 └── state/
     └── repl_history
 ```
 
-- Tool 自己拥有的 config/state JSON 必须包含 `schema_version`；DID Document 和 keyref 等身份
-  材料遵循 IdentityRoots 协议自身的 schema。
+- Tool 自己拥有的 config/state JSON 必须包含 `schema_version`。
 - `config.json` 只保存默认 profile 和非敏感全局偏好。
 - profile 保存 Zone、endpoint、identity DID/名称和默认输出，不嵌入私钥、密码或 token。
-- `local/identity` 和 `security` 遵循 BuckyOS IdentityRoots 路径协议，分别存放公开身份材料和
-  私钥/keyref；不得在 profile JSON 中内嵌私钥。
+- profile JSON 不得内嵌私钥。常规运维身份材料只从 `~/.buckyos` 只读加载；
+  开发者身份材料只从 `~/.buckycli` 的 IdentityRoots 布局只读加载。两者都不属于 Tool 配置根。
 - 第一阶段不持久化 session token 或 refresh token，也不实现 refresh token 流程；交互模式只在
   当前进程内复用或重新签发短期 session token。
 - 写配置使用临时文件 + rename，避免中途退出产生半文件。
 - 日志和错误不得打印 private key、refresh token、session token 或数据库完整连接串。
 
-`~/.buckycli` 和 `~/buckycli` 不在任何默认搜索路径中。若未来提供人工导入工具，也必须要求
-用户显式指定源路径并生成全新的配置，不能在运行时继续引用旧目录。
+`~/buckycli` 不在任何默认搜索路径中。
 
 ### 5.2 配置示例
 
@@ -304,12 +295,13 @@ core 至少提供以下冒号前缀的 REPL 内置命令，避免与业务 modul
 }
 ```
 
-Tool 私有身份材料使用 IdentityRoots 布局，例如：
+常规运维身份和开发者身份都使用 IdentityRoots 布局，但目录语义固定：
 
 ```text
-~/.buckyos_tool/local/identity/<encoded-did>/did.json
-~/.buckyos_tool/security/<encoded-did>/authentication.private.pem
-~/.buckyos_tool/security/<encoded-did>/authentication.keyref.json
+~/.buckyos/local/identity/<encoded-did>/did.json
+~/.buckyos/security/<encoded-did>/authentication.private.pem
+~/.buckycli/local/identity/<encoded-did>/did.json
+~/.buckycli/security/<encoded-did>/authentication.private.pem
 ```
 
 路径和文件名规则以 buckyos-base 的
@@ -318,16 +310,18 @@ Tool 私有身份材料使用 IdentityRoots 布局，例如：
 
 ### 5.3 身份扫描顺序
 
-当没有使用外部 session token 时，按以下顺序寻找所选 DID 对应的认证材料：
+当没有使用外部 session token 时，Tool 按以下固定顺序寻找认证材料：
 
-1. `--identity-root` + `--security-root` 显式指定的 roots；
-2. `~/.buckyos_tool/local/identity` + `~/.buckyos_tool/security`；
-3. `BUCKYOS_IDENTITY_ROOT` + `BUCKYOS_SECURITY_ROOT`；
-4. `$BUCKYOS_ROOT/local/identity` + `$BUCKYOS_ROOT/security`。
+1. 先扫描常规运维目录 `~/.buckyos/local/identity` + `~/.buckyos/security`，
+   该步骤不依赖开发模式；
+2. 如果没有常规运维身份成功登录，再通过 Control Panel 的 `system.dev_mode.get`
+   读取目标 Zone 的 `system/buckyos_dev_config`；
+3. 只有严格验证通过的 `enabled: true` 才允许扫描开发者目录
+   `~/.buckycli/local/identity` + `~/.buckycli/security`。
 
-每一层都使用 IdentityRoots 的 encoded DID + usage 文件协议。找到完整、可用且 DID 匹配的
-认证材料后停止；不扫描 `~/.buckycli`。旧 buckycli 只作为实现行为参考，不是身份来源。
-`--identity-root` 和 `--security-root` 必须成对出现，禁止把两个不同优先级的 root 隐式拼在一起。
+配置关闭、缺失、请求失败或无法验证时均 fail closed，不列举或读取 `~/.buckycli`；
+这不影响 `~/.buckyos` 中常规运维身份的解析、登录或续期。
+Tool 不接受命令行或环境变量提供的自定义 identity/security root。
 
 当在线命令没有提供 session token、identity、Zone、endpoint，也没有从环境变量或 profile
 解析出这些值时，Tool 读取 `$BUCKYOS_ROOT/etc/node_identity.json`，选择当前设备 DID，固定通过
@@ -356,8 +350,6 @@ Tool 私有身份材料使用 IdentityRoots 布局，例如：
 - `BUCKYOS_TOOL_ENDPOINT`
 - `BUCKYOS_TOOL_IDENTITY`
 - `BUCKYOS_TOOL_OUTPUT`
-- `BUCKYOS_IDENTITY_ROOT`
-- `BUCKYOS_SECURITY_ROOT`
 - `BUCKYOS_APPCLIENT_SESSION_TOKEN`
 
 解析结果应能通过 `buckyos config check --effective` 查看，但所有 secret 只显示来源和脱敏摘要。
@@ -369,8 +361,8 @@ Tool 私有身份材料使用 IdentityRoots 布局，例如：
 1. `--session-token`；
 2. `--session-token-file`；
 3. 注入的 `BUCKYOS_APPCLIENT_SESSION_TOKEN`；
-4. 按 §5.3 找到的 UserDocument + authentication private key/keyref；
-5. §5.3 定义的、经过确认的当前设备身份；
+4. 目标 Zone 开启开发模式时，按 §5.3 找到的 UserDocument + authentication private key/keyref；
+5. 经过确认的当前设备身份（仅零配置 system 发行版）；
 6. 交互式密码登录。
 
 单次命令生命周期通常很短，第一阶段不申请、不保存也不刷新 refresh token。使用身份私钥时，
@@ -800,7 +792,7 @@ Apply 还必须验证 operation 未过期、revision 和目标当前状态，避
 ## 12. Core 验收标准
 
 1. `buckyos --help`、`--version`、`command list/describe` 在无网络、无身份时工作。
-2. 工具不会访问 `~/.buckycli` 或 `~/buckycli`。
+2. 工具不会访问旧目录 `~/buckycli`；只有目标系统开发模式明确开启后才会扫描 `~/.buckycli`。
 3. `--config-dir`、环境变量、profile 和默认值的优先级有完整单元测试。
 4. 同一个 handler 在 CLI flags 和 stdin JSON 下得到相同的类型化 input。
 5. JSON 输出可以被逐次 `JSON.parse`，stdout 不混入日志和进度。

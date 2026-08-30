@@ -17,8 +17,6 @@ const GLOBAL_OPTIONS = [
   { name: 'zone', property: 'zone', type: 'string', scope: 'session' },
   { name: 'endpoint', property: 'endpoint', type: 'string', scope: 'session' },
   { name: 'identity', property: 'identity', type: 'string', scope: 'session' },
-  { name: 'identity-root', property: 'identityRoot', type: 'string', scope: 'session' },
-  { name: 'security-root', property: 'securityRoot', type: 'string', scope: 'session' },
   {
     name: 'session-token',
     property: 'sessionToken',

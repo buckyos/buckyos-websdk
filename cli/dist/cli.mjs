@@ -2,7 +2,7 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 import * as nodePath from "node:path";
 import { resolve as resolve$5, dirname as dirname$3 } from "node:path";
-import { namelib, BuckyOSSDK, RuntimeType, buckyos, VerifyHubClient, createAppInstanceId, parseSessionTokenClaims, ndn, ndm_proxy } from "buckyos/node";
+import { BuckyOSSDK, RuntimeType, buckyos, namelib, VerifyHubClient, createAppInstanceId, parseSessionTokenClaims, ndn, ndm_proxy } from "buckyos/node";
 import { createHash } from "node:crypto";
 import { readFile, writeFile, readdir, stat, lstat, realpath, mkdtemp, rename, rm, mkdir, chmod, symlink, copyFile, open } from "node:fs/promises";
 import { createReadStream, createWriteStream } from "node:fs";
@@ -94,8 +94,6 @@ const STRING_GLOBALS = /* @__PURE__ */ new Map([
   ["zone", "zone"],
   ["endpoint", "endpoint"],
   ["identity", "identity"],
-  ["identity-root", "identityRoot"],
-  ["security-root", "securityRoot"],
   ["session-token", "sessionToken"],
   ["session-token-file", "sessionTokenFile"],
   ["output", "output"],
@@ -485,8 +483,6 @@ const TOOL_ENVIRONMENT_NAMES = [
   "BUCKYOS_TOOL_ENDPOINT",
   "BUCKYOS_TOOL_IDENTITY",
   "BUCKYOS_TOOL_OUTPUT",
-  "BUCKYOS_IDENTITY_ROOT",
-  "BUCKYOS_SECURITY_ROOT",
   "BUCKYOS_APPCLIENT_SESSION_TOKEN",
   "BUCKYOS_ROOT",
   "SOURCE_DATE_EPOCH"
@@ -499,14 +495,16 @@ function buildDistributionPolicy(options) {
   const configRoot = path.resolve(
     environment2.BUCKYOS_TOOL_CONFIG_DIR ?? path.join(homeDir, ".buckyos_tool")
   );
-  const readPaths = /* @__PURE__ */ new Set([path.resolve(packageRoot2), path.resolve(cwd), configRoot]);
+  const readPaths = /* @__PURE__ */ new Set([
+    path.resolve(packageRoot2),
+    path.resolve(cwd),
+    configRoot,
+    path.resolve(path.join(homeDir, ".buckyos")),
+    path.resolve(path.join(homeDir, ".buckycli"))
+  ]);
   const writePaths = /* @__PURE__ */ new Set([path.resolve(cwd), configRoot]);
   if (options.distribution === "system")
     readPaths.add(buckyosRoot);
-  if (environment2.BUCKYOS_IDENTITY_ROOT && environment2.BUCKYOS_SECURITY_ROOT) {
-    readPaths.add(path.resolve(environment2.BUCKYOS_IDENTITY_ROOT));
-    readPaths.add(path.resolve(environment2.BUCKYOS_SECURITY_ROOT));
-  }
   const parsed = collectArgumentPaths(argv);
   for (const candidate of parsed.read)
     readPaths.add(resolveInputPath(candidate, cwd, path));
@@ -603,7 +601,7 @@ function collectArgumentPaths(argv) {
         write.push(value);
       } else if (name === "allow-read") {
         read.push(value);
-      } else if (["input", "session-token-file", "identity-root", "security-root", "pikg"].includes(name)) {
+      } else if (["input", "session-token-file", "pikg"].includes(name)) {
         if (value !== "-")
           read.push(value);
       } else if (name === "source" && module === "pikg") {
@@ -686,8 +684,6 @@ const ENVIRONMENT_NAMES = [
   "BUCKYOS_TOOL_ENDPOINT",
   "BUCKYOS_TOOL_IDENTITY",
   "BUCKYOS_TOOL_OUTPUT",
-  "BUCKYOS_IDENTITY_ROOT",
-  "BUCKYOS_SECURITY_ROOT",
   "BUCKYOS_APPCLIENT_SESSION_TOKEN",
   "BUCKYOS_ROOT"
 ];
@@ -830,34 +826,6 @@ async function resolveConfig(explicit, environment2 = readEnvironment(), options
     void 0,
     sources
   );
-  const identityRoot = select(
-    "identity_root",
-    explicit.identityRoot,
-    environment2.BUCKYOS_IDENTITY_ROOT,
-    void 0,
-    void 0,
-    sources
-  );
-  const securityRoot = select(
-    "security_root",
-    explicit.securityRoot,
-    environment2.BUCKYOS_SECURITY_ROOT,
-    void 0,
-    void 0,
-    sources
-  );
-  if (!!explicit.identityRoot !== !!explicit.securityRoot) {
-    throw new UsageError(
-      "IDENTITY_ROOT_PAIR_REQUIRED",
-      "--identity-root and --security-root must be provided together"
-    );
-  }
-  if (!!environment2.BUCKYOS_IDENTITY_ROOT !== !!environment2.BUCKYOS_SECURITY_ROOT && !explicit.identityRoot) {
-    throw new UsageError(
-      "IDENTITY_ROOT_PAIR_REQUIRED",
-      "BUCKYOS_IDENTITY_ROOT and BUCKYOS_SECURITY_ROOT must be provided together"
-    );
-  }
   let output;
   if (options.interactive && explicit.output === void 0) {
     output = "table";
@@ -890,8 +858,6 @@ async function resolveConfig(explicit, environment2 = readEnvironment(), options
       zone,
       endpoint,
       identity,
-      identityRoot,
-      securityRoot,
       sessionToken,
       sessionTokenFile: explicit.sessionTokenFile,
       output,
@@ -925,8 +891,6 @@ function localResolvedConfig(explicit, environment2 = readEnvironment(), options
       zone: explicit.zone ?? environment2.BUCKYOS_TOOL_ZONE,
       endpoint: explicit.endpoint ?? environment2.BUCKYOS_TOOL_ENDPOINT,
       identity: explicit.identity ?? environment2.BUCKYOS_TOOL_IDENTITY,
-      identityRoot: explicit.identityRoot ?? environment2.BUCKYOS_IDENTITY_ROOT,
-      securityRoot: explicit.securityRoot ?? environment2.BUCKYOS_SECURITY_ROOT,
       sessionToken: explicit.sessionToken ?? environment2.BUCKYOS_APPCLIENT_SESSION_TOKEN,
       sessionTokenFile: explicit.sessionTokenFile,
       output,
@@ -1091,353 +1055,6 @@ function redactUrl(value) {
 function configValueError(message) {
   return new ToolError("INVALID_CONFIG_VALUE", message, 2);
 }
-const join$2 = (...parts) => getHost().path.join(...parts);
-const LOCAL_NODE_GATEWAY_ENDPOINT = "http://127.0.0.1:3180";
-const IDENTITY_CANDIDATE_LIMIT = 8;
-const IDENTITY_REJECTION_CODES = Object.freeze([
-  "IDENTITY_KIND_NOT_ACCEPTED",
-  "AUTHENTICATION_REJECTED"
-]);
-async function applyImplicitDeviceIdentity(config, environment2 = readEnvironment()) {
-  if (config.sessionToken || config.sessionTokenFile || config.identity || config.zone || config.endpoint) {
-    return config;
-  }
-  const device = await readCurrentDeviceIdentity(environment2);
-  if (!device)
-    return config;
-  return {
-    ...config,
-    identity: device.did,
-    zone: device.zoneDid,
-    endpoint: LOCAL_NODE_GATEWAY_ENDPOINT,
-    identityRoot: device.publicRoot,
-    securityRoot: device.securityRoot,
-    defaultProtocol: "http://",
-    implicitDeviceIdentity: device,
-    sources: {
-      ...config.sources,
-      identity: "current-device",
-      zone: "current-device",
-      endpoint: "local-node-gateway",
-      identity_root: "current-device",
-      security_root: "current-device"
-    }
-  };
-}
-async function readCurrentDeviceIdentity(environment2 = readEnvironment()) {
-  if (getHost().policy.distribution === "developer" && environment2.BUCKYOS_ROOT === void 0)
-    return void 0;
-  const buckyosRoot = environment2.BUCKYOS_ROOT ?? defaultBuckyOSRoot(environment2);
-  const nodeIdentityPath = join$2(buckyosRoot, "etc", "node_identity.json");
-  let value;
-  try {
-    value = JSON.parse(await getHost().readTextFile(nodeIdentityPath));
-  } catch (error) {
-    if (isHostError(error, "NotFound"))
-      return void 0;
-    if (isHostError(error, "PermissionDenied")) {
-      throw new ToolError(
-        "DEVICE_IDENTITY_READ_FAILED",
-        `permission denied reading current device identity: ${nodeIdentityPath}`,
-        EXIT_PERMISSION
-      );
-    }
-    throw new ToolError(
-      "DEVICE_IDENTITY_READ_FAILED",
-      `failed to read current device identity: ${nodeIdentityPath}`,
-      EXIT_AUTH
-    );
-  }
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw invalidDeviceIdentity(nodeIdentityPath);
-  }
-  const document = value;
-  const did = nonEmptyString(document.device_did);
-  const name = nonEmptyString(document.device_name);
-  const zoneDid = nonEmptyString(document.zone_did);
-  if (document.schema !== "buckyos.node_identity.v2" || !did || !name || !zoneDid) {
-    throw invalidDeviceIdentity(nodeIdentityPath);
-  }
-  try {
-    namelib.DID.fromStr(did);
-    namelib.DID.fromStr(zoneDid);
-  } catch {
-    throw invalidDeviceIdentity(nodeIdentityPath);
-  }
-  return {
-    did,
-    name,
-    zoneDid,
-    buckyosRoot,
-    nodeIdentityPath,
-    publicRoot: join$2(buckyosRoot, "local", "identity"),
-    securityRoot: join$2(buckyosRoot, "security")
-  };
-}
-function identityRootPairs(config, environment2 = readEnvironment()) {
-  const pairs = [];
-  if (config.identityRoot && config.securityRoot) {
-    pairs.push({
-      publicRoot: config.identityRoot,
-      securityRoot: config.securityRoot,
-      source: "explicit"
-    });
-  }
-  pairs.push({
-    publicRoot: join$2(config.configDir, "local", "identity"),
-    securityRoot: join$2(config.configDir, "security"),
-    source: "tool"
-  });
-  if (environment2.BUCKYOS_IDENTITY_ROOT && environment2.BUCKYOS_SECURITY_ROOT) {
-    const duplicate = config.identityRoot === environment2.BUCKYOS_IDENTITY_ROOT && config.securityRoot === environment2.BUCKYOS_SECURITY_ROOT;
-    if (!duplicate) {
-      pairs.push({
-        publicRoot: environment2.BUCKYOS_IDENTITY_ROOT,
-        securityRoot: environment2.BUCKYOS_SECURITY_ROOT,
-        source: "environment"
-      });
-    }
-  }
-  if (getHost().policy.distribution === "system") {
-    const buckyosRoot = environment2.BUCKYOS_ROOT ?? defaultBuckyOSRoot(environment2);
-    pairs.push({
-      publicRoot: join$2(buckyosRoot, "local", "identity"),
-      securityRoot: join$2(buckyosRoot, "security"),
-      source: "buckyos-root"
-    });
-  }
-  return deduplicatePairs(pairs);
-}
-async function resolveIdentityMaterial(selectedIdentity, config, environment2 = readEnvironment()) {
-  const selected = selectedIdentity.trim();
-  if (!selected)
-    throw new UsageError("IDENTITY_REQUIRED", "identity is empty");
-  for (const roots of identityRootPairs(config, environment2)) {
-    for (const directory of await candidateDirectories(roots.publicRoot, selected)) {
-      const material = await loadIdentityMaterial(roots, directory, selected);
-      if (material)
-        return material;
-    }
-  }
-  throw new ToolError(
-    "IDENTITY_NOT_FOUND",
-    `no usable authentication material found for identity ${selected}`,
-    EXIT_AUTH
-  );
-}
-async function scanIdentityCandidates(config, environment2 = readEnvironment()) {
-  const candidates = [];
-  const skipped = [];
-  const seen = /* @__PURE__ */ new Set();
-  const roots = identityRootPairs(config, environment2);
-  for (const pair of roots) {
-    let directories;
-    try {
-      directories = await candidateDirectories(pair.publicRoot, "");
-    } catch (error) {
-      if (isHostError(error, "PermissionDenied")) {
-        skipped.push({ source: pair.source, path: pair.publicRoot, reason: "policy-denied" });
-        continue;
-      }
-      throw error;
-    }
-    for (const directory of directories) {
-      if (candidates.length >= IDENTITY_CANDIDATE_LIMIT)
-        break;
-      const documentPath = join$2(pair.publicRoot, directory, "did.json");
-      try {
-        const material = await loadIdentityMaterial(pair, directory);
-        if (!material) {
-          skipped.push({ source: pair.source, path: documentPath, reason: "not-usable" });
-          continue;
-        }
-        if (seen.has(material.did)) {
-          skipped.push({
-            source: pair.source,
-            identity: material.did,
-            path: documentPath,
-            reason: "duplicate"
-          });
-          continue;
-        }
-        seen.add(material.did);
-        candidates.push({ material, source: pair.source, directory });
-      } catch (error) {
-        if (isHostError(error, "PermissionDenied")) {
-          skipped.push({ source: pair.source, path: documentPath, reason: "policy-denied" });
-          continue;
-        }
-        if (error instanceof ToolError && error.code === "IDENTITY_KEYREF_UNSUPPORTED") {
-          skipped.push({
-            source: pair.source,
-            identity: typeof error.details.identity === "string" ? error.details.identity : void 0,
-            path: documentPath,
-            reason: "key-reference-unsupported"
-          });
-          continue;
-        }
-        throw error;
-      }
-    }
-    if (candidates.length >= IDENTITY_CANDIDATE_LIMIT)
-      break;
-  }
-  return {
-    order: Object.freeze(["explicit", "tool", "environment", "buckyos-root"]),
-    limit: IDENTITY_CANDIDATE_LIMIT,
-    candidates,
-    skipped
-  };
-}
-async function identityCandidateView(config, environment2 = readEnvironment()) {
-  if (config.identity) {
-    try {
-      const material = await resolveIdentityMaterial(config.identity, config, environment2);
-      return {
-        mode: "explicit",
-        order: [material.did],
-        limit: 1,
-        candidates: [{
-          identity: material.did,
-          source: config.sources.identity ?? "explicit",
-          document_path: material.documentPath
-        }],
-        skipped: []
-      };
-    } catch (error) {
-      return {
-        mode: "explicit",
-        order: [config.identity],
-        limit: 1,
-        candidates: [],
-        skipped: [{
-          identity: config.identity,
-          reason: error instanceof ToolError ? error.code : "unavailable"
-        }]
-      };
-    }
-  }
-  const scan = await scanIdentityCandidates(config, environment2);
-  return {
-    mode: "search",
-    order: scan.order,
-    limit: scan.limit,
-    candidates: scan.candidates.map((candidate) => ({
-      identity: candidate.material.did,
-      source: candidate.source,
-      document_path: candidate.material.documentPath
-    })),
-    skipped: scan.skipped
-  };
-}
-async function loadIdentityMaterial(roots, directory, selected) {
-  const documentPath = join$2(roots.publicRoot, directory, "did.json");
-  const document = await readIdentityDocument(documentPath);
-  if (!document || selected && !identityMatches(document, selected))
-    return void 0;
-  const did = typeof document.id === "string" ? document.id : "";
-  const subject = typeof document.name === "string" && document.name.trim() ? document.name.trim() : did;
-  if (!did || !subject)
-    return void 0;
-  const privateKeyPath = join$2(roots.securityRoot, directory, "authentication.private.pem");
-  try {
-    const privateKeyPem = (await getHost().readTextFile(privateKeyPath)).trim();
-    if (!privateKeyPem)
-      return void 0;
-    return {
-      did,
-      subject,
-      issuer: subject,
-      principalKind: typeof document.device_type === "string" ? "device" : "user",
-      publicRoot: roots.publicRoot,
-      securityRoot: roots.securityRoot,
-      documentPath,
-      privateKeyPath,
-      privateKeyPem
-    };
-  } catch (error) {
-    if (!isHostError(error, "NotFound"))
-      throw error;
-  }
-  const keyrefPath = join$2(roots.securityRoot, directory, "authentication.keyref.json");
-  try {
-    await getHost().stat(keyrefPath);
-    throw new ToolError(
-      "IDENTITY_KEYREF_UNSUPPORTED",
-      "the selected identity uses a key reference unsupported by this runtime",
-      EXIT_AUTH,
-      false,
-      { identity: did, keyref_path: keyrefPath }
-    );
-  } catch (error) {
-    if (!isHostError(error, "NotFound"))
-      throw error;
-  }
-  return void 0;
-}
-async function candidateDirectories(publicRoot, identity) {
-  if (identity.startsWith("did:")) {
-    try {
-      return [namelib.DID.fromStr(identity).toFilename()];
-    } catch {
-      throw new UsageError("INVALID_IDENTITY", `invalid DID: ${identity}`);
-    }
-  }
-  const directories = [];
-  try {
-    for (const entry of await getHost().readDir(publicRoot)) {
-      if (entry.isDirectory)
-        directories.push(entry.name);
-    }
-  } catch (error) {
-    if (isHostError(error, "NotFound"))
-      return [];
-    throw error;
-  }
-  return directories.sort();
-}
-async function readIdentityDocument(path) {
-  try {
-    const value = JSON.parse(await getHost().readTextFile(path));
-    return value && typeof value === "object" && !Array.isArray(value) ? value : null;
-  } catch (error) {
-    if (isHostError(error, "NotFound") || error instanceof SyntaxError)
-      return null;
-    throw error;
-  }
-}
-function identityMatches(document, selected) {
-  if (typeof document.id === "string" && document.id === selected)
-    return true;
-  return typeof document.name === "string" && document.name === selected;
-}
-function defaultBuckyOSRoot(environment2 = readEnvironment()) {
-  if (getHost().platform === "windows") {
-    const appData = environment2.APPDATA;
-    return appData ? join$2(appData, "buckyos") : "C:\\BuckyOS";
-  }
-  return "/opt/buckyos";
-}
-function invalidDeviceIdentity(path) {
-  return new ToolError(
-    "INVALID_DEVICE_IDENTITY",
-    `current device identity is invalid: ${path}`,
-    EXIT_AUTH
-  );
-}
-function nonEmptyString(value) {
-  return typeof value === "string" && value.trim() ? value.trim() : void 0;
-}
-function deduplicatePairs(pairs) {
-  const seen = /* @__PURE__ */ new Set();
-  return pairs.filter((pair) => {
-    const key = `${pair.publicRoot}\0${pair.securityRoot}`;
-    if (seen.has(key))
-      return false;
-    seen.add(key);
-    return true;
-  });
-}
 class BuckyOSRuntimeAdapter {
   #sdk = new BuckyOSSDK("node");
   async initialize(config, session) {
@@ -1565,6 +1182,414 @@ async function withDeadline(promise, timeoutMs, signal) {
       signal.removeEventListener("abort", abortHandler);
   }
 }
+const BUCKYOS_DEV_CONFIG_SCHEMA_VERSION = 1;
+async function readTargetDevelopmentMode(config) {
+  try {
+    const url = resolveServiceUrl(config, "control-panel");
+    const client = new buckyos.kRPCClient(url);
+    const value = await withTimeout(
+      client.call("system.dev_mode.get", {}),
+      config.timeoutMs
+    );
+    const parsed = parseBuckyOSDevConfig(value);
+    return parsed.enabled ? { state: "enabled", config: parsed } : { state: "disabled", config: parsed };
+  } catch (error) {
+    return {
+      state: "unavailable",
+      reason: error instanceof Error ? error.message : String(error)
+    };
+  }
+}
+function parseBuckyOSDevConfig(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("BuckyOSDevConfig must be an object");
+  }
+  const config = value;
+  const keys = Object.keys(config).sort();
+  const expectedKeys = ["enabled", "enabled_at", "enabled_by", "schema_version"];
+  if (JSON.stringify(keys) !== JSON.stringify(expectedKeys)) {
+    throw new Error("BuckyOSDevConfig contains missing or unsupported fields");
+  }
+  if (config.schema_version !== BUCKYOS_DEV_CONFIG_SCHEMA_VERSION) {
+    throw new Error(`unsupported BuckyOSDevConfig schema_version ${String(config.schema_version)}`);
+  }
+  if (typeof config.enabled !== "boolean") {
+    throw new Error("BuckyOSDevConfig enabled must be a boolean");
+  }
+  const enabledAt = config.enabled_at;
+  const enabledBy = config.enabled_by;
+  const hasAuditFields = Number.isSafeInteger(enabledAt) && enabledAt > 0 && typeof enabledBy === "string" && enabledBy.trim().length > 0;
+  const hasNoAuditFields = enabledAt === null && enabledBy === null;
+  if (!hasAuditFields && !hasNoAuditFields) {
+    throw new Error("BuckyOSDevConfig enabled_at and enabled_by must be valid and present together");
+  }
+  if (config.enabled && !hasAuditFields) {
+    throw new Error("enabled BuckyOSDevConfig requires enable audit fields");
+  }
+  return {
+    schema_version: 1,
+    enabled: config.enabled,
+    enabled_at: enabledAt,
+    enabled_by: enabledBy
+  };
+}
+async function withTimeout(promise, timeoutMs) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error("developer-mode lookup timed out")), timeoutMs);
+  });
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    if (timer !== void 0)
+      clearTimeout(timer);
+  }
+}
+const join$2 = (...parts) => getHost().path.join(...parts);
+const LOCAL_NODE_GATEWAY_ENDPOINT = "http://127.0.0.1:3180";
+const IDENTITY_CANDIDATE_LIMIT = 8;
+const IDENTITY_REJECTION_CODES = Object.freeze([
+  "IDENTITY_KIND_NOT_ACCEPTED",
+  "AUTHENTICATION_REJECTED"
+]);
+async function applyImplicitDeviceIdentity(config, environment2 = readEnvironment()) {
+  if (config.sessionToken || config.sessionTokenFile || config.identity || config.zone || config.endpoint) {
+    return config;
+  }
+  const device = await readCurrentDeviceIdentity(environment2);
+  if (!device)
+    return config;
+  return {
+    ...config,
+    identity: device.did,
+    zone: device.zoneDid,
+    endpoint: LOCAL_NODE_GATEWAY_ENDPOINT,
+    identityRoot: device.publicRoot,
+    securityRoot: device.securityRoot,
+    defaultProtocol: "http://",
+    implicitDeviceIdentity: device,
+    sources: {
+      ...config.sources,
+      identity: "current-device",
+      zone: "current-device",
+      endpoint: "local-node-gateway",
+      identity_root: "current-device",
+      security_root: "current-device"
+    }
+  };
+}
+async function readCurrentDeviceIdentity(environment2 = readEnvironment()) {
+  if (getHost().policy.distribution === "developer" && environment2.BUCKYOS_ROOT === void 0)
+    return void 0;
+  const buckyosRoot = environment2.BUCKYOS_ROOT ?? defaultBuckyOSRoot(environment2);
+  const nodeIdentityPath = join$2(buckyosRoot, "etc", "node_identity.json");
+  let value;
+  try {
+    value = JSON.parse(await getHost().readTextFile(nodeIdentityPath));
+  } catch (error) {
+    if (isHostError(error, "NotFound"))
+      return void 0;
+    if (isHostError(error, "PermissionDenied")) {
+      throw new ToolError(
+        "DEVICE_IDENTITY_READ_FAILED",
+        `permission denied reading current device identity: ${nodeIdentityPath}`,
+        EXIT_PERMISSION
+      );
+    }
+    throw new ToolError(
+      "DEVICE_IDENTITY_READ_FAILED",
+      `failed to read current device identity: ${nodeIdentityPath}`,
+      EXIT_AUTH
+    );
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw invalidDeviceIdentity(nodeIdentityPath);
+  }
+  const document = value;
+  const did = nonEmptyString(document.device_did);
+  const name = nonEmptyString(document.device_name);
+  const zoneDid = nonEmptyString(document.zone_did);
+  if (document.schema !== "buckyos.node_identity.v2" || !did || !name || !zoneDid) {
+    throw invalidDeviceIdentity(nodeIdentityPath);
+  }
+  try {
+    namelib.DID.fromStr(did);
+    namelib.DID.fromStr(zoneDid);
+  } catch {
+    throw invalidDeviceIdentity(nodeIdentityPath);
+  }
+  return {
+    did,
+    name,
+    zoneDid,
+    buckyosRoot,
+    nodeIdentityPath,
+    publicRoot: join$2(buckyosRoot, "local", "identity"),
+    securityRoot: join$2(buckyosRoot, "security")
+  };
+}
+function identityRootPairs(config, environment2 = readEnvironment(), options = {}) {
+  const device = config.implicitDeviceIdentity;
+  if (device) {
+    return [{
+      publicRoot: device.publicRoot,
+      securityRoot: device.securityRoot,
+      source: "current-device"
+    }];
+  }
+  const home = environment2.HOME ?? environment2.USERPROFILE ?? getHost().homeDir();
+  const pairs = [];
+  if (options.includeOperations ?? true) {
+    pairs.push({
+      publicRoot: join$2(home, ".buckyos", "local", "identity"),
+      securityRoot: join$2(home, ".buckyos", "security"),
+      source: "buckyos-home"
+    });
+  }
+  if (options.includeDeveloper ?? false) {
+    pairs.push({
+      publicRoot: join$2(home, ".buckycli", "local", "identity"),
+      securityRoot: join$2(home, ".buckycli", "security"),
+      source: "buckycli-home"
+    });
+  }
+  return deduplicatePairs(pairs);
+}
+async function resolveIdentityMaterial(selectedIdentity, config, environment2 = readEnvironment(), options = {}) {
+  const selected = selectedIdentity.trim();
+  if (!selected)
+    throw new UsageError("IDENTITY_REQUIRED", "identity is empty");
+  for (const roots of identityRootPairs(config, environment2, options)) {
+    for (const directory of await candidateDirectories(roots.publicRoot, selected)) {
+      const material = await loadIdentityMaterial(roots, directory, selected);
+      if (material)
+        return material;
+    }
+  }
+  throw new ToolError(
+    "IDENTITY_NOT_FOUND",
+    `no usable authentication material found for identity ${selected}`,
+    EXIT_AUTH
+  );
+}
+async function scanIdentityCandidates(config, environment2 = readEnvironment(), options = {}) {
+  const candidates = [];
+  const skipped = [];
+  const seen = /* @__PURE__ */ new Set();
+  const roots = identityRootPairs(config, environment2, options);
+  for (const pair of roots) {
+    let directories;
+    try {
+      directories = await candidateDirectories(pair.publicRoot, "");
+    } catch (error) {
+      if (isHostError(error, "PermissionDenied")) {
+        skipped.push({ source: pair.source, path: pair.publicRoot, reason: "policy-denied" });
+        continue;
+      }
+      throw error;
+    }
+    for (const directory of directories) {
+      if (candidates.length >= IDENTITY_CANDIDATE_LIMIT)
+        break;
+      const documentPath = join$2(pair.publicRoot, directory, "did.json");
+      try {
+        const material = await loadIdentityMaterial(pair, directory);
+        if (!material) {
+          skipped.push({ source: pair.source, path: documentPath, reason: "not-usable" });
+          continue;
+        }
+        if (seen.has(material.did)) {
+          skipped.push({
+            source: pair.source,
+            identity: material.did,
+            path: documentPath,
+            reason: "duplicate"
+          });
+          continue;
+        }
+        seen.add(material.did);
+        candidates.push({ material, source: pair.source, directory });
+      } catch (error) {
+        if (isHostError(error, "PermissionDenied")) {
+          skipped.push({ source: pair.source, path: documentPath, reason: "policy-denied" });
+          continue;
+        }
+        if (error instanceof ToolError && error.code === "IDENTITY_KEYREF_UNSUPPORTED") {
+          skipped.push({
+            source: pair.source,
+            identity: typeof error.details.identity === "string" ? error.details.identity : void 0,
+            path: documentPath,
+            reason: "key-reference-unsupported"
+          });
+          continue;
+        }
+        throw error;
+      }
+    }
+    if (candidates.length >= IDENTITY_CANDIDATE_LIMIT)
+      break;
+  }
+  return {
+    order: Object.freeze(roots.map((pair) => pair.source)),
+    limit: IDENTITY_CANDIDATE_LIMIT,
+    candidates,
+    skipped
+  };
+}
+async function identityCandidateView(config, environment2 = readEnvironment(), developerModeEnabled = false) {
+  if (config.identity) {
+    try {
+      const material = await resolveIdentityMaterial(config.identity, config, environment2, {
+        includeDeveloper: developerModeEnabled
+      });
+      return {
+        mode: "explicit",
+        order: [material.did],
+        limit: 1,
+        candidates: [{
+          identity: material.did,
+          source: config.sources.identity ?? "explicit",
+          document_path: material.documentPath
+        }],
+        skipped: []
+      };
+    } catch (error) {
+      return {
+        mode: "explicit",
+        order: [config.identity],
+        limit: 1,
+        candidates: [],
+        skipped: [{
+          identity: config.identity,
+          reason: error instanceof ToolError ? error.code : "unavailable"
+        }]
+      };
+    }
+  }
+  const scan = await scanIdentityCandidates(config, environment2, {
+    includeDeveloper: developerModeEnabled
+  });
+  return {
+    mode: "search",
+    order: scan.order,
+    limit: scan.limit,
+    candidates: scan.candidates.map((candidate) => ({
+      identity: candidate.material.did,
+      source: candidate.source,
+      document_path: candidate.material.documentPath
+    })),
+    skipped: scan.skipped
+  };
+}
+async function loadIdentityMaterial(roots, directory, selected) {
+  const documentPath = join$2(roots.publicRoot, directory, "did.json");
+  const document = await readIdentityDocument(documentPath);
+  if (!document || selected && !identityMatches(document, selected))
+    return void 0;
+  const did = typeof document.id === "string" ? document.id : "";
+  const subject = typeof document.name === "string" && document.name.trim() ? document.name.trim() : did;
+  if (!did || !subject)
+    return void 0;
+  const privateKeyPath = join$2(roots.securityRoot, directory, "authentication.private.pem");
+  try {
+    const privateKeyPem = (await getHost().readTextFile(privateKeyPath)).trim();
+    if (!privateKeyPem)
+      return void 0;
+    return {
+      did,
+      subject,
+      issuer: subject,
+      principalKind: typeof document.device_type === "string" ? "device" : "user",
+      publicRoot: roots.publicRoot,
+      securityRoot: roots.securityRoot,
+      documentPath,
+      privateKeyPath,
+      privateKeyPem,
+      source: roots.source
+    };
+  } catch (error) {
+    if (!isHostError(error, "NotFound"))
+      throw error;
+  }
+  const keyrefPath = join$2(roots.securityRoot, directory, "authentication.keyref.json");
+  try {
+    await getHost().stat(keyrefPath);
+    throw new ToolError(
+      "IDENTITY_KEYREF_UNSUPPORTED",
+      "the selected identity uses a key reference unsupported by this runtime",
+      EXIT_AUTH,
+      false,
+      { identity: did, keyref_path: keyrefPath }
+    );
+  } catch (error) {
+    if (!isHostError(error, "NotFound"))
+      throw error;
+  }
+  return void 0;
+}
+async function candidateDirectories(publicRoot, identity) {
+  if (identity.startsWith("did:")) {
+    try {
+      return [namelib.DID.fromStr(identity).toFilename()];
+    } catch {
+      throw new UsageError("INVALID_IDENTITY", `invalid DID: ${identity}`);
+    }
+  }
+  const directories = [];
+  try {
+    for (const entry of await getHost().readDir(publicRoot)) {
+      if (entry.isDirectory)
+        directories.push(entry.name);
+    }
+  } catch (error) {
+    if (isHostError(error, "NotFound"))
+      return [];
+    throw error;
+  }
+  return directories.sort();
+}
+async function readIdentityDocument(path) {
+  try {
+    const value = JSON.parse(await getHost().readTextFile(path));
+    return value && typeof value === "object" && !Array.isArray(value) ? value : null;
+  } catch (error) {
+    if (isHostError(error, "NotFound") || error instanceof SyntaxError)
+      return null;
+    throw error;
+  }
+}
+function identityMatches(document, selected) {
+  if (typeof document.id === "string" && document.id === selected)
+    return true;
+  return typeof document.name === "string" && document.name === selected;
+}
+function defaultBuckyOSRoot(environment2 = readEnvironment()) {
+  if (getHost().platform === "windows") {
+    const appData = environment2.APPDATA;
+    return appData ? join$2(appData, "buckyos") : "C:\\BuckyOS";
+  }
+  return "/opt/buckyos";
+}
+function invalidDeviceIdentity(path) {
+  return new ToolError(
+    "INVALID_DEVICE_IDENTITY",
+    `current device identity is invalid: ${path}`,
+    EXIT_AUTH
+  );
+}
+function nonEmptyString(value) {
+  return typeof value === "string" && value.trim() ? value.trim() : void 0;
+}
+function deduplicatePairs(pairs) {
+  const seen = /* @__PURE__ */ new Set();
+  return pairs.filter((pair) => {
+    const key = `${pair.publicRoot}\0${pair.securityRoot}`;
+    if (seen.has(key))
+      return false;
+    seen.add(key);
+    return true;
+  });
+}
 const LOGIN_APP_ID = "buckycli";
 const LOGIN_TOKEN_TTL_SECONDS = 10 * 60;
 class AuthenticationSession {
@@ -1575,15 +1600,18 @@ class AuthenticationSession {
     this.#transport = dependencies.transport ?? new SdkAuthenticationTransport();
     this.#readPassword = dependencies.readPassword ?? readSecret;
     this.#readUsername = dependencies.readUsername ?? readVisible;
+    this.#readDevelopmentMode = dependencies.readDevelopmentMode ?? readTargetDevelopmentMode;
     this.#now = dependencies.now ?? Date.now;
   }
   #environment;
   #transport;
   #readPassword;
   #readUsername;
+  #readDevelopmentMode;
   #now;
   #session;
   #acceptedIdentity;
+  #developmentMode;
   #identityAttempts;
   async connect() {
     if (this.#session)
@@ -1631,6 +1659,7 @@ class AuthenticationSession {
       renewable: session.renewable,
       expires_at: expiresAt ?? null,
       remaining_seconds: remainingSeconds,
+      developer_mode: this.#developmentMode?.state ?? null,
       identity_attempts: this.#identityAttempts
     };
   }
@@ -1658,34 +1687,39 @@ class AuthenticationSession {
     const injected = this.#environment.BUCKYOS_APPCLIENT_SESSION_TOKEN?.trim();
     if (injected)
       return externalSession(injected, "environment", this.#now());
-    if (this.#acceptedIdentity)
+    if (this.#acceptedIdentity) {
+      if (this.#acceptedIdentity.source === "buckycli-home") {
+        await this.#requireDeveloperIdentityAccess();
+      }
       return await this.#loginWithIdentity(this.#acceptedIdentity);
+    }
     if (this.config.identity) {
-      const material = await resolveIdentityMaterial(
-        this.config.identity,
-        this.config,
-        this.#environment
-      );
+      const material = await this.#resolveExplicitIdentity(this.config.identity);
       const session = await this.#loginWithIdentity(material);
       this.#acceptedIdentity = material;
       return session;
     }
-    const candidates = await scanIdentityCandidates(this.config, this.#environment);
     this.#identityAttempts = [];
-    for (const candidate of candidates.candidates) {
-      try {
-        const session = await this.#loginWithIdentity(candidate.material);
-        this.#acceptedIdentity = candidate.material;
-        return session;
-      } catch (error) {
-        if (!isIdentityRejection(error))
-          throw error;
-        this.#identityAttempts.push({
-          identity: candidate.material.did,
-          code: error.code,
-          message: sanitizeMessage(error.message)
-        });
-      }
+    const operations = await scanIdentityCandidates(this.config, this.#environment);
+    const operationsSession = await this.#tryIdentityCandidates(operations.candidates);
+    if (operationsSession)
+      return operationsSession;
+    const developmentMode = await this.#checkDevelopmentMode();
+    if (developmentMode.state === "enabled" && operations.candidates.length < IDENTITY_CANDIDATE_LIMIT) {
+      const operationsDids = new Set(
+        operations.candidates.map((candidate) => candidate.material.did)
+      );
+      const developer = await scanIdentityCandidates(this.config, this.#environment, {
+        includeOperations: false,
+        includeDeveloper: true
+      });
+      const remaining = IDENTITY_CANDIDATE_LIMIT - operations.candidates.length;
+      const candidates = developer.candidates.filter(
+        (candidate) => !operationsDids.has(candidate.material.did)
+      ).slice(0, remaining);
+      const developerSession = await this.#tryIdentityCandidates(candidates);
+      if (developerSession)
+        return developerSession;
     }
     if (this.#identityAttempts.length > 0) {
       throw new ToolError(
@@ -1716,6 +1750,40 @@ class AuthenticationSession {
     );
     return authenticatedSession(token, "password", true, this.#now());
   }
+  async #resolveExplicitIdentity(selectedIdentity) {
+    if (this.config.implicitDeviceIdentity) {
+      return await resolveIdentityMaterial(selectedIdentity, this.config, this.#environment);
+    }
+    try {
+      return await resolveIdentityMaterial(selectedIdentity, this.config, this.#environment);
+    } catch (error) {
+      if (!(error instanceof ToolError) || error.code !== "IDENTITY_NOT_FOUND")
+        throw error;
+    }
+    await this.#requireDeveloperIdentityAccess();
+    return await resolveIdentityMaterial(selectedIdentity, this.config, this.#environment, {
+      includeOperations: false,
+      includeDeveloper: true
+    });
+  }
+  async #tryIdentityCandidates(candidates) {
+    for (const candidate of candidates) {
+      try {
+        const session = await this.#loginWithIdentity(candidate.material);
+        this.#acceptedIdentity = candidate.material;
+        return session;
+      } catch (error) {
+        if (!isIdentityRejection(error))
+          throw error;
+        this.#identityAttempts.push({
+          identity: candidate.material.did,
+          code: error.code,
+          message: sanitizeMessage(error.message)
+        });
+      }
+    }
+    return void 0;
+  }
   async #loginWithIdentity(material) {
     const loginJwt = await createLoginJwt(
       material.subject,
@@ -1730,6 +1798,30 @@ class AuthenticationSession {
       this.config.timeoutMs
     );
     return authenticatedSession(token, "identity", true, this.#now());
+  }
+  async #checkDevelopmentMode() {
+    this.#developmentMode = await this.#readDevelopmentMode(this.config);
+    return this.#developmentMode;
+  }
+  async #requireDeveloperIdentityAccess() {
+    const decision = await this.#checkDevelopmentMode();
+    if (decision.state === "enabled")
+      return;
+    this.#acceptedIdentity = void 0;
+    if (decision.state === "disabled") {
+      throw new ToolError(
+        "DEVELOPER_IDENTITY_DISABLED",
+        "the target Zone has developer mode disabled; local developer identities are unavailable",
+        EXIT_AUTH
+      );
+    }
+    throw new ToolError(
+      "DEVELOPER_MODE_UNAVAILABLE",
+      "the target Zone developer-mode configuration could not be verified",
+      EXIT_AUTH,
+      true,
+      { reason: sanitizeMessage(decision.reason) }
+    );
   }
 }
 function isIdentityRejection(error) {
@@ -2005,8 +2097,6 @@ const GLOBAL_OPTIONS = [
   { name: "zone", property: "zone", type: "string", scope: "session" },
   { name: "endpoint", property: "endpoint", type: "string", scope: "session" },
   { name: "identity", property: "identity", type: "string", scope: "session" },
-  { name: "identity-root", property: "identityRoot", type: "string", scope: "session" },
-  { name: "security-root", property: "securityRoot", type: "string", scope: "session" },
   {
     name: "session-token",
     property: "sessionToken",
@@ -4758,7 +4848,7 @@ function invalid(stage, message, entry) {
 function stableJsonDigest(value) {
   return sha256Bytes(new TextEncoder().encode(ndn.toCanonicalJsonString(value)));
 }
-const PACKAGE_VERSION = "0.7.117";
+const PACKAGE_VERSION = "0.7.118";
 const TOOL_VERSION = PACKAGE_VERSION;
 const SDK_VERSION = PACKAGE_VERSION;
 const PROTOCOL_VERSION = "1";

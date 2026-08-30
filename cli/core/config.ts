@@ -69,8 +69,6 @@ export const ENVIRONMENT_NAMES = [
   'BUCKYOS_TOOL_ENDPOINT',
   'BUCKYOS_TOOL_IDENTITY',
   'BUCKYOS_TOOL_OUTPUT',
-  'BUCKYOS_IDENTITY_ROOT',
-  'BUCKYOS_SECURITY_ROOT',
   'BUCKYOS_APPCLIENT_SESSION_TOKEN',
   'BUCKYOS_ROOT',
 ] as const
@@ -229,38 +227,6 @@ export async function resolveConfig(
     undefined,
     sources,
   )
-  const identityRoot = select(
-    'identity_root',
-    explicit.identityRoot,
-    environment.BUCKYOS_IDENTITY_ROOT,
-    undefined,
-    undefined,
-    sources,
-  )
-  const securityRoot = select(
-    'security_root',
-    explicit.securityRoot,
-    environment.BUCKYOS_SECURITY_ROOT,
-    undefined,
-    undefined,
-    sources,
-  )
-  if (!!explicit.identityRoot !== !!explicit.securityRoot) {
-    throw new UsageError(
-      'IDENTITY_ROOT_PAIR_REQUIRED',
-      '--identity-root and --security-root must be provided together',
-    )
-  }
-  if (
-    !!environment.BUCKYOS_IDENTITY_ROOT !== !!environment.BUCKYOS_SECURITY_ROOT &&
-    !explicit.identityRoot
-  ) {
-    throw new UsageError(
-      'IDENTITY_ROOT_PAIR_REQUIRED',
-      'BUCKYOS_IDENTITY_ROOT and BUCKYOS_SECURITY_ROOT must be provided together',
-    )
-  }
-
   let output: OutputFormat
   if (options.interactive && explicit.output === undefined) {
     output = 'table'
@@ -297,8 +263,6 @@ export async function resolveConfig(
       zone,
       endpoint,
       identity,
-      identityRoot,
-      securityRoot,
       sessionToken,
       sessionTokenFile: explicit.sessionTokenFile,
       output,
@@ -347,8 +311,6 @@ export function localResolvedConfig(
       zone: explicit.zone ?? environment.BUCKYOS_TOOL_ZONE,
       endpoint: explicit.endpoint ?? environment.BUCKYOS_TOOL_ENDPOINT,
       identity: explicit.identity ?? environment.BUCKYOS_TOOL_IDENTITY,
-      identityRoot: explicit.identityRoot ?? environment.BUCKYOS_IDENTITY_ROOT,
-      securityRoot: explicit.securityRoot ?? environment.BUCKYOS_SECURITY_ROOT,
       sessionToken: explicit.sessionToken ?? environment.BUCKYOS_APPCLIENT_SESSION_TOKEN,
       sessionTokenFile: explicit.sessionTokenFile,
       output,
