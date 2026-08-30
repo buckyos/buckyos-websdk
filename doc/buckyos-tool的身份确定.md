@@ -28,7 +28,7 @@
 
 ```
 P0  命令行 / 环境显式指定        --session-token | --session-token-file | --identity | env
-P1  本地开发者身份               ~/.buckyos_tool（+ ~/.buckyos 兼容）下的 authentication.private.pem
+P1  本地开发者身份               仅目标系统开启开发模式时，扫描 ~/.buckyos 和 ~/.buckycli
 P2  本机设备密钥                 $BUCKYOS_ROOT 下按身份管理协议保存的 device key
 P3  verify-hub LoginByPassword   默认用户 = zone-owner
 ```
@@ -39,8 +39,8 @@ P3  verify-hub LoginByPassword   默认用户 = zone-owner
 |---|---|---|---|---|---|---|
 | P0.1 | `--session-token` / `BUCKYOS_APPCLIENT_SESSION_TOKEN` | `session-token` / `environment` | 现成 token | 否 | 无 | ✅ 已实现 |
 | P0.2 | `--session-token-file` | `session-token-file` | 现成 token | 否（`reconnect` 时重读文件） | 无 | ✅ 已实现 |
-| P0.3 | `--identity <用户名或 DID>` | `identity` | 本地签 JWT → `login_by_jwt` | 是 | 无 | ✅ 已实现 |
-| P1 | Tool 配置目录下的身份材料 | `identity` | 同上 | 是 | 首次可能需确认 | ⚠️ 目录约定待统一（§3） |
+| P0.3 | `--identity <用户名或 DID>` | `identity` | 本地签 JWT → `login_by_jwt` | 是 | 无 | ⚠️ 本地密钥解析尚未受目标系统开发模式门控（§3） |
+| P1 | `~/.buckyos` / `~/.buckycli` 中的开发者身份 | `identity` | 同上 | 是 | 无 | ⚠️ 待实现目标系统开发模式门控（§3） |
 | P2 | 本机 device key | `identity` | 同上，target 为 system | 是 | 需 `--yes` 或交互确认 | ⚠️ 仅 system 发行版（§4） |
 | P3 | `login_by_password` | `password` | verify-hub 签发 | 是，但需重新输密码 | 必须交互 | ⚠️ 无 zone-owner 默认值（§5） |
 
@@ -72,6 +72,10 @@ P3  verify-hub LoginByPassword   默认用户 = zone-owner
 **显式指定只试一次，失败就报错，绝不回退到其它候选**（`cli/core/auth.ts:185-195`）。
 这条由 `cli/tests/auth_test.ts:217` 固化。原因同上：显式即意图。
 
+但是，`--identity` 只是选择身份，**不是开发模式的绕过开关**。它需要读取本地开发者
+私钥时，同样必须先确认目标系统已开启开发模式，且只能在 §3 规定的两个目录内定位。
+目标系统未开启开发模式时，必须在访问本地身份文件之前失败；不得因为显式给了 DID 或用户名就读取密钥。
+
 ### 2.3 sudo：两个必须分开处理的含义
 
 "注意处理 sudo"在这里有两层意思，二者都要处理，且**互不等价**。
@@ -96,23 +100,23 @@ SDK 侧 `VerifyHubClient.sudoByPassword` 已经就位（`src/verify-hub-client.t
 
 #### (b) 操作系统的 sudo
 
-`sudo buckyos ...` 会把 `HOME` 改成 `/root`，于是：
+`sudo buckyos ...` 通常会把 `HOME` 改成 `/root`，于是：
 
-- 配置根从 `~/.buckyos_tool` 漂移到 `/root/.buckyos_tool`（`cli/core/config.ts:326`）；
-- P1 的候选根（`<configDir>/local/identity` + `<configDir>/security`）整体跟着漂移；
+- P1 的两个开发者身份根会漂移到 `/root/.buckyos` 和 `/root/.buckycli`；
 - 结果是**同一条命令在 sudo 前后用的是完全不同的身份**，而输出里看不出差别。
 
-反过来，`sudo -E` 会把调用者的 `BUCKYOS_IDENTITY_ROOT` / `BUCKYOS_SECURITY_ROOT` /
-`BUCKYOS_APPCLIENT_SESSION_TOKEN` 带进 root 环境，等于让 root 进程读普通用户的密钥。
+反过来，`sudo -E` 可能把调用者的 `HOME` 或 `BUCKYOS_APPCLIENT_SESSION_TOKEN` 带进 root 环境，
+使 root 进程读到普通用户的身份或 token。
 
 规则：
 
 1. `SUDO_USER` / `SUDO_UID` 目前**不在环境白名单里**（`cli/core/config.ts:62-76`），需要加入，
    否则 Tool 根本无法察觉自己跑在 sudo 下。
-2. 检测到 `SUDO_USER` 且用户没有显式给 `--config-dir` / `--identity` / `--session-token` 时：
+2. 检测到 `SUDO_USER` 且用户没有显式给 `--identity` / `--session-token` 时：
    **不要**静默改用 `SUDO_USER` 的 home 去扫描身份。悄悄读另一个用户的私钥是危险行为。
    正确做法是照常在当前 `HOME` 下解析；若候选为 0，则在错误信息里点明
-   "当前运行在 sudo 下，身份候选来自 `/root/...`；如需使用 `<SUDO_USER>` 的身份请显式指定 `--config-dir` 或 `--identity`"。
+   "当前运行在 sudo 下，身份候选来自 `/root/.buckyos` 和 `/root/.buckycli`；
+   如需使用 `<SUDO_USER>` 的开发者身份，请退出 sudo 后以该用户运行"。
 3. 文档中必须写明：**OS root ≠ zone sudo**。`sudo buckyos` 不会让你在 BuckyOS 里获得任何额外权限，
    它只会换掉你的本地身份来源。
 
@@ -120,36 +124,44 @@ SDK 侧 `VerifyHubClient.sudoByPassword` 已经就位（`src/verify-hub-client.t
 
 ## 3. P1：本地开发者身份
 
-普通用户不会把密钥放在磁盘上，这一级面向的是开发者与运维。
+普通用户不会把高权限开发者密钥作为常规登录方式。P1 是开发便利能力，不是生产环境的通用兜底。
 
-### 3.1 目录约定：`~/.buckyos_tool` 与 `~/.buckyos` 的分歧
+### 3.1 目标系统的开发模式是硬门控
 
-当前仓库里存在两套约定：
+BuckyOS 将新增一项系统配置，表示**目标系统是否开启开发模式**（具体字段名待配置规范确定）。
+buckyos-tool 必须在解析 Zone / endpoint 后，根据**该目标系统的配置**决定是否启用 P1：
 
-| 约定 | 位置 | 使用者 |
-|---|---|---|
-| `~/.buckyos_tool` | `cli/core/config.ts:326`、`cli/runtime/host.ts:211` | buckyos-tool（同时是 config root 与 policy 的唯一可写路径） |
-| `~/.buckyos`、`~/.buckycli` | `src/runtime.ts:1150-1151` | SDK 的 AppClient 私钥搜索根 |
+| 目标系统状态 | P1 行为 |
+|---|---|
+| 开发模式明确为开 | 允许扫描 §3.2 的两个本地目录 |
+| 开发模式为关 | 不列举、不读取、不尝试任何本地开发者身份 |
+| 配置缺失、无法获取或无法验证 | **按关闭处理**（fail closed） |
 
-结论与建议：
+这个开关不得由 Tool 本地 profile、命令行参数或环境变量覆盖。切换 Zone / endpoint 后必须重新读取，
+不得把一个开发系统的结果沿用到另一个目标。`--identity`、本地配置的默认身份以及自定义路径
+都不能绕过该门控。
 
-- **Tool 侧以 `~/.buckyos_tool` 为准**。它同时承担 `config.json` / `profiles/` / `state/` 与身份材料，
-  并且是发行策略里唯一被授予写权限的目录；改成 `~/.buckyos` 会把 Tool 的可写面扩大到 SDK 的密钥目录。
-- **把 `~/.buckyos` 加为只读的兼容候选根**，`source` 记作 `legacy-home`，
-  插在 `tool` 与 `environment` 之间（顺序见 §3.3）。这样已经按 SDK 约定放好密钥的开发者不用搬家，
-  同时 Tool 不会往那里写任何东西。
+开发模式关闭时，Tool 跳过 P1，再按语义进入 P2 或 P3；显式注入的 session-token（P0.1 / P0.2）
+不属于“扫描开发者身份”，仍按显式意图处理。这条边界用于防止本机保存的高权限开发者身份
+在连向生产或其他非开发系统时被自动选中，从而造成误操作。
 
-### 3.2 目录布局按身份管理协议
+### 3.2 只认 `~/.buckyos` 和 `~/.buckycli`
 
-材料布局遵循 [`buckyos-base/doc/did-identity-certificate-manager.md`](../../buckyos-base/doc/did-identity-certificate-manager.md) §6：
+开发模式开启后，Tool 对本地开发者身份**只认下面两个根目录**，且只读：
+
+1. `~/.buckyos`
+2. `~/.buckycli`
+
+不允许从 Tool 自身的配置目录、任意环境变量路径或命令行指定的额外 root 中扫描开发者身份。
+这两个根目录本身也只在目标系统开发模式开启后才可用；开关关闭时，即使文件存在也不得访问。
+
+每个根目录内的材料布局遵循
+[`buckyos-base/doc/did-identity-certificate-manager.md`](../../buckyos-base/doc/did-identity-certificate-manager.md) §6：
 
 ```text
-<public identity root>/<DID.toFilename()>/did.json
-<security root>/<DID.toFilename()>/authentication.private.pem
+<root>/local/identity/<DID.toFilename()>/did.json
+<root>/security/<DID.toFilename()>/authentication.private.pem
 ```
-
-对 Tool 而言即 `<configDir>/local/identity/...` 与 `<configDir>/security/...`
-（`cli/core/identity.ts:141-146`、`cli/core/identity.ts:325`）。
 
 - 私钥 usage 固定为 `authentication`，Ed25519 PKCS8 PEM。
 - 只存在 `authentication.keyref.json` 而无私钥本体时，该候选被跳过并记为
@@ -158,14 +170,17 @@ SDK 侧 `VerifyHubClient.sudoByPassword` 已经就位（`src/verify-hub-client.t
 
 ### 3.3 候选扫描顺序
 
-没有显式身份时，按**冻结顺序**扫描候选根，目录名排序，最多取 8 个可用候选
-（`cli/core/identity.ts:28`、`cli/core/identity.ts:259`）：
+只有开发模式开启且没有显式身份时，才按以下**冻结顺序**扫描；各根目录内按目录名排序，
+最多取 8 个可用候选（当前上限定义于 `cli/core/identity.ts:28`）：
 
-```
-explicit  →  tool  →  (建议新增 legacy-home)  →  environment  →  buckyos-root
+```text
+~/.buckyos  →  ~/.buckycli
 ```
 
-`principalKind` 的判据目前是"`did.json` 里有没有 `device_type` 字段"（`cli/core/identity.ts:333`）。
+显式 `--identity` 也只能在这两个根目录中定位，且仍受开发模式门控。
+`$BUCKYOS_ROOT` 下的设备密钥属于 P2，不是第三个开发者身份目录。
+
+`principalKind` 的判据目前是“`did.json` 里有没有 `device_type` 字段”（`cli/core/identity.ts:333`）。
 这个判据偏脆弱：它依赖文档里一个可选字段的存在性，而不是 DID 在 zone 内的实际角色。
 建议后续改为由 `did.json` 显式声明主体类型，或由 DID 方法 + zone 拓扑判定。
 
@@ -345,6 +360,9 @@ target = { kind: 'app', app_instance_id: 'buckycli@<user>' }
 | P0.3 / P1 / P2 | true | 缓存 `#acceptedIdentity`，用同一把私钥重签 JWT 再登录 | 无 |
 | P3 密码 | true | 重新提示输入密码 | 有 |
 
+P0.3 / P1 的自动续期也受开发模式门控：续期前必须重新确认当前目标系统仍开启开发模式。
+如果开关已关闭、无法获取或无法验证，必须清除缓存的开发者身份并终止续期，不得继续用已缓存私钥签名。
+
 登录 JWT 的 TTL 是 600 秒（`cli/core/auth.ts:73`），它只是**登录凭据**，不是会话 token；
 会话 token 的有效期由 verify-hub 决定，Tool 在 `exp - 15s` 时触发续期（`cli/core/auth.ts:107`）。
 
@@ -361,26 +379,37 @@ target = { kind: 'app', app_instance_id: 'buckycli@<user>' }
 
 ```text
 resolve(argv, env, host):
-  cfg = resolveConfig(argv, env)                    # cli/core/config.ts:183
-  if 命令需要会话:
-      cfg = applyImplicitDeviceIdentity(cfg, env)   # cli/core/identity.ts:52  → P2 预置
-      确认设备身份或 --yes                            # cli/core/app.ts:408
+  cfg = resolveConfig(argv, env)                              # 先确定 Zone / endpoint
 
   # ---------- P0 ----------
   if cfg.sessionToken:      return external(cfg.sessionToken)        # auth.ts:154
   if cfg.sessionTokenFile:  return external(read(file))              # auth.ts:161
   if env.BUCKYOS_APPCLIENT_SESSION_TOKEN: return external(...)       # auth.ts:180
 
-  if cfg.identity:                                                   # auth.ts:185
-      material = resolveIdentityMaterial(cfg.identity)   # 找不到 → IDENTITY_NOT_FOUND，不回退
+  # 这是规划中的 BuckyOS 目标系统配置；只有可验证的 true 才算开启
+  developerIdentitiesEnabled = readTargetDevelopmentMode(cfg.zone, cfg.endpoint) == true
+
+  if cfg.identity:                                                    # P0.3
+      if not developerIdentitiesEnabled: raise DEVELOPER_IDENTITY_DISABLED
+      material = resolveIdentityMaterial(
+          cfg.identity,
+          roots = [~/.buckyos, ~/.buckycli]
+      )                                                   # 找不到即报错，不回退
       return loginByJwt(sign(material), targetOf(material))
 
-  # ---------- P1 / P2 ----------
-  for candidate in scanIdentityCandidates():                         # auth.ts:196
-      try:    return loginByJwt(sign(candidate), targetOf(candidate))
-      except IDENTITY_KIND_NOT_ACCEPTED | AUTHENTICATION_REJECTED: continue
-      except *: raise                                   # 其它错误不轮换
-  if 有过尝试: raise IDENTITY_CANDIDATES_REJECTED
+  # ---------- P1：开发模式门控 ----------
+  if developerIdentitiesEnabled:
+      for candidate in scanIdentityCandidates([~/.buckyos, ~/.buckycli]):
+          try:    return loginByJwt(sign(candidate), targetOf(candidate))
+          except IDENTITY_KIND_NOT_ACCEPTED | AUTHENTICATION_REJECTED: continue
+          except *: raise                                 # 其它错误不轮换
+      if 有过尝试: raise IDENTITY_CANDIDATES_REJECTED
+
+  # ---------- P2：本机设备身份，不属于开发者目录 ----------
+  if 命令需要会话 and canApplyImplicitDeviceIdentity(cfg, env):
+      device = readCurrentDeviceIdentity($BUCKYOS_ROOT)
+      确认设备身份或 --yes
+      return loginByJwt(sign(device), system:buckycli)
 
   # ---------- P3 ----------
   if cfg.nonInteractive: raise AUTH_REQUIRED                         # auth.ts:222
@@ -400,15 +429,16 @@ resolve(argv, env, host):
 |---|---|---|---|
 | 1 | 提权 sudo 完全未实现 | 登录 JWT 硬编码 `sudo: false`；SDK 的 `sudoByPassword` 未被调用 | `cli/core/auth.ts:400`、`src/verify-hub-client.ts:144` |
 | 2 | 未处理操作系统 sudo | `SUDO_USER` / `SUDO_UID` 不在环境白名单，Tool 察觉不到身份来源漂移 | `cli/core/config.ts:62-76` |
-| 3 | `~/.buckyos` 兼容根缺失 | Tool 只认 `~/.buckyos_tool`，SDK 认 `~/.buckyos` / `~/.buckycli` | `cli/core/config.ts:326`、`src/runtime.ts:1150` |
-| 4 | 无 zone-owner 默认用户名 | `readCurrentDeviceIdentity` 未读 `owner_did`；P3 空着问用户名 | `cli/core/identity.ts:113-116` |
-| 5 | actor / subject 未分离 | `ResolvedPrincipal` 只有一个 `id`，`whoami` 只输出一个 principal | `cli/core/auth.ts:30-36`、`cli/modules/auth.ts:24` |
-| 6 | 设备代表用户的 token 未实现 | 设备身份只能拿 `system:buckycli`，无法为 `app install` 构造用户 sub | `cli/core/auth.ts:311-318` |
-| 7 | `principalKind` 判据脆弱 | 靠 `did.json` 有无 `device_type` 字段判断 user/device | `cli/core/identity.ts:333` |
-| 8 | 设备身份下 owner 未强制 | `--owner` 可选，缺省交服务端推断，设备调用时会推错 | `cli/modules/app.ts:1587-1592` |
+| 3 | 未按目标系统开发模式门控 | 目标系统配置尚在规划，Tool 当前会直接扫描本地身份 | 待新配置及 `cli/core/auth.ts` 接入 |
+| 4 | 开发者身份根不符合新约定 | 当前实现还接受 Tool 配置根及自定义 root；目标是只读 `~/.buckyos` / `~/.buckycli` | `cli/core/config.ts:326`、`cli/core/identity.ts:141-169`、`src/runtime.ts:1150-1151` |
+| 5 | 无 zone-owner 默认用户名 | `readCurrentDeviceIdentity` 未读 `owner_did`；P3 空着问用户名 | `cli/core/identity.ts:113-116` |
+| 6 | actor / subject 未分离 | `ResolvedPrincipal` 只有一个 `id`，`whoami` 只输出一个 principal | `cli/core/auth.ts:30-36`、`cli/modules/auth.ts:24` |
+| 7 | 设备代表用户的 token 未实现 | 设备身份只能拿 `system:buckycli`，无法为 `app install` 构造用户 sub | `cli/core/auth.ts:311-318` |
+| 8 | `principalKind` 判据脆弱 | 靠 `did.json` 有无 `device_type` 字段判断 user/device | `cli/core/identity.ts:333` |
+| 9 | 设备身份下 owner 未强制 | `--owner` 可选，缺省交服务端推断，设备调用时会推错 | `cli/modules/app.ts:1587-1592` |
 
-建议的处理顺序：4 → 5 → 6 → 8（这四项是同一条线：把"谁在调用"和"落在谁名下"彻底分开），
-然后 2 → 3（本地身份来源的确定性），最后 1 → 7。
+建议首先实现 3 → 4，先收紧高权限开发者身份的扫描边界；然后处理 5 → 6 → 7 → 9
+（把“谁在调用”和“落在谁名下”彻底分开），最后处理 2 → 1 → 8。
 
 ---
 
@@ -427,9 +457,10 @@ resolve(argv, env, host):
 | 变量 | 作用 | 级别 |
 |---|---|---|
 | `BUCKYOS_APPCLIENT_SESSION_TOKEN` | 直接注入 session-token | P0 |
-| `BUCKYOS_TOOL_IDENTITY` | 等价于 `--identity` | P0.3 |
-| `BUCKYOS_TOOL_CONFIG_DIR` | 覆盖 `~/.buckyos_tool` | P1 |
-| `BUCKYOS_IDENTITY_ROOT` / `BUCKYOS_SECURITY_ROOT` | 显式候选根，必须成对出现 | P1 |
+| `BUCKYOS_TOOL_IDENTITY` | 等价于 `--identity`；本地私钥解析仍受目标系统开发模式门控 | P0.3 |
 | `BUCKYOS_ROOT` | 设备身份与 `buckyos-root` 候选根；仅 system 发行版可见 | P2 |
-| `HOME` / `USERPROFILE` / `APPDATA` | 推导默认配置根 | P1 |
+| `HOME` / `USERPROFILE` | 仅用于推导 `~/.buckyos` 和 `~/.buckycli` | P1 |
 | `SUDO_USER` / `SUDO_UID` | **建议新增**，用于识别 OS sudo 下的身份来源漂移 | §2.3(b) |
+
+P1 不接受任意身份根的环境变量覆盖。用于开启开发者身份的信号只能来自目标系统的
+BuckyOS 开发模式配置，不得新增本地环境变量作为替代开关。

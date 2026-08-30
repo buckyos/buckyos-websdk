@@ -209,6 +209,10 @@ export interface TaskAclGrantSpec {
     scope: TaskGrantScope;
     data_scope: TaskDataScope;
 }
+export declare enum StorageDomain {
+    User = "User",
+    System = "System"
+}
 export interface TaskSchemaDefinition {
     schema_id: string;
     schema_version: number;
@@ -217,6 +221,7 @@ export interface TaskSchemaDefinition {
     presentation_schema?: unknown;
     allowed_executor_kinds: TaskExecutorKind[];
     user_creatable: boolean;
+    default_storage_domain: StorageDomain;
     publisher_app_id: string;
     enabled: boolean;
     created_at?: number;
@@ -232,6 +237,7 @@ export interface Task {
     input: unknown;
     input_digest: string;
     creator: ActorRef;
+    storage_domain: StorageDomain;
     idempotency_key: string;
     origin_ref?: TaskOriginRef;
     retry_of?: TaskId;
@@ -266,6 +272,7 @@ export interface TaskSummary {
     schema_id: string;
     schema_version: number;
     creator: ActorRef;
+    storage_domain: StorageDomain;
     executor_kind: TaskExecutorKind;
     phase: TaskPhase;
     wait_reason?: TaskWaitReason;
@@ -337,6 +344,7 @@ export interface CreateTaskReq {
     child_control_policy?: ChildControlPolicy;
     policy_preset?: string;
     permission_boundary?: boolean;
+    storage_domain?: StorageDomain;
     idempotency_key: string;
     retry_of?: TaskId;
     supersedes?: TaskId;
@@ -353,6 +361,7 @@ export interface ListTasksReq {
     phase?: TaskPhase;
     root_id?: TaskId;
     executor_kind?: TaskExecutorKind;
+    storage_domain?: StorageDomain;
     runner_app_id?: string;
     runner_target_id?: string;
     created_after?: number;
@@ -461,6 +470,7 @@ export interface CreatePromisedTaskReq {
     child_control_policy?: ChildControlPolicy;
     policy_preset?: string;
     permission_boundary?: boolean;
+    storage_domain?: StorageDomain;
     idempotency_key: string;
     wait_reason?: TaskWaitReason;
     message?: string;
