@@ -248,7 +248,6 @@ describe('SnClient path routing', () => {
         request_id: 'owner-unbind:alice:1',
         operation: method,
         name: 'alice',
-        zone_did: 'did:web:home.example',
         source_owner_hash: `sha256:${'a'.repeat(64)}`,
         result_owner_hash: `sha256:${'b'.repeat(64)}`,
         source_version: 7,

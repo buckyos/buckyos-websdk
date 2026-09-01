@@ -1170,7 +1170,6 @@ export interface SnOwnerRemoveBoundZoneReq {
 
 export interface SnOwnerRemoveBoundZoneResp extends SnBnsProxyTxOutcome {
   code: number
-  zone_did: string
   source_owner_hash: string
   result_owner_hash: string
   source_version: number
