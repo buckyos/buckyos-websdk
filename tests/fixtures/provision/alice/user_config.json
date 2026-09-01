@@ -29,5 +29,6 @@
   "iat": 1783272891,
   "version_seq": 0,
   "name": "alice",
-  "display_name": "alice"
+  "display_name": "alice",
+  "zone_binding_model_version": 2
 }
