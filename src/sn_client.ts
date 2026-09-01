@@ -69,6 +69,7 @@ export const METHOD_DEVICEINFO_RESOLVE_OOD_BY_DID = 'deviceinfo.resolve_ood_by_d
 export const METHOD_DEVICEINFO_RESOLVE_OOD_BY_HOSTNAME = 'deviceinfo.resolve_ood_by_hostname'
 export const METHOD_BNS_PUBLISH_DNS_TXT = 'bns.publish_dns_txt'
 export const METHOD_BNS_PUBLISH_DOCUMENT = 'bns.publish_document'
+export const METHOD_OWNER_REMOVE_BOUND_ZONE = 'owner.remove_bound_zone'
 
 // ============================================================================
 // Errors (SN-API.md §9, mirrors api/errors.rs SnApiErrorCode)
@@ -1156,6 +1157,26 @@ export type SnBnsProxyStatus = 'submitted' | 'confirmed'
 
 export type SnBnsProxyResp = SnBnsProxyTxOutcome & { code: number }
 
+// Owner-key-authorized compare-and-swap update. Unlike ordinary bns.* writes,
+// this call does not require an SN account token: owner_authorization is an
+// EdDSA JWT whose claims bind every request field.
+export interface SnOwnerRemoveBoundZoneReq {
+  name: string
+  zone_did: string
+  expected_owner_hash: string
+  request_id: string
+  owner_authorization: string
+}
+
+export interface SnOwnerRemoveBoundZoneResp extends SnBnsProxyTxOutcome {
+  code: number
+  zone_did: string
+  source_owner_hash: string
+  result_owner_hash: string
+  source_version: number
+  target_version: number
+}
+
 // ============================================================================
 // Device-signed SN credential (mirrors sn_client.rs generate_sn_device_token)
 // ============================================================================
@@ -1459,6 +1480,16 @@ export class SnClient {
       params.request_id = req.request_id
     }
     return this.call(this.bnsProxyRpc, METHOD_BNS_PUBLISH_DOCUMENT, params)
+  }
+
+  async removeBoundZone(req: SnOwnerRemoveBoundZoneReq): Promise<SnOwnerRemoveBoundZoneResp> {
+    return this.call(this.bnsProxyRpc, METHOD_OWNER_REMOVE_BOUND_ZONE, {
+      name: req.name,
+      zone_did: req.zone_did,
+      expected_owner_hash: req.expected_owner_hash,
+      request_id: req.request_id,
+      owner_authorization: req.owner_authorization,
+    })
   }
 }
 
