@@ -1342,6 +1342,7 @@ function pruneUndefined(obj) {
 function asDid(value) {
   return value instanceof DID ? value : DID.fromStr(value);
 }
+const ZONE_BINDING_MODEL_VERSION = 2;
 function newOwnerDocument(params) {
   const did = asDid(params.did);
   const now = params.now ?? buckyosGetUnixTimestamp();
@@ -1364,7 +1365,8 @@ function newOwnerDocument(params) {
     iat: now,
     version_seq: 0,
     name: params.name,
-    display_name: params.displayName
+    display_name: params.displayName,
+    zone_binding_model_version: ZONE_BINDING_MODEL_VERSION
   };
 }
 function newOwnerDocumentByPkx(pkx, hostname) {
@@ -1407,13 +1409,32 @@ function ownerDocumentSetDefaultZoneDid(ownerDoc, defaultZoneDid) {
   const bindedZoneList = (ownerDoc.binded_zone_list ?? []).filter((did) => did !== zoneDidStr);
   bindedZoneList.unshift(zoneDidStr);
   ownerDoc.binded_zone_list = bindedZoneList;
+  ownerDoc.zone_binding_model_version = ZONE_BINDING_MODEL_VERSION;
+  ownerDocumentSyncLastDocService(ownerDoc);
+}
+function ownerDocumentRemoveBoundZone(ownerDoc, zoneDid) {
+  var _a;
+  const zoneDidStr = asDid(zoneDid).toString();
+  const previousLength = ((_a = ownerDoc.binded_zone_list) == null ? void 0 : _a.length) ?? 0;
+  ownerDoc.binded_zone_list = (ownerDoc.binded_zone_list ?? []).filter((did) => did !== zoneDidStr);
+  const removed = ownerDoc.binded_zone_list.length !== previousLength;
+  ownerDoc.zone_binding_model_version = ZONE_BINDING_MODEL_VERSION;
+  ownerDocumentSyncLastDocService(ownerDoc);
+  return removed;
+}
+function ownerDocumentSyncLastDocService(ownerDoc) {
+  var _a;
+  const defaultZoneDid = (_a = ownerDoc.binded_zone_list) == null ? void 0 : _a[0];
   const lastDocServiceId = `${ownerDoc.id}#lastDoc`;
   const services = (ownerDoc.service ?? []).filter((service) => service.id !== lastDocServiceId);
-  services.push({
-    id: lastDocServiceId,
-    type: "DIDDoc",
-    serviceEndpoint: `https://${zoneDid.toHostName()}/resolve/${ownerDoc.id}`
-  });
+  if (defaultZoneDid !== void 0) {
+    const zoneDid = asDid(defaultZoneDid);
+    services.push({
+      id: lastDocServiceId,
+      type: "DIDDoc",
+      serviceEndpoint: `https://${zoneDid.toHostName()}/resolve/${ownerDoc.id}`
+    });
+  }
   ownerDoc.service = services;
 }
 function ownerDocumentGetDefaultZoneDid(ownerDoc) {
@@ -1423,6 +1444,16 @@ function ownerDocumentGetDefaultZoneDid(ownerDoc) {
 function ownerDocumentIsBoundToZone(ownerDoc, zoneDid) {
   const zoneDidStr = asDid(zoneDid).toString();
   return (ownerDoc.binded_zone_list ?? []).includes(zoneDidStr);
+}
+function ownerDocumentGetZoneBindingState(ownerDoc, zoneDid) {
+  const version = ownerDoc.zone_binding_model_version;
+  if (version === void 0) {
+    return "legacy";
+  }
+  if (version !== ZONE_BINDING_MODEL_VERSION) {
+    return "unsupported_version";
+  }
+  return ownerDocumentIsBoundToZone(ownerDoc, zoneDid) ? "bound_v2" : "unbound_v2";
 }
 function ownerDocumentGetHistoricalKeys(ownerDoc) {
   return ownerDoc.verificationMethod.filter((method) => method.id !== "#main_key").map((method) => [method.id, method.publicKeyJwk]);
@@ -1746,6 +1777,7 @@ function ownerDocumentPayload(doc) {
     display_name,
     avatar,
     meta,
+    zone_binding_model_version,
     binded_zone_list,
     wallets,
     ...extra
@@ -1770,6 +1802,7 @@ function ownerDocumentPayload(doc) {
     display_name,
     avatar,
     meta,
+    zone_binding_model_version,
     binded_zone_list: binded_zone_list && binded_zone_list.length > 0 ? binded_zone_list : void 0,
     wallets: wallets && Object.keys(wallets).length > 0 ? wallets : void 0
   });
@@ -2003,6 +2036,7 @@ const namelib = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.definePrope
   KEY_SCOPE_MANUAL,
   KEY_SCOPE_MESSAGE_CREATE,
   KEY_SCOPE_ZONE_PUBLISH,
+  ZONE_BINDING_MODEL_VERSION,
   base64UrlDecodeToBytes,
   base64UrlDecodeToString,
   base64UrlEncodeBytes,
@@ -2058,7 +2092,9 @@ const namelib = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.definePrope
   oodNodeTypeIsOod,
   ownerDocumentGetDefaultZoneDid,
   ownerDocumentGetHistoricalKeys,
+  ownerDocumentGetZoneBindingState,
   ownerDocumentIsBoundToZone,
+  ownerDocumentRemoveBoundZone,
   ownerDocumentSetDefaultZoneDid,
   ownerDocumentToOrderedJson,
   ownerDocumentValidateJwtRevocation,
@@ -3659,4 +3695,4 @@ export {
   sha256Bytes as y,
   DirObject as z
 };
-//# sourceMappingURL=ndn_types-ca94286b.mjs.map
+//# sourceMappingURL=ndn_types-f6c08d20.mjs.map

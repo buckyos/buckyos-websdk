@@ -5,7 +5,7 @@ var __publicField = (obj, key, value) => {
   return value;
 };
 var _a;
-import { N as NODE_IDENTITY_SCHEMA_V2, v as DID, A as newDeviceDocumentByJwk, B as verifyJwtEdDSA, E as deviceDocumentToOrderedJson, G as decodeJwtClaimWithoutVerify, H as commonjsGlobal, I as createJwkByX, J as newOwnerDocument, K as ownerDocumentToOrderedJson, L as parseOODDescription, M as oodDescriptionToString, P as newZoneBootDocument, Q as newZoneDocument, R as encodeZoneBootDocument, T as DEFAULT_EXPIRE_TIME, U as zoneDocumentToOrderedJson, V as newDeviceMiniDocument, W as deviceMiniDocumentToJwt, X as encodeDeviceDocument, Y as newDeviceMiniDocumentByDeviceDocument, Z as newDeviceDocumentByMiniDocument, _ as buckyosGetUnixTimestamp, $ as buildNamedObjectByJson } from "./ndn_types-ca94286b.mjs";
+import { N as NODE_IDENTITY_SCHEMA_V2, v as DID, A as newDeviceDocumentByJwk, B as verifyJwtEdDSA, E as deviceDocumentToOrderedJson, G as decodeJwtClaimWithoutVerify, H as commonjsGlobal, I as createJwkByX, J as newOwnerDocument, K as ownerDocumentToOrderedJson, L as parseOODDescription, M as oodDescriptionToString, P as newZoneBootDocument, Q as newZoneDocument, R as encodeZoneBootDocument, T as DEFAULT_EXPIRE_TIME, U as zoneDocumentToOrderedJson, V as newDeviceMiniDocument, W as deviceMiniDocumentToJwt, X as encodeDeviceDocument, Y as newDeviceMiniDocumentByDeviceDocument, Z as newDeviceDocumentByMiniDocument, _ as buckyosGetUnixTimestamp, $ as buildNamedObjectByJson } from "./ndn_types-f6c08d20.mjs";
 import { Buffer as Buffer$1 } from "node:buffer";
 import { pbkdf2Sync, createPublicKey, createPrivateKey, createECDH, createHmac } from "node:crypto";
 const DEVICE_DOC_JWT_FILE_NAME = "device_doc.jwt";

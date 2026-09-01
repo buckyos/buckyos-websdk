@@ -73,6 +73,8 @@ export declare function parseOODDescription(s: string): OODDescription;
 export declare function oodDescriptionToString(desc: OODDescription): string;
 export declare function oodNodeTypeIsOod(nodeType: DeviceNodeType): boolean;
 export declare function oodNodeTypeIsGateway(nodeType: DeviceNodeType): boolean;
+export declare const ZONE_BINDING_MODEL_VERSION: 2;
+export type OwnerDocumentZoneBindingState = 'legacy' | 'bound_v2' | 'unbound_v2' | 'unsupported_version';
 export interface NewOwnerDocumentParams {
     did: DID | DIDString;
     name: string;
@@ -83,8 +85,10 @@ export interface NewOwnerDocumentParams {
 export declare function newOwnerDocument(params: NewOwnerDocumentParams): BuckyOSOwnerDocument;
 export declare function newOwnerDocumentByPkx(pkx: string, hostname: string): BuckyOSOwnerDocument;
 export declare function ownerDocumentSetDefaultZoneDid(ownerDoc: BuckyOSOwnerDocument, defaultZoneDid: DID | DIDString): void;
+export declare function ownerDocumentRemoveBoundZone(ownerDoc: BuckyOSOwnerDocument, zoneDid: DID | DIDString): boolean;
 export declare function ownerDocumentGetDefaultZoneDid(ownerDoc: BuckyOSOwnerDocument): DIDString | null;
 export declare function ownerDocumentIsBoundToZone(ownerDoc: BuckyOSOwnerDocument, zoneDid: DID | DIDString): boolean;
+export declare function ownerDocumentGetZoneBindingState(ownerDoc: BuckyOSOwnerDocument, zoneDid: DID | DIDString): OwnerDocumentZoneBindingState;
 export declare function ownerDocumentGetHistoricalKeys(ownerDoc: BuckyOSOwnerDocument): Array<[string, Ed25519Jwk]>;
 export declare function ownerDocumentValidateJwtRevocation(ownerDoc: BuckyOSOwnerDocument, docType: string, doc: EncodedDocument): void;
 export interface NewZoneDocumentParams {
