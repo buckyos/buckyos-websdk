@@ -13,7 +13,7 @@ NamedObject 内容操作属于 [Object 模块](object.md)，外部目录 mount �
 
 ## 2. 资源模型
 
-- canonical URL：例如 `dfs://`，后续可扩展 `device://`；
+- canonical URL：当前 Zone 使用 `cyfs:///`，跨 Zone 时使用带明确 authority 的 `cyfs://`；后续可扩展 `device://`；
 - folder、file、reference；
 - revision/etag、ACL 和 capabilities；
 - Folder/View/Collection 三种 location，View 只读、Collection 管引用而非数据本体。
