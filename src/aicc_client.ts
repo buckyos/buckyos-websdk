@@ -1,8 +1,7 @@
 import { kRPCClient, RPCError } from './krpc_client'
 
-export const AICC_SERVICE_NAME = 'aicc'
 export const AICC_SERVICE_UNIQUE_ID = 'aicc'
-export const AICC_SERVICE_SERVICE_NAME = AICC_SERVICE_NAME
+export const AICC_SERVICE_SERVICE_NAME = 'aicc'
 export const AICC_SERVICE_SERVICE_PORT = 4040
 
 export const AICC_AI_METHODS = {
@@ -112,15 +111,43 @@ export interface AiTaskOptions { parent_id?: string }
 export interface AiOutputOptions { media_type?: string; size?: string; sample_rate?: number; fps?: number }
 export interface ModelRequirement { streaming?: boolean; tool_call?: boolean; json_schema?: boolean; web_search?: boolean;
   vision?: boolean; image_generation?: boolean; min_context_tokens?: number }
-export type ModelDisable = ModelRequirement
+export interface ModelDisable extends ModelRequirement {}
+export interface HelperModelRequirement extends ModelRequirement {}
 export interface RoutePolicy { profile?: 'cheap' | 'fast' | 'balanced' | 'quality'; local_only?: boolean;
   allow_fallback?: boolean; runtime_failover?: boolean; explain?: boolean; allowed_provider_instances?: string[];
   blocked_provider_instances?: string[]; max_cost?: Money; max_latency_ms?: number }
+export interface ModelItem { target: string; weight?: number }
+export interface ModelItemPatch { target?: string; weight?: number }
+export type OverlayMergeMode = 'inherit' | 'replace'
+export type AiccFallbackMode = 'strict' | 'parent' | 'target_exact' | 'target_logical' | 'disabled'
+export interface AiccFallbackRule { mode: AiccFallbackMode; target?: string }
+export type AiccSchedulerProfile = 'cost_first' | 'latency_first' | 'quality_first' | 'balanced' | 'local_first' | 'strict_local'
+export type LockedValue<T> = T | { value: T; locked?: boolean }
+export interface AiccSchedulerProfileWeights { cost?: number; latency?: number; reliability?: number; quality?: number;
+  preference?: number; cache?: number; local?: number }
+export interface AiccSchedulerProfileConfig { cost_first?: AiccSchedulerProfileWeights; latency_first?: AiccSchedulerProfileWeights;
+  quality_first?: AiccSchedulerProfileWeights; balanced?: AiccSchedulerProfileWeights; local_first?: AiccSchedulerProfileWeights;
+  strict_local?: AiccSchedulerProfileWeights }
+export interface AiccPolicyConfig { profile?: LockedValue<AiccSchedulerProfile>;
+  scheduler_profiles?: LockedValue<AiccSchedulerProfileConfig>; local_only?: LockedValue<boolean>;
+  allow_fallback?: LockedValue<boolean>; allow_exact_model_fallback?: LockedValue<boolean>;
+  runtime_failover?: LockedValue<boolean>; explain?: LockedValue<boolean>;
+  blocked_provider_instances?: LockedValue<string[]>; allowed_provider_instances?: LockedValue<string[]>;
+  max_estimated_cost?: LockedValue<Money> }
+export interface AiccLogicalNodeOverlay { children?: Record<string, AiccLogicalNodeOverlay>; source?: string;
+  items?: Record<string, ModelItem>; item_overrides?: Record<string, ModelItemPatch>;
+  exact_model_weights?: Record<string, number>; disable_line?: ModelDisable; fallback?: AiccFallbackRule;
+  policy?: AiccPolicyConfig; route_policy_override?: AiccPolicyConfig }
+export interface AiccLogicalTreeOverlay { path: string; merge_mode?: OverlayMergeMode; items?: Record<string, ModelItem>;
+  item_overrides?: Record<string, ModelItemPatch>; exact_model_weights?: Record<string, number>;
+  disable_line?: ModelDisable; fallback?: AiccFallbackRule; route_policy_override?: AiccPolicyConfig; source?: string }
+export interface AiccSessionLogicalProfile { name?: string; overlays?: AiccLogicalTreeOverlay[];
+  route_policy_override?: AiccPolicyConfig }
 export interface AiccRouteOverlay {
-  inherit?: string; logical_tree?: Record<string, JsonValue>; logical_profile?: JsonValue;
-  logical_profiles?: Record<string, JsonValue>; active_logical_profile?: string;
+  inherit?: string; logical_tree?: Record<string, AiccLogicalNodeOverlay>; logical_profile?: AiccSessionLogicalProfile;
+  logical_profiles?: Record<string, AiccSessionLogicalProfile>; active_logical_profile?: string;
   global_exact_model_weights?: Record<string, number>; provider_weights?: Record<string, number>;
-  policy?: JsonValue; revision?: string; ttl_seconds?: number
+  policy?: AiccPolicyConfig; revision?: string; ttl_seconds?: number
 }
 
 export interface RouteResolveRequest { trace_id?: string; request_id?: string; api_type: ApiType; logical_model: string; requirements?: ModelRequirement;
@@ -131,19 +158,19 @@ export interface RouteResolveResponse { selected_exact_model: string; selected_m
   origin_model_id: string; provider_model_id: string; operation: string; enabled_capabilities?: Feature[];
   disabled_capabilities?: Feature[]; fallback_attempts?: Array<{ exact_model: string; provider_instance_name: string;
   provider_model_id: string }>; route_trace?: RouteTrace; inventory_revision: string }
-interface InferenceRequest { exact_model: string; trace_id?: string; idempotency_key?: string; task_options?: AiTaskOptions }
-interface InferenceResponse { task_id: string; status: AiMethodStatus; usage?: AiUsage; cost?: AiCost;
+export interface InferenceRequest { exact_model: string; trace_id?: string; idempotency_key?: string; task_options?: AiTaskOptions }
+export interface InferenceResponse { task_id: string; status: AiMethodStatus; usage?: AiUsage; cost?: AiCost;
   finish_reason?: string; provider_task_ref?: string; route_trace?: RouteTrace; event_ref?: string; error?: AiccError }
 interface ChatFields { messages: AiMessage[]; tools?: AiToolSpec[]; response_format?: LlmResponseFormat; temperature?: number;
   top_p?: number; max_output_tokens?: number; seed?: number; stop?: string[]; output?: AiOutputOptions }
 interface ImageGenerationFields { prompt: string; negative_prompt?: string; n?: number; aspect_ratio?: string; size?: string;
   quality?: string; style?: string; seed?: number; output?: AiOutputOptions }
 export interface LlmChatInvokeRequest extends InferenceRequest, ChatFields {}
-export interface LlmChatHelperRequest extends ChatFields { logical_model: string; requirements?: ModelRequirement; disable?: ModelDisable;
+export interface LlmChatHelperRequest extends ChatFields { logical_model: string; requirements?: HelperModelRequirement; disable?: ModelDisable;
   trace_id?: string; policy?: RoutePolicy; idempotency_key?: string; task_options?: AiTaskOptions; session_overlay?: AiccRouteOverlay }
 export interface LlmChatInvokeResponse extends InferenceResponse { message?: AiMessage; tool_calls?: AiToolCall[] }
 export interface TextToImageInvokeRequest extends InferenceRequest, ImageGenerationFields {}
-export interface TextToImageHelperRequest extends ImageGenerationFields { logical_model: string; requirements?: ModelRequirement;
+export interface TextToImageHelperRequest extends ImageGenerationFields { logical_model: string; requirements?: HelperModelRequirement;
   trace_id?: string; disable?: ModelDisable; policy?: RoutePolicy; idempotency_key?: string; task_options?: AiTaskOptions; session_overlay?: AiccRouteOverlay }
 export interface TextToImageInvokeResponse extends InferenceResponse { images?: ResourceRef[]; provider_states?: AiContent[] }
 
@@ -230,6 +257,13 @@ export interface ComputerUseRequest extends InferenceRequest { task: string; env
 export interface ComputerUseResponse extends InferenceResponse { actions?: ComputerAction[]; requires_next_observation?: boolean }
 
 export type EmptyRequest = Record<string, never>
+export type ServiceReloadSettingsRequest = EmptyRequest
+export type RoutingGetRequest = EmptyRequest
+export type ListModelsRequest = EmptyRequest
+export type ProviderCatalogRequest = EmptyRequest
+export type ProtocolAdapterListRequest = EmptyRequest
+export type DriverMetadataUpdateGetReq = EmptyRequest
+export interface CancelRequest { task_id: string }
 export interface ServiceReloadSettingsResponse { ok: boolean; settings_revision: number }
 export interface QuotaQueryRequest { capability?: Capability; method?: string }
 export interface QuotaView { state: 'normal' | 'near_limit' | 'exhausted'; remaining_request_units?: number; remaining_cost?: Money; reset_at?: string }
@@ -237,16 +271,19 @@ export interface QuotaQueryResponse { quota: QuotaView }
 export interface ProviderCatalogEntry { provider_profile_id: string; display_name: string; base_url: string;
   protocol_adapter_id: string; provider_rules_id?: string; ui_hints?: Record<string, JsonValue> }
 export interface ProviderCatalogResponse { catalog_revision: number; providers: ProviderCatalogEntry[] }
+export type ProtocolAdapterStatus = 'stable' | 'preview' | 'deprecated'
+export type ProtocolExecutionMode = 'immediate' | 'stream' | 'native_task'
 export interface ProtocolAdapterOperation { operation_id: string; api_types: ApiType[]; capabilities: Capability[];
-  supported_features: string[]; execution_modes: Array<'immediate' | 'stream' | 'native_task'>; supports_cancel: boolean; supports_webhook: boolean }
+  supported_features: string[]; execution_modes: ProtocolExecutionMode[]; supports_cancel: boolean; supports_webhook: boolean }
 export interface ProtocolAdapterView { protocol_family_id: string; protocol_adapter_id: string; interface_generation: string;
-  status: 'stable' | 'preview' | 'deprecated'; probe_priority: number; base_adapter_id?: string; operations: ProtocolAdapterOperation[] }
+  status: ProtocolAdapterStatus; probe_priority: number; base_adapter_id?: string; operations: ProtocolAdapterOperation[] }
 export interface ProtocolAdapterListResponse { adapters: ProtocolAdapterView[] }
 interface ProviderConfig { provider_type: string; provider_profile_id: string; protocol_family_id?: string; protocol_adapter_id?: string;
   base_url: string; credentials: JsonValue; region?: string; workspace?: string; account?: string; provider_rules_id?: string;
   auth?: JsonValue; discovery?: JsonValue; instance_rules?: JsonValue; timeout_ms?: number; auto_sync_models?: boolean }
 export interface ProviderValidateRequest extends ProviderConfig { provider_instance_name?: string }
-export interface ProviderValidationErrorDetail { kind: 'configuration' | 'base_url' | 'authentication' | 'protocol' | 'models' | 'balance'; message: string }
+export type ProviderValidationErrorKind = 'configuration' | 'base_url' | 'authentication' | 'protocol' | 'models' | 'balance'
+export interface ProviderValidationErrorDetail { kind: ProviderValidationErrorKind; message: string }
 export interface ProviderValidateResponse { base_url_reachable: boolean; auth_valid: boolean; models_discovered: string[];
   balance_available: boolean; errors: string[]; error_details: ProviderValidationErrorDetail[]; resolved_protocol_adapter_id?: string }
 export interface ProviderAddRequest extends ProviderConfig { provider_instance_name: string }
@@ -257,11 +294,16 @@ export interface ProviderDeleteResponse { ok: boolean; provider_instance_name?: 
 export interface ProviderRefreshModelsRequest { provider_instance_name: string }
 export interface ProviderRefreshModelsResponse { ok: boolean; provider_instance_name: string; inventory_revision: string }
 export interface ProviderListRequest { method?: string }
+export type ProviderInstanceAuthMode = 'api_key' | 'dynamic_login'
+export interface ProviderInstanceAuthView { mode?: ProviderInstanceAuthMode; credential_kind?: string; configured: boolean }
+export type ProviderInstanceInventoryState = 'disabled' | 'not_loaded' | 'loaded'
+export interface ProviderInstanceInventoryView { state: ProviderInstanceInventoryState; revision?: string; model_count: number;
+  updated_at_ms?: number }
+export type ProviderInstanceHealthState = 'disabled' | 'not_loaded' | 'unknown' | 'healthy' | 'degraded' | 'unavailable'
+export interface ProviderInstanceHealthView { state: ProviderInstanceHealthState; checked_at_ms?: number }
 export interface ProviderInstanceView { provider_instance_name: string; provider_type: string; provider_profile_id: string;
-  protocol_adapter_id: string; base_url: string; enabled: boolean;
-  auth: { mode?: 'api_key' | 'dynamic_login'; credential_kind?: string; configured: boolean };
-  inventory: { state: 'disabled' | 'not_loaded' | 'loaded'; revision?: string; model_count: number; updated_at_ms?: number };
-  health: { state: 'disabled' | 'not_loaded' | 'unknown' | 'healthy' | 'degraded' | 'unavailable'; checked_at_ms?: number } }
+  protocol_adapter_id: string; base_url: string; enabled: boolean; auth: ProviderInstanceAuthView;
+  inventory: ProviderInstanceInventoryView; health: ProviderInstanceHealthView }
 export interface ProviderListResponse { providers: ProviderInstanceView[]; settings_revision: number; inventory_revision: string }
 export interface ProviderHealthRequest { exact_model: string }
 export interface ProviderHealthResponse { health: JsonValue }
@@ -283,9 +325,14 @@ export interface AiccUsageEvent { event_id: string; tenant_id: string; user_id: 
   trace_id?: string; idempotency_key?: string; method: AiccAiMethod; capability: string; request_model: string; provider_instance_name: string;
   provider_model: string; input_tokens?: number; output_tokens?: number; total_tokens?: number; request_units?: number;
   usage_json: AiUsage; finance_snapshot_json?: JsonValue; created_at_ms: number }
-export interface QueryUsageResponse { total: UsageAggregate; grouped?: Array<{ group: Record<string, string>; aggregate: UsageAggregate }>;
-  buckets?: Array<{ bucket_start_ms: number; group?: Record<string, string>; aggregate: UsageAggregate }>;
+export interface UsageGroupedRow { group: Record<string, string>; aggregate: UsageAggregate }
+export interface UsageBucketedRow { bucket_start_ms: number; group?: Record<string, string>; aggregate: UsageAggregate }
+export interface QueryUsageResponse { total: UsageAggregate; grouped?: UsageGroupedRow[];
+  buckets?: UsageBucketedRow[];
   events?: AiccUsageEvent[]; next_cursor?: string }
+export interface AiccRouteTraceEvent { trace_id: string; tenant_id: string; caller_app_id?: string; task_id: string;
+  request_model: string; selected_exact_model?: string; provider_instance_name?: string; api_type: string;
+  route_trace_json: RouteTrace; created_at_ms: number }
 export interface QueryRouteTraceRequest { limit?: number; cursor?: string; start_time_ms?: number; end_time_ms?: number;
   task_ids?: string[]; request_ids?: string[]; api_types?: string[]; provider_instance_names?: string[];
   selected_exact_models?: string[]; scheduler_profiles?: string[]; query?: string; outcome?: string }
@@ -293,13 +340,16 @@ export interface QueryRouteTraceResponse { traces?: JsonValue[]; next_cursor?: s
 export interface RoutingGetResponse { settings_revision: number; routing: AiccRouteOverlay }
 export interface RoutingUpdateRequest { settings_revision: number; provider_weights: Record<string, number> }
 export interface RoutingUpdateResponse { ok: boolean; settings_revision: number; routing: AiccRouteOverlay }
-export interface DriverMetadataUpdateSetRequest { enabled: boolean; source_url?: string; interval_secs?: number }
+export interface DriverMetadataUpdateSetReq { enabled: boolean; source_url?: string; interval_secs?: number }
+export type DriverMetadataUpdateStatus = 'disabled' | 'idle' | 'updating' | 'healthy' | 'degraded' | 'error'
+export interface DriverMetadataProviderStatus { provider_instance_name: string; metadata_applied_seq: number }
 export interface DriverMetadataUpdateView { enabled: boolean; source_url?: string | null; source_configured: boolean;
-  interval_secs: number; metadata_target_seq: number; providers: Array<{ provider_instance_name: string; metadata_applied_seq: number }>;
-  status: 'disabled' | 'idle' | 'updating' | 'healthy' | 'degraded' | 'error'; active_revision?: number | null;
+  interval_secs: number; metadata_target_seq: number; providers: DriverMetadataProviderStatus[];
+  status: DriverMetadataUpdateStatus; active_revision?: number | null;
   last_attempt_at_ms?: number | null; last_success_at_ms?: number | null; last_error?: string | null; consecutive_failures: number }
+export interface DriverMetadataRuntimeApply { ok: boolean; refresh_scheduled?: boolean; error?: string }
 export interface DriverMetadataUpdateSetResponse { ok: boolean; settings_revision: number; settings: DriverMetadataUpdateView;
-  runtime_apply: { ok: boolean; refresh_scheduled?: boolean; error?: string } }
+  runtime_apply: DriverMetadataRuntimeApply }
 
 const AI_METHOD_SET = new Set<string>(Object.values(AICC_AI_METHODS))
 export function isAiccAiMethod(method: string): method is AiccAiMethod { return AI_METHOD_SET.has(method) }
@@ -439,5 +489,5 @@ export class AiccClient {
   refreshProviderModels(r: ProviderRefreshModelsRequest) { return this.call<ProviderRefreshModelsResponse, ProviderRefreshModelsRequest>(AICC_MANAGEMENT_METHODS.PROVIDER_REFRESH_MODELS, r) }
   listModels() { return this.call<JsonValue, EmptyRequest>(AICC_MANAGEMENT_METHODS.MODELS_LIST, {}) }
   getDriverMetadataUpdate() { return this.call<DriverMetadataUpdateView, EmptyRequest>(AICC_MANAGEMENT_METHODS.DRIVER_METADATA_UPDATE_GET, {}) }
-  setDriverMetadataUpdate(r: DriverMetadataUpdateSetRequest) { return this.call<DriverMetadataUpdateSetResponse, DriverMetadataUpdateSetRequest>(AICC_MANAGEMENT_METHODS.DRIVER_METADATA_UPDATE_SET, r) }
+  setDriverMetadataUpdate(r: DriverMetadataUpdateSetReq) { return this.call<DriverMetadataUpdateSetResponse, DriverMetadataUpdateSetReq>(AICC_MANAGEMENT_METHODS.DRIVER_METADATA_UPDATE_SET, r) }
 }

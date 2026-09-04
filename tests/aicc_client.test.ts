@@ -3,11 +3,18 @@ import {
   AICC_AI_METHODS,
   AICC_CORE_METHODS,
   AICC_MANAGEMENT_METHODS,
+  AICC_METHODS,
+  AiccError,
   AiccClient,
+  AiccRouteOverlay,
+  AiccRouteTraceEvent,
   ApiType,
   Capability,
+  InferenceResponse,
   Money,
+  ProviderInstanceView,
   QueryUsageRequest,
+  RouteResolveResponse,
   ResourceRef,
   aiccMessageTextContent,
   aiccTextMessage,
@@ -20,6 +27,18 @@ function response(result: unknown, seq = 1) {
 
 function sent(fetcher: jest.Mock) {
   return JSON.parse((fetcher.mock.calls[0][1] as RequestInit).body as string)
+}
+
+function lastSent(fetcher: jest.Mock) {
+  const call = fetcher.mock.calls[fetcher.mock.calls.length - 1]
+  return JSON.parse((call[1] as RequestInit).body as string)
+}
+
+function echoingFetcher(result: unknown) {
+  return jest.fn().mockImplementation(async (_url: string, init: RequestInit) => {
+    const request = JSON.parse(init.body as string)
+    return response(result, request.sys[0])
+  })
 }
 
 describe('canonical AICC contract', () => {
@@ -82,29 +101,79 @@ describe('canonical AICC contract', () => {
     expect(sent(fetcher).params.trace_id).toBe('trace-image-helper')
   })
 
-  it('dispatches route, helper, image, cancel, and management methods', async () => {
-    const fetcher = jest.fn().mockResolvedValue(response({ ok: true, settings_revision: 7 }, 3))
-    const client = new AiccClient(new kRPCClient('/kapi/aicc/', null, 3, { fetcher }))
-    await client.reloadSettings()
-    expect(sent(fetcher).method).toBe(AICC_MANAGEMENT_METHODS.SERVICE_RELOAD_SETTINGS)
-
-    const cases = [
-      AICC_CORE_METHODS.ROUTE_RESOLVE,
-      AICC_CORE_METHODS.HELPER_LLM_CHAT,
-      AICC_CORE_METHODS.HELPER_TEXT_TO_IMAGE,
-      AICC_CORE_METHODS.CANCEL,
-      AICC_AI_METHODS.IMAGES_GENERATE,
-      AICC_MANAGEMENT_METHODS.PROVIDER_CATALOG,
-      AICC_MANAGEMENT_METHODS.PROTOCOL_ADAPTER_LIST,
-      AICC_MANAGEMENT_METHODS.PROVIDER_VALIDATE,
-      AICC_MANAGEMENT_METHODS.PROVIDER_ADD,
-      AICC_MANAGEMENT_METHODS.PROVIDER_UPDATE,
-      AICC_MANAGEMENT_METHODS.PROVIDER_DELETE,
-      AICC_MANAGEMENT_METHODS.PROVIDER_REFRESH_MODELS,
-      AICC_MANAGEMENT_METHODS.USAGE_QUERY,
-      AICC_MANAGEMENT_METHODS.TRACE_QUERY,
+  it('dispatches every canonical typed inference method', async () => {
+    const fetcher = echoingFetcher({ task_id: 't', status: 'succeeded' })
+    const client = new AiccClient(new kRPCClient('/kapi/aicc/', null, 1, { fetcher }))
+    const ref: ResourceRef = { kind: 'url', url: 'https://example.test/resource' }
+    const inferenceCases: Array<[string, () => Promise<unknown>]> = [
+      [AICC_AI_METHODS.CHAT_COMPLETIONS_CREATE, () => client.chatCompletionsCreate({ exact_model: 'm@p', messages: [] })],
+      [AICC_AI_METHODS.IMAGES_GENERATE, () => client.imagesGenerate({ exact_model: 'm@p', prompt: 'cat' })],
+      [AICC_AI_METHODS.EMBEDDING_TEXT, () => client.embeddingText({ exact_model: 'm@p', items: [{ type: 'text', text: 'cat' }] })],
+      [AICC_AI_METHODS.EMBEDDING_MULTIMODAL, () => client.embeddingMultimodal({ exact_model: 'm@p', items: [{ id: '1', text: 'cat' }] })],
+      [AICC_AI_METHODS.RERANK, () => client.rerank({ exact_model: 'm@p', query: 'cat', documents: [{ id: '1', text: 'cat' }] })],
+      [AICC_AI_METHODS.IMAGE_IMG2IMG, () => client.imageToImage({ exact_model: 'm@p', images: [ref], prompt: 'cat' })],
+      [AICC_AI_METHODS.IMAGE_INPAINT, () => client.imageInpaint({ exact_model: 'm@p', image: ref, mask: ref, prompt: 'cat' })],
+      [AICC_AI_METHODS.IMAGE_UPSCALE, () => client.imageUpscale({ exact_model: 'm@p', image: ref })],
+      [AICC_AI_METHODS.IMAGE_BG_REMOVE, () => client.imageBackgroundRemove({ exact_model: 'm@p', image: ref })],
+      [AICC_AI_METHODS.VISION_OCR, () => client.visionOcr({ exact_model: 'm@p', document: ref })],
+      [AICC_AI_METHODS.VISION_CAPTION, () => client.visionCaption({ exact_model: 'm@p', image: ref })],
+      [AICC_AI_METHODS.VISION_DETECT, () => client.visionDetect({ exact_model: 'm@p', image: ref })],
+      [AICC_AI_METHODS.VISION_SEGMENT, () => client.visionSegment({ exact_model: 'm@p', image: ref, prompt: { type: 'text', text: 'cat' } })],
+      [AICC_AI_METHODS.AUDIO_TTS, () => client.audioTextToSpeech({ exact_model: 'm@p', text: 'cat', voice: {} })],
+      [AICC_AI_METHODS.AUDIO_ASR, () => client.audioSpeechRecognition({ exact_model: 'm@p', audio: ref })],
+      [AICC_AI_METHODS.AUDIO_MUSIC, () => client.audioMusic({ exact_model: 'm@p', prompt: 'cat' })],
+      [AICC_AI_METHODS.AUDIO_ENHANCE, () => client.audioEnhance({ exact_model: 'm@p', audio: ref, task: 'denoise' })],
+      [AICC_AI_METHODS.VIDEO_TXT2VIDEO, () => client.videoTextToVideo({ exact_model: 'm@p', prompt: 'cat' })],
+      [AICC_AI_METHODS.VIDEO_IMG2VIDEO, () => client.videoImageToVideo({ exact_model: 'm@p', image: ref, prompt: 'cat' })],
+      [AICC_AI_METHODS.VIDEO_VIDEO2VIDEO, () => client.videoToVideo({ exact_model: 'm@p', video: ref, prompt: 'cat' })],
+      [AICC_AI_METHODS.VIDEO_EXTEND, () => client.videoExtend({ exact_model: 'm@p', video: ref, prompt: 'cat' })],
+      [AICC_AI_METHODS.VIDEO_UPSCALE, () => client.videoUpscale({ exact_model: 'm@p', video: ref, target_resolution: '1080p' })],
+      [AICC_AI_METHODS.AGENT_COMPUTER_USE, () => client.computerUse({ exact_model: 'm@p', task: 'click', environment: {
+        environment_id: 'e', session_id: 's', screenshot: ref, viewport: { width: 1, height: 1 },
+      }, allowed_actions: ['left_click'] })],
     ]
-    expect(new Set(cases).size).toBe(cases.length)
+    expect(inferenceCases.map(([method]) => method)).toEqual(Object.values(AICC_AI_METHODS))
+    for (const [method, invoke] of inferenceCases) {
+      await invoke()
+      expect(lastSent(fetcher).method).toBe(method)
+    }
+  })
+
+  it('dispatches every canonical core and management method', async () => {
+    const fetcher = echoingFetcher({ ok: true, settings_revision: 7 })
+    const client = new AiccClient(new kRPCClient('/kapi/aicc/', null, 1, { fetcher }))
+    const coreAndManagementCases: Array<[string, () => Promise<unknown>]> = [
+      [AICC_CORE_METHODS.ROUTE_RESOLVE, () => client.routeResolve({ api_type: 'llm', logical_model: 'llm.chat' })],
+      [AICC_CORE_METHODS.HELPER_LLM_CHAT, () => client.helperLlmChat({ logical_model: 'llm.chat', messages: [] })],
+      [AICC_CORE_METHODS.HELPER_TEXT_TO_IMAGE, () => client.helperTextToImage({ logical_model: 'image.generate', prompt: 'cat' })],
+      [AICC_CORE_METHODS.CANCEL, () => client.cancel('task-1')],
+      [AICC_MANAGEMENT_METHODS.SERVICE_RELOAD_SETTINGS, () => client.reloadSettings()],
+      [AICC_MANAGEMENT_METHODS.QUOTA_QUERY, () => client.queryQuota()],
+      [AICC_MANAGEMENT_METHODS.USAGE_QUERY, () => client.queryUsage({ time_range: { kind: 'last1d' } })],
+      [AICC_MANAGEMENT_METHODS.TRACE_QUERY, () => client.queryTrace()],
+      [AICC_MANAGEMENT_METHODS.ROUTING_GET, () => client.getRouting()],
+      [AICC_MANAGEMENT_METHODS.ROUTING_UPDATE, () => client.updateRouting({ settings_revision: 1, provider_weights: {} })],
+      [AICC_MANAGEMENT_METHODS.PROVIDER_CATALOG, () => client.providerCatalog()],
+      [AICC_MANAGEMENT_METHODS.PROTOCOL_ADAPTER_LIST, () => client.listProtocolAdapters()],
+      [AICC_MANAGEMENT_METHODS.PROVIDER_VALIDATE, () => client.validateProvider({ provider_type: 'openai', provider_profile_id: 'openai', base_url: 'https://example.test', credentials: {} })],
+      [AICC_MANAGEMENT_METHODS.PROVIDER_ADD, () => client.addProvider({ provider_instance_name: 'p', provider_type: 'openai', provider_profile_id: 'openai', base_url: 'https://example.test', credentials: {} })],
+      [AICC_MANAGEMENT_METHODS.PROVIDER_LIST, () => client.listProviders()],
+      [AICC_MANAGEMENT_METHODS.PROVIDER_HEALTH, () => client.providerHealth({ exact_model: 'm@p' })],
+      [AICC_MANAGEMENT_METHODS.PROVIDER_UPDATE, () => client.updateProvider({ provider_instance_name: 'p', settings_revision: 1 })],
+      [AICC_MANAGEMENT_METHODS.PROVIDER_DELETE, () => client.deleteProvider({ provider_instance_name: 'p' })],
+      [AICC_MANAGEMENT_METHODS.PROVIDER_REFRESH_MODELS, () => client.refreshProviderModels({ provider_instance_name: 'p' })],
+      [AICC_MANAGEMENT_METHODS.MODELS_LIST, () => client.listModels()],
+      [AICC_MANAGEMENT_METHODS.DRIVER_METADATA_UPDATE_GET, () => client.getDriverMetadataUpdate()],
+      [AICC_MANAGEMENT_METHODS.DRIVER_METADATA_UPDATE_SET, () => client.setDriverMetadataUpdate({ enabled: true })],
+    ]
+    expect(coreAndManagementCases.map(([method]) => method)).toEqual([
+      ...Object.values(AICC_CORE_METHODS), ...Object.values(AICC_MANAGEMENT_METHODS),
+    ])
+    for (const [method, invoke] of coreAndManagementCases) {
+      await invoke()
+      expect(lastSent(fetcher).method).toBe(method)
+    }
+    expect(new Set(Object.values(AICC_METHODS)).size).toBe(Object.values(AICC_METHODS).length)
   })
 
   it('rejects unknown fields and invalid exact/logical model names before dispatch', async () => {
@@ -120,7 +189,7 @@ describe('canonical AICC contract', () => {
     expect(fetcher).not.toHaveBeenCalled()
   })
 
-  it('round-trips canonical resources, Money, and usage query DTOs', () => {
+  it('round-trips canonical resources, routing, responses, errors, provider, usage, and trace DTOs', () => {
     const resource: ResourceRef = { kind: 'named_object', obj_id: 'chunk:123456' }
     const money: Money = { amount: 1.25, currency: 'USD' }
     const query: QueryUsageRequest = {
@@ -129,7 +198,30 @@ describe('canonical AICC contract', () => {
       group_by: ['user_id', 'method', 'provider_instance_name'],
       output_mode: 'summary_and_events',
     }
-    for (const value of [resource, money, query]) expect(JSON.parse(JSON.stringify(value))).toEqual(value)
+    const overlay: AiccRouteOverlay = {
+      logical_tree: { llm: { children: { chat: { items: { primary: { target: 'gpt-5@openai-main', weight: 2 } } } } } },
+      policy: { profile: { value: 'quality_first', locked: true }, max_estimated_cost: money },
+      provider_weights: { 'openai-main': 1 },
+    }
+    const route: RouteResolveResponse = {
+      selected_exact_model: 'gpt-5@openai-main', selected_model_uid: 'uid', provider_instance_name: 'openai-main',
+      provider_profile_id: 'openai', protocol_adapter_id: 'openai-responses', model_driver_id: 'openai',
+      origin_model_id: 'gpt-5', provider_model_id: 'gpt-5', operation: 'responses.create', inventory_revision: 'r1',
+    }
+    const inference: InferenceResponse = { task_id: 'task-1', status: 'failed', error: {
+      code: 'provider_error', message: 'failed', retriable: true,
+    } }
+    const error: AiccError = { code: 'settings_revision_conflict', message: 'conflict',
+      details: { expected_revision: 1, actual_revision: 2 } }
+    const provider: ProviderInstanceView = { provider_instance_name: 'openai-main', provider_type: 'openai',
+      provider_profile_id: 'openai', protocol_adapter_id: 'openai-responses', base_url: 'https://example.test', enabled: true,
+      auth: { mode: 'api_key', configured: true }, inventory: { state: 'loaded', model_count: 1 },
+      health: { state: 'healthy' } }
+    const trace: AiccRouteTraceEvent = { trace_id: 'trace-1', tenant_id: 'tenant-1', task_id: 'task-1',
+      request_model: 'llm.chat', api_type: 'llm', route_trace_json: { attempts: [] }, created_at_ms: 1 }
+    for (const value of [resource, money, query, overlay, route, inference, error, provider, trace]) {
+      expect(JSON.parse(JSON.stringify(value))).toEqual(value)
+    }
   })
 
   it('does not expose removed aliases in runtime exports', async () => {
@@ -151,6 +243,12 @@ describe('canonical AICC contract', () => {
       client.audioTextToSpeech({ exact_model: 'm@p', text: 'hello' })
       // @ts-expect-error provider base_url is required
       client.addProvider({ provider_instance_name: 'p', provider_type: 'openai', provider_profile_id: 'openai', credentials: {} })
+      // @ts-expect-error removed all-in-one request export
+      const legacyRequest = null as unknown as import('../src/aicc_client').AiccMethodRequest
+      // @ts-expect-error removed payload export
+      const legacyPayload = null as unknown as import('../src/aicc_client').AiccPayload
+      // @ts-expect-error removed all-in-one client method
+      client.callMethod(legacyRequest, legacyPayload)
     }
     expect(true).toBe(true)
   })
