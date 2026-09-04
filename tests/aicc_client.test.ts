@@ -40,6 +40,7 @@ describe('canonical AICC contract', () => {
     const client = new AiccClient(new kRPCClient('/kapi/aicc/', null, 2, { fetcher }))
     const result = await client.chatCompletionsCreate({
       exact_model: 'gpt-5@openai-main',
+      trace_id: 'trace-chat-1',
       messages: [aiccTextMessage('user', 'hello')],
       tools: [{ name: 'weather', description: 'weather', args_json_schema: { type: 'object' } }],
     })
@@ -48,11 +49,37 @@ describe('canonical AICC contract', () => {
       method: 'chat.completions.create',
       params: {
         exact_model: 'gpt-5@openai-main',
+        trace_id: 'trace-chat-1',
         messages: [{ role: 'user', content: [{ type: 'text', text: 'hello' }] }],
         tools: [{ name: 'weather', description: 'weather', args_json_schema: { type: 'object' } }],
       },
       sys: [2],
     })
+  })
+
+  it('preserves trace_id on route and helper request bodies', async () => {
+    const fetcher = jest.fn().mockResolvedValue(response({}, 1))
+    const client = new AiccClient(new kRPCClient('/kapi/aicc/', null, 1, { fetcher }))
+    await client.routeResolve({ trace_id: 'trace-route', api_type: 'llm', logical_model: 'llm.chat' })
+    expect(sent(fetcher).params.trace_id).toBe('trace-route')
+
+    fetcher.mockClear()
+    client.setSeq(1)
+    await client.helperLlmChat({
+      trace_id: 'trace-chat-helper',
+      logical_model: 'llm.chat',
+      messages: [aiccTextMessage('user', 'hello')],
+    })
+    expect(sent(fetcher).params.trace_id).toBe('trace-chat-helper')
+
+    fetcher.mockClear()
+    client.setSeq(1)
+    await client.helperTextToImage({
+      trace_id: 'trace-image-helper',
+      logical_model: 'image.generate',
+      prompt: 'fox',
+    })
+    expect(sent(fetcher).params.trace_id).toBe('trace-image-helper')
   })
 
   it('dispatches route, helper, image, cancel, and management methods', async () => {

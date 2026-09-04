@@ -43,6 +43,8 @@ export const AICC_MANAGEMENT_METHODS = {
   QUOTA_QUERY: 'quota.query',
   USAGE_QUERY: 'usage.query',
   TRACE_QUERY: 'trace.query',
+  ROUTING_GET: 'routing.get',
+  ROUTING_UPDATE: 'routing.update',
   PROVIDER_CATALOG: 'provider.catalog',
   PROTOCOL_ADAPTER_LIST: 'protocol_adapter.list',
   PROVIDER_VALIDATE: 'provider.validate',
@@ -121,7 +123,7 @@ export interface AiccRouteOverlay {
   policy?: JsonValue; revision?: string; ttl_seconds?: number
 }
 
-export interface RouteResolveRequest { request_id?: string; api_type: ApiType; logical_model: string; requirements?: ModelRequirement;
+export interface RouteResolveRequest { trace_id?: string; request_id?: string; api_type: ApiType; logical_model: string; requirements?: ModelRequirement;
   disable?: ModelDisable; policy?: RoutePolicy; estimated_input_tokens?: number; estimated_output_tokens?: number;
   session_overlay?: AiccRouteOverlay }
 export interface RouteResolveResponse { selected_exact_model: string; selected_model_uid: string; provider_instance_name: string;
@@ -129,7 +131,7 @@ export interface RouteResolveResponse { selected_exact_model: string; selected_m
   origin_model_id: string; provider_model_id: string; operation: string; enabled_capabilities?: Feature[];
   disabled_capabilities?: Feature[]; fallback_attempts?: Array<{ exact_model: string; provider_instance_name: string;
   provider_model_id: string }>; route_trace?: RouteTrace; inventory_revision: string }
-interface InferenceRequest { exact_model: string; idempotency_key?: string; task_options?: AiTaskOptions }
+interface InferenceRequest { exact_model: string; trace_id?: string; idempotency_key?: string; task_options?: AiTaskOptions }
 interface InferenceResponse { task_id: string; status: AiMethodStatus; usage?: AiUsage; cost?: AiCost;
   finish_reason?: string; provider_task_ref?: string; route_trace?: RouteTrace; event_ref?: string; error?: AiccError }
 interface ChatFields { messages: AiMessage[]; tools?: AiToolSpec[]; response_format?: LlmResponseFormat; temperature?: number;
@@ -138,11 +140,11 @@ interface ImageGenerationFields { prompt: string; negative_prompt?: string; n?: 
   quality?: string; style?: string; seed?: number; output?: AiOutputOptions }
 export interface LlmChatInvokeRequest extends InferenceRequest, ChatFields {}
 export interface LlmChatHelperRequest extends ChatFields { logical_model: string; requirements?: ModelRequirement; disable?: ModelDisable;
-  policy?: RoutePolicy; idempotency_key?: string; task_options?: AiTaskOptions; session_overlay?: AiccRouteOverlay }
+  trace_id?: string; policy?: RoutePolicy; idempotency_key?: string; task_options?: AiTaskOptions; session_overlay?: AiccRouteOverlay }
 export interface LlmChatInvokeResponse extends InferenceResponse { message?: AiMessage; tool_calls?: AiToolCall[] }
 export interface TextToImageInvokeRequest extends InferenceRequest, ImageGenerationFields {}
 export interface TextToImageHelperRequest extends ImageGenerationFields { logical_model: string; requirements?: ModelRequirement;
-  disable?: ModelDisable; policy?: RoutePolicy; idempotency_key?: string; task_options?: AiTaskOptions; session_overlay?: AiccRouteOverlay }
+  trace_id?: string; disable?: ModelDisable; policy?: RoutePolicy; idempotency_key?: string; task_options?: AiTaskOptions; session_overlay?: AiccRouteOverlay }
 export interface TextToImageInvokeResponse extends InferenceResponse { images?: ResourceRef[]; provider_states?: AiContent[] }
 
 export type EmbeddingTextItem = { type: 'text'; text: string; id?: string } | { type: 'resource'; resource: ResourceRef; id?: string }
@@ -276,9 +278,9 @@ export type UsageQueryGroup = 'provider_model' | 'provider_instance_name' | 'req
 export interface QueryUsageRequest { time_range: UsageQueryTimeRange; filters?: UsageQueryFilters; group_by?: UsageQueryGroup[];
   time_bucket?: 'hour' | 'day'; output_mode?: 'summary' | 'events' | 'summary_and_events'; limit?: number; cursor?: string }
 export interface UsageAggregate { total_requests: number; input_tokens: number; output_tokens: number; total_tokens: number;
-  consumed_request_units: number; finance_amount: number; finance_currency: string | null; finance_complete: boolean }
+  consumed_request_units: number; finance_totals: Money[]; finance_complete: boolean }
 export interface AiccUsageEvent { event_id: string; tenant_id: string; user_id: string; caller_app_id?: string; task_id: string;
-  idempotency_key?: string; method: AiccAiMethod; capability: string; request_model: string; provider_instance_name: string;
+  trace_id?: string; idempotency_key?: string; method: AiccAiMethod; capability: string; request_model: string; provider_instance_name: string;
   provider_model: string; input_tokens?: number; output_tokens?: number; total_tokens?: number; request_units?: number;
   usage_json: AiUsage; finance_snapshot_json?: JsonValue; created_at_ms: number }
 export interface QueryUsageResponse { total: UsageAggregate; grouped?: Array<{ group: Record<string, string>; aggregate: UsageAggregate }>;
@@ -288,6 +290,9 @@ export interface QueryRouteTraceRequest { limit?: number; cursor?: string; start
   task_ids?: string[]; request_ids?: string[]; api_types?: string[]; provider_instance_names?: string[];
   selected_exact_models?: string[]; scheduler_profiles?: string[]; query?: string; outcome?: string }
 export interface QueryRouteTraceResponse { traces?: JsonValue[]; next_cursor?: string; total_count?: number }
+export interface RoutingGetResponse { settings_revision: number; routing: AiccRouteOverlay }
+export interface RoutingUpdateRequest { settings_revision: number; provider_weights: Record<string, number> }
+export interface RoutingUpdateResponse { ok: boolean; settings_revision: number; routing: AiccRouteOverlay }
 export interface DriverMetadataUpdateSetRequest { enabled: boolean; source_url?: string; interval_secs?: number }
 export interface DriverMetadataUpdateView { enabled: boolean; source_url?: string | null; source_configured: boolean;
   interval_secs: number; metadata_target_seq: number; providers: Array<{ provider_instance_name: string; metadata_applied_seq: number }>;
@@ -329,7 +334,7 @@ function logical(value: string) {
 function strict(request: object, allowed: readonly string[]) {
   for (const key of Object.keys(request)) if (!allowed.includes(key)) throw new RPCError(`unknown field \`${key}\``)
 }
-const common = ['exact_model', 'idempotency_key', 'task_options']
+const common = ['exact_model', 'trace_id', 'idempotency_key', 'task_options']
 const schemas: Partial<Record<AiccMethod, string[]>> = {
   [AICC_AI_METHODS.CHAT_COMPLETIONS_CREATE]: [...common, 'messages', 'tools', 'response_format', 'temperature', 'top_p', 'max_output_tokens', 'seed', 'stop', 'output'],
   [AICC_AI_METHODS.IMAGES_GENERATE]: [...common, 'prompt', 'negative_prompt', 'n', 'aspect_ratio', 'size', 'quality', 'style', 'seed', 'output'],
@@ -354,14 +359,16 @@ const schemas: Partial<Record<AiccMethod, string[]>> = {
   [AICC_AI_METHODS.VIDEO_EXTEND]: [...common, 'video', 'prompt', 'continuation_handle', 'duration_seconds', 'resolution'],
   [AICC_AI_METHODS.VIDEO_UPSCALE]: [...common, 'video', 'target_resolution', 'denoise', 'sharpen', 'output'],
   [AICC_AI_METHODS.AGENT_COMPUTER_USE]: [...common, 'task', 'environment', 'allowed_actions'],
-  [AICC_CORE_METHODS.ROUTE_RESOLVE]: ['request_id', 'api_type', 'logical_model', 'requirements', 'disable', 'policy', 'estimated_input_tokens', 'estimated_output_tokens', 'session_overlay'],
-  [AICC_CORE_METHODS.HELPER_LLM_CHAT]: ['logical_model', 'requirements', 'disable', 'policy', 'messages', 'tools', 'response_format', 'temperature', 'top_p', 'max_output_tokens', 'seed', 'stop', 'output', 'idempotency_key', 'task_options', 'session_overlay'],
-  [AICC_CORE_METHODS.HELPER_TEXT_TO_IMAGE]: ['logical_model', 'requirements', 'disable', 'policy', 'prompt', 'negative_prompt', 'n', 'aspect_ratio', 'size', 'quality', 'style', 'seed', 'output', 'idempotency_key', 'task_options', 'session_overlay'],
+  [AICC_CORE_METHODS.ROUTE_RESOLVE]: ['trace_id', 'request_id', 'api_type', 'logical_model', 'requirements', 'disable', 'policy', 'estimated_input_tokens', 'estimated_output_tokens', 'session_overlay'],
+  [AICC_CORE_METHODS.HELPER_LLM_CHAT]: ['logical_model', 'trace_id', 'requirements', 'disable', 'policy', 'messages', 'tools', 'response_format', 'temperature', 'top_p', 'max_output_tokens', 'seed', 'stop', 'output', 'idempotency_key', 'task_options', 'session_overlay'],
+  [AICC_CORE_METHODS.HELPER_TEXT_TO_IMAGE]: ['logical_model', 'trace_id', 'requirements', 'disable', 'policy', 'prompt', 'negative_prompt', 'n', 'aspect_ratio', 'size', 'quality', 'style', 'seed', 'output', 'idempotency_key', 'task_options', 'session_overlay'],
   [AICC_CORE_METHODS.CANCEL]: ['task_id'],
   [AICC_MANAGEMENT_METHODS.SERVICE_RELOAD_SETTINGS]: [],
   [AICC_MANAGEMENT_METHODS.QUOTA_QUERY]: ['capability', 'method'],
   [AICC_MANAGEMENT_METHODS.USAGE_QUERY]: ['time_range', 'filters', 'group_by', 'time_bucket', 'output_mode', 'limit', 'cursor'],
   [AICC_MANAGEMENT_METHODS.TRACE_QUERY]: ['limit', 'cursor', 'start_time_ms', 'end_time_ms', 'task_ids', 'request_ids', 'api_types', 'provider_instance_names', 'selected_exact_models', 'scheduler_profiles', 'query', 'outcome'],
+  [AICC_MANAGEMENT_METHODS.ROUTING_GET]: [],
+  [AICC_MANAGEMENT_METHODS.ROUTING_UPDATE]: ['settings_revision', 'provider_weights'],
   [AICC_MANAGEMENT_METHODS.PROVIDER_CATALOG]: [],
   [AICC_MANAGEMENT_METHODS.PROTOCOL_ADAPTER_LIST]: [],
   [AICC_MANAGEMENT_METHODS.PROVIDER_VALIDATE]: ['provider_instance_name', 'provider_type', 'provider_profile_id', 'protocol_family_id', 'protocol_adapter_id', 'base_url', 'credentials', 'region', 'workspace', 'account', 'provider_rules_id', 'auth', 'discovery', 'instance_rules', 'timeout_ms', 'auto_sync_models'],
@@ -419,6 +426,8 @@ export class AiccClient {
   queryQuota(r: QuotaQueryRequest = {}) { return this.call<QuotaQueryResponse, QuotaQueryRequest>(AICC_MANAGEMENT_METHODS.QUOTA_QUERY, r) }
   queryUsage(r: QueryUsageRequest) { return this.call<QueryUsageResponse, QueryUsageRequest>(AICC_MANAGEMENT_METHODS.USAGE_QUERY, r) }
   queryTrace(r: QueryRouteTraceRequest = {}) { return this.call<QueryRouteTraceResponse, QueryRouteTraceRequest>(AICC_MANAGEMENT_METHODS.TRACE_QUERY, r) }
+  getRouting() { return this.call<RoutingGetResponse, EmptyRequest>(AICC_MANAGEMENT_METHODS.ROUTING_GET, {}) }
+  updateRouting(r: RoutingUpdateRequest) { return this.call<RoutingUpdateResponse, RoutingUpdateRequest>(AICC_MANAGEMENT_METHODS.ROUTING_UPDATE, r) }
   providerCatalog() { return this.call<ProviderCatalogResponse, EmptyRequest>(AICC_MANAGEMENT_METHODS.PROVIDER_CATALOG, {}) }
   listProtocolAdapters() { return this.call<ProtocolAdapterListResponse, EmptyRequest>(AICC_MANAGEMENT_METHODS.PROTOCOL_ADAPTER_LIST, {}) }
   validateProvider(r: ProviderValidateRequest) { return this.call<ProviderValidateResponse, ProviderValidateRequest>(AICC_MANAGEMENT_METHODS.PROVIDER_VALIDATE, r) }
