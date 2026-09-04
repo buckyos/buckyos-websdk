@@ -2,6 +2,7 @@ import { kRPCClient } from '../src/krpc_client'
 import {
   AICC_AI_METHODS,
   AICC_CORE_METHODS,
+  AICC_EXECUTION_MODES,
   AICC_MANAGEMENT_METHODS,
   AICC_METHODS,
   AiccError,
@@ -60,6 +61,7 @@ describe('canonical AICC contract', () => {
     const result = await client.chatCompletionsCreate({
       exact_model: 'gpt-5@openai-main',
       trace_id: 'trace-chat-1',
+      execution_mode: AICC_EXECUTION_MODES.STREAM,
       messages: [aiccTextMessage('user', 'hello')],
       tools: [{ name: 'weather', description: 'weather', args_json_schema: { type: 'object' } }],
     })
@@ -69,6 +71,7 @@ describe('canonical AICC contract', () => {
       params: {
         exact_model: 'gpt-5@openai-main',
         trace_id: 'trace-chat-1',
+        execution_mode: 'stream',
         messages: [{ role: 'user', content: [{ type: 'text', text: 'hello' }] }],
         tools: [{ name: 'weather', description: 'weather', args_json_schema: { type: 'object' } }],
       },
@@ -79,26 +82,31 @@ describe('canonical AICC contract', () => {
   it('preserves trace_id on route and helper request bodies', async () => {
     const fetcher = jest.fn().mockResolvedValue(response({}, 1))
     const client = new AiccClient(new kRPCClient('/kapi/aicc/', null, 1, { fetcher }))
-    await client.routeResolve({ trace_id: 'trace-route', api_type: 'llm', logical_model: 'llm.chat' })
+    await client.routeResolve({ trace_id: 'trace-route', execution_mode: 'stream', api_type: 'llm', logical_model: 'llm.chat' })
     expect(sent(fetcher).params.trace_id).toBe('trace-route')
+    expect(sent(fetcher).params.execution_mode).toBe('stream')
 
     fetcher.mockClear()
     client.setSeq(1)
     await client.helperLlmChat({
       trace_id: 'trace-chat-helper',
+      execution_mode: 'stream',
       logical_model: 'llm.chat',
       messages: [aiccTextMessage('user', 'hello')],
     })
     expect(sent(fetcher).params.trace_id).toBe('trace-chat-helper')
+    expect(sent(fetcher).params.execution_mode).toBe('stream')
 
     fetcher.mockClear()
     client.setSeq(1)
     await client.helperTextToImage({
       trace_id: 'trace-image-helper',
+      execution_mode: 'stream',
       logical_model: 'image.generate',
       prompt: 'fox',
     })
     expect(sent(fetcher).params.trace_id).toBe('trace-image-helper')
+    expect(sent(fetcher).params.execution_mode).toBe('stream')
   })
 
   it('dispatches every canonical typed inference method', async () => {
@@ -136,6 +144,7 @@ describe('canonical AICC contract', () => {
     for (const [method, invoke] of inferenceCases) {
       await invoke()
       expect(lastSent(fetcher).method).toBe(method)
+      expect(lastSent(fetcher).params.execution_mode).toBe('immediate')
     }
   })
 
@@ -172,6 +181,9 @@ describe('canonical AICC contract', () => {
     for (const [method, invoke] of coreAndManagementCases) {
       await invoke()
       expect(lastSent(fetcher).method).toBe(method)
+      if (Object.values(AICC_CORE_METHODS).slice(0, 3).includes(method as never)) {
+        expect(lastSent(fetcher).params.execution_mode).toBe('immediate')
+      }
     }
     expect(new Set(Object.values(AICC_METHODS)).size).toBe(Object.values(AICC_METHODS).length)
   })
@@ -186,6 +198,9 @@ describe('canonical AICC contract', () => {
     } as never)).toThrow('unknown field')
     expect(() => client.imagesGenerate({ exact_model: 'logical-model', prompt: 'cat' })).toThrow('exact_model')
     expect(() => client.routeResolve({ api_type: 'llm', logical_model: 'gpt-5@openai-main' })).toThrow('logical_model')
+    expect(() => client.embeddingText({
+      exact_model: 'embedding@provider', items: [], execution_mode: 'native_task',
+    } as never)).toThrow('execution_mode')
     expect(fetcher).not.toHaveBeenCalled()
   })
 

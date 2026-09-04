@@ -72,6 +72,8 @@ export const AICC_FEATURES = {
   PLAN: 'plan', TOOL_CALL: 'tool_call', JSON_SCHEMA: 'json_schema', WEB_SEARCH: 'web_search',
   VISION: 'vision', IMAGE_GENERATION: 'image_generation', ASR: 'asr', VIDEO_UNDERSTAND: 'video_understand',
 } as const
+export const AICC_EXECUTION_MODES = { IMMEDIATE: 'immediate', STREAM: 'stream' } as const
+export type AiccExecutionMode = typeof AICC_EXECUTION_MODES[keyof typeof AICC_EXECUTION_MODES]
 
 export type ResourceRef =
   | { kind: 'url'; url: string; mime_hint?: string }
@@ -98,7 +100,7 @@ export type AiCost = Money
 export interface AiArtifact { name: string; resource: ResourceRef; mime?: string; metadata?: JsonValue }
 export type AiccErrorCode = 'invalid_request' | 'invalid_method' | 'schema_validation_failed' | 'invalid_model_name' |
   'resource_invalid' | 'no_provider_available' | 'no_candidate_model' | 'fallback_not_allowed' | 'provider_start_failed' |
-  'provider_error' | 'timeout' | 'budget_exceeded' | 'policy_denied' | 'idempotency_conflict' |
+  'provider_error' | 'unsupported_execution_mode' | 'timeout' | 'budget_exceeded' | 'policy_denied' | 'idempotency_conflict' |
   'settings_revision_conflict' | 'cancelled' | 'internal_error'
 export interface AiccError { code: AiccErrorCode; message: string; provider_code?: string; retriable?: boolean; details?: JsonValue }
 export interface SettingsRevisionConflictDetails { expected_revision: number; actual_revision: number }
@@ -150,7 +152,8 @@ export interface AiccRouteOverlay {
   policy?: AiccPolicyConfig; revision?: string; ttl_seconds?: number
 }
 
-export interface RouteResolveRequest { trace_id?: string; request_id?: string; api_type: ApiType; logical_model: string; requirements?: ModelRequirement;
+export interface RouteResolveRequest { trace_id?: string; execution_mode?: AiccExecutionMode; request_id?: string;
+  api_type: ApiType; logical_model: string; requirements?: ModelRequirement;
   disable?: ModelDisable; policy?: RoutePolicy; estimated_input_tokens?: number; estimated_output_tokens?: number;
   session_overlay?: AiccRouteOverlay }
 export interface RouteResolveResponse { selected_exact_model: string; selected_model_uid: string; provider_instance_name: string;
@@ -158,7 +161,8 @@ export interface RouteResolveResponse { selected_exact_model: string; selected_m
   origin_model_id: string; provider_model_id: string; operation: string; enabled_capabilities?: Feature[];
   disabled_capabilities?: Feature[]; fallback_attempts?: Array<{ exact_model: string; provider_instance_name: string;
   provider_model_id: string }>; route_trace?: RouteTrace; inventory_revision: string }
-export interface InferenceRequest { exact_model: string; trace_id?: string; idempotency_key?: string; task_options?: AiTaskOptions }
+export interface InferenceRequest { exact_model: string; trace_id?: string; execution_mode?: AiccExecutionMode;
+  idempotency_key?: string; task_options?: AiTaskOptions }
 export interface InferenceResponse { task_id: string; status: AiMethodStatus; usage?: AiUsage; cost?: AiCost;
   finish_reason?: string; provider_task_ref?: string; route_trace?: RouteTrace; event_ref?: string; error?: AiccError }
 interface ChatFields { messages: AiMessage[]; tools?: AiToolSpec[]; response_format?: LlmResponseFormat; temperature?: number;
@@ -167,11 +171,13 @@ interface ImageGenerationFields { prompt: string; negative_prompt?: string; n?: 
   quality?: string; style?: string; seed?: number; output?: AiOutputOptions }
 export interface LlmChatInvokeRequest extends InferenceRequest, ChatFields {}
 export interface LlmChatHelperRequest extends ChatFields { logical_model: string; requirements?: HelperModelRequirement; disable?: ModelDisable;
-  trace_id?: string; policy?: RoutePolicy; idempotency_key?: string; task_options?: AiTaskOptions; session_overlay?: AiccRouteOverlay }
+  trace_id?: string; execution_mode?: AiccExecutionMode; policy?: RoutePolicy; idempotency_key?: string;
+  task_options?: AiTaskOptions; session_overlay?: AiccRouteOverlay }
 export interface LlmChatInvokeResponse extends InferenceResponse { message?: AiMessage; tool_calls?: AiToolCall[] }
 export interface TextToImageInvokeRequest extends InferenceRequest, ImageGenerationFields {}
 export interface TextToImageHelperRequest extends ImageGenerationFields { logical_model: string; requirements?: HelperModelRequirement;
-  trace_id?: string; disable?: ModelDisable; policy?: RoutePolicy; idempotency_key?: string; task_options?: AiTaskOptions; session_overlay?: AiccRouteOverlay }
+  trace_id?: string; execution_mode?: AiccExecutionMode; disable?: ModelDisable; policy?: RoutePolicy;
+  idempotency_key?: string; task_options?: AiTaskOptions; session_overlay?: AiccRouteOverlay }
 export interface TextToImageInvokeResponse extends InferenceResponse { images?: ResourceRef[]; provider_states?: AiContent[] }
 
 export type EmbeddingTextItem = { type: 'text'; text: string; id?: string } | { type: 'resource'; resource: ResourceRef; id?: string }
@@ -383,8 +389,12 @@ function logical(value: string) {
 }
 function strict(request: object, allowed: readonly string[]) {
   for (const key of Object.keys(request)) if (!allowed.includes(key)) throw new RPCError(`unknown field \`${key}\``)
+  const mode = (request as { execution_mode?: unknown }).execution_mode
+  if (mode !== undefined && mode !== AICC_EXECUTION_MODES.IMMEDIATE && mode !== AICC_EXECUTION_MODES.STREAM) {
+    throw new RPCError('execution_mode must be `immediate` or `stream`')
+  }
 }
-const common = ['exact_model', 'trace_id', 'idempotency_key', 'task_options']
+const common = ['exact_model', 'trace_id', 'execution_mode', 'idempotency_key', 'task_options']
 const schemas: Partial<Record<AiccMethod, string[]>> = {
   [AICC_AI_METHODS.CHAT_COMPLETIONS_CREATE]: [...common, 'messages', 'tools', 'response_format', 'temperature', 'top_p', 'max_output_tokens', 'seed', 'stop', 'output'],
   [AICC_AI_METHODS.IMAGES_GENERATE]: [...common, 'prompt', 'negative_prompt', 'n', 'aspect_ratio', 'size', 'quality', 'style', 'seed', 'output'],
@@ -409,9 +419,9 @@ const schemas: Partial<Record<AiccMethod, string[]>> = {
   [AICC_AI_METHODS.VIDEO_EXTEND]: [...common, 'video', 'prompt', 'continuation_handle', 'duration_seconds', 'resolution'],
   [AICC_AI_METHODS.VIDEO_UPSCALE]: [...common, 'video', 'target_resolution', 'denoise', 'sharpen', 'output'],
   [AICC_AI_METHODS.AGENT_COMPUTER_USE]: [...common, 'task', 'environment', 'allowed_actions'],
-  [AICC_CORE_METHODS.ROUTE_RESOLVE]: ['trace_id', 'request_id', 'api_type', 'logical_model', 'requirements', 'disable', 'policy', 'estimated_input_tokens', 'estimated_output_tokens', 'session_overlay'],
-  [AICC_CORE_METHODS.HELPER_LLM_CHAT]: ['logical_model', 'trace_id', 'requirements', 'disable', 'policy', 'messages', 'tools', 'response_format', 'temperature', 'top_p', 'max_output_tokens', 'seed', 'stop', 'output', 'idempotency_key', 'task_options', 'session_overlay'],
-  [AICC_CORE_METHODS.HELPER_TEXT_TO_IMAGE]: ['logical_model', 'trace_id', 'requirements', 'disable', 'policy', 'prompt', 'negative_prompt', 'n', 'aspect_ratio', 'size', 'quality', 'style', 'seed', 'output', 'idempotency_key', 'task_options', 'session_overlay'],
+  [AICC_CORE_METHODS.ROUTE_RESOLVE]: ['trace_id', 'execution_mode', 'request_id', 'api_type', 'logical_model', 'requirements', 'disable', 'policy', 'estimated_input_tokens', 'estimated_output_tokens', 'session_overlay'],
+  [AICC_CORE_METHODS.HELPER_LLM_CHAT]: ['logical_model', 'trace_id', 'execution_mode', 'requirements', 'disable', 'policy', 'messages', 'tools', 'response_format', 'temperature', 'top_p', 'max_output_tokens', 'seed', 'stop', 'output', 'idempotency_key', 'task_options', 'session_overlay'],
+  [AICC_CORE_METHODS.HELPER_TEXT_TO_IMAGE]: ['logical_model', 'trace_id', 'execution_mode', 'requirements', 'disable', 'policy', 'prompt', 'negative_prompt', 'n', 'aspect_ratio', 'size', 'quality', 'style', 'seed', 'output', 'idempotency_key', 'task_options', 'session_overlay'],
   [AICC_CORE_METHODS.CANCEL]: ['task_id'],
   [AICC_MANAGEMENT_METHODS.SERVICE_RELOAD_SETTINGS]: [],
   [AICC_MANAGEMENT_METHODS.QUOTA_QUERY]: ['capability', 'method'],
@@ -438,8 +448,11 @@ export class AiccClient {
   setSeq(seq: number) { this.rpcClient.setSeq(seq) }
   private call<R, Q extends object>(method: AiccMethod, request: Q): Promise<R> {
     const schema = schemas[method]
-    if (schema) strict(request, schema)
-    return this.rpcClient.call<R, Q>(method, request)
+    const params = schema?.includes('execution_mode') && (request as { execution_mode?: unknown }).execution_mode === undefined
+      ? { ...request, execution_mode: AICC_EXECUTION_MODES.IMMEDIATE } as Q
+      : request
+    if (schema) strict(params, schema)
+    return this.rpcClient.call<R, Q>(method, params)
   }
   private inference<R, Q extends InferenceRequest>(method: AiccAiMethod, request: Q): Promise<R> {
     exact(request.exact_model)
