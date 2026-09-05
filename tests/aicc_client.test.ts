@@ -62,6 +62,7 @@ describe('canonical AICC contract', () => {
       exact_model: 'gpt-5@openai-main',
       trace_id: 'trace-chat-1',
       execution_mode: AICC_EXECUTION_MODES.STREAM,
+      session_id: 'session-chat-1',
       messages: [aiccTextMessage('user', 'hello')],
       tools: [{ name: 'weather', description: 'weather', args_json_schema: { type: 'object' } }],
     })
@@ -72,6 +73,7 @@ describe('canonical AICC contract', () => {
         exact_model: 'gpt-5@openai-main',
         trace_id: 'trace-chat-1',
         execution_mode: 'stream',
+        session_id: 'session-chat-1',
         messages: [{ role: 'user', content: [{ type: 'text', text: 'hello' }] }],
         tools: [{ name: 'weather', description: 'weather', args_json_schema: { type: 'object' } }],
       },
@@ -79,12 +81,13 @@ describe('canonical AICC contract', () => {
     })
   })
 
-  it('preserves trace_id on route and helper request bodies', async () => {
+  it('preserves trace_id and session_id on route and helper request bodies', async () => {
     const fetcher = jest.fn().mockResolvedValue(response({}, 1))
     const client = new AiccClient(new kRPCClient('/kapi/aicc/', null, 1, { fetcher }))
-    await client.routeResolve({ trace_id: 'trace-route', execution_mode: 'stream', api_type: 'llm', logical_model: 'llm.chat' })
+    await client.routeResolve({ trace_id: 'trace-route', execution_mode: 'stream', api_type: 'llm', logical_model: 'llm.chat', session_id: 'session-route' })
     expect(sent(fetcher).params.trace_id).toBe('trace-route')
     expect(sent(fetcher).params.execution_mode).toBe('stream')
+    expect(sent(fetcher).params.session_id).toBe('session-route')
 
     fetcher.mockClear()
     client.setSeq(1)
@@ -92,10 +95,12 @@ describe('canonical AICC contract', () => {
       trace_id: 'trace-chat-helper',
       execution_mode: 'stream',
       logical_model: 'llm.chat',
+      session_id: 'session-chat-helper',
       messages: [aiccTextMessage('user', 'hello')],
     })
     expect(sent(fetcher).params.trace_id).toBe('trace-chat-helper')
     expect(sent(fetcher).params.execution_mode).toBe('stream')
+    expect(sent(fetcher).params.session_id).toBe('session-chat-helper')
 
     fetcher.mockClear()
     client.setSeq(1)
@@ -104,9 +109,11 @@ describe('canonical AICC contract', () => {
       execution_mode: 'stream',
       logical_model: 'image.generate',
       prompt: 'fox',
+      session_id: 'session-image-helper',
     })
     expect(sent(fetcher).params.trace_id).toBe('trace-image-helper')
     expect(sent(fetcher).params.execution_mode).toBe('stream')
+    expect(sent(fetcher).params.session_id).toBe('session-image-helper')
   })
 
   it('dispatches every canonical typed inference method', async () => {
@@ -201,6 +208,12 @@ describe('canonical AICC contract', () => {
     expect(() => client.embeddingText({
       exact_model: 'embedding@provider', items: [], execution_mode: 'native_task',
     } as never)).toThrow('execution_mode')
+    expect(() => client.routeResolve({
+      api_type: 'llm', logical_model: 'llm.chat', session_id: '',
+    })).toThrow('session_id')
+    expect(() => client.routeResolve({
+      api_type: 'llm', logical_model: 'llm.chat', session_id: '界'.repeat(171),
+    })).toThrow('session_id')
     expect(fetcher).not.toHaveBeenCalled()
   })
 

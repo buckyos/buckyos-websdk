@@ -498,14 +498,14 @@ var TaskEventType = /* @__PURE__ */ ((TaskEventType2) => {
   TaskEventType2["PayloadRedacted"] = "PayloadRedacted";
   return TaskEventType2;
 })(TaskEventType || {});
-function asRecord$5(value, what) {
+function asRecord$4(value, what) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new RPCError(`Expected ${what} in TaskMgr response`);
   }
   return value;
 }
 function requiredField$1(value, field, what) {
-  const record = asRecord$5(value, what);
+  const record = asRecord$4(value, what);
   if (!(field in record)) {
     throw new RPCError(`Expected ${field} in TaskMgr response`);
   }
@@ -653,11 +653,11 @@ class TaskManagerClient {
   }
   async listTaskSchemas(request = {}) {
     const result = await this.rpcClient.call("list_task_schemas", request);
-    const schemas = requiredField$1(result, "schemas", "task schema list");
-    if (!Array.isArray(schemas)) {
+    const schemas2 = requiredField$1(result, "schemas", "task schema list");
+    if (!Array.isArray(schemas2)) {
       throw new RPCError("Expected schemas array in TaskMgr response");
     }
-    return schemas;
+    return schemas2;
   }
   async setTaskSchemaEnabled(schemaId, schemaVersion, enabled) {
     return this.rpcClient.call("set_task_schema_enabled", {
@@ -883,7 +883,7 @@ var WorkflowScheduledTaskFireStatus = /* @__PURE__ */ ((WorkflowScheduledTaskFir
   WorkflowScheduledTaskFireStatus2["Failed"] = "failed";
   return WorkflowScheduledTaskFireStatus2;
 })(WorkflowScheduledTaskFireStatus || {});
-function asRecord$4(value) {
+function asRecord$3(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new RPCError("Invalid workflow RPC response format");
   }
@@ -904,7 +904,7 @@ class WorkflowClient {
   }
   async callOk(method, params) {
     const result = await this.rpcClient.call(method, params);
-    const parsed = asRecord$4(result);
+    const parsed = asRecord$3(result);
     if (parsed.ok === true) {
       return parsed;
     }
@@ -1160,17 +1160,15 @@ class SystemConfigClient {
     await this.rpcClient.call("sys_refresh_trust_keys", {});
   }
 }
-const AICC_SERVICE_NAME = "aicc";
 const AICC_SERVICE_UNIQUE_ID = "aicc";
-const AICC_SERVICE_SERVICE_NAME = AICC_SERVICE_NAME;
+const AICC_SERVICE_SERVICE_NAME = "aicc";
 const AICC_SERVICE_SERVICE_PORT = 4040;
 const AICC_AI_METHODS = {
-  LLM_CHAT: "llm.chat",
-  LLM_COMPLETION: "llm.completion",
+  CHAT_COMPLETIONS_CREATE: "chat.completions.create",
+  IMAGES_GENERATE: "images.generate",
   EMBEDDING_TEXT: "embedding.text",
   EMBEDDING_MULTIMODAL: "embedding.multimodal",
   RERANK: "rerank",
-  IMAGE_TXT2IMG: "image.txt2img",
   IMAGE_IMG2IMG: "image.img2img",
   IMAGE_INPAINT: "image.inpaint",
   IMAGE_UPSCALE: "image.upscale",
@@ -1190,28 +1188,45 @@ const AICC_AI_METHODS = {
   VIDEO_UPSCALE: "video.upscale",
   AGENT_COMPUTER_USE: "agent.computer_use"
 };
-const AICC_CONTROL_METHODS = {
-  CANCEL: "cancel",
-  RELOAD_SETTINGS: "reload_settings",
+const AICC_CORE_METHODS = {
+  ROUTE_RESOLVE: "route.resolve",
+  HELPER_LLM_CHAT: "helper.llm_chat",
+  HELPER_TEXT_TO_IMAGE: "helper.text_to_image",
+  CANCEL: "cancel"
+};
+const AICC_MANAGEMENT_METHODS = {
   SERVICE_RELOAD_SETTINGS: "service.reload_settings",
   QUOTA_QUERY: "quota.query",
+  USAGE_QUERY: "usage.query",
+  TRACE_QUERY: "trace.query",
+  ROUTING_GET: "routing.get",
+  ROUTING_UPDATE: "routing.update",
+  PROVIDER_CATALOG: "provider.catalog",
+  PROTOCOL_ADAPTER_LIST: "protocol_adapter.list",
+  PROVIDER_VALIDATE: "provider.validate",
+  PROVIDER_ADD: "provider.add",
   PROVIDER_LIST: "provider.list",
-  PROVIDER_HEALTH: "provider.health"
+  PROVIDER_HEALTH: "provider.health",
+  PROVIDER_UPDATE: "provider.update",
+  PROVIDER_DELETE: "provider.delete",
+  PROVIDER_REFRESH_MODELS: "provider.refresh_models",
+  MODELS_LIST: "models.list",
+  DRIVER_METADATA_UPDATE_GET: "driver_metadata_update.get",
+  DRIVER_METADATA_UPDATE_SET: "driver_metadata_update.set"
 };
+const AICC_METHODS = { ...AICC_AI_METHODS, ...AICC_CORE_METHODS, ...AICC_MANAGEMENT_METHODS };
 const AICC_FEATURES = {
   PLAN: "plan",
-  TOOL_CALLING: "tool_calling",
-  JSON_OUTPUT: "json_output",
+  TOOL_CALL: "tool_call",
+  JSON_SCHEMA: "json_schema",
   WEB_SEARCH: "web_search",
   VISION: "vision",
+  IMAGE_GENERATION: "image_generation",
   ASR: "asr",
   VIDEO_UNDERSTAND: "video_understand"
 };
+const AICC_EXECUTION_MODES = { IMMEDIATE: "immediate", STREAM: "stream" };
 const AI_METHOD_SET = new Set(Object.values(AICC_AI_METHODS));
-const CAPABILITY_SET = /* @__PURE__ */ new Set(["llm", "embedding", "rerank", "image", "vision", "audio", "video", "agent"]);
-const METHOD_STATUS_SET = /* @__PURE__ */ new Set(["succeeded", "running", "failed"]);
-const AI_ROLE_SET = /* @__PURE__ */ new Set(["system", "user", "assistant", "tool", "developer"]);
-const NON_TEXT_BLOCK_ESTIMATED_LEN = 256;
 function isAiccAiMethod(method) {
   return AI_METHOD_SET.has(method);
 }
@@ -1219,267 +1234,104 @@ function aiccTextMessage(role, text) {
   return { role, content: [{ type: "text", text }] };
 }
 function aiccMessageTextContent(message) {
-  return message.content.filter((block) => block.type === "text").map((block) => block.text).join("");
+  return message.content.filter((b2) => b2.type === "text").map((b2) => b2.text).join("\n");
 }
 function aiccMessageFirstText(message) {
   var _a2;
-  return (_a2 = message.content.find((block) => block.type === "text")) == null ? void 0 : _a2.text;
-}
-function aiccResponseTextContent(response) {
-  return aiccMessageTextContent(response.message);
-}
-function aiccResponseToolCalls(response) {
-  return response.message.content.filter((block) => block.type === "tool_use").map((block) => ({
-    name: block.name,
-    args: block.args,
-    call_id: block.call_id
-  }));
-}
-function aiccResponseArtifacts(response) {
-  const artifacts = [];
-  response.message.content.forEach((block, index) => {
-    if (block.type === "image") {
-      artifacts.push({
-        name: `image_${index + 1}`,
-        resource: block.source,
-        mime: aiccResourceRefMime(block.source)
-      });
-    }
-    if (block.type === "document") {
-      artifacts.push({
-        name: block.title ?? `document_${index + 1}`,
-        resource: block.source,
-        mime: aiccResourceRefMime(block.source)
-      });
-    }
-  });
-  return artifacts;
-}
-function aiccRenderMessageForDebug(message) {
-  return message.content.map(renderAiccContentForDebug).join("");
-}
-function aiccEstimateMessageTextLen(message) {
-  return message.content.reduce((total, block) => {
-    var _a2, _b;
-    if (block.type === "text") {
-      return total + block.text.length;
-    }
-    if (block.type === "thinking") {
-      return total + (((_a2 = block.summary) == null ? void 0 : _a2.length) ?? 0) + (((_b = block.text) == null ? void 0 : _b.length) ?? 0);
-    }
-    return total + NON_TEXT_BLOCK_ESTIMATED_LEN;
-  }, 0);
+  return (_a2 = message.content.find((b2) => b2.type === "text")) == null ? void 0 : _a2.text;
 }
 function validateAiccMessage(message) {
-  if (!message || typeof message !== "object" || Array.isArray(message)) {
-    throw new RPCError("AiccMessage must be an object");
-  }
-  if (!AI_ROLE_SET.has(message.role)) {
-    throw new RPCError(`AiccMessage.role is invalid: ${String(message.role)}`);
-  }
-  if (!Array.isArray(message.content)) {
-    throw new RPCError("AiccMessage.content must be an array of content blocks");
+  const allowed = {
+    system: ["text"],
+    developer: ["text"],
+    user: ["text", "image", "document"],
+    assistant: ["text", "image", "document", "tool_use", "thinking", "provider_state"],
+    tool: ["tool_result"]
+  };
+  if (!message || !Array.isArray(message.content) || !allowed[message.role])
+    throw new RPCError("invalid AiMessage");
+  if (message.role === "tool" && (message.content.length !== 1 || message.content[0].type !== "tool_result")) {
+    throw new RPCError("role Tool requires exactly one ToolResult block");
   }
   for (const block of message.content) {
-    validateAiccContentBlockForRole(message.role, block);
+    if (!allowed[message.role].includes(block.type))
+      throw new RPCError(`AiMessage role ${message.role} cannot contain ${block.type} content`);
+    if ((block.type === "tool_use" || block.type === "tool_result") && !block.call_id)
+      throw new RPCError(`${block.type} requires call_id`);
+    if (block.type === "tool_result" && block.content.length === 0)
+      throw new RPCError("tool_result requires non-empty content");
   }
 }
-function validateAiccMessages(messages) {
-  if (!Array.isArray(messages)) {
-    throw new RPCError("AiccLlmChatInput.messages must be an array");
-  }
-  for (const message of messages) {
-    validateAiccMessage(message);
+function exact(value) {
+  if (!value || value.split("@").length !== 2 || value.startsWith("@") || value.endsWith("@")) {
+    throw new RPCError("exact_model must be `<provider_model_id>[:<variant>]@<provider_instance_name>`");
   }
 }
-function validateAiccResponse(response) {
-  const record = asRecord$3(response);
-  for (const key of ["text", "tool_calls", "artifacts"]) {
-    if (key in record) {
-      throw new RPCError(`AiccResponse.${key} is no longer supported; use AiccResponse.message`);
-    }
+function logical(value) {
+  if (!(value == null ? void 0 : value.trim()) || value.includes("@"))
+    throw new RPCError("logical_model must be a non-empty logical path without `@`");
+}
+function strict(request, allowed) {
+  for (const key of Object.keys(request))
+    if (!allowed.includes(key))
+      throw new RPCError(`unknown field \`${key}\``);
+  const mode = request.execution_mode;
+  if (mode !== void 0 && mode !== AICC_EXECUTION_MODES.IMMEDIATE && mode !== AICC_EXECUTION_MODES.STREAM) {
+    throw new RPCError("execution_mode must be `immediate` or `stream`");
   }
-  if (!record.message) {
-    throw new RPCError("AiccResponse.message is required");
-  }
-  validateAiccMessage(record.message);
-  if (record.message.role !== "assistant") {
-    throw new RPCError("AiccResponse.message.role must be assistant");
+  const sessionId = request.session_id;
+  if (sessionId !== void 0 && (typeof sessionId !== "string" || !sessionId.trim() || new TextEncoder().encode(sessionId).length > 512)) {
+    throw new RPCError("session_id must contain 1..512 bytes");
   }
 }
-function renderAiccContentForDebug(block) {
-  switch (block.type) {
-    case "text":
-      return block.text;
-    case "image":
-      return "[image]";
-    case "document":
-      return block.title ? `[document title=${block.title}]` : "[document]";
-    case "tool_use":
-      return `[tool_use name=${block.name} call_id=${block.call_id}]`;
-    case "tool_result":
-      return `[tool_result call_id=${block.call_id}${block.is_error ? " is_error=true" : ""}]`;
-    case "thinking":
-      return block.text ?? block.summary ?? "[thinking]";
-    case "provider_state":
-      return `[provider_state provider=${block.provider}]`;
-  }
-}
-function aiccResourceRefMime(resource) {
-  switch (resource.kind) {
-    case "url":
-      return resource.mime_hint ?? null;
-    case "base64":
-      return resource.mime;
-    case "named_object":
-      return null;
-  }
-}
-function validateAiccContentBlockForRole(role, block) {
-  if (!block || typeof block !== "object" || !("type" in block) || typeof block.type !== "string") {
-    throw new RPCError(`AiccMessage contains an invalid content block for role ${role}`);
-  }
-  if (!isBlockAllowedForRole(role, block.type)) {
-    throw new RPCError(`AiccMessage role ${role} cannot contain ${block.type} content`);
-  }
-  if ((block.type === "tool_use" || block.type === "tool_result") && !block.call_id) {
-    throw new RPCError(`AiccContent.${block.type} requires call_id`);
-  }
-  if (block.type === "tool_use" && !block.name) {
-    throw new RPCError("AiccContent.tool_use requires name");
-  }
-  if (block.type === "tool_result" && (!Array.isArray(block.content) || block.content.length === 0)) {
-    throw new RPCError("AiccContent.tool_result requires non-empty content");
-  }
-  if (block.type === "tool_result") {
-    for (const item of block.content) {
-      validateAiccToolResultContent(item);
-    }
-  }
-  if (block.type === "provider_state" && !block.provider) {
-    throw new RPCError("AiccContent.provider_state requires provider");
-  }
-}
-function validateAiccToolResultContent(content) {
-  if (!content || typeof content !== "object" || Array.isArray(content)) {
-    throw new RPCError("AiccToolResultContent must be an object");
-  }
-  switch (content.type) {
-    case "text":
-      if (typeof content.text !== "string") {
-        throw new RPCError("AiccToolResultContent.text requires text");
-      }
-      return;
-    case "image":
-      if (!content.source) {
-        throw new RPCError("AiccToolResultContent.image requires source");
-      }
-      return;
-    case "document":
-      if (!content.source) {
-        throw new RPCError("AiccToolResultContent.document requires source");
-      }
-      return;
-    default:
-      throw new RPCError(`AiccToolResultContent type is invalid: ${String(content.type)}`);
-  }
-}
-function isBlockAllowedForRole(role, blockType) {
-  switch (role) {
-    case "system":
-    case "developer":
-      return blockType === "text";
-    case "user":
-      return blockType === "text" || blockType === "image" || blockType === "document";
-    case "assistant":
-      return blockType === "text" || blockType === "image" || blockType === "document" || blockType === "tool_use" || blockType === "thinking" || blockType === "provider_state";
-    case "tool":
-      return blockType === "tool_result";
-  }
-}
-function asRecord$3(value) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new RPCError("Invalid RPC response format");
-  }
-  return value;
-}
-function rejectDeprecatedRequestFields(request) {
-  const requirements = request.requirements;
-  if ("resp_foramt" in requirements) {
-    throw new RPCError("AiccRequirements.resp_foramt is no longer supported; use resp_format");
-  }
-  const payload = request.payload;
-  for (const key of ["text", "messages", "tool_specs"]) {
-    if (key in payload) {
-      throw new RPCError(`AiccPayload.${key} is no longer supported; put method fields under payload.input_json`);
-    }
-  }
-}
-function normalizeMethodRequest(request) {
-  if (!request.capability || !CAPABILITY_SET.has(request.capability)) {
-    throw new RPCError("AiccMethodRequest.capability is invalid");
-  }
-  if (!request.model || !request.model.alias) {
-    throw new RPCError("AiccMethodRequest.model.alias is required");
-  }
-  if (!request.requirements || typeof request.requirements !== "object") {
-    throw new RPCError("AiccMethodRequest.requirements is required");
-  }
-  if (!request.payload || typeof request.payload !== "object" || Array.isArray(request.payload)) {
-    throw new RPCError("AiccMethodRequest.payload is required");
-  }
-  rejectDeprecatedRequestFields(request);
-  return {
-    ...request,
-    payload: {
-      input_json: request.payload.input_json ?? {},
-      resources: request.payload.resources ?? [],
-      options: request.payload.options ?? {}
-    }
-  };
-}
-function validateLlmChatPayload(request) {
-  const input = request.payload.input_json;
-  if (!input || typeof input !== "object" || Array.isArray(input)) {
-    throw new RPCError("AiccLlmChatInput must be an object");
-  }
-  const messages = input.messages;
-  validateAiccMessages(messages);
-}
-function parseMethodResponse(result) {
-  const record = asRecord$3(result);
-  if (typeof record.task_id !== "string") {
-    throw new RPCError("AiccMethodResponse missing task_id");
-  }
-  if (typeof record.status !== "string" || !METHOD_STATUS_SET.has(record.status)) {
-    throw new RPCError("AiccMethodResponse missing or invalid status");
-  }
-  if (record.result != null) {
-    validateAiccResponse(record.result);
-  }
-  return record;
-}
-function normalizeModel(model) {
-  if (typeof model === "string") {
-    return { alias: model };
-  }
-  return model;
-}
-function buildTypedMethodRequest(capability, request) {
-  return {
-    capability,
-    model: normalizeModel(request.model),
-    requirements: request.requirements ?? {},
-    payload: {
-      input_json: request.input,
-      resources: request.resources ?? [],
-      options: request.options ?? {}
-    },
-    policy: request.policy,
-    idempotency_key: request.idempotency_key,
-    task_options: request.task_options
-  };
-}
+const common = ["exact_model", "trace_id", "execution_mode", "idempotency_key", "task_options", "session_id"];
+const schemas = {
+  [AICC_AI_METHODS.CHAT_COMPLETIONS_CREATE]: [...common, "messages", "tools", "response_format", "temperature", "top_p", "max_output_tokens", "seed", "stop", "output"],
+  [AICC_AI_METHODS.IMAGES_GENERATE]: [...common, "prompt", "negative_prompt", "n", "aspect_ratio", "size", "quality", "style", "seed", "output"],
+  [AICC_AI_METHODS.EMBEDDING_TEXT]: [...common, "items", "chunking", "embedding_space_id", "dimensions", "normalize", "prefer_artifact"],
+  [AICC_AI_METHODS.EMBEDDING_MULTIMODAL]: [...common, "items", "dimensions", "normalize"],
+  [AICC_AI_METHODS.RERANK]: [...common, "query", "documents", "n", "return_documents"],
+  [AICC_AI_METHODS.IMAGE_IMG2IMG]: [...common, "images", "prompt", "strength", "output"],
+  [AICC_AI_METHODS.IMAGE_INPAINT]: [...common, "image", "mask", "prompt", "mask_semantics", "output"],
+  [AICC_AI_METHODS.IMAGE_UPSCALE]: [...common, "image", "scale", "target_width", "target_height", "preserve_faces", "output"],
+  [AICC_AI_METHODS.IMAGE_BG_REMOVE]: [...common, "image", "mode", "output"],
+  [AICC_AI_METHODS.VISION_OCR]: [...common, "document", "level", "language_hints", "return_layout", "return_artifacts"],
+  [AICC_AI_METHODS.VISION_CAPTION]: [...common, "image", "style", "language", "n"],
+  [AICC_AI_METHODS.VISION_DETECT]: [...common, "image", "classes", "score_threshold", "bbox_spec"],
+  [AICC_AI_METHODS.VISION_SEGMENT]: [...common, "image", "prompt", "mask_format", "return_bitmap_mask"],
+  [AICC_AI_METHODS.AUDIO_TTS]: [...common, "text", "voice", "speed", "output"],
+  [AICC_AI_METHODS.AUDIO_ASR]: [...common, "audio", "language", "timestamps", "diarization", "output_formats"],
+  [AICC_AI_METHODS.AUDIO_MUSIC]: [...common, "prompt", "duration_seconds", "instrumental", "lyrics", "seed", "output"],
+  [AICC_AI_METHODS.AUDIO_ENHANCE]: [...common, "audio", "task", "strength", "return_stems"],
+  [AICC_AI_METHODS.VIDEO_TXT2VIDEO]: [...common, "prompt", "duration_seconds", "aspect_ratio", "resolution", "generate_audio", "seed", "output"],
+  [AICC_AI_METHODS.VIDEO_IMG2VIDEO]: [...common, "image", "prompt", "duration_seconds", "aspect_ratio", "resolution"],
+  [AICC_AI_METHODS.VIDEO_VIDEO2VIDEO]: [...common, "video", "prompt", "preserve_motion", "time_range"],
+  [AICC_AI_METHODS.VIDEO_EXTEND]: [...common, "video", "prompt", "continuation_handle", "duration_seconds", "resolution"],
+  [AICC_AI_METHODS.VIDEO_UPSCALE]: [...common, "video", "target_resolution", "denoise", "sharpen", "output"],
+  [AICC_AI_METHODS.AGENT_COMPUTER_USE]: [...common, "task", "environment", "allowed_actions"],
+  [AICC_CORE_METHODS.ROUTE_RESOLVE]: ["trace_id", "execution_mode", "request_id", "api_type", "logical_model", "requirements", "disable", "policy", "estimated_input_tokens", "estimated_output_tokens", "session_overlay", "session_id"],
+  [AICC_CORE_METHODS.HELPER_LLM_CHAT]: ["logical_model", "trace_id", "execution_mode", "requirements", "disable", "policy", "messages", "tools", "response_format", "temperature", "top_p", "max_output_tokens", "seed", "stop", "output", "idempotency_key", "task_options", "session_overlay", "session_id"],
+  [AICC_CORE_METHODS.HELPER_TEXT_TO_IMAGE]: ["logical_model", "trace_id", "execution_mode", "requirements", "disable", "policy", "prompt", "negative_prompt", "n", "aspect_ratio", "size", "quality", "style", "seed", "output", "idempotency_key", "task_options", "session_overlay", "session_id"],
+  [AICC_CORE_METHODS.CANCEL]: ["task_id"],
+  [AICC_MANAGEMENT_METHODS.SERVICE_RELOAD_SETTINGS]: [],
+  [AICC_MANAGEMENT_METHODS.QUOTA_QUERY]: ["capability", "method"],
+  [AICC_MANAGEMENT_METHODS.USAGE_QUERY]: ["time_range", "filters", "group_by", "time_bucket", "output_mode", "limit", "cursor"],
+  [AICC_MANAGEMENT_METHODS.TRACE_QUERY]: ["limit", "cursor", "start_time_ms", "end_time_ms", "task_ids", "request_ids", "api_types", "provider_instance_names", "selected_exact_models", "scheduler_profiles", "query", "outcome"],
+  [AICC_MANAGEMENT_METHODS.ROUTING_GET]: [],
+  [AICC_MANAGEMENT_METHODS.ROUTING_UPDATE]: ["settings_revision", "provider_weights"],
+  [AICC_MANAGEMENT_METHODS.PROVIDER_CATALOG]: [],
+  [AICC_MANAGEMENT_METHODS.PROTOCOL_ADAPTER_LIST]: [],
+  [AICC_MANAGEMENT_METHODS.PROVIDER_VALIDATE]: ["provider_instance_name", "provider_type", "provider_profile_id", "protocol_family_id", "protocol_adapter_id", "base_url", "credentials", "region", "workspace", "account", "provider_rules_id", "auth", "discovery", "instance_rules", "timeout_ms", "auto_sync_models"],
+  [AICC_MANAGEMENT_METHODS.PROVIDER_ADD]: ["provider_instance_name", "provider_type", "provider_profile_id", "protocol_family_id", "protocol_adapter_id", "base_url", "credentials", "region", "workspace", "account", "provider_rules_id", "auth", "discovery", "instance_rules", "timeout_ms", "auto_sync_models"],
+  [AICC_MANAGEMENT_METHODS.PROVIDER_LIST]: ["method"],
+  [AICC_MANAGEMENT_METHODS.PROVIDER_HEALTH]: ["exact_model"],
+  [AICC_MANAGEMENT_METHODS.PROVIDER_UPDATE]: ["provider_instance_name", "settings_revision", "enabled", "base_url", "credential", "provider_profile_id", "protocol_adapter_id", "discovery", "instance_rules"],
+  [AICC_MANAGEMENT_METHODS.PROVIDER_DELETE]: ["provider_instance_name"],
+  [AICC_MANAGEMENT_METHODS.PROVIDER_REFRESH_MODELS]: ["provider_instance_name"],
+  [AICC_MANAGEMENT_METHODS.MODELS_LIST]: [],
+  [AICC_MANAGEMENT_METHODS.DRIVER_METADATA_UPDATE_GET]: [],
+  [AICC_MANAGEMENT_METHODS.DRIVER_METADATA_UPDATE_SET]: ["enabled", "source_url", "interval_secs"]
+};
 class AiccClient {
   constructor(rpcClient) {
     this.rpcClient = rpcClient;
@@ -1487,122 +1339,159 @@ class AiccClient {
   setSeq(seq) {
     this.rpcClient.setSeq(seq);
   }
-  async callMethod(method, request) {
-    if (!isAiccAiMethod(method)) {
-      throw new RPCError(`Unknown AICC AI method: ${method}`);
-    }
-    const normalizedRequest = normalizeMethodRequest(request);
-    if (method === AICC_AI_METHODS.LLM_CHAT) {
-      validateLlmChatPayload(normalizedRequest);
-    }
-    const result = await this.rpcClient.call(method, normalizedRequest);
-    return parseMethodResponse(result);
+  call(method, request) {
+    const schema = schemas[method];
+    const params = (schema == null ? void 0 : schema.includes("execution_mode")) && request.execution_mode === void 0 ? { ...request, execution_mode: AICC_EXECUTION_MODES.IMMEDIATE } : request;
+    if (schema)
+      strict(params, schema);
+    return this.rpcClient.call(method, params);
   }
-  async llmChat(request) {
-    return this.callMethod(AICC_AI_METHODS.LLM_CHAT, buildTypedMethodRequest("llm", request));
+  inference(method, request) {
+    exact(request.exact_model);
+    return this.call(method, request);
   }
-  async llmCompletion(request) {
-    return this.callMethod(AICC_AI_METHODS.LLM_COMPLETION, buildTypedMethodRequest("llm", request));
+  routeResolve(r) {
+    logical(r.logical_model);
+    return this.call(AICC_CORE_METHODS.ROUTE_RESOLVE, r);
   }
-  async embeddingText(request) {
-    return this.callMethod(AICC_AI_METHODS.EMBEDDING_TEXT, buildTypedMethodRequest("embedding", request));
+  chatCompletionsCreate(r) {
+    r.messages.forEach(validateAiccMessage);
+    return this.inference(AICC_AI_METHODS.CHAT_COMPLETIONS_CREATE, r);
   }
-  async embeddingMultimodal(request) {
-    return this.callMethod(
-      AICC_AI_METHODS.EMBEDDING_MULTIMODAL,
-      buildTypedMethodRequest("embedding", request)
-    );
+  imagesGenerate(r) {
+    return this.inference(AICC_AI_METHODS.IMAGES_GENERATE, r);
   }
-  async rerank(request) {
-    return this.callMethod(AICC_AI_METHODS.RERANK, buildTypedMethodRequest("rerank", request));
+  helperLlmChat(r) {
+    logical(r.logical_model);
+    r.messages.forEach(validateAiccMessage);
+    return this.call(AICC_CORE_METHODS.HELPER_LLM_CHAT, r);
   }
-  async imageTxt2img(request) {
-    return this.callMethod(AICC_AI_METHODS.IMAGE_TXT2IMG, buildTypedMethodRequest("image", request));
+  helperTextToImage(r) {
+    logical(r.logical_model);
+    return this.call(AICC_CORE_METHODS.HELPER_TEXT_TO_IMAGE, r);
   }
-  async imageImg2img(request) {
-    return this.callMethod(AICC_AI_METHODS.IMAGE_IMG2IMG, buildTypedMethodRequest("image", request));
+  embeddingText(r) {
+    return this.inference(AICC_AI_METHODS.EMBEDDING_TEXT, r);
   }
-  async imageInpaint(request) {
-    return this.callMethod(AICC_AI_METHODS.IMAGE_INPAINT, buildTypedMethodRequest("image", request));
+  embeddingMultimodal(r) {
+    return this.inference(AICC_AI_METHODS.EMBEDDING_MULTIMODAL, r);
   }
-  async imageUpscale(request) {
-    return this.callMethod(AICC_AI_METHODS.IMAGE_UPSCALE, buildTypedMethodRequest("image", request));
+  rerank(r) {
+    return this.inference(AICC_AI_METHODS.RERANK, r);
   }
-  async imageBgRemove(request) {
-    return this.callMethod(AICC_AI_METHODS.IMAGE_BG_REMOVE, buildTypedMethodRequest("image", request));
+  imageToImage(r) {
+    return this.inference(AICC_AI_METHODS.IMAGE_IMG2IMG, r);
   }
-  async visionOcr(request) {
-    return this.callMethod(AICC_AI_METHODS.VISION_OCR, buildTypedMethodRequest("vision", request));
+  imageInpaint(r) {
+    return this.inference(AICC_AI_METHODS.IMAGE_INPAINT, r);
   }
-  async visionCaption(request) {
-    return this.callMethod(AICC_AI_METHODS.VISION_CAPTION, buildTypedMethodRequest("vision", request));
+  imageUpscale(r) {
+    return this.inference(AICC_AI_METHODS.IMAGE_UPSCALE, r);
   }
-  async visionDetect(request) {
-    return this.callMethod(AICC_AI_METHODS.VISION_DETECT, buildTypedMethodRequest("vision", request));
+  imageBackgroundRemove(r) {
+    return this.inference(AICC_AI_METHODS.IMAGE_BG_REMOVE, r);
   }
-  async visionSegment(request) {
-    return this.callMethod(AICC_AI_METHODS.VISION_SEGMENT, buildTypedMethodRequest("vision", request));
+  visionOcr(r) {
+    return this.inference(AICC_AI_METHODS.VISION_OCR, r);
   }
-  async audioTts(request) {
-    return this.callMethod(AICC_AI_METHODS.AUDIO_TTS, buildTypedMethodRequest("audio", request));
+  visionCaption(r) {
+    return this.inference(AICC_AI_METHODS.VISION_CAPTION, r);
   }
-  async audioAsr(request) {
-    return this.callMethod(AICC_AI_METHODS.AUDIO_ASR, buildTypedMethodRequest("audio", request));
+  visionDetect(r) {
+    return this.inference(AICC_AI_METHODS.VISION_DETECT, r);
   }
-  async audioMusic(request) {
-    return this.callMethod(AICC_AI_METHODS.AUDIO_MUSIC, buildTypedMethodRequest("audio", request));
+  visionSegment(r) {
+    return this.inference(AICC_AI_METHODS.VISION_SEGMENT, r);
   }
-  async audioEnhance(request) {
-    return this.callMethod(AICC_AI_METHODS.AUDIO_ENHANCE, buildTypedMethodRequest("audio", request));
+  audioTextToSpeech(r) {
+    return this.inference(AICC_AI_METHODS.AUDIO_TTS, r);
   }
-  async videoTxt2video(request) {
-    return this.callMethod(AICC_AI_METHODS.VIDEO_TXT2VIDEO, buildTypedMethodRequest("video", request));
+  audioSpeechRecognition(r) {
+    return this.inference(AICC_AI_METHODS.AUDIO_ASR, r);
   }
-  async videoImg2video(request) {
-    return this.callMethod(AICC_AI_METHODS.VIDEO_IMG2VIDEO, buildTypedMethodRequest("video", request));
+  audioMusic(r) {
+    return this.inference(AICC_AI_METHODS.AUDIO_MUSIC, r);
   }
-  async videoVideo2video(request) {
-    return this.callMethod(AICC_AI_METHODS.VIDEO_VIDEO2VIDEO, buildTypedMethodRequest("video", request));
+  audioEnhance(r) {
+    return this.inference(AICC_AI_METHODS.AUDIO_ENHANCE, r);
   }
-  async videoExtend(request) {
-    return this.callMethod(AICC_AI_METHODS.VIDEO_EXTEND, buildTypedMethodRequest("video", request));
+  videoTextToVideo(r) {
+    return this.inference(AICC_AI_METHODS.VIDEO_TXT2VIDEO, r);
   }
-  async videoUpscale(request) {
-    return this.callMethod(AICC_AI_METHODS.VIDEO_UPSCALE, buildTypedMethodRequest("video", request));
+  videoImageToVideo(r) {
+    return this.inference(AICC_AI_METHODS.VIDEO_IMG2VIDEO, r);
   }
-  async agentComputerUse(request) {
-    return this.callMethod(AICC_AI_METHODS.AGENT_COMPUTER_USE, buildTypedMethodRequest("agent", request));
+  videoToVideo(r) {
+    return this.inference(AICC_AI_METHODS.VIDEO_VIDEO2VIDEO, r);
   }
-  async cancel(taskId) {
-    if (!taskId) {
-      throw new RPCError("AiccClient.cancel requires a non-empty task_id");
-    }
-    const result = await this.rpcClient.call(AICC_CONTROL_METHODS.CANCEL, { task_id: taskId });
-    const record = asRecord$3(result);
-    if (typeof record.task_id !== "string" || typeof record.accepted !== "boolean") {
-      throw new RPCError("Invalid cancel response");
-    }
-    return { task_id: record.task_id, accepted: record.accepted };
+  videoExtend(r) {
+    return this.inference(AICC_AI_METHODS.VIDEO_EXTEND, r);
   }
-  async reloadSettings() {
-    return this.rpcClient.call(AICC_CONTROL_METHODS.RELOAD_SETTINGS, {});
+  videoUpscale(r) {
+    return this.inference(AICC_AI_METHODS.VIDEO_UPSCALE, r);
   }
-  async serviceReloadSettings() {
-    return this.rpcClient.call(AICC_CONTROL_METHODS.SERVICE_RELOAD_SETTINGS, {});
+  computerUse(r) {
+    return this.inference(AICC_AI_METHODS.AGENT_COMPUTER_USE, r);
   }
-  async queryQuota(request) {
-    const result = await this.rpcClient.call(AICC_CONTROL_METHODS.QUOTA_QUERY, request);
-    const record = asRecord$3(result);
-    if (!record.quota || typeof record.quota !== "object" || Array.isArray(record.quota)) {
-      throw new RPCError("Invalid quota.query response");
-    }
-    return record;
+  cancel(taskId) {
+    if (!taskId)
+      throw new RPCError("cancel requires non-empty task_id");
+    return this.call(AICC_CORE_METHODS.CANCEL, { task_id: taskId });
   }
-  async listProviders(request = {}) {
-    return this.rpcClient.call(AICC_CONTROL_METHODS.PROVIDER_LIST, request);
+  reloadSettings() {
+    return this.call(AICC_MANAGEMENT_METHODS.SERVICE_RELOAD_SETTINGS, {});
   }
-  async providerHealth(request) {
-    return this.rpcClient.call(AICC_CONTROL_METHODS.PROVIDER_HEALTH, request);
+  queryQuota(r = {}) {
+    return this.call(AICC_MANAGEMENT_METHODS.QUOTA_QUERY, r);
+  }
+  queryUsage(r) {
+    return this.call(AICC_MANAGEMENT_METHODS.USAGE_QUERY, r);
+  }
+  queryTrace(r = {}) {
+    return this.call(AICC_MANAGEMENT_METHODS.TRACE_QUERY, r);
+  }
+  getRouting() {
+    return this.call(AICC_MANAGEMENT_METHODS.ROUTING_GET, {});
+  }
+  updateRouting(r) {
+    return this.call(AICC_MANAGEMENT_METHODS.ROUTING_UPDATE, r);
+  }
+  providerCatalog() {
+    return this.call(AICC_MANAGEMENT_METHODS.PROVIDER_CATALOG, {});
+  }
+  listProtocolAdapters() {
+    return this.call(AICC_MANAGEMENT_METHODS.PROTOCOL_ADAPTER_LIST, {});
+  }
+  validateProvider(r) {
+    return this.call(AICC_MANAGEMENT_METHODS.PROVIDER_VALIDATE, r);
+  }
+  addProvider(r) {
+    return this.call(AICC_MANAGEMENT_METHODS.PROVIDER_ADD, r);
+  }
+  listProviders(r = {}) {
+    return this.call(AICC_MANAGEMENT_METHODS.PROVIDER_LIST, r);
+  }
+  providerHealth(r) {
+    exact(r.exact_model);
+    return this.call(AICC_MANAGEMENT_METHODS.PROVIDER_HEALTH, r);
+  }
+  updateProvider(r) {
+    return this.call(AICC_MANAGEMENT_METHODS.PROVIDER_UPDATE, r);
+  }
+  deleteProvider(r) {
+    return this.call(AICC_MANAGEMENT_METHODS.PROVIDER_DELETE, r);
+  }
+  refreshProviderModels(r) {
+    return this.call(AICC_MANAGEMENT_METHODS.PROVIDER_REFRESH_MODELS, r);
+  }
+  listModels() {
+    return this.call(AICC_MANAGEMENT_METHODS.MODELS_LIST, {});
+  }
+  getDriverMetadataUpdate() {
+    return this.call(AICC_MANAGEMENT_METHODS.DRIVER_METADATA_UPDATE_GET, {});
+  }
+  setDriverMetadataUpdate(r) {
+    return this.call(AICC_MANAGEMENT_METHODS.DRIVER_METADATA_UPDATE_SET, r);
   }
 }
 const DEFAULT_QUEUE_CONFIG = {
@@ -28417,7 +28306,7 @@ export {
   TASK_ERR_STALE_RUNNER_EPOCH as Z,
   TASK_ERR_INVALID_PHASE as _,
   ndm_proxy as a,
-  parseAppInstanceId as a$,
+  BNS_DNS_TXT_DEFAULT_TTL as a$,
   TASK_ERR_CONTROL_ALREADY_PENDING as a0,
   TASK_ERR_ALREADY_COMPLETED as a1,
   TASK_ERR_INPUT_SCHEMA_MISMATCH as a2,
@@ -28429,32 +28318,32 @@ export {
   taskMgrTreeEventPath as a8,
   taskMgrErrorCode as a9,
   WorkflowClient as aA,
-  AICC_SERVICE_NAME as aB,
-  AICC_SERVICE_UNIQUE_ID as aC,
-  AICC_SERVICE_SERVICE_NAME as aD,
-  AICC_SERVICE_SERVICE_PORT as aE,
-  AICC_AI_METHODS as aF,
-  AICC_CONTROL_METHODS as aG,
-  AICC_FEATURES as aH,
-  isAiccAiMethod as aI,
-  aiccTextMessage as aJ,
-  aiccMessageTextContent as aK,
-  aiccMessageFirstText as aL,
-  aiccResponseTextContent as aM,
-  aiccResponseToolCalls as aN,
-  aiccResponseArtifacts as aO,
-  aiccRenderMessageForDebug as aP,
-  aiccEstimateMessageTextLen as aQ,
-  validateAiccMessage as aR,
-  validateAiccMessages as aS,
-  validateAiccResponse as aT,
-  AiccClient as aU,
-  KEventReader as aV,
-  KEventClient as aW,
-  appIdFromDid as aX,
-  parseAppId as aY,
-  appDidFromId as aZ,
-  createAppInstanceId as a_,
+  AICC_SERVICE_UNIQUE_ID as aB,
+  AICC_SERVICE_SERVICE_NAME as aC,
+  AICC_SERVICE_SERVICE_PORT as aD,
+  AICC_AI_METHODS as aE,
+  AICC_CORE_METHODS as aF,
+  AICC_MANAGEMENT_METHODS as aG,
+  AICC_METHODS as aH,
+  AICC_FEATURES as aI,
+  AICC_EXECUTION_MODES as aJ,
+  isAiccAiMethod as aK,
+  aiccTextMessage as aL,
+  aiccMessageTextContent as aM,
+  aiccMessageFirstText as aN,
+  validateAiccMessage as aO,
+  AiccClient as aP,
+  KEventReader as aQ,
+  KEventClient as aR,
+  appIdFromDid as aS,
+  parseAppId as aT,
+  appDidFromId as aU,
+  createAppInstanceId as aV,
+  parseAppInstanceId as aW,
+  BNS_EVM_DEFAULT_GAS_LIMIT as aX,
+  BNS_EVM_DEFAULT_MAX_FEE_PER_GAS as aY,
+  BNS_EVM_DEFAULT_MAX_PRIORITY_FEE_PER_GAS as aZ,
+  BNS_MAX_INLINE_DOCUMENT_BYTES as a_,
   TaskExecutorKind as aa,
   TaskPhase as ab,
   isTerminalTaskPhase as ac,
@@ -28482,19 +28371,14 @@ export {
   WorkflowScheduledTaskMisfirePolicy as ay,
   WorkflowScheduledTaskFireStatus as az,
   bns_client as b,
-  BNS_EVM_DEFAULT_GAS_LIMIT as b0,
-  BNS_EVM_DEFAULT_MAX_FEE_PER_GAS as b1,
-  BNS_EVM_DEFAULT_MAX_PRIORITY_FEE_PER_GAS as b2,
-  BNS_MAX_INLINE_DOCUMENT_BYTES as b3,
-  BNS_DNS_TXT_DEFAULT_TTL as b4,
-  BNS_DNS_TXT_DOC_TYPE as b5,
-  BNS_PUBLISH_DOCUMENT_ABI as b6,
-  BnsEvmTxError as b7,
-  BnsEvmTxBuilder as b8,
-  decodeBnsPublishDocumentCalldata as b9,
-  BnsTxExecutorError as ba,
-  walletUserHasSnAccount as bb,
-  BnsTxExecutor as bc,
+  BNS_DNS_TXT_DOC_TYPE as b0,
+  BNS_PUBLISH_DOCUMENT_ABI as b1,
+  BnsEvmTxError as b2,
+  BnsEvmTxBuilder as b3,
+  decodeBnsPublishDocumentCalldata as b4,
+  BnsTxExecutorError as b5,
+  walletUserHasSnAccount as b6,
+  BnsTxExecutor as b7,
   createSDKModule as c,
   BS_SERVICE_TASK_MANAGER as d,
   getActiveRuntimeType as e,
@@ -28520,4 +28404,4 @@ export {
   WORKFLOW_SCHEDULE_TASK_SCHEMA_ID as y,
   WORKFLOW_SEND_MESSAGE_TASK_SCHEMA_ID as z
 };
-//# sourceMappingURL=ndm_proxy-8f547002.mjs.map
+//# sourceMappingURL=ndm_proxy-3fce55e8.mjs.map

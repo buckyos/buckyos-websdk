@@ -155,14 +155,14 @@ export interface AiccRouteOverlay {
 export interface RouteResolveRequest { trace_id?: string; execution_mode?: AiccExecutionMode; request_id?: string;
   api_type: ApiType; logical_model: string; requirements?: ModelRequirement;
   disable?: ModelDisable; policy?: RoutePolicy; estimated_input_tokens?: number; estimated_output_tokens?: number;
-  session_overlay?: AiccRouteOverlay }
+  session_overlay?: AiccRouteOverlay; session_id?: string }
 export interface RouteResolveResponse { selected_exact_model: string; selected_model_uid: string; provider_instance_name: string;
   provider_profile_id: string; protocol_adapter_id: string; model_driver_id: string; provider_driver?: string;
   origin_model_id: string; provider_model_id: string; operation: string; enabled_capabilities?: Feature[];
   disabled_capabilities?: Feature[]; fallback_attempts?: Array<{ exact_model: string; provider_instance_name: string;
   provider_model_id: string }>; route_trace?: RouteTrace; inventory_revision: string }
 export interface InferenceRequest { exact_model: string; trace_id?: string; execution_mode?: AiccExecutionMode;
-  idempotency_key?: string; task_options?: AiTaskOptions }
+  idempotency_key?: string; task_options?: AiTaskOptions; session_id?: string }
 export interface InferenceResponse { task_id: string; status: AiMethodStatus; usage?: AiUsage; cost?: AiCost;
   finish_reason?: string; provider_task_ref?: string; route_trace?: RouteTrace; event_ref?: string; error?: AiccError }
 interface ChatFields { messages: AiMessage[]; tools?: AiToolSpec[]; response_format?: LlmResponseFormat; temperature?: number;
@@ -172,12 +172,12 @@ interface ImageGenerationFields { prompt: string; negative_prompt?: string; n?: 
 export interface LlmChatInvokeRequest extends InferenceRequest, ChatFields {}
 export interface LlmChatHelperRequest extends ChatFields { logical_model: string; requirements?: HelperModelRequirement; disable?: ModelDisable;
   trace_id?: string; execution_mode?: AiccExecutionMode; policy?: RoutePolicy; idempotency_key?: string;
-  task_options?: AiTaskOptions; session_overlay?: AiccRouteOverlay }
+  task_options?: AiTaskOptions; session_overlay?: AiccRouteOverlay; session_id?: string }
 export interface LlmChatInvokeResponse extends InferenceResponse { message?: AiMessage; tool_calls?: AiToolCall[] }
 export interface TextToImageInvokeRequest extends InferenceRequest, ImageGenerationFields {}
 export interface TextToImageHelperRequest extends ImageGenerationFields { logical_model: string; requirements?: HelperModelRequirement;
   trace_id?: string; execution_mode?: AiccExecutionMode; disable?: ModelDisable; policy?: RoutePolicy;
-  idempotency_key?: string; task_options?: AiTaskOptions; session_overlay?: AiccRouteOverlay }
+  idempotency_key?: string; task_options?: AiTaskOptions; session_overlay?: AiccRouteOverlay; session_id?: string }
 export interface TextToImageInvokeResponse extends InferenceResponse { images?: ResourceRef[]; provider_states?: AiContent[] }
 
 export type EmbeddingTextItem = { type: 'text'; text: string; id?: string } | { type: 'resource'; resource: ResourceRef; id?: string }
@@ -393,8 +393,12 @@ function strict(request: object, allowed: readonly string[]) {
   if (mode !== undefined && mode !== AICC_EXECUTION_MODES.IMMEDIATE && mode !== AICC_EXECUTION_MODES.STREAM) {
     throw new RPCError('execution_mode must be `immediate` or `stream`')
   }
+  const sessionId = (request as { session_id?: unknown }).session_id
+  if (sessionId !== undefined && (typeof sessionId !== 'string' || !sessionId.trim() || new TextEncoder().encode(sessionId).length > 512)) {
+    throw new RPCError('session_id must contain 1..512 bytes')
+  }
 }
-const common = ['exact_model', 'trace_id', 'execution_mode', 'idempotency_key', 'task_options']
+const common = ['exact_model', 'trace_id', 'execution_mode', 'idempotency_key', 'task_options', 'session_id']
 const schemas: Partial<Record<AiccMethod, string[]>> = {
   [AICC_AI_METHODS.CHAT_COMPLETIONS_CREATE]: [...common, 'messages', 'tools', 'response_format', 'temperature', 'top_p', 'max_output_tokens', 'seed', 'stop', 'output'],
   [AICC_AI_METHODS.IMAGES_GENERATE]: [...common, 'prompt', 'negative_prompt', 'n', 'aspect_ratio', 'size', 'quality', 'style', 'seed', 'output'],
@@ -419,9 +423,9 @@ const schemas: Partial<Record<AiccMethod, string[]>> = {
   [AICC_AI_METHODS.VIDEO_EXTEND]: [...common, 'video', 'prompt', 'continuation_handle', 'duration_seconds', 'resolution'],
   [AICC_AI_METHODS.VIDEO_UPSCALE]: [...common, 'video', 'target_resolution', 'denoise', 'sharpen', 'output'],
   [AICC_AI_METHODS.AGENT_COMPUTER_USE]: [...common, 'task', 'environment', 'allowed_actions'],
-  [AICC_CORE_METHODS.ROUTE_RESOLVE]: ['trace_id', 'execution_mode', 'request_id', 'api_type', 'logical_model', 'requirements', 'disable', 'policy', 'estimated_input_tokens', 'estimated_output_tokens', 'session_overlay'],
-  [AICC_CORE_METHODS.HELPER_LLM_CHAT]: ['logical_model', 'trace_id', 'execution_mode', 'requirements', 'disable', 'policy', 'messages', 'tools', 'response_format', 'temperature', 'top_p', 'max_output_tokens', 'seed', 'stop', 'output', 'idempotency_key', 'task_options', 'session_overlay'],
-  [AICC_CORE_METHODS.HELPER_TEXT_TO_IMAGE]: ['logical_model', 'trace_id', 'execution_mode', 'requirements', 'disable', 'policy', 'prompt', 'negative_prompt', 'n', 'aspect_ratio', 'size', 'quality', 'style', 'seed', 'output', 'idempotency_key', 'task_options', 'session_overlay'],
+  [AICC_CORE_METHODS.ROUTE_RESOLVE]: ['trace_id', 'execution_mode', 'request_id', 'api_type', 'logical_model', 'requirements', 'disable', 'policy', 'estimated_input_tokens', 'estimated_output_tokens', 'session_overlay', 'session_id'],
+  [AICC_CORE_METHODS.HELPER_LLM_CHAT]: ['logical_model', 'trace_id', 'execution_mode', 'requirements', 'disable', 'policy', 'messages', 'tools', 'response_format', 'temperature', 'top_p', 'max_output_tokens', 'seed', 'stop', 'output', 'idempotency_key', 'task_options', 'session_overlay', 'session_id'],
+  [AICC_CORE_METHODS.HELPER_TEXT_TO_IMAGE]: ['logical_model', 'trace_id', 'execution_mode', 'requirements', 'disable', 'policy', 'prompt', 'negative_prompt', 'n', 'aspect_ratio', 'size', 'quality', 'style', 'seed', 'output', 'idempotency_key', 'task_options', 'session_overlay', 'session_id'],
   [AICC_CORE_METHODS.CANCEL]: ['task_id'],
   [AICC_MANAGEMENT_METHODS.SERVICE_RELOAD_SETTINGS]: [],
   [AICC_MANAGEMENT_METHODS.QUOTA_QUERY]: ['capability', 'method'],
