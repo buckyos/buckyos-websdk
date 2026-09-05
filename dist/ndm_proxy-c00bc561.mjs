@@ -35,7 +35,7 @@ var __privateMethod = (obj, member, method) => {
   return method;
 };
 var _listener, _listeners, _cancelled, _allowInsecure, _gzip, _headers, _method, _timeout, _url, _body, _bodyType, _creds, _preflight, _process, _retry, _signal, _throttle, _getUrlFunc, _send, send_fn, _statusCode, _statusMessage, _headers2, _body2, _request, _error, _names, _data, _dataLength, _writeData, writeData_fn, _data2, _offset, _bytesRead, _parent, _maxInflation, _incrementBytesRead, incrementBytesRead_fn, _peekBytes, peekBytes_fn, _r, _s, _v, _networkV, _privateKey, _options, _type, _to, _data3, _nonce, _gasLimit, _gasPrice, _maxPriorityFeePerGas, _maxFeePerGas, _value, _chainId, _sig, _accessList, _maxFeePerBlobGas, _blobVersionedHashes, _kzg, _blobs, _auths, _blobWrapperVersion, _getSerialized, getSerialized_fn, _types, _fullTypes, _encoderCache, _getEncoder, getEncoder_fn, _offset2, _tokens, _subTokenString, subTokenString_fn, _walkAsync, walkAsync_fn, _getCoder, getCoder_fn, _errors, _events, _functions, _abiCoder, _getFunction, getFunction_fn, _getEvent, getEvent_fn, _transactions, _logs, _startBlock, _iface, _iface2, _filter, _a, _supports2544, _resolver, _fetch, fetch_fn, _getResolver, getResolver_fn, _url2, _processFunc, _name, _chainId2, _plugins, _provider, _poller, _interval, _blockNumber, _poll, poll_fn, _provider2, _poll2, _running, _tag, _lastBlock, _filter2, _hash, _provider3, _filter3, _poller2, _running2, _blockNumber2, _poll3, poll_fn2, _subs, _plugins2, _pausedState, _destroyed, _networkPromise, _anyNetwork, _performCache, _lastBlockNumber, _nextTimer, _timers, _disableCcipRead, _requestRate, _requestTimes, _options2, _getDelay, getDelay_fn, _perform, perform_fn, _call, call_fn, _checkNetwork, checkNetwork_fn, _getAccountValue, getAccountValue_fn, _getBlock, getBlock_fn, _hasSub, hasSub_fn, _getSub, getSub_fn, _throwUnsupported, throwUnsupported_fn, _provider4, _filterIdPromise, _poller3, _running3, _network, _hault, _poll4, poll_fn3, _teardown, teardown_fn, _event, _options3, _nextId, _payloads, _drainTimer, _notReady, _network2, _pendingDetectNetwork, _scheduleDrain, scheduleDrain_fn, _pollingInterval, _connect, _signingKey, _data4, _checksum, _words, _loadWords, loadWords_fn, _account, account_fn, _fromSeed, fromSeed_fn, _fromAccount, fromAccount_fn;
-import { u as ht, v as DID, o as parseBuckyOSOwnerDocument, w as canonicalize, x as signJwtEdDSA, O as ObjId, C as ChunkId, F as FileObject, y as sha256Bytes, z as DirObject, S as SimpleChunkList } from "./ndn_types-ca94286b.mjs";
+import { u as ht, v as DID, o as parseBuckyOSOwnerDocument, w as canonicalize, x as signJwtEdDSA, O as ObjId, C as ChunkId, F as FileObject, y as sha256Bytes, z as DirObject, S as SimpleChunkList } from "./ndn_types-f6c08d20.mjs";
 class RPCError extends Error {
   constructor(message) {
     super(message);
@@ -25982,6 +25982,7 @@ const METHOD_DEVICEINFO_RESOLVE_OOD_BY_DID = "deviceinfo.resolve_ood_by_did";
 const METHOD_DEVICEINFO_RESOLVE_OOD_BY_HOSTNAME = "deviceinfo.resolve_ood_by_hostname";
 const METHOD_BNS_PUBLISH_DNS_TXT = "bns.publish_dns_txt";
 const METHOD_BNS_PUBLISH_DOCUMENT = "bns.publish_document";
+const METHOD_OWNER_REMOVE_BOUND_ZONE = "owner.remove_bound_zone";
 const SN_ERROR_CODES = {
   invalid_params: 1e3,
   invalid_username: 1001,
@@ -26769,6 +26770,15 @@ class SnClient {
     }
     return this.call(this.bnsProxyRpc, METHOD_BNS_PUBLISH_DOCUMENT, params);
   }
+  async removeBoundZone(req) {
+    return this.call(this.bnsProxyRpc, METHOD_OWNER_REMOVE_BOUND_ZONE, {
+      name: req.name,
+      zone_did: req.zone_did,
+      expected_owner_hash: req.expected_owner_hash,
+      request_id: req.request_id,
+      owner_authorization: req.owner_authorization
+    });
+  }
 }
 function sanitizeInitialDocuments(docs) {
   const out = {};
@@ -26855,6 +26865,7 @@ const sn_client = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.definePro
   METHOD_DEVICE_UPDATE,
   METHOD_DOMAIN_BIND,
   METHOD_DOMAIN_UNBIND,
+  METHOD_OWNER_REMOVE_BOUND_ZONE,
   METHOD_USER_ADD_DNS_RECORD,
   METHOD_USER_GET_PROFILE,
   METHOD_USER_LIST_DNS_RECORDS,
@@ -27758,7 +27769,7 @@ async function uploadChunkViaTus(endpoint, file, chunkInfo, chunkIndex, appId, f
   const logicalPath = `${appId}/${chunkInfo.chunkId}`;
   let tusModule;
   try {
-    tusModule = await import("./tus_client-f1532e14.mjs");
+    tusModule = await import("./tus_client-573066b3.mjs");
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new NdmError("UPLOAD_FAILED", `Failed to load tus-js-client: ${message}`);
@@ -28612,4 +28623,4 @@ export {
   WORKFLOW_THUNK_TASK_SCHEMA_ID as y,
   WORKFLOW_SCHEDULE_TASK_SCHEMA_ID as z
 };
-//# sourceMappingURL=ndm_proxy-6cb0701b.mjs.map
+//# sourceMappingURL=ndm_proxy-c00bc561.mjs.map

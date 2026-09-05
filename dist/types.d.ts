@@ -49,6 +49,7 @@ export interface BuckyOSOwnerDocument extends W3CDIDDocumentBase {
     display_name: string;
     avatar?: string;
     meta?: unknown;
+    zone_binding_model_version?: number;
     binded_zone_list?: DID[];
     wallets?: Record<string, OwnerWallet>;
 }

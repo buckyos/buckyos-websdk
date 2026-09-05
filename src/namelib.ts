@@ -758,6 +758,14 @@ function asDid(value: DID | DIDString): DID {
   return value instanceof DID ? value : DID.fromStr(value)
 }
 
+export const ZONE_BINDING_MODEL_VERSION = 2 as const
+
+export type OwnerDocumentZoneBindingState =
+  | 'legacy'
+  | 'bound_v2'
+  | 'unbound_v2'
+  | 'unsupported_version'
+
 export interface NewOwnerDocumentParams {
   did: DID | DIDString
   name: string
@@ -791,6 +799,7 @@ export function newOwnerDocument(params: NewOwnerDocumentParams): BuckyOSOwnerDo
     version_seq: 0,
     name: params.name,
     display_name: params.displayName,
+    zone_binding_model_version: ZONE_BINDING_MODEL_VERSION,
   }
 }
 
@@ -840,13 +849,34 @@ export function ownerDocumentSetDefaultZoneDid(ownerDoc: BuckyOSOwnerDocument, d
   bindedZoneList.unshift(zoneDidStr)
   ownerDoc.binded_zone_list = bindedZoneList
 
+  ownerDoc.zone_binding_model_version = ZONE_BINDING_MODEL_VERSION
+  ownerDocumentSyncLastDocService(ownerDoc)
+}
+
+export function ownerDocumentRemoveBoundZone(ownerDoc: BuckyOSOwnerDocument, zoneDid: DID | DIDString): boolean {
+  const zoneDidStr = asDid(zoneDid).toString()
+  const previousLength = ownerDoc.binded_zone_list?.length ?? 0
+  ownerDoc.binded_zone_list = (ownerDoc.binded_zone_list ?? []).filter(did => did !== zoneDidStr)
+  const removed = ownerDoc.binded_zone_list.length !== previousLength
+
+  ownerDoc.zone_binding_model_version = ZONE_BINDING_MODEL_VERSION
+  ownerDocumentSyncLastDocService(ownerDoc)
+  return removed
+}
+
+function ownerDocumentSyncLastDocService(ownerDoc: BuckyOSOwnerDocument): void {
+  const defaultZoneDid = ownerDoc.binded_zone_list?.[0]
+
   const lastDocServiceId = `${ownerDoc.id}#lastDoc`
   const services: W3CService[] = (ownerDoc.service ?? []).filter(service => service.id !== lastDocServiceId)
-  services.push({
-    id: lastDocServiceId,
-    type: 'DIDDoc',
-    serviceEndpoint: `https://${zoneDid.toHostName()}/resolve/${ownerDoc.id}`,
-  })
+  if (defaultZoneDid !== undefined) {
+    const zoneDid = asDid(defaultZoneDid)
+    services.push({
+      id: lastDocServiceId,
+      type: 'DIDDoc',
+      serviceEndpoint: `https://${zoneDid.toHostName()}/resolve/${ownerDoc.id}`,
+    })
+  }
   ownerDoc.service = services
 }
 
@@ -859,6 +889,20 @@ export function ownerDocumentGetDefaultZoneDid(ownerDoc: BuckyOSOwnerDocument): 
 export function ownerDocumentIsBoundToZone(ownerDoc: BuckyOSOwnerDocument, zoneDid: DID | DIDString): boolean {
   const zoneDidStr = asDid(zoneDid).toString()
   return (ownerDoc.binded_zone_list ?? []).includes(zoneDidStr)
+}
+
+export function ownerDocumentGetZoneBindingState(
+  ownerDoc: BuckyOSOwnerDocument,
+  zoneDid: DID | DIDString,
+): OwnerDocumentZoneBindingState {
+  const version = ownerDoc.zone_binding_model_version
+  if (version === undefined) {
+    return 'legacy'
+  }
+  if (version !== ZONE_BINDING_MODEL_VERSION) {
+    return 'unsupported_version'
+  }
+  return ownerDocumentIsBoundToZone(ownerDoc, zoneDid) ? 'bound_v2' : 'unbound_v2'
 }
 
 // Mirrors Rust OwnerDocument::get_historical_keys: every verification method
@@ -1245,7 +1289,7 @@ function ownerDocumentPayload(doc: BuckyOSOwnerDocument): Record<string, unknown
     assertion_method, capabilityInvocation, service, exp, iat,
     version_seq, mini_version_seq, valid_iat,
     keyScope, 'buckyos:scopes': buckyosScopes,
-    name, display_name, avatar, meta, binded_zone_list, wallets, ...extra
+    name, display_name, avatar, meta, zone_binding_model_version, binded_zone_list, wallets, ...extra
   } = doc as Record<string, any>
   const keyScopeValue = keyScope ?? buckyosScopes
   return pruneUndefined({
@@ -1267,6 +1311,7 @@ function ownerDocumentPayload(doc: BuckyOSOwnerDocument): Record<string, unknown
     display_name,
     avatar,
     meta,
+    zone_binding_model_version,
     binded_zone_list: binded_zone_list && binded_zone_list.length > 0 ? binded_zone_list : undefined,
     wallets: wallets && Object.keys(wallets).length > 0 ? wallets : undefined,
   })

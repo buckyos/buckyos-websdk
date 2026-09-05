@@ -131,8 +131,8 @@ describe('cert (T3.1, replaces python CertManager)', () => {
     expect(identityFileName('authentication', 'public')).toBe('authentication.public.jwk')
 
     const paths = roots.x509Paths('did:web:example.com:user:alice')
-    expect(paths.fullchain).toBe(path.join('/buckyos/local/identity', 'example.com%2Fuser%2Falice', 'server.fullchain.pem'))
-    expect(paths.privateKey).toBe(path.join('/buckyos/security', 'example.com%2Fuser%2Falice', 'server.private.pem'))
+    expect(paths.fullchain).toBe(path.resolve('/buckyos/local/identity', 'example.com%2Fuser%2Falice', 'server.fullchain.pem'))
+    expect(paths.privateKey).toBe(path.resolve('/buckyos/security', 'example.com%2Fuser%2Falice', 'server.private.pem'))
   })
 
   test('IdentityRoots resolves explicit roots, env roots, and BUCKYOS_ROOT defaults', () => {
@@ -230,7 +230,8 @@ describe('cert (T3.1, replaces python CertManager)', () => {
     expect(text).toContain(`DNS:*.${zone}`)
     expect(text).toContain('TLS Web Server Authentication')
     expect(text).toContain('Digital Signature, Key Encipherment')
-    expect(text).toContain(`CN=${zone}`)
+    // OpenSSL prints either `CN=value` or `CN = value` depending on version.
+    expect(text.replace(/\s*=\s*/g, '=')).toContain(`CN=${zone}`)
 
     // chain verification against the CA
     const verify = execFileSync('openssl', [

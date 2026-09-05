@@ -34,6 +34,7 @@ export declare const METHOD_DEVICEINFO_RESOLVE_OOD_BY_DID = "deviceinfo.resolve_
 export declare const METHOD_DEVICEINFO_RESOLVE_OOD_BY_HOSTNAME = "deviceinfo.resolve_ood_by_hostname";
 export declare const METHOD_BNS_PUBLISH_DNS_TXT = "bns.publish_dns_txt";
 export declare const METHOD_BNS_PUBLISH_DOCUMENT = "bns.publish_document";
+export declare const METHOD_OWNER_REMOVE_BOUND_ZONE = "owner.remove_bound_zone";
 export declare const SN_ERROR_CODES: {
     readonly invalid_params: 1000;
     readonly invalid_username: 1001;
@@ -375,6 +376,20 @@ export type SnBnsProxyStatus = 'submitted' | 'confirmed';
 export type SnBnsProxyResp = SnBnsProxyTxOutcome & {
     code: number;
 };
+export interface SnOwnerRemoveBoundZoneReq {
+    name: string;
+    zone_did: string;
+    expected_owner_hash: string;
+    request_id: string;
+    owner_authorization: string;
+}
+export interface SnOwnerRemoveBoundZoneResp extends SnBnsProxyTxOutcome {
+    code: number;
+    source_owner_hash: string;
+    result_owner_hash: string;
+    source_version: number;
+    target_version: number;
+}
 export declare const SN_DEVICE_TOKEN_AUD = "sn-device";
 export declare const SN_DEVICE_TOKEN_DEFAULT_TTL_SECS = 600;
 export declare function generateSnDeviceToken(deviceKeyDid: string, deviceScopedDid: string, devicePrivateKeyPem: string, ttlSecs?: number): Promise<string>;
@@ -410,6 +425,7 @@ export declare class SnClient {
     resolveOodByHostname(destHost: string): Promise<SnOodInfo>;
     publishDnsTxt(req: SnBnsPublishDnsTxtReq): Promise<SnBnsProxyResp>;
     publishDocument(req: SnBnsPublishDocumentReq): Promise<SnBnsProxyResp>;
+    removeBoundZone(req: SnOwnerRemoveBoundZoneReq): Promise<SnOwnerRemoveBoundZoneResp>;
 }
 export {};
 //# sourceMappingURL=sn_client.d.ts.map

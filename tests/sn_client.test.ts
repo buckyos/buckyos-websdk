@@ -223,13 +223,62 @@ describe('SnClient path routing', () => {
     await client.getZoneInfo()
     await client.getDeviceOnline({ device_name: 'ood1' })
     await client.publishDnsTxt({ name: 'alice', mode: 'add', value: 'pkx=abc' })
+    await client.removeBoundZone({
+      name: 'alice',
+      zone_did: 'did:bns:alice',
+      expected_owner_hash: `sha256:${'a'.repeat(64)}`,
+      request_id: 'owner-unbind:alice:1',
+      owner_authorization: 'header.payload.signature',
+    })
 
     expect(urls).toEqual([
       `https://sn.example${SN_AUTH_PATH}`,
       `https://sn.example${SN_AUTH_PATH}`,
       `https://sn.example${SN_DEVICEINFO_PATH}`,
       `https://sn.example${SN_BNS_PROXY_PATH}`,
+      `https://sn.example${SN_BNS_PROXY_PATH}`,
     ])
+  })
+
+  it('serializes owner.remove_bound_zone without an account token', async () => {
+    const fetcher = snFetcher((method) => {
+      expect(method).toBe('owner.remove_bound_zone')
+      return {
+        code: 0,
+        request_id: 'owner-unbind:alice:1',
+        operation: method,
+        name: 'alice',
+        source_owner_hash: `sha256:${'a'.repeat(64)}`,
+        result_owner_hash: `sha256:${'b'.repeat(64)}`,
+        source_version: 7,
+        target_version: 8,
+        controller_id: 'controller-1',
+        controller_address: '0x0000000000000000000000000000000000000001',
+        status: 'submitted',
+        reused: false,
+      }
+    })
+    const client = new SnClient('https://sn.example', null, { fetcher })
+    const request = {
+      name: 'alice',
+      zone_did: 'did:web:home.example',
+      expected_owner_hash: `sha256:${'a'.repeat(64)}`,
+      request_id: 'owner-unbind:alice:1',
+      owner_authorization: 'header.payload.signature',
+      ignored: 'must-not-cross-wire',
+    }
+
+    const response = await client.removeBoundZone(request)
+
+    expect(requestBody(fetcher).params).toEqual({
+      name: 'alice',
+      zone_did: 'did:web:home.example',
+      expected_owner_hash: `sha256:${'a'.repeat(64)}`,
+      request_id: 'owner-unbind:alice:1',
+      owner_authorization: 'header.payload.signature',
+    })
+    expect(requestBody(fetcher).sys[1]).toBeUndefined()
+    expect(response.target_version).toBe(8)
   })
 
   it('sends the session token to every channel after syncSessionToken', async () => {
