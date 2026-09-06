@@ -36,7 +36,8 @@ type SourceKind = 'catalog' | 'pikg' | 'url'
 export interface PikgSnapshot {
   kind: 'pikg' | 'url'
   display: string
-  bytes: Uint8Array
+  path: string
+  localFileId?: string
   digest: string
   size: number
 }
@@ -516,7 +517,7 @@ async function installApp(
       ...sourceRpcParams(source),
       ...planScopeAndOptions(inspection.plan),
       options: installOptions(input),
-      plan: submittedPlan ?? null,
+      plan: submittedPlan ?? inspection.plan,
       approved_plan_fingerprint: expectString(inspection.plan, 'plan_fingerprint'),
       idempotency_key: idempotencyKey(ctx),
     }
@@ -593,6 +594,7 @@ async function upgradeApps(
         ...sourceRpcParams(source),
         ...planScopeAndOptions(inspection.plan),
         options: installOptions(input),
+        plan: inspection.plan,
         approved_plan_fingerprint: expectString(inspection.plan, 'plan_fingerprint'),
         idempotency_key: idempotencyKey(ctx),
       }),
@@ -675,37 +677,78 @@ async function prepareSource(
   const classified = await classifySource(ctx, input)
   if (classified.kind === 'catalog') return classified
 
-  const snapshot = classified.kind === 'url'
-    ? await downloadPikg(classified.url, dependencies.download, ctx.signal)
-    : await readPikg(classified.path, classified.kind)
-  const stage = dependencies.stagePikg ?? stagePikg
-  const metadata = await stage(ctx, snapshot, purpose)
-  if (metadata.schema_version !== PLAN_SCHEMA_VERSION) {
-    throw new ToolError('UNSUPPORTED_SCHEMA_VERSION', 'staging returned a non-v4 schema')
+  const host = getHost()
+  const localDirectory = localPikgDirectory(ctx)
+  let directory: string
+  let localFileId: string | undefined
+  if (localDirectory) {
+    try {
+      await host.mkdir(localDirectory, { recursive: true, mode: 0o700 })
+      directory = localDirectory
+      localFileId = crypto.randomUUID().replaceAll('-', '')
+    } catch (error) {
+      if (!isHostError(error, 'PermissionDenied') && !isHostError(error, 'NotFound')) throw error
+    }
   }
-  if (metadata.pikg_digest !== snapshot.digest || metadata.size !== snapshot.size) {
-    throw new ToolError(
-      'PIKG_DIGEST_MISMATCH',
-      'the staged PIKG does not match the client byte snapshot',
-      EXIT_OPERATION,
-      false,
-      {
-        expected_digest: snapshot.digest,
-        staged_digest: metadata.pikg_digest,
-        expected_size: snapshot.size,
-        staged_size: metadata.size,
-      },
-    )
+  if (!localFileId) {
+    await host.mkdir(ctx.configStore.root, { recursive: true, mode: 0o700 })
+    directory = await host.makeTempDir({ dir: ctx.configStore.root, prefix: '.pikg-' })
   }
-  if (metadata.purpose !== purpose) {
-    throw new ToolError('INVALID_SERVICE_RESPONSE', 'staging purpose does not match the request', 9)
-  }
-  return {
-    kind: snapshot.kind,
-    display: snapshot.display,
-    snapshot,
-    staging: metadata,
-    serviceSource: { kind: 'local_pikg', staging_handle: metadata.handle },
+  let path = host.path.join(directory!, `${localFileId ?? 'source'}.pikg`)
+  const snapshotAt = (destination: string) =>
+    classified.kind === 'url'
+      ? downloadPikg(classified.url, destination, dependencies.download, ctx.signal)
+      : readPikg(classified.path, destination, ctx.signal)
+  try {
+    let snapshot: PikgSnapshot
+    try {
+      snapshot = await snapshotAt(path)
+    } catch (error) {
+      if (!localFileId || !isHostError(error, 'PermissionDenied')) throw error
+      await host.remove(path).catch(() => {})
+      localFileId = undefined
+      await host.mkdir(ctx.configStore.root, { recursive: true, mode: 0o700 })
+      directory = await host.makeTempDir({ dir: ctx.configStore.root, prefix: '.pikg-' })
+      path = host.path.join(directory, 'source.pikg')
+      snapshot = await snapshotAt(path)
+    }
+    snapshot.localFileId = localFileId
+    const stage = dependencies.stagePikg ?? stagePikg
+    const metadata = await stage(ctx, snapshot, purpose)
+    if (metadata.schema_version !== PLAN_SCHEMA_VERSION) {
+      throw new ToolError('UNSUPPORTED_SCHEMA_VERSION', 'staging returned a non-v4 schema')
+    }
+    if (metadata.pikg_digest !== snapshot.digest || metadata.size !== snapshot.size) {
+      throw new ToolError(
+        'PIKG_DIGEST_MISMATCH',
+        'the staged PIKG does not match the client byte snapshot',
+        EXIT_OPERATION,
+        false,
+        {
+          expected_digest: snapshot.digest,
+          staged_digest: metadata.pikg_digest,
+          expected_size: snapshot.size,
+          staged_size: metadata.size,
+        },
+      )
+    }
+    if (metadata.purpose !== purpose) {
+      throw new ToolError(
+        'INVALID_SERVICE_RESPONSE',
+        'staging purpose does not match the request',
+        9,
+      )
+    }
+    return {
+      kind: snapshot.kind,
+      display: snapshot.display,
+      snapshot,
+      staging: metadata,
+      serviceSource: { kind: 'local_pikg', staging_handle: metadata.handle },
+    }
+  } finally {
+    await host.remove(localFileId ? path : directory!, { recursive: !localFileId })
+      .catch(() => {})
   }
 }
 
@@ -760,37 +803,82 @@ async function classifySource(
   }
 }
 
-async function readPikg(path: string, kind: 'pikg'): Promise<PikgSnapshot> {
+function localPikgDirectory(ctx: CommandContext): string | undefined {
+  const root = getHost().policy.buckyosRoot
+  const hostname = new URL(ctx.connection.endpoint).hostname
+  if (!root || !['localhost', '127.0.0.1', '[::1]'].includes(hostname)) return undefined
+  return getHost().path.join(root, 'cache', 'control_panel', 'pikg_staging', 'incoming')
+}
+
+async function* fileChunks(file: HostFile, size: number): AsyncGenerator<Uint8Array> {
+  const buffer = new Uint8Array(size)
+  while (true) {
+    let used = 0
+    while (used < buffer.length) {
+      const read = await file.read(buffer.subarray(used))
+      if (read === null) break
+      if (read === 0) throw new UsageError('PIKG_READ_FAILED', 'PIKG read made no progress')
+      used += read
+    }
+    if (used === 0) break
+    yield buffer.subarray(0, used)
+  }
+}
+
+async function writePikgSnapshot(
+  path: string,
+  chunks: AsyncIterable<Uint8Array> | Iterable<Uint8Array>,
+  signal: AbortSignal,
+): Promise<{ path: string; digest: string; size: number }> {
+  const output = await getHost().open(path, { write: true, createNew: true, mode: 0o600 })
+  const hash = getHost().createHash('sha256')
+  const magic = new Uint8Array(ZIP_LOCAL_MAGIC.length)
+  let size = 0
+  try {
+    for await (const chunk of chunks) {
+      signal.throwIfAborted()
+      if (size < magic.length) magic.set(chunk.subarray(0, magic.length - size), size)
+      hash.update(chunk)
+      size += chunk.length
+      if (!Number.isSafeInteger(size)) throw new UsageError('PIKG_TOO_LARGE', 'PIKG is too large')
+      let offset = 0
+      while (offset < chunk.length) {
+        const written = await output.write(chunk.subarray(offset))
+        if (written === 0) throw new UsageError('PIKG_WRITE_FAILED', 'PIKG write made no progress')
+        offset += written
+      }
+    }
+    validatePikgSnapshot(magic.subarray(0, Math.min(size, magic.length)))
+    await output.sync()
+    return { path, size, digest: hash.digestHex() }
+  } finally {
+    await output.close()
+  }
+}
+
+async function readPikg(
+  source: string,
+  destination: string,
+  signal: AbortSignal,
+): Promise<PikgSnapshot> {
   let file: HostFile
   try {
-    file = await getHost().open(path, { read: true })
+    file = await getHost().open(source, { read: true })
   } catch (error) {
     throw new UsageError('PIKG_READ_FAILED', `failed to open PIKG: ${errorMessage(error)}`)
   }
   try {
-    const stat = await file.stat()
-    if (!stat.isFile) throw new UsageError('INVALID_PIKG_SOURCE', 'PIKG source is not a file')
-    if (stat.size > Number.MAX_SAFE_INTEGER) {
-      throw new UsageError('PIKG_TOO_LARGE', 'PIKG is too large for this client')
+    const before = await file.stat()
+    if (!before.isFile) throw new UsageError('INVALID_PIKG_SOURCE', 'PIKG source is not a file')
+    const snapshot = await writePikgSnapshot(destination, fileChunks(file, 256 * 1024), signal)
+    const after = await file.stat()
+    if (
+      snapshot.size !== before.size || before.size !== after.size ||
+      before.mtime?.getTime() !== after.mtime?.getTime()
+    ) {
+      throw new UsageError('PIKG_READ_FAILED', 'PIKG changed while being read')
     }
-    const bytes = new Uint8Array(stat.size)
-    let offset = 0
-    while (offset < bytes.length) {
-      const read = await file.read(bytes.subarray(offset))
-      if (read === null) break
-      offset += read
-    }
-    if (offset !== bytes.length) {
-      throw new UsageError('PIKG_READ_FAILED', 'PIKG changed size while being read')
-    }
-    validatePikgSnapshot(bytes)
-    return {
-      kind,
-      display: path,
-      bytes,
-      digest: await sha256Id(bytes),
-      size: bytes.length,
-    }
+    return { kind: 'pikg', display: source, ...snapshot }
   } finally {
     await file.close()
   }
@@ -798,34 +886,33 @@ async function readPikg(path: string, kind: 'pikg'): Promise<PikgSnapshot> {
 
 async function downloadPikg(
   url: URL,
+  destination: string,
   downloader: AppModuleDependencies['download'],
   signal: AbortSignal,
 ): Promise<PikgSnapshot> {
-  let bytes: Uint8Array
+  let chunks: Uint8Array[] | ReadableStream<Uint8Array> | undefined
   try {
-    bytes = downloader ? await downloader(url, signal) : await defaultDownload(url, signal)
+    chunks = downloader ? [await downloader(url, signal)] : await defaultDownload(url, signal)
+    const snapshot = await writePikgSnapshot(destination, chunks, signal)
+    return { kind: 'url', display: safeUrl(url), ...snapshot }
   } catch (error) {
-    if (error instanceof ToolError) throw error
+    if (error instanceof ToolError || isHostError(error, 'PermissionDenied')) throw error
+    signal.throwIfAborted()
     throw new ToolError(
       'PIKG_DOWNLOAD_FAILED',
       `failed to download PIKG: ${errorMessage(error)}`,
       5,
       true,
     )
-  }
-  validatePikgSnapshot(bytes)
-  return {
-    kind: 'url',
-    display: safeUrl(url),
-    bytes,
-    digest: await sha256Id(bytes),
-    size: bytes.length,
+  } finally {
+    if (chunks instanceof ReadableStream && !chunks.locked) await chunks.cancel().catch(() => {})
   }
 }
 
-async function defaultDownload(url: URL, signal: AbortSignal): Promise<Uint8Array> {
+async function defaultDownload(url: URL, signal: AbortSignal): Promise<ReadableStream<Uint8Array>> {
   const response = await fetch(url, { method: 'GET', redirect: 'follow', signal })
-  if (!response.ok) {
+  if (!response.ok || !response.body) {
+    await response.body?.cancel()
     throw new ToolError(
       'PIKG_DOWNLOAD_FAILED',
       `PIKG download returned HTTP ${response.status}`,
@@ -833,7 +920,7 @@ async function defaultDownload(url: URL, signal: AbortSignal): Promise<Uint8Arra
       response.status >= 500,
     )
   }
-  return new Uint8Array(await response.arrayBuffer())
+  return response.body
 }
 
 async function stagePikg(
@@ -841,42 +928,80 @@ async function stagePikg(
   snapshot: PikgSnapshot,
   purpose: PikgPurpose,
 ): Promise<PikgStagingMetadata> {
+  const identity = { pikg_digest: snapshot.digest, size: snapshot.size, purpose }
+  if (snapshot.localFileId) {
+    try {
+      const value = expectObject(
+        await callControl(ctx, 'apps.staging.finalize', {
+          ...identity,
+          local_file_id: snapshot.localFileId,
+        }),
+        'apps.staging.finalize response',
+      )
+      return parseStagingMetadata(value)
+    } catch (error) {
+      if (!errorMessage(error).includes('LOCAL_PIKG_UNAVAILABLE')) throw error
+    }
+  }
   const session = ctx.session
   if (!session) throw new ToolError('AUTH_REQUIRED', 'authenticated session is required', 3)
   const token = (await session.ensureValid()).token
-  const hash = ndn.sha256Bytes(snapshot.bytes)
-  const chunkId = ndn.ChunkId.fromMix256Result(snapshot.size, hash).toString()
   const proxy = ndm_proxy.createNdmProxyClient({
     endpoint: gatewayOrigin(ctx.connection.endpoint),
     sessionToken: token,
     fetcher: (request: RequestInfo | URL, init?: RequestInit) =>
       fetch(normalizeNdmRequestUrl(request), { ...init, signal: ctx.signal }),
   })
-  let uploadError: unknown
+  let fileObjectId: string
   try {
-    await proxy.putChunk(chunkId, snapshot.bytes)
+    const file = await getHost().open(snapshot.path, { read: true })
+    const chunks = new ndn.SimpleChunkList()
+    const hash = getHost().createHash('sha256')
+    try {
+      for await (const bytes of fileChunks(file, 32 * 1024 * 1024)) {
+        ctx.signal.throwIfAborted()
+        hash.update(bytes)
+        const chunk = ndn.ChunkId.fromMix256Result(bytes.length, ndn.sha256Bytes(bytes))
+        await proxy.putChunk(chunk.toString(), bytes)
+        chunks.appendChunk(chunk)
+      }
+    } finally {
+      await file.close()
+    }
+    if (chunks.total_size !== snapshot.size || hash.digestHex() !== snapshot.digest) {
+      throw new ToolError('PIKG_DIGEST_MISMATCH', 'PIKG snapshot changed during upload')
+    }
+    let content = chunks.body[0].toString()
+    if (chunks.body.length > 1) {
+      const [id, body] = chunks.genObjId()
+      await proxy.putObject({ obj_id: id.toString(), obj_data: body })
+      content = id.toString()
+    }
+    const fileObject = new ndn.FileObject(`${snapshot.digest}.pikg`, snapshot.size, content)
+    const [id, body] = fileObject.genObjId()
+    await proxy.putObject({ obj_id: id.toString(), obj_data: body })
+    fileObjectId = id.toString()
   } catch (error) {
-    uploadError = error
-  }
-  let value: Record<string, unknown>
-  try {
-    value = expectObject(
-      await callControl(ctx, 'apps.staging.finalize', {
-        source_obj_id: chunkId,
-        purpose,
-      }),
-      'apps.staging.finalize response',
-    )
-  } catch (error) {
-    if (uploadError === undefined) throw error
+    if (error instanceof ToolError) throw error
+    ctx.signal.throwIfAborted()
     throw new ToolError(
       'PIKG_UPLOAD_FAILED',
-      `failed to upload PIKG snapshot: ${errorMessage(uploadError)}`,
+      `failed to upload PIKG: ${errorMessage(error)}`,
       5,
       true,
-      { finalize_error: errorMessage(error) },
     )
   }
+  const value = expectObject(
+    await callControl(ctx, 'apps.staging.finalize', {
+      ...identity,
+      source_obj_id: fileObjectId,
+    }),
+    'apps.staging.finalize response',
+  )
+  return parseStagingMetadata(value)
+}
+
+function parseStagingMetadata(value: Record<string, unknown>): PikgStagingMetadata {
   return {
     schema_version: expectNumber(value, 'schema_version'),
     handle: expectString(value, 'handle'),
@@ -1443,12 +1568,6 @@ function validatePikgSnapshot(bytes: Uint8Array): void {
   if (!ZIP_LOCAL_MAGIC.every((byte, index) => bytes[index] === byte)) {
     throw new UsageError('INVALID_PIKG', 'PIKG magic mismatch: expected a ZIP container')
   }
-}
-
-async function sha256Id(bytes: Uint8Array): Promise<string> {
-  const digestInput = Uint8Array.from(bytes)
-  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', digestInput.buffer))
-  return [...digest].map((byte) => byte.toString(16).padStart(2, '0')).join('')
 }
 
 function gatewayOrigin(endpoint: string): string {

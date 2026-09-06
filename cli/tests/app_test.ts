@@ -1,5 +1,9 @@
 import './setup.ts'
 import { join } from 'node:path'
+import { tmpdir } from 'node:os'
+import { ndn } from 'buckyos/node'
+import type { CommandContext } from '../core/context.ts'
+import { getHost, HostError } from '../runtime/host.ts'
 import { ConfigStore } from '../core/config.ts'
 import { createMockCommandContext } from '../core/context.ts'
 import type { RpcCallOptions, ServiceClientRegistry } from '../core/runtime.ts'
@@ -100,8 +104,9 @@ Deno.test('app fetch stages the exact local PIKG snapshot and releases it', asyn
       throw new Error(`unexpected method ${method}`)
     })
     const result = await run('fetch', { source: path }, clients, {
-      stagePikg: (_ctx, snapshot, purpose) => {
+      stagePikg: async (_ctx, snapshot, purpose) => {
         staged = snapshot
+        assertEquals(await Deno.readFile(snapshot.path), bytes)
         return Promise.resolve({
           schema_version: 4,
           handle: 'pikg-stage-00000000000000000000000000000001',
@@ -111,7 +116,8 @@ Deno.test('app fetch stages the exact local PIKG snapshot and releases it', asyn
         })
       },
     })
-    assertEquals(staged?.bytes, bytes)
+    assertEquals(staged?.size, bytes.length)
+    await assertRejects(() => Deno.stat(staged!.path))
     assertEquals((result as Record<string, unknown>).source, {
       kind: 'pikg',
       source: path,
@@ -236,6 +242,58 @@ Deno.test('installed App rejects a fresh plan before submission', async () => {
   }
 })
 
+for (const verb of ['install', 'upgrade'] as const) {
+  Deno.test(`${verb} binds the upgrade plan without a plan file and preserves inherited settings`, async () => {
+    const upgrade = inspection('catalog')
+    const plan = upgrade.plan as Record<string, unknown>
+    plan.plan_use = 'UPGRADE'
+    plan.task_id = 'task-upgrade'
+    plan.plan_fingerprint = `planfp:${'4'.repeat(64)}`
+    plan.install_params = {
+      selected_components: ['script'],
+      permissions: [],
+      service_settings: { services: { www: { enabled: true } } },
+      bash_envs: { MODE: 'custom' },
+      res_pool_id: 'custom-pool',
+      auto_start: false,
+      expected_instance_count: 2,
+    }
+    const status = upgrade.status as Record<string, unknown>
+    status.plan_fingerprint = plan.plan_fingerprint
+    const calls: RecordedCall[] = []
+    const clients = clientsFor(calls, (method, params) => {
+      if (method === 'apps.upgrade.check') {
+        assertEquals(params.selector, 'did:bns:demo')
+        return { items: [{ app_did: 'did:bns:demo', state: 'UPDATE_AVAILABLE' }] }
+      }
+      if (method === 'apps.details') return installedDetails()
+      if (method === 'apps.inspect') {
+        if (params.action !== 'upgrade') return inspection('catalog')
+        assertEquals(params.owner_user_id, 'alice')
+        assertEquals(params.install_params, undefined)
+        return upgrade
+      }
+      if (method === 'apps.submit') {
+        return { action: 'upgrade', task_id: plan.task_id }
+      }
+      throw new Error(`unexpected method ${method}`)
+    })
+    const input = verb === 'install'
+      ? { source: 'demo', no_wait: true }
+      : { app_name: 'demo', no_wait: true }
+    const result = await run(verb, input, clients, {}, true) as Record<string, unknown>
+    assertEquals(result.task_id, plan.task_id)
+    const submissions = calls.filter((call) => call.method === 'apps.submit')
+    assertEquals(submissions.length, 1)
+    const params = submissions[0].params
+    assertEquals(params.plan, plan, 'submit must preserve the inspected upgrade plan and task ID')
+    assertEquals(params.approved_plan_fingerprint, plan.plan_fingerprint)
+    assertEquals(params.owner_user_id, plan.owner_user_id)
+    assertEquals(params.target, plan.target)
+    assertEquals(params.install_params, plan.install_params)
+  })
+}
+
 Deno.test('batch upgrade with no available changes is synchronous and creates no task', async () => {
   const calls: RecordedCall[] = []
   const clients = clientsFor(calls, (method) => {
@@ -269,6 +327,204 @@ Deno.test('lifecycle mutation maps the selector and supports no-wait', async () 
   )
 })
 
+for (const size of [32 * 1024 * 1024 - 1, 32 * 1024 * 1024, 32 * 1024 * 1024 + 1]) {
+  Deno.test(`app stages a ${size}-byte PIKG as a FileObject with bounded chunks`, async () => {
+    await exercisePikgTransport(size, 'remote')
+  })
+}
+
+Deno.test('system app stages a large local PIKG without HTTP upload', async () => {
+  await exercisePikgTransport(33 * 1024 * 1024, 'local')
+})
+
+Deno.test('local endpoint without shared staging falls back to FileObject upload', async () => {
+  await exercisePikgTransport(33 * 1024 * 1024, 'fallback')
+})
+
+Deno.test('local staging without filesystem write permission uses FileObject upload', async () => {
+  await exercisePikgTransport(1024, 'permission')
+})
+
+Deno.test('app streams URL input and binds the uploaded FileObject to its digest', async () => {
+  await exercisePikgTransport(32 * 1024 * 1024 + 1, 'url')
+})
+
+Deno.test('app does not finalize after a failed chunk upload and cleans its snapshot', async () => {
+  await exercisePikgTransport(32 * 1024 * 1024 + 1, 'failure')
+})
+
+Deno.test('app cancels between chunks and cleans its snapshot without finalizing', async () => {
+  await exercisePikgTransport(32 * 1024 * 1024 + 1, 'abort')
+})
+
+async function exercisePikgTransport(
+  size: number,
+  mode: 'remote' | 'local' | 'fallback' | 'url' | 'failure' | 'abort' | 'permission',
+): Promise<void> {
+  const root = await Deno.makeTempDir()
+  const host = getHost()
+  const policy = host.policy
+  const openFile = host.open
+  const fetcher = globalThis.fetch
+  const abort = new AbortController()
+  try {
+    const source = join(root, 'source.pikg')
+    const bytes = new Uint8Array(size).fill(19)
+    bytes.set([0x50, 0x4b, 0x03, 0x04])
+    await Deno.writeFile(source, bytes)
+    const digest = await sha256Id(bytes)
+    const uploaded: string[] = []
+    const uploadedHash = host.createHash('sha256')
+    let uploadedSize = 0
+    const objects = new Map<string, string>()
+    let localAttempts = 0
+    let finalizations = 0
+    if (mode === 'local' || mode === 'fallback' || mode === 'permission') {
+      Object.defineProperty(host, 'policy', {
+        value: { ...policy, buckyosRoot: root },
+        configurable: true,
+      })
+    }
+    if (mode === 'permission') {
+      host.open = (path, options) =>
+        options.write && path.includes('incoming')
+          ? Promise.reject(new HostError('PermissionDenied', 'incoming is not writable'))
+          : openFile.call(host, path, options)
+    }
+    globalThis.fetch = (request, init) => {
+      const url = String(request)
+      if (mode === 'url' && url === 'https://download.invalid/app.pikg') {
+        const body = new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(bytes.subarray(0, 2))
+            controller.enqueue(bytes.subarray(2))
+            controller.close()
+          },
+        })
+        return Promise.resolve(new Response(body))
+      }
+      assert(mode !== 'local', 'local staging must not upload over HTTP')
+      if (url.includes('/write/chunk/')) {
+        if (mode === 'failure') {
+          return Promise.resolve(
+            Response.json({ error: 'failed', message: 'upload rejected' }, { status: 413 }),
+          )
+        }
+        const body = init!.body as Uint8Array
+        assert(body.length <= 32 * 1024 * 1024)
+        const chunk = ndn.ChunkId.fromMix256Result(body.length, ndn.sha256Bytes(body)).toString()
+        assert(url.endsWith(chunk))
+        assertEquals(new Headers(init!.headers).get('NDM-Chunk-Size'), String(body.length))
+        uploaded.push(chunk)
+        uploadedHash.update(body)
+        uploadedSize += body.length
+        if (mode === 'abort') abort.abort()
+        return Promise.resolve(new Response(null, { status: 204 }))
+      }
+      assert(url.endsWith('/rpc/put_object'), url)
+      const value = JSON.parse(init!.body as string)
+      objects.set(value.obj_id, value.obj_data)
+      return Promise.resolve(new Response(null, { status: 204 }))
+    }
+    const clients = clientsFor([], async (method, params) => {
+      if (method === 'apps.staging.finalize') {
+        assertEquals(params.pikg_digest, digest)
+        assertEquals(params.size, size)
+        if (params.local_file_id) {
+          localAttempts++
+          assertEquals(params.source_obj_id, undefined)
+          assert(/^[a-f0-9]{32}$/.test(params.local_file_id as string))
+          if (mode === 'fallback') throw new Error('LOCAL_PIKG_UNAVAILABLE: not on this machine')
+          const local = join(
+            root,
+            'cache',
+            'control_panel',
+            'pikg_staging',
+            'incoming',
+            `${params.local_file_id}.pikg`,
+          )
+          const copied = await Deno.readFile(local)
+          assertEquals(await sha256Id(copied), digest)
+          await Deno.writeFile(source, new Uint8Array([9]))
+          assertEquals(await sha256Id(await Deno.readFile(local)), digest)
+        } else {
+          const sourceId = params.source_obj_id as string
+          assert(sourceId.startsWith(`${ndn.OBJ_TYPE_FILE}:`), sourceId)
+          const object = ndn.FileObject.fromJSON(JSON.parse(objects.get(sourceId)!))
+          assertEquals(object.genObjId()[0].toString(), sourceId)
+          assertEquals(object.size, size)
+          if (uploaded.length > 1) {
+            const list = ndn.SimpleChunkList.fromJson(objects.get(object.content)!)
+            assertEquals(list.genObjId()[0].toString(), object.content)
+            assertEquals(list.body.map((chunk) => chunk.toString()), uploaded)
+          } else {
+            assertEquals(object.content, uploaded[0])
+          }
+          assertEquals(uploadedSize, size)
+          assertEquals(uploadedHash.digestHex(), digest)
+        }
+        finalizations++
+        return {
+          schema_version: 4,
+          handle: 'pikg-stage-test',
+          pikg_digest: digest,
+          size,
+          purpose: params.purpose,
+        }
+      }
+      if (method === 'apps.inspect') return inspection('pikg', digest)
+      if (method === 'apps.staging.release') return { released: true }
+      throw new Error(`unexpected method ${method}`)
+    })
+    const invoke = () =>
+      run(
+        'fetch',
+        { source: mode === 'url' ? 'https://download.invalid/app.pikg' : source },
+        clients,
+        {},
+        false,
+        (ctx) => {
+          ctx.configStore = new ConfigStore(join(root, 'config'))
+          ctx.connection.endpoint = mode === 'local' || mode === 'fallback' || mode === 'permission'
+            ? 'http://127.0.0.1:3180'
+            : 'https://remote.invalid'
+          ctx.signal = abort.signal
+          const session = {
+            token: 'test-token',
+            principal: ctx.principal,
+            claims: {},
+            renewable: false,
+          }
+          ctx.session = {
+            config: ctx.config,
+            connect: () => Promise.resolve(session),
+            ensureValid: () => Promise.resolve(session),
+            reconnect: () => Promise.resolve(session),
+            current: () => session,
+            status: () => ({}),
+          }
+        },
+      )
+    if (mode === 'failure' || mode === 'abort') {
+      await assertRejects(invoke, mode === 'failure' ? 'PIKG_UPLOAD_FAILED' : undefined)
+      assertEquals(finalizations, 0)
+    } else {
+      await invoke()
+      assertEquals(finalizations, 1)
+      assertEquals(localAttempts, mode === 'local' || mode === 'fallback' ? 1 : 0)
+    }
+    const temporaryDirectory = mode === 'local' || mode === 'fallback'
+      ? join(root, 'cache', 'control_panel', 'pikg_staging', 'incoming')
+      : join(root, 'config')
+    assertEquals(Array.from(Deno.readDirSync(temporaryDirectory)), [])
+  } finally {
+    globalThis.fetch = fetcher
+    host.open = openFile
+    Object.defineProperty(host, 'policy', { value: policy, configurable: true })
+    await Deno.remove(root, { recursive: true })
+  }
+}
+
 function clientsFor(
   calls: RecordedCall[],
   response: (method: string, params: Record<string, unknown>) => unknown,
@@ -292,6 +548,7 @@ async function run(
   clients: ServiceClientRegistry,
   dependencies: Parameters<typeof createAppModule>[0] = {},
   confirmed = false,
+  configure?: (context: CommandContext) => void,
 ): Promise<unknown> {
   const registry = new CommandRegistry()
   registry.register(createAppModule(dependencies))
@@ -299,12 +556,13 @@ async function run(
   const context = createMockCommandContext({
     command,
     config: testConfig({ nonInteractive: true, yes: confirmed }),
-    configStore: new ConfigStore('/tmp/buckyos-tool-app-test'),
+    configStore: new ConfigStore(join(tmpdir(), 'buckyos-tool-app-test')),
     clients,
     traceId: 'app-test',
   })
   context.confirmed = confirmed
   context.deadline = Date.now() + 10_000
+  configure?.(context)
   return await command.handler(context, input)
 }
 

@@ -100,3 +100,23 @@ Deno.test('error normalization removes named and database credentials', () => {
   assertEquals(error.message.includes('hunter2'), false)
   assertEquals(error.message.includes('alice:pw'), false)
 })
+
+Deno.test('system app policy grants writes only to the local PIKG inbox', () => {
+  const host = getHost()
+  const root = host.path.join(host.cwd(), 'system-root')
+  const options = {
+    cwd: host.cwd(),
+    packageRoot: host.cwd(),
+    homeDir: host.homeDir(),
+    environment: {},
+    path: host.path,
+    buckyosRoot: root,
+    argv: ['app', 'install', 'demo.pikg'],
+  }
+  const system = buildDistributionPolicy({ ...options, distribution: 'system' })
+  const developer = buildDistributionPolicy({ ...options, distribution: 'developer' })
+  const inbox = host.path.join(root, 'cache', 'control_panel', 'pikg_staging', 'incoming')
+  assertEquals(system.writePaths.includes(inbox), true)
+  assertEquals(system.writePaths.includes(root), false)
+  assertEquals(developer.writePaths.includes(inbox), false)
+})

@@ -219,6 +219,12 @@ export function buildDistributionPolicy(options: PolicyOptions): DistributionPol
   if (options.distribution === 'system') readPaths.add(buckyosRoot)
 
   const parsed = collectArgumentPaths(argv)
+  if (
+    options.distribution === 'system' && parsed.module === 'app' &&
+    ['fetch', 'install'].includes(parsed.verb ?? '')
+  ) {
+    writePaths.add(path.join(buckyosRoot, 'cache', 'control_panel', 'pikg_staging', 'incoming'))
+  }
   for (const candidate of parsed.read) readPaths.add(resolveInputPath(candidate, cwd, path))
   for (const candidate of parsed.write) writePaths.add(resolveInputPath(candidate, cwd, path))
   for (const candidate of parsed.writeParents) {

@@ -170,6 +170,10 @@ warning 与本次检查时间属于 `InstallInspection.status/resolution_status`
 版本要求的必要变化。新增权限、不兼容配置或目标环境变化必须在确认摘要中明确展示，不能
 静默重置成首次安装默认值。
 
+不带 `--plan` 表示用户不提供新的安装配置。CLI 仍需将服务端生成的完整 `UPGRADE` plan
+连同其 fingerprint 提交给 `apps.submit`，保留本次预检的 `task_id` 绑定。该执行计划沿用
+已有安装配置，同时绑定新的 AppDoc 和包；用户无需生成或编辑新的计划文件。
+
 版本判定必须同时固定权威 AppDoc identity 和 Installer 认定的版本。相同版本视为已满足，
 不因为换了一个同版本 PIKG 而重装。不同 App DID 的计划或 PIKG 不得用于覆盖已安装目标。
 
@@ -197,18 +201,30 @@ buckyos app install https://example.com/apps/app1-1.2.0.pikg
 1. 将相对路径按 CLI 当前工作目录解析；只申请该显式文件或本次下载临时文件的读权限；
    对本地文件打开普通文件并做最小格式/大小预检；对 URL 由 CLI 发起 HTTP(S) GET，不得
    把客户端 path 或未校验 URL 交给服务端打开；
-2. 对 PIKG 计算本次字节快照的 digest；首次安装时必须与计划中的 `pikg_digest` 一致；
-3. 安装命令将字节流上传到 Installer 的 staging 边界，并比对 staging 返回的 digest；
+2. 从同一次打开的文件句柄或 HTTP 响应流生成私有磁盘快照，流式计算 digest，避免整包常驻内存；
+   首次安装时必须与计划中的 `pikg_digest` 一致；
+3. 系统版工具连接 `localhost/127.0.0.1/[::1]` 时，可将快照写入配套 BuckyOS 根目录的
+   `cache/control_panel/pikg_staging/incoming/<随机32位hex>.pikg`，用 `local_file_id` 完成本机 staging；
+   开发者版、远程连接或不共享此目录时，将快照按至多 32MiB 分块上传，创建 FileObject，
+   用 FileObject 的 `source_obj_id` 完成 staging。两种请求都携带 `pikg_digest`、`size` 和
+   `purpose=inspect|install`，`source_obj_id` 与 `local_file_id` 必须且只能提供一个；
 4. 用 staging handle 重新绑定同一 digest/AppDoc Object ID，并与已确认计划创建同一个安装或
    升级事务；Plan 自身从不保存 handle；
 5. Installer 使用共享 PIKG verifier 重新完整验证。
 
-本地 digest 和读取必须基于同一次打开的文件快照/句柄或同一次下载缓冲，防止 path/URL 内容
+本地 digest 和读取必须基于同一次打开的文件句柄或同一次下载流产生的磁盘快照，防止 path/URL 内容
 在校验与上传之间被替换。Catalog 首次安装时，当前权威 AppDoc Object ID 必须与计划一致；
 权威 revision、目标环境或计划依赖已经变化时返回 `PLAN_STALE`，要求重新 `fetch --plan`，
 不得静默改写旧计划或降级执行。
 
-上传失败、digest 不一致、计划不匹配或命令取消时不得提交安装/升级。staging 产物必须有
+服务端只接受 FileObject 或专用 incoming 目录内的随机文件标识，不接受任意服务端路径或
+裸 ChunkId。本机文件不可用时返回 `LOCAL_PIKG_UNAVAILABLE`，CLI 使用同一快照回退到
+FileObject 上传。服务端将完整 PIKG 写入私有临时文件，核对实际长度、整包 digest、结构和
+包内内容，校验成功后才提交到 immutable staging 并返回 handle；CLI 再比对返回的大小和摘要。
+32MiB 是单块写入上限，不是 PIKG 总大小上限；已有 staging 配额继续生效。
+
+上传失败、digest 不一致、计划不匹配或命令取消时不得提交安装/升级。CLI 在成功、失败和取消
+后清理本次快照；本机 incoming 中异常退出遗留的快照在 24 小时后由 staging GC 回收。staging 产物必须有
 过期和回收策略，不能写入计划文件，也不能由 CLI 输出的临时服务端路径充当稳定协议。
 
 ### 5.5 验证与信任
