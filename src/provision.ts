@@ -64,6 +64,7 @@ import {
   BuckyOSZoneTxtRecord,
   Ed25519Jwk,
 } from './types'
+import { hashAdminPassword } from './provision_activate'
 
 // v2 device identity layout helpers (mirror buckyos-api device_identity.rs).
 export {
@@ -183,7 +184,6 @@ export type { DevTestEvmAccount, DevTestKeyPair } from './dev_test_keys'
 export const PROVISION_BASE_TIME = 1743478939 // 2025-04-01
 const DEFAULT_EXP_YEARS = 10
 export const PROVISION_DEFAULT_EXP = PROVISION_BASE_TIME + 3600 * 24 * 365 * DEFAULT_EXP_YEARS
-const ADMIN_PASSWORD_HASH = 'o8XyToejrbCYou84h/VkF4Tht0BeQQbuX3XKG+8+GQ4=' // bucky2025
 
 const MIN_NODE_MAJOR = 22
 const MIN_NODE_MINOR = 13
@@ -520,7 +520,7 @@ export async function createNodeConfigs(params: CreateNodeConfigsParams): Promis
   // 3. startup configuration (only for OOD nodes); json!-literal -> sorted keys
   if (params.deviceName.startsWith('ood')) {
     const startConfig = sortKeysDeep({
-      admin_password_hash: ADMIN_PASSWORD_HASH,
+      admin_password_hash: hashAdminPassword(username, 'bucky2025'),
       device_private_key: deviceKeyPair.privateKeyPem,
       device_public_key: createJwkByX(deviceKeyPair.publicKeyX),
       ood_jwt: deviceJwt,

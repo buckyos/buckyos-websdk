@@ -15143,7 +15143,6 @@ async function activateOfflineZone(options) {
 const PROVISION_BASE_TIME = 1743478939;
 const DEFAULT_EXP_YEARS = 10;
 const PROVISION_DEFAULT_EXP = PROVISION_BASE_TIME + 3600 * 24 * 365 * DEFAULT_EXP_YEARS;
-const ADMIN_PASSWORD_HASH = "o8XyToejrbCYou84h/VkF4Tht0BeQQbuX3XKG+8+GQ4=";
 const MIN_NODE_MAJOR = 22;
 const MIN_NODE_MINOR = 13;
 function parseVersion(version) {
@@ -15383,7 +15382,7 @@ async function createNodeConfigs(params) {
   );
   if (params.deviceName.startsWith("ood")) {
     const startConfig = sortKeysDeep({
-      admin_password_hash: ADMIN_PASSWORD_HASH,
+      admin_password_hash: hashAdminPassword(username, "bucky2025"),
       device_private_key: deviceKeyPair.privateKeyPem,
       device_public_key: createJwkByX(deviceKeyPair.publicKeyX),
       ood_jwt: deviceJwt,

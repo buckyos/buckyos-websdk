@@ -1,6 +1,7 @@
 import * as fs from 'fs'
 import * as path from 'path'
 import * as os from 'os'
+import { createHash } from 'crypto'
 
 import {
   assertProvisionRuntime,
@@ -25,6 +26,7 @@ import {
   verifyJwtEdDSA,
 } from '../src/namelib'
 import { getDevTestKeyPairById } from '../src/dev_test_keys'
+import { hashPassword } from '../src/account'
 
 // node:sqlite is available on the runtimes provision supports (Node >= 22.13)
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -117,6 +119,41 @@ describe('createUserEnv (T2.2)', () => {
 })
 
 describe('createNodeConfigs (T2.3)', () => {
+  test.each(['devtest', 'alice', 'example-univ'])(
+    '%s startup password matches verify-hub password challenges',
+    async (username) => {
+      const envDir = tmpDir(`provision-password-${username}-`)
+      const keyPairs = {
+        ownerKeyPair: getDevTestKeyPairById('devtest'),
+        deviceKeyPair: getDevTestKeyPairById('devtest.ood1'),
+      }
+      try {
+        await createUserEnv({
+          username,
+          hostname: `${username}.devtests.org`,
+          oodName: 'ood1',
+          outputDir: envDir,
+          ...keyPairs,
+        })
+        await createNodeConfigs({ deviceName: 'ood1', envDir, ...keyPairs })
+
+        const startConfig = readJson(path.join(envDir, 'ood1', 'start_config.json'))
+        expect(startConfig.user_name).toBe(username)
+        const nonce = 1700000000000
+        const expectedChallenge = createHash('sha256')
+          .update(startConfig.admin_password_hash + nonce)
+          .digest('base64')
+        expect(hashPassword(username, 'bucky2025', nonce)).toBe(expectedChallenge)
+        expect(hashPassword(username, 'wrong-password', nonce)).not.toBe(expectedChallenge)
+        if (username !== 'devtest') {
+          expect(hashPassword('devtest', 'bucky2025', nonce)).not.toBe(expectedChallenge)
+        }
+      } finally {
+        fs.rmSync(envDir, { recursive: true, force: true })
+      }
+    },
+  )
+
   test.each([
     ['alice', 'alice.bns.did', 'ood1', 'devtests.org', 'lan'],
     ['charlie', 'charlie.me', 'ood1@portmap', 'devtests.org', 'portmap'],
