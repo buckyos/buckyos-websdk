@@ -653,6 +653,108 @@ class ht {
     return this.P.getHMAC(t2, n2);
   }
 }
+const LEGACY_ACCOUNT_STORAGE_KEY = "buckyos.account_info";
+const BROWSER_USER_INFO_STORAGE_KEY = "user_info";
+function getAccountStorageKey(appId) {
+  return `buckyos.account_info.${appId}`;
+}
+function parseAccountInfo(raw) {
+  if (raw == null) {
+    return null;
+  }
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+function parseBrowserUserInfo(raw) {
+  if (raw == null) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    const userId = typeof parsed.user_id === "string" ? parsed.user_id.trim() : "";
+    const userType = typeof parsed.user_type === "string" ? parsed.user_type.trim() : "";
+    const userNameCandidate = typeof parsed.user_name === "string" ? parsed.user_name.trim() : typeof parsed.show_name === "string" ? parsed.show_name.trim() : "";
+    if (!userId || !userType) {
+      return null;
+    }
+    return {
+      user_name: userNameCandidate || userId,
+      user_id: userId,
+      user_type: userType
+    };
+  } catch {
+    return null;
+  }
+}
+function parseTokenAppId(sessionToken) {
+  const parts = sessionToken.split(".");
+  if (parts.length < 2) {
+    return null;
+  }
+  try {
+    const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const padded = base64 + "=".repeat((4 - base64.length % 4) % 4);
+    const payload = JSON.parse(atob(padded));
+    if (typeof payload.appid === "string" && payload.appid.trim().length > 0) {
+      return payload.appid;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+function hashPassword(username, password, nonce = null) {
+  const shaObj = new ht("SHA-256", "TEXT", { encoding: "UTF8" });
+  shaObj.update(password + username + ".buckyos");
+  let org_password_hash_str = shaObj.getHash("B64");
+  if (nonce == null) {
+    return org_password_hash_str;
+  }
+  const shaObj2 = new ht("SHA-256", "TEXT", { encoding: "UTF8" });
+  let salt = org_password_hash_str + nonce.toString();
+  shaObj2.update(salt);
+  let result = shaObj2.getHash("B64");
+  return result;
+}
+function cleanLocalAccountInfo(appId) {
+  localStorage.removeItem(getAccountStorageKey(appId));
+  localStorage.removeItem(BROWSER_USER_INFO_STORAGE_KEY);
+  const legacy = parseAccountInfo(localStorage.getItem(LEGACY_ACCOUNT_STORAGE_KEY));
+  if ((legacy == null ? void 0 : legacy.session_token) && parseTokenAppId(legacy.session_token) === appId) {
+    localStorage.removeItem(LEGACY_ACCOUNT_STORAGE_KEY);
+  }
+  let cookie_options = {
+    path: "/",
+    expires: /* @__PURE__ */ new Date(0),
+    secure: true,
+    sameSite: "Lax"
+  };
+  document.cookie = `${appId}_token=; ${Object.entries(cookie_options).map(([key, value]) => `${key}=${value}`).join("; ")}`;
+}
+function saveLocalAccountInfo(appId, account_info) {
+  if (account_info.session_token == null) {
+    console.error("session_token is null,can't save account info");
+    return;
+  }
+  localStorage.setItem(getAccountStorageKey(appId), JSON.stringify(account_info));
+  let cookie_options = {
+    path: "/",
+    expires: new Date(Date.now() + 1e3 * 60 * 60 * 24 * 30),
+    // 30天
+    secure: true,
+    sameSite: "Lax"
+  };
+  document.cookie = `${appId}_token=${account_info.session_token}; ${Object.entries(cookie_options).map(([key, value]) => `${key}=${value}`).join("; ")}`;
+}
+function saveBrowserUserInfo(userInfo) {
+  localStorage.setItem(BROWSER_USER_INFO_STORAGE_KEY, JSON.stringify(userInfo));
+}
+function getBrowserUserInfo() {
+  return parseBrowserUserInfo(localStorage.getItem(BROWSER_USER_INFO_STORAGE_KEY));
+}
 const DID_OBJECT_SERVICE_TYPE = "DIDObjectService";
 const DID_OBJECT_SERVICE_ID = "#did-object";
 const NODE_IDENTITY_SCHEMA_V2 = "buckyos.node_identity.v2";
@@ -3639,60 +3741,68 @@ const ndn_types = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.definePro
   verifyNamedObjectFromStr
 }, Symbol.toStringTag, { value: "Module" }));
 export {
-  buildNamedObjectByJson as $,
-  newDeviceDocumentByJwk as A,
-  verifyJwtEdDSA as B,
+  encodeDeviceDocument as $,
+  canonicalize$1 as A,
+  signJwtEdDSA as B,
   ChunkId as C,
   DID_OBJECT_SERVICE_TYPE as D,
-  deviceDocumentToOrderedJson as E,
+  sha256Bytes as E,
   FileObject as F,
-  decodeJwtClaimWithoutVerify as G,
-  commonjsGlobal as H,
-  createJwkByX as I,
-  newOwnerDocument as J,
-  ownerDocumentToOrderedJson as K,
-  parseOODDescription as L,
-  oodDescriptionToString as M,
+  DirObject as G,
+  newDeviceDocumentByJwk as H,
+  verifyJwtEdDSA as I,
+  deviceDocumentToOrderedJson as J,
+  decodeJwtClaimWithoutVerify as K,
+  commonjsGlobal as L,
+  DEFAULT_EXPIRE_TIME as M,
   NODE_IDENTITY_SCHEMA_V2 as N,
   ObjId as O,
-  newZoneBootDocument as P,
-  newZoneDocument as Q,
-  encodeZoneBootDocument as R,
+  buckyosGetUnixTimestamp as P,
+  getPublicKeyXFromPrivatePem as Q,
+  getXFromJwk as R,
   SimpleChunkList as S,
-  DEFAULT_EXPIRE_TIME as T,
-  zoneDocumentToOrderedJson as U,
-  newDeviceMiniDocument as V,
-  deviceMiniDocumentToJwt as W,
-  encodeDeviceDocument as X,
-  newDeviceMiniDocumentByDeviceDocument as Y,
-  newDeviceDocumentByMiniDocument as Z,
-  buckyosGetUnixTimestamp as _,
+  createJwkByX as T,
+  newOwnerDocument as U,
+  ownerDocumentSetDefaultZoneDid as V,
+  ownerDocumentToOrderedJson as W,
+  oodDescriptionToString as X,
+  parseOODDescription as Y,
+  encodeZoneBootDocument as Z,
+  newZoneBootDocument as _,
   ndn_types as a,
-  getDefaultExportFromCjs as a0,
+  newDeviceMiniDocumentByDeviceDocument as a0,
+  deviceMiniDocumentToJwt as a1,
+  newZoneDocument as a2,
+  encodeZoneDocument as a3,
+  zoneDocumentToOrderedJson as a4,
+  newDeviceMiniDocument as a5,
+  newDeviceDocumentByMiniDocument as a6,
+  buildNamedObjectByJson as a7,
+  getDefaultExportFromCjs as a8,
   DID_OBJECT_SERVICE_ID as b,
   isBuckyOSOwnerDocument as c,
   isBuckyOSDeviceMiniDocument as d,
   isBuckyOSZoneBootDocument as e,
   isBuckyOSNodeIdentityConfig as f,
   isBuckyOSLocalNodeIdentityConfig as g,
-  isBuckyOSDeviceDocument as h,
+  hashPassword as h,
   isW3CDIDDocumentBase as i,
-  isBuckyOSAgentDocument as j,
-  isBuckyOSZoneDocument as k,
-  isBuckyOSDIDObjectCard as l,
-  isBuckyOSZoneConfig as m,
+  isBuckyOSDeviceDocument as j,
+  isBuckyOSAgentDocument as k,
+  isBuckyOSZoneDocument as l,
+  isBuckyOSDIDObjectCard as m,
   namelib as n,
-  parseBuckyOSOwnerDocument as o,
+  isBuckyOSZoneConfig as o,
   parseW3CDIDDocumentBase as p,
-  parseBuckyOSDeviceMiniDocument as q,
-  parseBuckyOSDIDDocument as r,
-  getDidMethod as s,
-  getDidIdentifier as t,
-  ht as u,
+  parseBuckyOSOwnerDocument as q,
+  parseBuckyOSDeviceMiniDocument as r,
+  parseBuckyOSDIDDocument as s,
+  getDidMethod as t,
+  getDidIdentifier as u,
   DID as v,
-  canonicalize$1 as w,
-  signJwtEdDSA as x,
-  sha256Bytes as y,
-  DirObject as z
+  getBrowserUserInfo as w,
+  saveBrowserUserInfo as x,
+  saveLocalAccountInfo as y,
+  cleanLocalAccountInfo as z
 };
-//# sourceMappingURL=ndn_types-f6c08d20.mjs.map
+//# sourceMappingURL=ndn_types-d768245f.mjs.map

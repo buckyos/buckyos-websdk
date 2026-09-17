@@ -254,6 +254,10 @@ export class NodeHost implements ToolHost {
     }
   }
 
+  async assertAccess(path: string, operation: 'read' | 'write'): Promise<void> {
+    await this.assertPath(path, operation)
+  }
+
   createHash(_algorithm: 'sha256') {
     const hash = nodeCreateHash('sha256')
     return {

@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import * as nodePath from "node:path";
 import { resolve as resolve$5, dirname as dirname$3 } from "node:path";
 import { BuckyOSSDK, RuntimeType, buckyos, namelib, VerifyHubClient, createAppInstanceId, parseSessionTokenClaims, ndn, ndm_proxy } from "buckyos/node";
+import * as provisionSdk from "buckyos/provision";
 import { createHash } from "node:crypto";
 import { readFile, writeFile, readdir, stat, lstat, realpath, mkdtemp, rename, rm, mkdir, chmod, symlink, copyFile, open } from "node:fs/promises";
 import { createReadStream, createWriteStream } from "node:fs";
@@ -21,6 +22,7 @@ const EXIT_AUTH = 3;
 const EXIT_PERMISSION = 4;
 const EXIT_UNAVAILABLE = 5;
 const EXIT_OPERATION = 6;
+const EXIT_PARTIAL = 7;
 const EXIT_TIMEOUT = 8;
 const EXIT_INTERNAL = 9;
 class ToolError extends Error {
@@ -511,13 +513,16 @@ function buildDistributionPolicy(options) {
   }
   for (const candidate of parsed.read)
     readPaths.add(resolveInputPath(candidate, cwd, path));
+  for (const candidate of parsed.readParents) {
+    readPaths.add(path.dirname(resolveInputPath(candidate, cwd, path)));
+  }
   for (const candidate of parsed.write)
     writePaths.add(resolveInputPath(candidate, cwd, path));
   for (const candidate of parsed.writeParents) {
     writePaths.add(path.dirname(resolveInputPath(candidate, cwd, path)));
   }
   const subprocesses = parsed.module === "pikg" && ["init", "build"].includes(parsed.verb ?? "") ? ["docker"] : [];
-  const network = parsed.module !== void 0 && !["pikg", "command", "completion", "config"].includes(parsed.module);
+  const network = parsed.module !== void 0 && !["pikg", "command", "completion", "config", "provision"].includes(parsed.module);
   const allowedEnvironment = options.distribution === "developer" ? TOOL_ENVIRONMENT_NAMES.filter((name) => name !== "BUCKYOS_ROOT") : TOOL_ENVIRONMENT_NAMES;
   return Object.freeze({
     name: options.distribution === "system" ? "system-default" : "developer-default",
@@ -542,6 +547,7 @@ function resolveInputPath(value, cwd, path) {
 }
 function collectArgumentPaths(argv) {
   const read = [];
+  const readParents = [];
   const write = [];
   const writeParents = [];
   let module;
@@ -617,6 +623,14 @@ function collectArgumentPaths(argv) {
         write.push(value);
       else if (name === "file" && module === "system-config" && verb === "set-file") {
         read.push(value);
+      } else if (name === "root" && module === "provision") {
+        read.push(value);
+        if (verb === "activate")
+          write.push(value);
+      } else if (name === "owner-key-backup" && module === "provision") {
+        readParents.push(value);
+        if (verb === "activate")
+          writeParents.push(value);
       } else if (!valueOptions.has(name))
         continue;
       continue;
@@ -632,7 +646,7 @@ function collectArgumentPaths(argv) {
         writeParents.push(token);
     }
   }
-  return { read, write, writeParents, module, verb };
+  return { read, readParents, write, writeParents, module, verb };
 }
 function policyView(host2) {
   return {
@@ -2480,7 +2494,7 @@ function replPrompt(config) {
   return `buckyos[${profile}|${zone}|${identity}]> `;
 }
 const EMPTY_INPUT$1 = { type: "object", properties: {}, additionalProperties: false };
-const OBJECT_OUTPUT$7 = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$8 = { type: "object", additionalProperties: true };
 function createAuthModule() {
   return {
     name: "auth",
@@ -2490,7 +2504,7 @@ function createAuthModule() {
         verb: "whoami",
         summary: "Show the effective principal and application identity",
         inputSchema: EMPTY_INPUT$1,
-        outputSchema: OBJECT_OUTPUT$7,
+        outputSchema: OBJECT_OUTPUT$8,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -2508,7 +2522,7 @@ function createAuthModule() {
         verb: "session-status",
         summary: "Show the in-memory session state without exposing credentials",
         inputSchema: EMPTY_INPUT$1,
-        outputSchema: OBJECT_OUTPUT$7,
+        outputSchema: OBJECT_OUTPUT$8,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -2529,7 +2543,7 @@ const EMPTY_INPUT = {
   properties: {},
   additionalProperties: false
 };
-const OBJECT_OUTPUT$6 = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$7 = { type: "object", additionalProperties: true };
 function createCoreModules(registry) {
   return [createCommandModule(registry), createConfigModule(), createCompletionModule(registry)];
 }
@@ -2542,7 +2556,7 @@ function createCommandModule(registry) {
         verb: "list",
         summary: "List registered modules and commands",
         inputSchema: EMPTY_INPUT,
-        outputSchema: OBJECT_OUTPUT$6,
+        outputSchema: OBJECT_OUTPUT$7,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -2575,7 +2589,7 @@ function createCommandModule(registry) {
           required: ["target_module", "target_verb"],
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$6,
+        outputSchema: OBJECT_OUTPUT$7,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -2597,7 +2611,7 @@ function createConfigModule() {
         verb: "list",
         summary: "List the global configuration and available profiles",
         inputSchema: EMPTY_INPUT,
-        outputSchema: OBJECT_OUTPUT$6,
+        outputSchema: OBJECT_OUTPUT$7,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -2628,7 +2642,7 @@ function createConfigModule() {
           },
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$6,
+        outputSchema: OBJECT_OUTPUT$7,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -2638,11 +2652,11 @@ function createConfigModule() {
           "buckyos config get zone --profile-name production"
         ],
         handler: async (ctx, input) => {
-          const profileName = optionalString$3(input.profile_name);
+          const profileName = optionalString$4(input.profile_name);
           const value = profileName ? await ctx.configStore.readProfile(profileName) : await ctx.configStore.readConfig();
           if (!value)
             throw new UsageError("PROFILE_NOT_FOUND", `profile not found: ${profileName}`);
-          const key = optionalString$3(input.key);
+          const key = optionalString$4(input.key);
           if (!key)
             return { value };
           if (!Object.hasOwn(value, key)) {
@@ -2674,7 +2688,7 @@ function createConfigModule() {
           required: ["key", "value"],
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$6,
+        outputSchema: OBJECT_OUTPUT$7,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "write" },
         asyncMode: "sync",
@@ -2686,7 +2700,7 @@ function createConfigModule() {
         handler: async (ctx, input) => {
           const key = String(input.key);
           const rawValue = String(input.value);
-          const profileName = optionalString$3(input.profile_name);
+          const profileName = optionalString$4(input.profile_name);
           if (profileName) {
             validateProfileName(profileName);
             const profile = await ctx.configStore.readProfile(profileName) ?? { schema_version: 1 };
@@ -2714,7 +2728,7 @@ function createConfigModule() {
           required: ["profile_name"],
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$6,
+        outputSchema: OBJECT_OUTPUT$7,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "write" },
         asyncMode: "sync",
@@ -2746,7 +2760,7 @@ function createConfigModule() {
           properties: { effective: { type: "boolean" } },
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$6,
+        outputSchema: OBJECT_OUTPUT$7,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -2832,7 +2846,7 @@ function outputValue(value) {
   }
   return value;
 }
-function optionalString$3(value) {
+function optionalString$4(value) {
   return typeof value === "string" && value ? value : void 0;
 }
 function completionScript(registry, shell) {
@@ -2891,7 +2905,7 @@ function createSystemModule() {
   };
 }
 const SERVICE_NAME = "system_config";
-const OBJECT_OUTPUT$5 = { type: "object", additionalProperties: false };
+const OBJECT_OUTPUT$6 = { type: "object", additionalProperties: false };
 const KEY_INPUT = {
   type: "object",
   properties: { key: { type: "string", minLength: 1 } },
@@ -2909,7 +2923,7 @@ function createSystemConfigModule() {
         positionals: [{ name: "key", description: "System-config key" }],
         inputSchema: KEY_INPUT,
         outputSchema: {
-          ...OBJECT_OUTPUT$5,
+          ...OBJECT_OUTPUT$6,
           properties: {
             key: { type: "string" },
             value: { type: "string" },
@@ -2952,7 +2966,7 @@ function createSystemConfigModule() {
           additionalProperties: false
         },
         outputSchema: {
-          ...OBJECT_OUTPUT$5,
+          ...OBJECT_OUTPUT$6,
           properties: {
             key: { type: "string" },
             items: { type: "array", items: { type: "string" } }
@@ -3006,7 +3020,7 @@ function setCommand() {
       additionalProperties: false
     },
     outputSchema: {
-      ...OBJECT_OUTPUT$5,
+      ...OBJECT_OUTPUT$6,
       properties: { key: { type: "string" }, updated: { type: "boolean" } },
       required: ["key", "updated"]
     },
@@ -3045,7 +3059,7 @@ function setFileCommand() {
       additionalProperties: false
     },
     outputSchema: {
-      ...OBJECT_OUTPUT$5,
+      ...OBJECT_OUTPUT$6,
       properties: { key: { type: "string" }, updated: { type: "boolean" } },
       required: ["key", "updated"]
     },
@@ -3082,7 +3096,7 @@ function mutationCommand(options) {
       additionalProperties: false
     },
     outputSchema: {
-      ...OBJECT_OUTPUT$5,
+      ...OBJECT_OUTPUT$6,
       properties: {
         key: { type: "string" },
         [options.resultProperty]: { type: "boolean" }
@@ -4130,7 +4144,7 @@ function validateServiceConfigTips(value, label) {
       } else {
         throw invalid("schema", `${label}.service_endpoints.${name}.expose.route.type is invalid`);
       }
-      optionalString$2(expose.scope, `${label}.service_endpoints.${name}.expose.scope`);
+      optionalString$3(expose.scope, `${label}.service_endpoints.${name}.expose.scope`);
       optionalBoolean(
         expose.allow_guest,
         `${label}.service_endpoints.${name}.expose.allow_guest`
@@ -4184,7 +4198,7 @@ function validateServiceConfigTips(value, label) {
         throw invalid("schema", `${label}.rdb_instances.${name}.schema.${backend} is invalid`);
       }
     }
-    optionalString$2(database.connection, `${label}.rdb_instances.${name}.connection`);
+    optionalString$3(database.connection, `${label}.rdb_instances.${name}.connection`);
   }
   if (config.instance_volume !== void 0) {
     const volume = expectObject$3(config.instance_volume, `${label}.instance_volume`);
@@ -4212,8 +4226,8 @@ function validateServiceConfigTips(value, label) {
     validateStringMap(environment2.description ?? {}, `${label}.bash_envs.${name}.description`);
   }
   validateStringMap(config.runtime_caps ?? {}, `${label}.runtime_caps`);
-  optionalString$2(config.container_param, `${label}.container_param`);
-  optionalString$2(config.start_param, `${label}.start_param`);
+  optionalString$3(config.container_param, `${label}.container_param`);
+  optionalString$3(config.start_param, `${label}.start_param`);
   return config;
 }
 function appDocObjectId(value) {
@@ -4607,7 +4621,7 @@ function validateAppDocShape(appDoc) {
   }
   if (appDoc.name !== void 0)
     expectNonEmptyString(appDoc.name, "APPDOC.name");
-  optionalString$2(appDoc.copyright, "APPDOC.copyright");
+  optionalString$3(appDoc.copyright, "APPDOC.copyright");
   for (const field of ["tags", "categories"]) {
     const values = appDoc[field];
     if (values !== void 0 && (!Array.isArray(values) || values.length === 0 || values.some((value) => typeof value !== "string"))) {
@@ -4817,7 +4831,7 @@ function optionalBoolean(value, label) {
     throw invalid("schema", `${label} must be boolean`);
   }
 }
-function optionalString$2(value, label) {
+function optionalString$3(value, label) {
   if (value !== void 0 && typeof value !== "string") {
     throw invalid("schema", `${label} must be a string`);
   }
@@ -4851,7 +4865,7 @@ function invalid(stage, message, entry) {
 function stableJsonDigest(value) {
   return sha256Bytes(new TextEncoder().encode(ndn.toCanonicalJsonString(value)));
 }
-const PACKAGE_VERSION = "0.7.120";
+const PACKAGE_VERSION = "0.7.121";
 const TOOL_VERSION = PACKAGE_VERSION;
 const SDK_VERSION = PACKAGE_VERSION;
 const PROTOCOL_VERSION = "1";
@@ -4868,7 +4882,7 @@ const VERSION$1 = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 const SHA256_ID = /^sha256:[0-9a-f]{64}$/;
 const OBJECT_ID = /^(?:appdoc|pkg):[0-9a-f]{64}$/;
 const SAFE_GENERATED_FILE = /^[A-Za-z0-9._-]+$/;
-const OBJECT_OUTPUT$4 = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$5 = { type: "object", additionalProperties: true };
 function packageEnvironmentQualifier(key, selector) {
   const effective = selector ?? derivedSelector(key);
   const os = effective?.os;
@@ -4905,7 +4919,7 @@ function createPikgModule(dependencies = {}) {
           properties: { meta_dir: { type: "string", minLength: 1 } },
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$4,
+        outputSchema: OBJECT_OUTPUT$5,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -4952,7 +4966,7 @@ function createPikgModule(dependencies = {}) {
           },
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$4,
+        outputSchema: OBJECT_OUTPUT$5,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "write" },
         asyncMode: "sync",
@@ -4976,7 +4990,7 @@ function createPikgModule(dependencies = {}) {
           properties: { meta_dir: { type: "string", minLength: 1 } },
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$4,
+        outputSchema: OBJECT_OUTPUT$5,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "write" },
         asyncMode: "sync",
@@ -4997,7 +5011,7 @@ function createPikgModule(dependencies = {}) {
           properties: { dist_dir: { type: "string", minLength: 1 } },
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$4,
+        outputSchema: OBJECT_OUTPUT$5,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "write" },
         asyncMode: "sync",
@@ -5017,7 +5031,7 @@ function createPikgModule(dependencies = {}) {
           required: ["pikg_path"],
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$4,
+        outputSchema: OBJECT_OUTPUT$5,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -5038,7 +5052,7 @@ function createPikgModule(dependencies = {}) {
           properties: { meta_dir: { type: "string", minLength: 1 } },
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$4,
+        outputSchema: OBJECT_OUTPUT$5,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "destructive" },
         asyncMode: "sync",
@@ -6229,16 +6243,16 @@ async function observeTask(ctx, taskId) {
   const envelope = expectObject$2(response, "TaskManager get_task response");
   const task = expectObject$2(envelope.task ?? envelope, "TaskManager task");
   const phase = expectString$2(task.phase, "task.phase");
-  const outcome = optionalString$1(task.outcome);
+  const outcome = optionalString$2(task.outcome);
   const taskError = isObject$1(task.error) ? task.error : void 0;
   return {
     revision: typeof task.revision === "number" ? task.revision : void 0,
     phase,
     outcome,
-    message: optionalString$1(task.message),
+    message: optionalString$2(task.message),
     error: taskError ? {
-      code: optionalString$1(taskError.code),
-      message: optionalString$1(taskError.message),
+      code: optionalString$2(taskError.code),
+      message: optionalString$2(taskError.message),
       retryable: typeof taskError.retryable === "boolean" ? taskError.retryable : void 0,
       details: isObject$1(taskError.detail) ? taskError.detail : void 0
     } : void 0,
@@ -6258,7 +6272,7 @@ function normalizeTaskErrorCode(code, outcome) {
     return code.trim().replaceAll(/[^A-Za-z0-9]+/g, "_").toUpperCase();
   return outcome === "Canceled" ? "CANCELED" : "TASK_FAILED";
 }
-function optionalString$1(value) {
+function optionalString$2(value) {
   return typeof value === "string" ? value : void 0;
 }
 function expectString$2(value, label) {
@@ -6298,7 +6312,7 @@ const CONTROL_PANEL_SERVICE = "control-panel";
 const PLAN_SCHEMA_VERSION = 4;
 const STAGING_RELEASE_TIMEOUT_MS = 5e3;
 const ZIP_LOCAL_MAGIC = [80, 75, 3, 4];
-const OBJECT_OUTPUT$3 = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$4 = { type: "object", additionalProperties: true };
 const INSTALL_POLICIES = [
   "strict-public",
   "normal",
@@ -6317,7 +6331,7 @@ function createAppModule(dependencies = {}) {
     lifecycleCommand("start", "Start an installed App"),
     lifecycleCommand("stop", "Stop an installed App"),
     restartCommand(),
-    statusCommand()
+    statusCommand$1()
   ];
   return {
     name: "app",
@@ -6354,7 +6368,7 @@ function fetchCommand(dependencies) {
       target: { type: "object", additionalProperties: true },
       install_params: { type: "object", additionalProperties: true }
     }),
-    outputSchema: OBJECT_OUTPUT$3,
+    outputSchema: OBJECT_OUTPUT$4,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -6371,7 +6385,7 @@ function listCommand$1() {
     verb: "list",
     summary: "List visible installed Apps",
     inputSchema: emptyInputSchema(),
-    outputSchema: OBJECT_OUTPUT$3,
+    outputSchema: OBJECT_OUTPUT$4,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -6429,7 +6443,7 @@ function installCommand(dependencies) {
       no_wait: { type: "boolean" },
       policy: { type: "string", enum: [...INSTALL_POLICIES] }
     }),
-    outputSchema: OBJECT_OUTPUT$3,
+    outputSchema: OBJECT_OUTPUT$4,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "either",
@@ -6473,7 +6487,7 @@ function upgradeCommand(dependencies) {
       },
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$3,
+    outputSchema: OBJECT_OUTPUT$4,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "either",
@@ -6590,7 +6604,7 @@ function restartCommand() {
     examples: ["buckyos app restart app1"]
   };
 }
-function statusCommand() {
+function statusCommand$1() {
   return {
     verb: "status",
     summary: "Show desired, task, scheduled, runtime, version, and readiness state",
@@ -6602,7 +6616,7 @@ function statusCommand() {
       properties: { app_name: { type: "string", minLength: 1 } },
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$3,
+    outputSchema: OBJECT_OUTPUT$4,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -6643,7 +6657,7 @@ async function fetchApp(ctx, input, dependencies) {
   const source = await prepareSource(ctx, input, "inspect", dependencies);
   try {
     let inspection = await inspectSource(ctx, source, input);
-    const planPathInput = optionalString(input.plan);
+    const planPathInput = optionalString$1(input.plan);
     let planPath;
     if (planPathInput) {
       inspection = await finalizePlanChoices(ctx, source, input, inspection);
@@ -6667,7 +6681,7 @@ async function fetchApp(ctx, input, dependencies) {
 }
 async function installApp(ctx, input, dependencies) {
   rejectDryRunNoWait(input);
-  const submittedPlan = optionalString(input.plan) ? await readPlanFile(resolveFromCwd(ctx, String(input.plan))) : void 0;
+  const submittedPlan = optionalString$1(input.plan) ? await readPlanFile(resolveFromCwd(ctx, String(input.plan))) : void 0;
   const source = await prepareSource(ctx, input, "install", dependencies);
   let keepStaging = false;
   try {
@@ -6931,15 +6945,15 @@ async function prepareSource(ctx, input, purpose, dependencies) {
   }
 }
 async function classifySource(ctx, input) {
-  const positional = optionalString(input.source);
-  const pikg = optionalString(input.pikg);
+  const positional = optionalString$1(input.source);
+  const pikg = optionalString$1(input.pikg);
   if (positional && pikg) {
     throw new UsageError("ARGUMENT_CONFLICT", "<source> and --pikg are mutually exclusive");
   }
   const raw = pikg ?? positional;
   if (!raw)
     throw new UsageError("MISSING_ARGUMENT", "source or --pikg is required");
-  const forced = pikg ? "pikg" : optionalString(input.from);
+  const forced = pikg ? "pikg" : optionalString$1(input.from);
   if (pikg && forced && forced !== "pikg") {
     throw new UsageError("ARGUMENT_CONFLICT", "--pikg conflicts with --from");
   }
@@ -7260,11 +7274,11 @@ async function observeInstallTask(ctx, taskId) {
   const sanitizedDetails = error && isObject(error.details) ? sanitizeAppOutput(error.details) : void 0;
   return {
     phase: expectString$1(status, "task_phase"),
-    outcome: optionalString(status.task_outcome),
+    outcome: optionalString$1(status.task_outcome),
     message: installProgressMessage(status),
     error: error ? {
-      code: optionalString(error.code),
-      message: optionalString(error.message),
+      code: optionalString$1(error.code),
+      message: optionalString$1(error.message),
       retryable: typeof error.retryable === "boolean" ? error.retryable : void 0,
       details: isObject(sanitizedDetails) ? sanitizedDetails : void 0
     } : void 0,
@@ -7362,7 +7376,7 @@ function installedScope(details) {
   };
 }
 function installOptions(input) {
-  const policy2 = optionalString(input.policy) ?? "normal";
+  const policy2 = optionalString$1(input.policy) ?? "normal";
   return { policy: policy2.replaceAll("-", "_").toUpperCase() };
 }
 function sourceSummary(source) {
@@ -7686,13 +7700,13 @@ function parseEmbeddedJson(message) {
 }
 function readinessValue(inspection, field) {
   const readiness = isObject(inspection.status.readiness) ? inspection.status.readiness : void 0;
-  return readiness ? optionalString(readiness[field]) : void 0;
+  return readiness ? optionalString$1(readiness[field]) : void 0;
 }
 function planUse(plan) {
-  return optionalString(plan.plan_use);
+  return optionalString$1(plan.plan_use);
 }
 function installProgressMessage(status) {
-  const stage = optionalString(status.stage);
+  const stage = optionalString$1(status.stage);
   const progress = isObject(status.progress) ? status.progress : void 0;
   const percent = progress && typeof progress.percent === "number" ? `${progress.percent}%` : void 0;
   return [stage, percent].filter(Boolean).join(" ") || void 0;
@@ -7716,7 +7730,7 @@ function selectorCommand(options) {
       required: ["app_name"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$3,
+    outputSchema: OBJECT_OUTPUT$4,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: options.access },
     asyncMode: options.asyncMode,
@@ -7798,7 +7812,7 @@ function expectNumber(object, property) {
   }
   return value;
 }
-function optionalString(value) {
+function optionalString$1(value) {
   return typeof value === "string" && value.trim() ? value : void 0;
 }
 function optionalNumber(value) {
@@ -7943,7 +7957,7 @@ function splitServices(value) {
   return [...new Set(items.map((item) => String(item).trim()).filter(Boolean))];
 }
 const CONTROL_PANEL$2 = "control-panel";
-const OBJECT_OUTPUT$2 = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$3 = { type: "object", additionalProperties: true };
 function createDiagnosticModule(dependencies = {}) {
   return {
     name: "diagnostic",
@@ -7982,7 +7996,7 @@ function collectCommand() {
       required: ["services"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$2,
+    outputSchema: OBJECT_OUTPUT$3,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "privileged" },
     asyncMode: "task",
@@ -8036,7 +8050,7 @@ function exportCommand$1(dependencies) {
       required: ["bundle_id", "path"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$2,
+    outputSchema: OBJECT_OUTPUT$3,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "privileged" },
     asyncMode: "sync",
@@ -8078,7 +8092,7 @@ function compact$2(value) {
   return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== void 0));
 }
 const CONTROL_PANEL$1 = "control-panel";
-const OBJECT_OUTPUT$1 = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$2 = { type: "object", additionalProperties: true };
 function createLogModule(dependencies = {}) {
   return {
     name: "log",
@@ -8139,7 +8153,7 @@ function tailCommand(dependencies) {
       }
     ],
     inputSchema: filterSchema({ from: { type: "string", enum: ["start", "end"] } }),
-    outputSchema: OBJECT_OUTPUT$1,
+    outputSchema: OBJECT_OUTPUT$2,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "stream",
@@ -8195,7 +8209,7 @@ function exportCommand(dependencies) {
       ...filterSchema({ path: { type: "string", minLength: 1 } }),
       required: ["path"]
     },
-    outputSchema: OBJECT_OUTPUT$1,
+    outputSchema: OBJECT_OUTPUT$2,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -8331,7 +8345,7 @@ function abortableSleep(milliseconds, signal) {
 }
 const TASK_MANAGER = "task-manager";
 const CONTROL_PANEL = "control-panel";
-const OBJECT_OUTPUT = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$1 = { type: "object", additionalProperties: true };
 function createTaskModule() {
   return {
     name: "task",
@@ -8434,7 +8448,7 @@ function getCommand() {
       required: ["task_id"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT,
+    outputSchema: OBJECT_OUTPUT$1,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -8475,7 +8489,7 @@ function waitCommand() {
     summary: "Stream changes until a Task becomes terminal",
     positionals: [{ name: "task_id", description: "Opaque Task ID", required: true }],
     inputSchema: taskIdSchema(),
-    outputSchema: OBJECT_OUTPUT,
+    outputSchema: OBJECT_OUTPUT$1,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "stream",
@@ -8526,7 +8540,7 @@ function cancelCommand() {
       required: ["task_id"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT,
+    outputSchema: OBJECT_OUTPUT$1,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "sync",
@@ -8569,7 +8583,7 @@ function retryCommand() {
       required: ["task_id"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT,
+    outputSchema: OBJECT_OUTPUT$1,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "either",
@@ -8642,6 +8656,459 @@ function compact(value) {
 function invalidResponse(label) {
   throw new ToolError("INVALID_SERVICE_RESPONSE", `${label} is invalid`, EXIT_INTERNAL);
 }
+const sdk = provisionSdk;
+const OBJECT_OUTPUT = { type: "object", additionalProperties: true };
+const ROOT_OPTION = {
+  name: "root",
+  description: "Installed BuckyOS root on this machine (BUCKYOS_ROOT); read by status/check, written by activate",
+  type: "string",
+  required: true
+};
+const TARGET_OPTIONS = [
+  ROOT_OPTION,
+  {
+    name: "domain",
+    description: "Fixed public host name; Owner DID and Zone DID become did:web:<domain>",
+    type: "string",
+    required: true
+  },
+  {
+    name: "owner-name",
+    property: "owner_name",
+    description: "Local administrator / OwnerDocument name (lowercase DNS label)",
+    type: "string",
+    required: true
+  },
+  {
+    name: "owner-key-backup",
+    property: "owner_key_backup",
+    description: "New file for the Owner private-key recovery copy; its directory must exist and the file must not",
+    type: "string",
+    required: true
+  },
+  {
+    name: "public-ip",
+    property: "public_ip",
+    description: "Fixed public IP used only for the A/AAAA record instructions",
+    type: "string"
+  },
+  {
+    name: "rtcp-port",
+    property: "rtcp_port",
+    description: "RTCP port, default 2980",
+    type: "integer"
+  },
+  {
+    name: "guest-access",
+    property: "guest_access",
+    description: "Enable guest access in the first-boot configuration",
+    type: "boolean"
+  }
+];
+const TARGET_INPUT_PROPERTIES = {
+  root: { type: "string", minLength: 1 },
+  domain: { type: "string", minLength: 1 },
+  owner_name: { type: "string", minLength: 1 },
+  owner_key_backup: { type: "string", minLength: 1 },
+  public_ip: { type: "string" },
+  rtcp_port: { type: "integer", minimum: 1 },
+  guest_access: { type: "boolean" }
+};
+const TARGET_REQUIRED = ["root", "domain", "owner_name", "owner_key_backup"];
+const POLICY_NOTE = "Paths are read from argv by the launcher to grant the minimal filesystem permissions; root and owner_key_backup given only inside --input are limited to the policy roots (cwd, and the paired BUCKYOS_ROOT of the system distribution).";
+function createProvisionModule(dependencies = {}) {
+  const deps = {
+    inspect: dependencies.inspect ?? sdk.inspectActivationRoot,
+    check: dependencies.check ?? sdk.checkOfflineActivation,
+    activate: dependencies.activate ?? sdk.activateOfflineZone
+  };
+  return {
+    name: "provision",
+    summary: "Activate an installed BuckyOS root on this machine (first Zone, Owner, and OOD)",
+    commands: [statusCommand(deps), checkCommand(deps), activateCommand(deps)]
+  };
+}
+function statusCommand(deps) {
+  return {
+    verb: "status",
+    summary: "Inspect the local activation material of an installed BuckyOS root",
+    description: "Read-only. Reports not_installed, unactivated, partial, configured, or invalid from the files under the root; configured only means the first-boot material is complete and internally consistent (startup_required=true). Service health, DNS, TLS, and public DID discovery are not checked. " + POLICY_NOTE,
+    options: [ROOT_OPTION],
+    inputSchema: {
+      type: "object",
+      properties: { root: { type: "string", minLength: 1 } },
+      required: ["root"],
+      additionalProperties: false
+    },
+    outputSchema: {
+      ...OBJECT_OUTPUT,
+      properties: {
+        root: { type: "string" },
+        state: {
+          type: "string",
+          enum: ["not_installed", "unactivated", "partial", "configured", "invalid"]
+        },
+        startup_required: { type: "boolean" }
+      },
+      required: ["root", "state", "startup_required"]
+    },
+    resultSchemaVersion: 1,
+    access: { mode: "fixed", level: "read" },
+    asyncMode: "sync",
+    requiresSession: false,
+    execution: "local",
+    networkAccess: false,
+    examples: ["buckyos provision status --root /opt/buckyos"],
+    handler: async (ctx, input) => {
+      const root = resolvePath(ctx, requiredString(input, "root"));
+      await assertHostAccess(root, "read");
+      return statusView(await runSdk(() => deps.inspect(root)));
+    }
+  };
+}
+function checkCommand(deps) {
+  return {
+    verb: "check",
+    summary: "Validate activation parameters and the target root without writing anything",
+    description: "Read-only precheck shared with activate: parameters, target state, and the owner key backup location. No keys are generated, no backup is written, and no operation is produced; activate re-validates the target itself. Fails with the first problem code when the target is not ready. " + POLICY_NOTE,
+    options: TARGET_OPTIONS,
+    inputSchema: {
+      type: "object",
+      properties: TARGET_INPUT_PROPERTIES,
+      required: TARGET_REQUIRED,
+      additionalProperties: false
+    },
+    outputSchema: {
+      ...OBJECT_OUTPUT,
+      properties: {
+        ready: { type: "boolean" },
+        root: { type: "string" },
+        state: { type: "string" }
+      },
+      required: ["ready", "root", "state"]
+    },
+    resultSchemaVersion: 1,
+    access: { mode: "fixed", level: "read" },
+    asyncMode: "sync",
+    requiresSession: false,
+    execution: "local",
+    networkAccess: false,
+    examples: [
+      "buckyos provision check --root /opt/buckyos --domain corp.example.com --owner-name admin --owner-key-backup /secure-backup/corp-owner.pem"
+    ],
+    handler: async (ctx, input) => {
+      const options = activationOptions(ctx, input);
+      await assertHostAccess(options.rootDir, "read");
+      await assertHostAccess(getHost().path.dirname(options.ownerKeyBackupPath), "read");
+      const precheck = await runSdk(() => deps.check(options));
+      if (!precheck.ready)
+        throw precheckError(precheck);
+      return precheckView(precheck);
+    }
+  };
+}
+function activateCommand(deps) {
+  return {
+    verb: "activate",
+    summary: "Activate the root: create the first Zone, Owner, and OOD identity and the first-boot configuration",
+    description: "Privileged local write. Generates random Ed25519 Owner/device keys and current-time documents, saves the Owner private-key backup, then commits the identity, Zone, and start_config files; etc/node_identity.json is written last because node-daemon treats it as the activation switch. The administrator password is read from the secret admin_password field of --input JSON or from a hidden terminal prompt; there is no --admin-password option. Non-interactive runs require --yes. Repeated, partial, and invalid targets are rejected; there is no --force. After success restart BuckyOS through the installer or node control entry; this command never reports the Zone as online. " + POLICY_NOTE,
+    options: TARGET_OPTIONS,
+    inputSchema: {
+      type: "object",
+      properties: {
+        ...TARGET_INPUT_PROPERTIES,
+        admin_password: {
+          type: "string",
+          secret: true,
+          description: "Administrator password (secret; --input JSON or hidden prompt only)"
+        }
+      },
+      required: TARGET_REQUIRED,
+      additionalProperties: false
+    },
+    outputSchema: {
+      ...OBJECT_OUTPUT,
+      properties: {
+        root: { type: "string" },
+        state: { type: "string", enum: ["configured"] },
+        startup_required: { type: "boolean" }
+      },
+      required: ["root", "state", "startup_required"]
+    },
+    resultSchemaVersion: 1,
+    access: { mode: "fixed", level: "privileged" },
+    asyncMode: "sync",
+    requiresSession: false,
+    execution: "local",
+    networkAccess: false,
+    examples: [
+      "buckyos provision activate --root /opt/buckyos --domain corp.example.com --owner-name admin --owner-key-backup /secure-backup/corp-owner.pem",
+      "buckyos --non-interactive --yes --input activation.json provision activate --root /opt/buckyos --owner-key-backup /secure-backup/corp-owner.pem"
+    ],
+    handler: async (ctx, input) => {
+      const options = activationOptions(ctx, input);
+      const backupDirectory = getHost().path.dirname(options.ownerKeyBackupPath);
+      await assertHostAccess(options.rootDir, "read");
+      await assertHostAccess(options.rootDir, "write");
+      await assertHostAccess(backupDirectory, "read");
+      await assertHostAccess(backupDirectory, "write");
+      const precheck = await runSdk(() => deps.check(options));
+      if (!precheck.ready)
+        throw precheckError(precheck);
+      const adminPassword = await obtainAdminPassword(ctx, input);
+      await confirmActivation(ctx, precheck);
+      const result = await runSdk(
+        () => deps.activate({ ...options, adminPassword, traceId: ctx.traceId })
+      );
+      return resultView(ctx, input, result);
+    }
+  };
+}
+function activationOptions(ctx, input) {
+  return {
+    rootDir: resolvePath(ctx, requiredString(input, "root")),
+    domain: requiredString(input, "domain"),
+    ownerName: requiredString(input, "owner_name"),
+    ownerKeyBackupPath: resolvePath(ctx, requiredString(input, "owner_key_backup")),
+    publicIp: optionalString(input, "public_ip"),
+    rtcpPort: typeof input.rtcp_port === "number" ? input.rtcp_port : void 0,
+    guestAccess: input.guest_access === true
+  };
+}
+function requiredString(input, key) {
+  const value = optionalString(input, key);
+  if (!value)
+    throw new UsageError("INVALID_ARGUMENT", `${key} is required`);
+  return value;
+}
+function optionalString(input, key) {
+  const value = input[key];
+  return typeof value === "string" && value.trim() ? value.trim() : void 0;
+}
+function resolvePath(ctx, value) {
+  const path = getHost().path;
+  return path.isAbsolute(value) ? path.resolve(value) : path.resolve(ctx.cwd, value);
+}
+async function assertHostAccess(path, operation) {
+  try {
+    await getHost().assertAccess(path, operation);
+  } catch (error) {
+    if (isHostError(error, "PermissionDenied")) {
+      throw new ToolError(
+        "HOST_ACCESS_DENIED",
+        `${error.message}; pass the path on the command line (--root / --owner-key-backup) so the launcher can grant it`,
+        EXIT_PERMISSION,
+        false,
+        { path, operation }
+      );
+    }
+    throw error;
+  }
+}
+async function obtainAdminPassword(ctx, input) {
+  if (typeof input.admin_password === "string")
+    return input.admin_password;
+  if (ctx.config.nonInteractive) {
+    throw new UsageError(
+      "SECRET_REQUIRED",
+      "admin_password must be provided through --input JSON in non-interactive mode"
+    );
+  }
+  if (!ctx.io.inputIsTerminal) {
+    throw new UsageError(
+      "SECRET_INPUT_UNAVAILABLE",
+      "the administrator password requires an interactive terminal or --input JSON"
+    );
+  }
+  const host2 = getHost();
+  let password;
+  let confirmation;
+  try {
+    password = await host2.readSecret("Administrator password: ");
+    confirmation = await host2.readSecret("Confirm administrator password: ");
+  } catch (error) {
+    if (isHostError(error, "PermissionDenied")) {
+      throw new UsageError("SECRET_INPUT_UNAVAILABLE", error.message);
+    }
+    throw error;
+  }
+  if (password !== confirmation) {
+    throw new UsageError("PASSWORD_MISMATCH", "the administrator passwords do not match");
+  }
+  return password;
+}
+async function confirmActivation(ctx, precheck) {
+  if (ctx.confirmed)
+    return;
+  if (ctx.config.nonInteractive) {
+    throw new ToolError(
+      "CONFIRMATION_REQUIRED",
+      "provision activate requires --yes in non-interactive mode",
+      EXIT_PERMISSION
+    );
+  }
+  if (!ctx.io.inputIsTerminal) {
+    throw new ToolError(
+      "CONFIRMATION_REQUIRED",
+      "provision activate requires an interactive terminal or --yes",
+      EXIT_PERMISSION
+    );
+  }
+  await ctx.io.stderr(
+    [
+      "Activation summary",
+      `  BUCKYOS_ROOT : ${precheck.rootDir}`,
+      `  Owner/Zone   : ${precheck.zoneDid}`,
+      `  Device       : ${precheck.deviceDid}`,
+      `  Admin        : ${precheck.ownerName}`,
+      `  Network      : ${"wan"} (no SN, no BNS)`,
+      `  RTCP port    : ${precheck.rtcpPort}`,
+      `  Guest access : ${precheck.guestAccess}`,
+      `  Owner backup : ${precheck.ownerKeyBackup.path}`,
+      ""
+    ].join("\n")
+  );
+  const answer = (await ctx.io.prompt("Write this activation to disk? [y/N] "))?.trim().toLowerCase();
+  if (answer !== "y" && answer !== "yes") {
+    throw new ToolError("CONFIRMATION_DECLINED", "activation was declined", EXIT_PERMISSION);
+  }
+}
+function isSdkError(error) {
+  return error instanceof Error && error.name === "ActivationError" && typeof error.code === "string";
+}
+async function runSdk(run) {
+  try {
+    return await run();
+  } catch (error) {
+    if (isSdkError(error)) {
+      const exitCode = error.code === "INVALID_ARGUMENT" ? EXIT_USAGE : error.code === "ACTIVATION_COMMIT_FAILED" ? EXIT_PARTIAL : EXIT_OPERATION;
+      throw new ToolError(error.code, error.message, exitCode, false, error.details ?? {});
+    }
+    throw error;
+  }
+}
+function precheckError(precheck) {
+  const [first] = precheck.problems;
+  const single = precheck.problems.length === 1;
+  return new ToolError(
+    single ? first.code : "ACTIVATION_PRECHECK_FAILED",
+    single ? first.message : `activation precheck failed: ${precheck.problems.map((p) => p.message).join("; ")}`,
+    EXIT_OPERATION,
+    false,
+    precheckView(precheck)
+  );
+}
+function statusView(status) {
+  return {
+    root: status.rootDir,
+    state: status.state,
+    startup_required: status.startupRequired,
+    observed_at: status.observedAt,
+    zone_did: status.zoneDid,
+    owner_did: status.ownerDid,
+    device_did: status.deviceDid,
+    device_name: status.deviceName,
+    access_hostname: status.accessHostname,
+    files: status.files.map((file) => ({
+      path: file.path,
+      role: file.role,
+      required: file.required,
+      secret: file.secret,
+      present: file.present
+    })),
+    problems: status.problems,
+    warnings: status.warnings,
+    lock: status.lock ? {
+      path: status.lock.path,
+      stage: status.lock.stage,
+      trace_id: status.lock.traceId,
+      started_at: status.lock.startedAt,
+      domain: status.lock.domain,
+      committed_files: status.lock.committedFiles,
+      owner_key_backup: status.lock.ownerKeyBackupPath,
+      corrupt: status.lock.corrupt
+    } : null
+  };
+}
+function precheckView(precheck) {
+  return {
+    ready: precheck.ready,
+    root: precheck.rootDir,
+    state: precheck.state,
+    domain: precheck.domain,
+    owner_name: precheck.ownerName,
+    owner_did: precheck.ownerDid,
+    zone_did: precheck.zoneDid,
+    device_did: precheck.deviceDid,
+    device_name: precheck.deviceName,
+    access_hostname: precheck.accessHostname,
+    rtcp_port: precheck.rtcpPort,
+    guest_access: precheck.guestAccess,
+    public_ip: precheck.publicIp,
+    dns_records: precheck.dnsRecords,
+    owner_key_backup: {
+      path: precheck.ownerKeyBackup.path,
+      directory_exists: precheck.ownerKeyBackup.directoryExists,
+      exists: precheck.ownerKeyBackup.exists
+    },
+    planned_files: precheck.plannedFiles,
+    problems: precheck.problems,
+    target: statusView(precheck.status)
+  };
+}
+function resultView(ctx, input, result) {
+  const dnsNotes = [
+    ...result.dnsRecords.map((record) => `${record.type} ${record.name} ${record.value}`),
+    ...result.publicIp ? [] : [`A/AAAA ${result.domain} <this node's fixed public IP>`],
+    `The address record is also saved in etc/zone_dns_records.json under ${result.rootDir}.`,
+    `Local boot uses etc/${result.domain}.zone.json; no DNS BOOT/PKX/DEV records are required.`,
+    "TLS/ACME is not provided by SN in this mode; configure it on the public gateway."
+  ];
+  return {
+    root: result.rootDir,
+    state: result.state,
+    startup_required: result.startupRequired,
+    domain: result.domain,
+    owner_name: result.ownerName,
+    owner_did: result.ownerDid,
+    zone_did: result.zoneDid,
+    device_did: result.deviceDid,
+    device_name: result.deviceName,
+    access_hostname: result.accessHostname,
+    rtcp_port: result.rtcpPort,
+    guest_access: result.guestAccess,
+    public_ip: result.publicIp,
+    document_iat: result.documentIat,
+    document_exp: result.documentExp,
+    owner_key_backup: result.ownerKeyBackup,
+    dns_records: result.dnsRecords,
+    dns_notes: dnsNotes,
+    committed_files: result.committedFiles,
+    warnings: result.warnings,
+    next_steps: [
+      "Restart BuckyOS through the installer or the node control entry to leave activation mode and boot the new Zone.",
+      "Check the running Zone afterwards with system status; activation does not verify service health, DNS, or TLS.",
+      `Keep the Owner private-key backup ${result.ownerKeyBackup.path} offline; it is the only recovery copy.`
+    ],
+    audit: {
+      module: ctx.command.module,
+      verb: ctx.command.verb,
+      trace_id: ctx.traceId,
+      tool_version: TOOL_VERSION,
+      input_fingerprint: inputFingerprint(input)
+    }
+  };
+}
+function inputFingerprint(input) {
+  const material = {};
+  for (const key of Object.keys(TARGET_INPUT_PROPERTIES).sort()) {
+    if (input[key] !== void 0)
+      material[key] = input[key];
+  }
+  const hash = getHost().createHash("sha256");
+  hash.update(new TextEncoder().encode(JSON.stringify(material)));
+  return hash.digestHex();
+}
 const VERSION = TOOL_VERSION;
 class BuckyOSToolApplication {
   #environment;
@@ -8658,7 +9125,8 @@ class BuckyOSToolApplication {
       dependencies.pikg,
       dependencies.app,
       dependencies.log,
-      dependencies.diagnostic
+      dependencies.diagnostic,
+      dependencies.provision
     );
     this.#environment = dependencies.environment ?? readEnvironment();
     this.#cwd = dependencies.cwd ?? getHost().cwd();
@@ -8744,6 +9212,8 @@ class BuckyOSToolApplication {
 `);
         return EXIT_SUCCESS;
       }
+      if (command.execution === "local")
+        assertNoSessionOptions(invocation.global, command);
       const setup = await this.#resolveForCommand(command, invocation.global);
       const inputObject = invocation.global.input ? await this.#readInputObject(invocation.global.input) : void 0;
       const parsed = parseCommandArgs(command, invocation.actionArgv, inputObject);
@@ -8989,7 +9459,7 @@ class BuckyOSToolApplication {
     return parsed;
   }
 }
-function createRegistry(pikgDependencies, appDependencies, logDependencies, diagnosticDependencies) {
+function createRegistry(pikgDependencies, appDependencies, logDependencies, diagnosticDependencies, provisionDependencies) {
   const registry = new CommandRegistry();
   for (const module of createCoreModules(registry))
     registry.register(module);
@@ -9001,7 +9471,25 @@ function createRegistry(pikgDependencies, appDependencies, logDependencies, diag
   registry.register(createTaskModule());
   registry.register(createLogModule(logDependencies));
   registry.register(createDiagnosticModule(diagnosticDependencies));
+  registry.register(createProvisionModule(provisionDependencies));
   return registry;
+}
+function assertNoSessionOptions(global, command) {
+  for (const [name, value] of [
+    ["profile", global.profile],
+    ["zone", global.zone],
+    ["endpoint", global.endpoint],
+    ["identity", global.identity],
+    ["session-token", global.sessionToken],
+    ["session-token-file", global.sessionTokenFile]
+  ]) {
+    if (value !== void 0) {
+      throw new UsageError(
+        "ARGUMENT_CONFLICT",
+        `--${name} cannot be combined with the local command ${command.module} ${command.verb}`
+      );
+    }
+  }
 }
 const unavailableClients = {
   call: () => Promise.reject(new ToolError("INTERNAL_ERROR", "service clients are unavailable", 9))
@@ -9269,6 +9757,9 @@ class NodeHost {
     } catch (error) {
       throw translateNodeError(error, path);
     }
+  }
+  async assertAccess(path, operation) {
+    await this.assertPath(path, operation);
   }
   createHash(_algorithm) {
     const hash = createHash("sha256");

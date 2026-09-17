@@ -42,6 +42,27 @@ node cli/launcher.mjs --non-interactive --yes pikg clean ./dapp_meta
 `pikg` consumes existing build output; it does not replace an App's Vite, Webpack, Cargo, or Docker
 build scripts. Set `SOURCE_DATE_EPOCH` for byte-reproducible Node/Deno PIKG builds.
 
+## Provision (first activation of an installed root)
+
+`provision status|check|activate` initialise an installed, not yet activated BuckyOS root on this
+machine (single OOD, `did:web`, no SN/BNS). They are local commands: no Zone session, no network, no
+TaskManager. The activation itself is the SDK API exported from `buckyos/provision`
+(`inspectActivationRoot`, `checkOfflineActivation`, `activateOfflineZone`); the module only adds
+argv, host-policy checks, the hidden password prompt / secret `--input` field, confirmation and
+output. See `doc/modules/provision.md` for the commit protocol and error codes.
+
+```bash
+buckyos provision status --root /opt/buckyos
+buckyos provision check --root /opt/buckyos --domain corp.example.com --owner-name admin \
+  --owner-key-backup /secure-backup/corp-owner.pem
+buckyos --non-interactive --yes --input activation.json provision activate \
+  --root /opt/buckyos --owner-key-backup /secure-backup/corp-owner.pem
+```
+
+The launcher grants filesystem permissions only for the `--root` and `--owner-key-backup` paths
+given on the command line; `admin_password` is accepted only as the secret field of `--input` JSON
+or from a terminal prompt.
+
 ## Policy and identity
 
 The developer policy grants the package root, cwd, Tool config, the read-only `~/.buckyos` and
@@ -55,9 +76,9 @@ developer-only `~/.buckycli` root, the Tool reads `system.dev_mode.get` from the
 requires a valid `BuckyOSDevConfig` with `enabled: true`. Automatic discovery tries `~/.buckyos`
 first and consults developer mode only if no operations identity succeeds; the combined search is
 limited to eight usable candidates. An explicitly selected identity is tried once. Rotation occurs
-only during session creation and only for
-`IDENTITY_KIND_NOT_ACCEPTED` or `AUTHENTICATION_REJECTED`; timeouts, network errors, capability
-mismatches and RBAC denial never rotate. Private keys and tokens are never shown.
+only during session creation and only for `IDENTITY_KIND_NOT_ACCEPTED` or `AUTHENTICATION_REJECTED`;
+timeouts, network errors, capability mismatches and RBAC denial never rotate. Private keys and
+tokens are never shown.
 
 ## Verification
 

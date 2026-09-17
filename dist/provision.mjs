@@ -5,13 +5,13 @@ var __publicField = (obj, key, value) => {
   return value;
 };
 var _a;
-import { N as NODE_IDENTITY_SCHEMA_V2, v as DID, A as newDeviceDocumentByJwk, B as verifyJwtEdDSA, E as deviceDocumentToOrderedJson, G as decodeJwtClaimWithoutVerify, H as commonjsGlobal, I as createJwkByX, J as newOwnerDocument, K as ownerDocumentToOrderedJson, L as parseOODDescription, M as oodDescriptionToString, P as newZoneBootDocument, Q as newZoneDocument, R as encodeZoneBootDocument, T as DEFAULT_EXPIRE_TIME, U as zoneDocumentToOrderedJson, V as newDeviceMiniDocument, W as deviceMiniDocumentToJwt, X as encodeDeviceDocument, Y as newDeviceMiniDocumentByDeviceDocument, Z as newDeviceDocumentByMiniDocument, _ as buckyosGetUnixTimestamp, $ as buildNamedObjectByJson } from "./ndn_types-f6c08d20.mjs";
+import { N as NODE_IDENTITY_SCHEMA_V2, v as DID, H as newDeviceDocumentByJwk, I as verifyJwtEdDSA, J as deviceDocumentToOrderedJson, K as decodeJwtClaimWithoutVerify, L as commonjsGlobal, M as DEFAULT_EXPIRE_TIME, h as hashPassword, P as buckyosGetUnixTimestamp, Q as getPublicKeyXFromPrivatePem, R as getXFromJwk, T as createJwkByX, U as newOwnerDocument, V as ownerDocumentSetDefaultZoneDid, W as ownerDocumentToOrderedJson, X as oodDescriptionToString, Y as parseOODDescription, Z as encodeZoneBootDocument, _ as newZoneBootDocument, $ as encodeDeviceDocument, a0 as newDeviceMiniDocumentByDeviceDocument, a1 as deviceMiniDocumentToJwt, a2 as newZoneDocument, a3 as encodeZoneDocument, a4 as zoneDocumentToOrderedJson, a5 as newDeviceMiniDocument, a6 as newDeviceDocumentByMiniDocument, a7 as buildNamedObjectByJson } from "./ndn_types-d768245f.mjs";
 import { Buffer as Buffer$1 } from "node:buffer";
 import { pbkdf2Sync, createPublicKey, createPrivateKey, createECDH, createHmac } from "node:crypto";
 const DEVICE_DOC_JWT_FILE_NAME = "device_doc.jwt";
 const DEVICE_MINI_DOC_JWT_FILE_NAME = "device_mini_doc.jwt";
 const NODE_GATEWAY_PARAMS_FILE_NAME = "node_gateway_params.json";
-function requireNode$2(moduleName) {
+function requireNode$3(moduleName) {
   const proc = globalThis.process;
   if (typeof (proc == null ? void 0 : proc.getBuiltinModule) === "function") {
     const builtin = proc.getBuiltinModule(moduleName);
@@ -28,8 +28,8 @@ function asDid(value) {
   return value instanceof DID ? value : DID.fromStr(value);
 }
 function writeJsonPretty(filePath, value) {
-  const fs = requireNode$2("node:fs");
-  const path = requireNode$2("node:path");
+  const fs = requireNode$3("node:fs");
+  const path = requireNode$3("node:path");
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, JSON.stringify(value, null, 2));
 }
@@ -45,7 +45,7 @@ function newLocalNodeIdentityConfig(params) {
   };
 }
 function loadLocalNodeIdentityConfig(filePath) {
-  const fs = requireNode$2("node:fs");
+  const fs = requireNode$3("node:fs");
   const config = JSON.parse(fs.readFileSync(filePath, "utf8"));
   if (config.schema !== NODE_IDENTITY_SCHEMA_V2) {
     throw new Error(
@@ -55,7 +55,7 @@ function loadLocalNodeIdentityConfig(filePath) {
   return config;
 }
 function deviceIdentityPathsForRoots(roots, deviceDid) {
-  const path = requireNode$2("node:path");
+  const path = requireNode$3("node:path");
   const deviceDidStr = asDid(deviceDid).toString();
   const publicDir = roots.publicDir(deviceDidStr);
   return {
@@ -94,11 +94,11 @@ function newDeviceDocumentByJwkWithDid(name, publicKeyJwk, deviceDid, now) {
   return bindDeviceDocumentDid(newDeviceDocumentByJwk(name, publicKeyJwk, now), deviceDid);
 }
 function loadDeviceDocJwtForRoots(roots, deviceDid) {
-  const fs = requireNode$2("node:fs");
+  const fs = requireNode$3("node:fs");
   return fs.readFileSync(deviceIdentityPathsForRoots(roots, deviceDid).deviceDocJwt, "utf8");
 }
 function loadDeviceMiniDocJwtForRoots(roots, deviceDid) {
-  const fs = requireNode$2("node:fs");
+  const fs = requireNode$3("node:fs");
   return fs.readFileSync(deviceIdentityPathsForRoots(roots, deviceDid).deviceMiniDocJwt, "utf8");
 }
 async function loadLocalDeviceDocumentForRoots(roots, nodeIdentity, verify) {
@@ -112,7 +112,7 @@ async function loadLocalDeviceDocumentForRoots(roots, nodeIdentity, verify) {
   return [deviceDocJwt, deviceDoc];
 }
 function saveNodeGatewayParams(etcDir, deviceDid) {
-  const path = requireNode$2("node:path");
+  const path = requireNode$3("node:path");
   writeJsonPretty(path.join(etcDir, NODE_GATEWAY_PARAMS_FILE_NAME), {
     params: {
       device_did: asDid(deviceDid).toString()
@@ -120,8 +120,8 @@ function saveNodeGatewayParams(etcDir, deviceDid) {
   });
 }
 function saveLocalDeviceIdentityForRoots(etcDir, roots, nodeIdentity, deviceDoc, deviceDocJwt, deviceMiniDocJwt, devicePrivateKeyPem) {
-  const fs = requireNode$2("node:fs");
-  const path = requireNode$2("node:path");
+  const fs = requireNode$3("node:fs");
+  const path = requireNode$3("node:path");
   const paths = deviceIdentityPathsForRoots(roots, nodeIdentity.device_did);
   fs.mkdirSync(paths.publicDir, { recursive: true });
   fs.mkdirSync(paths.securityDir, { recursive: true });
@@ -13157,7 +13157,7 @@ AsnEcSignatureFormatter.namedCurveSize.set("P-256", 32);
 AsnEcSignatureFormatter.namedCurveSize.set("K-256", 32);
 AsnEcSignatureFormatter.namedCurveSize.set("P-384", 48);
 AsnEcSignatureFormatter.namedCurveSize.set("P-521", 66);
-function requireNode$1(moduleName) {
+function requireNode$2(moduleName) {
   const proc = globalThis.process;
   if (typeof (proc == null ? void 0 : proc.getBuiltinModule) === "function") {
     const builtin = proc.getBuiltinModule(moduleName);
@@ -13175,7 +13175,7 @@ function getCrypto() {
   if (webcrypto == null ? void 0 : webcrypto.subtle) {
     return webcrypto;
   }
-  const nodeCrypto = requireNode$1("node:crypto");
+  const nodeCrypto = requireNode$2("node:crypto");
   return nodeCrypto.webcrypto;
 }
 const CA_SIGNING_ALG = {
@@ -13239,7 +13239,7 @@ function encodeUtf8(value) {
   if (typeof TextEncoder !== "undefined") {
     return new TextEncoder().encode(value);
   }
-  const buffer = requireNode$1("node:buffer").Buffer;
+  const buffer = requireNode$2("node:buffer").Buffer;
   return new Uint8Array(buffer.from(value, "utf8"));
 }
 function encodeIdentityDirName(rawHostUri) {
@@ -13343,7 +13343,7 @@ function trimToNull(value) {
   return trimmed.length > 0 ? trimmed : null;
 }
 function x509PathsForDirs(publicDir, securityDir, usage) {
-  const path = requireNode$1("node:path");
+  const path = requireNode$2("node:path");
   return {
     cert: path.join(publicDir, identityFileName(usage, "cert")),
     chain: path.join(publicDir, identityFileName(usage, "chain")),
@@ -13356,12 +13356,12 @@ function x509PathsForDirs(publicDir, securityDir, usage) {
 }
 class IdentityRoots {
   constructor(publicRoot, securityRoot) {
-    const path = requireNode$1("node:path");
+    const path = requireNode$2("node:path");
     this.publicRoot = path.resolve(publicRoot);
     this.securityRoot = path.resolve(securityRoot);
   }
   static fromEnvOrBuckyosRoot(options = {}) {
-    const path = requireNode$1("node:path");
+    const path = requireNode$2("node:path");
     const env = getProcessEnv();
     const buckyosRoot = trimToNull(options.buckyosRoot) ?? trimToNull(env.BUCKYOS_ROOT) ?? DEFAULT_BUCKYOS_ROOT;
     const publicRoot = trimToNull(options.publicRoot) ?? trimToNull(env.BUCKYOS_IDENTITY_ROOT) ?? path.join(buckyosRoot, "local", "identity");
@@ -13375,19 +13375,19 @@ class IdentityRoots {
     return identityDirName(didOrHostname);
   }
   publicDir(didOrHostname) {
-    const path = requireNode$1("node:path");
+    const path = requireNode$2("node:path");
     return path.join(this.publicRoot, this.dirName(didOrHostname));
   }
   securityDir(didOrHostname) {
-    const path = requireNode$1("node:path");
+    const path = requireNode$2("node:path");
     return path.join(this.securityRoot, this.dirName(didOrHostname));
   }
   publicFile(didOrHostname, usage, material) {
-    const path = requireNode$1("node:path");
+    const path = requireNode$2("node:path");
     return path.join(this.publicDir(didOrHostname), identityFileName(usage, material));
   }
   securityFile(didOrHostname, usage, material) {
-    const path = requireNode$1("node:path");
+    const path = requireNode$2("node:path");
     return path.join(this.securityDir(didOrHostname), identityFileName(usage, material));
   }
   x509Paths(didOrHostname, usage = "server") {
@@ -13406,7 +13406,7 @@ class IdentityRoots {
     };
   }
   findX509Paths(didOrHostname, usage = "server") {
-    const fs = requireNode$1("node:fs");
+    const fs = requireNode$2("node:fs");
     const exact = this.identityDirMatch(didOrHostname);
     const exactPaths = x509PathsForDirs(exact.publicDir, exact.securityDir, usage);
     if (fs.existsSync(exactPaths.fullchain) || fs.existsSync(exactPaths.cert)) {
@@ -13423,7 +13423,7 @@ class IdentityRoots {
     }
     const wildcardHost = `_.${labels.slice(1).join(".")}`;
     const wildcardDirName = encodeIdentityDirName(wildcardHost);
-    const path = requireNode$1("node:path");
+    const path = requireNode$2("node:path");
     const publicDir = path.join(this.publicRoot, wildcardDirName);
     const securityDir = path.join(this.securityRoot, wildcardDirName);
     const wildcardPaths = x509PathsForDirs(publicDir, securityDir, usage);
@@ -13516,8 +13516,8 @@ function getCaPemValidationFailure(pem) {
   }
 }
 async function createCa(outputDir, name = "devtest") {
-  const fs = requireNode$1("node:fs");
-  const path = requireNode$1("node:path");
+  const fs = requireNode$2("node:fs");
+  const path = requireNode$2("node:path");
   const crypto2 = getCrypto();
   cryptoProvider.set(crypto2);
   fs.mkdirSync(outputDir, { recursive: true });
@@ -13548,8 +13548,8 @@ async function createCa(outputDir, name = "devtest") {
   return { caCertPath, caKeyPath };
 }
 async function ensureCa(caDir, name = "devtest") {
-  const fs = requireNode$1("node:fs");
-  const path = requireNode$1("node:path");
+  const fs = requireNode$2("node:fs");
+  const path = requireNode$2("node:path");
   const caCertPath = path.join(caDir, `${name}_ca_cert.pem`);
   const caKeyPath = path.join(caDir, `${name}_ca_key.pem`);
   if (fs.existsSync(caCertPath) && fs.existsSync(caKeyPath)) {
@@ -13564,8 +13564,8 @@ async function ensureCa(caDir, name = "devtest") {
   return createCa(caDir, name);
 }
 function findCaFiles(caDir) {
-  const fs = requireNode$1("node:fs");
-  const path = requireNode$1("node:path");
+  const fs = requireNode$2("node:fs");
+  const path = requireNode$2("node:path");
   const certFiles = fs.readdirSync(caDir).filter((f) => f.endsWith("_ca_cert.pem"));
   if (certFiles.length === 0) {
     throw new Error(`No CA certificate found matching *_ca_cert.pem pattern in ${caDir}`);
@@ -13581,7 +13581,7 @@ function findCaFiles(caDir) {
   return { caCertPath, caKeyPath };
 }
 async function issueX509CertFromCa(caDir, dnsNames, uriSans = [], usage = "server") {
-  const fs = requireNode$1("node:fs");
+  const fs = requireNode$2("node:fs");
   const crypto2 = getCrypto();
   cryptoProvider.set(crypto2);
   const { caCertPath, caKeyPath } = findCaFiles(caDir);
@@ -13634,8 +13634,8 @@ async function issueX509CertFromCa(caDir, dnsNames, uriSans = [], usage = "serve
   };
 }
 async function createCertFromCa(caDir, hostname, targetDir, hostnames) {
-  const fs = requireNode$1("node:fs");
-  const path = requireNode$1("node:path");
+  const fs = requireNode$2("node:fs");
+  const path = requireNode$2("node:path");
   const dnsNames = hostnames && hostnames.length > 0 ? hostnames : [hostname];
   const commonName = dnsNames[0];
   const safeHostname = commonName.replace(/\*/g, "wildcard").replace(/\./g, "_");
@@ -13653,8 +13653,8 @@ function normalizePem(pem) {
 `;
 }
 function writeFileAtomicSync(filePath, content, mode) {
-  const fs = requireNode$1("node:fs");
-  const path = requireNode$1("node:path");
+  const fs = requireNode$2("node:fs");
+  const path = requireNode$2("node:path");
   const dir = path.dirname(filePath);
   const tempPath = path.join(dir, `.${path.basename(filePath)}.${Date.now()}.${Math.random().toString(16).slice(2)}.tmp`);
   try {
@@ -13753,7 +13753,7 @@ async function buildX509Metadata(did, usage, rawHostUri, dirName, issued) {
   };
 }
 async function createIdentityCertFromCa(caDir, didOrHostname, rootsInput, options = {}) {
-  const fs = requireNode$1("node:fs");
+  const fs = requireNode$2("node:fs");
   const roots = resolveIdentityRoots(rootsInput);
   const usage = options.usage ?? "server";
   const did = canonicalIdentityDid(didOrHostname);
@@ -14110,6 +14110,1035 @@ function getDevTestEvmAccountByUsername(username) {
     throw new Error(`no deterministic EVM account for seed user ${username}; register it in DEV_TEST_EVM_USER_INDEXES`);
   }
   return account;
+}
+const ACTIVATION_DEVICE_NAME = "ood1";
+const ACTIVATION_NET_ID = "wan";
+const ACTIVATION_DEFAULT_RTCP_PORT = 2980;
+const ACTIVATION_DOCUMENT_VALIDITY_SECONDS = DEFAULT_EXPIRE_TIME;
+const ACTIVATION_MIN_PASSWORD_LENGTH = 8;
+const ACTIVATION_LOCK_FILE_NAME = "provision_activation.lock";
+const ZONE_DNS_RECORDS_FILE_NAME = "zone_dns_records.json";
+const ZONE_DOCUMENT_JWT_FILE_NAME = "zone_document.jwt";
+const UNACTIVATED_GATEWAY_DEVICE_DID = "did:bns:unactivated.local";
+const MAX_INLINE_DOCUMENT_BYTES = 4096;
+const ACTIVATION_LOCK_SCHEMA_VERSION = 1;
+class ActivationError extends Error {
+  constructor(code, message, details = {}) {
+    super(message);
+    this.name = "ActivationError";
+    this.code = code;
+    this.details = details;
+  }
+}
+function requireNode$1(moduleName) {
+  const proc = globalThis.process;
+  if (typeof (proc == null ? void 0 : proc.getBuiltinModule) === "function") {
+    const builtin = proc.getBuiltinModule(moduleName);
+    if (builtin) {
+      return builtin;
+    }
+  }
+  if (typeof require === "function") {
+    return require(moduleName);
+  }
+  throw new ActivationError(
+    "RUNTIME_UNSUPPORTED",
+    `buckyos provision cannot load builtin module ${moduleName} in this runtime (Node >= 22.13 or Deno >= 2.2 is required)`
+  );
+}
+function isWindows() {
+  var _a3;
+  return ((_a3 = globalThis.process) == null ? void 0 : _a3.platform) === "win32";
+}
+function toPosixRelative(rootDir, filePath) {
+  const path = requireNode$1("node:path");
+  return path.relative(rootDir, filePath).split(path.sep).join("/");
+}
+function sha256Hex(content) {
+  const crypto2 = requireNode$1("node:crypto");
+  return crypto2.createHash("sha256").update(content, "utf8").digest("hex");
+}
+function randomSuffix() {
+  const crypto2 = requireNode$1("node:crypto");
+  return crypto2.randomBytes(6).toString("hex");
+}
+function lstatOrNull(filePath) {
+  const fs = requireNode$1("node:fs");
+  try {
+    return fs.lstatSync(filePath);
+  } catch (error) {
+    const code = error.code;
+    if (code === "ENOENT" || code === "ENOTDIR")
+      return null;
+    throw error;
+  }
+}
+function statOrNull(filePath) {
+  const fs = requireNode$1("node:fs");
+  try {
+    return fs.statSync(filePath);
+  } catch (error) {
+    if (error.code === "ENOENT" || error.code === "ENOTDIR") {
+      return null;
+    }
+    throw error;
+  }
+}
+function isDirectory(filePath) {
+  var _a3;
+  return ((_a3 = statOrNull(filePath)) == null ? void 0 : _a3.isDirectory()) === true;
+}
+function isFile(filePath) {
+  var _a3;
+  return ((_a3 = statOrNull(filePath)) == null ? void 0 : _a3.isFile()) === true;
+}
+function readJsonObjectOrThrow(filePath) {
+  const fs = requireNode$1("node:fs");
+  const value = JSON.parse(fs.readFileSync(filePath, "utf8"));
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${filePath} is not a JSON object`);
+  }
+  return value;
+}
+function jsonPretty(value) {
+  return JSON.stringify(value, null, 2);
+}
+function commitFile(filePath, content, mode, dirMode) {
+  const fs = requireNode$1("node:fs");
+  const path = requireNode$1("node:path");
+  const directory = path.dirname(filePath);
+  fs.mkdirSync(directory, { recursive: true, mode: dirMode });
+  if (!isWindows()) {
+    fs.chmodSync(directory, dirMode);
+  }
+  if (lstatOrNull(filePath)) {
+    throw new Error(`refusing to overwrite existing file: ${filePath}`);
+  }
+  const temporary = path.join(directory, `.${path.basename(filePath)}.provision-${randomSuffix()}`);
+  try {
+    fs.writeFileSync(temporary, content, { mode, flag: "wx" });
+    if (!isWindows()) {
+      fs.chmodSync(temporary, mode);
+    }
+    fs.renameSync(temporary, filePath);
+  } finally {
+    if (lstatOrNull(temporary)) {
+      fs.rmSync(temporary, { force: true });
+    }
+  }
+}
+function normalizeDomain(value) {
+  return value.trim().toLowerCase().replace(/\.$/, "");
+}
+function validateZoneDomain(value) {
+  const domain = normalizeDomain(String(value ?? ""));
+  if (domain.length === 0 || domain.length > 253 || !domain.includes(".") || domain.split(".").some(
+    (label) => label.length === 0 || label.length > 63 || label.startsWith("-") || label.endsWith("-") || !/^[a-z0-9-]+$/.test(label)
+  )) {
+    throw new ActivationError("INVALID_ARGUMENT", `invalid did:web domain: ${value}`, { field: "domain" });
+  }
+  return domain;
+}
+function validateOwnerName(value) {
+  const name = String(value ?? "").trim().toLowerCase();
+  if (name.length === 0 || name.length > 63 || !/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(name)) {
+    throw new ActivationError(
+      "INVALID_ARGUMENT",
+      "owner name must be a lowercase DNS label (letters, digits, and hyphens)",
+      { field: "owner_name" }
+    );
+  }
+  return name;
+}
+function validateRtcpPort(value) {
+  const port = value ?? ACTIVATION_DEFAULT_RTCP_PORT;
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new ActivationError("INVALID_ARGUMENT", `invalid RTCP port: ${String(value)}`, { field: "rtcp_port" });
+  }
+  return port;
+}
+function validatePublicIp(value) {
+  const publicIp = (value == null ? void 0 : value.trim()) || void 0;
+  if (publicIp === void 0)
+    return void 0;
+  const net = requireNode$1("node:net");
+  if (net.isIP(publicIp) === 0) {
+    throw new ActivationError("INVALID_ARGUMENT", `invalid public IP address: ${publicIp}`, { field: "public_ip" });
+  }
+  return publicIp;
+}
+function validateAdminPassword(value) {
+  if (typeof value !== "string" || value.length < ACTIVATION_MIN_PASSWORD_LENGTH) {
+    throw new ActivationError(
+      "INVALID_ARGUMENT",
+      `administrator password must contain at least ${ACTIVATION_MIN_PASSWORD_LENGTH} characters`,
+      { field: "admin_password" }
+    );
+  }
+  return value;
+}
+function hashAdminPassword(ownerName, password) {
+  return hashPassword(ownerName, password, null);
+}
+function buildActivationDnsRecords(domain, publicIp) {
+  const records = [];
+  if (publicIp) {
+    const net = requireNode$1("node:net");
+    records.push({ type: net.isIP(publicIp) === 6 ? "AAAA" : "A", name: domain, value: publicIp });
+  }
+  return records;
+}
+function generateProvisionKeyPair() {
+  const crypto2 = requireNode$1("node:crypto");
+  const { privateKey, publicKey } = crypto2.generateKeyPairSync("ed25519");
+  const jwk = publicKey.export({ format: "jwk" });
+  if (typeof jwk.x !== "string" || jwk.x.length === 0) {
+    throw new ActivationError("KEY_GENERATION_FAILED", "generated Ed25519 public key has no x coordinate");
+  }
+  return {
+    privateKeyPem: privateKey.export({ format: "pem", type: "pkcs8" }).toString(),
+    publicKeyX: jwk.x
+  };
+}
+function normalizeActivationParams(options) {
+  const path = requireNode$1("node:path");
+  if (typeof options.rootDir !== "string" || options.rootDir.trim().length === 0) {
+    throw new ActivationError("INVALID_ARGUMENT", "target root is required", { field: "root" });
+  }
+  if (typeof options.ownerKeyBackupPath !== "string" || options.ownerKeyBackupPath.trim().length === 0) {
+    throw new ActivationError("INVALID_ARGUMENT", "owner key backup path is required", { field: "owner_key_backup" });
+  }
+  const domain = validateZoneDomain(options.domain);
+  const zoneDid = new DID("web", domain);
+  return {
+    rootDir: path.resolve(options.rootDir),
+    domain,
+    ownerName: validateOwnerName(options.ownerName),
+    ownerKeyBackupPath: path.resolve(options.ownerKeyBackupPath),
+    rtcpPort: validateRtcpPort(options.rtcpPort),
+    guestAccess: options.guestAccess ?? false,
+    publicIp: validatePublicIp(options.publicIp),
+    ownerDid: zoneDid,
+    zoneDid,
+    deviceDid: buildDeviceDid(ACTIVATION_DEVICE_NAME, zoneDid)
+  };
+}
+function identityRootsFor(rootDir) {
+  const path = requireNode$1("node:path");
+  return new IdentityRoots(path.join(rootDir, "local", "identity"), path.join(rootDir, "security"));
+}
+function layoutFor(rootDir, zoneDid, deviceDid) {
+  const path = requireNode$1("node:path");
+  const etcDir = path.join(rootDir, "etc");
+  const paths = deviceIdentityPathsForRoots(identityRootsFor(rootDir), deviceDid);
+  return {
+    etcDir,
+    lockPath: path.join(etcDir, ACTIVATION_LOCK_FILE_NAME),
+    nodeIdentityPath: path.join(etcDir, "node_identity.json"),
+    startConfigPath: path.join(etcDir, "start_config.json"),
+    zoneDocumentJwtPath: path.join(etcDir, ZONE_DOCUMENT_JWT_FILE_NAME),
+    gatewayParamsPath: path.join(etcDir, "node_gateway_params.json"),
+    dnsRecordsPath: path.join(etcDir, ZONE_DNS_RECORDS_FILE_NAME),
+    zoneBootOverridePath: path.join(etcDir, `${zoneDid.toRawHostName()}.zone.json`),
+    didJsonPath: paths.didJson,
+    deviceDocJwtPath: paths.deviceDocJwt,
+    deviceMiniDocJwtPath: paths.deviceMiniDocJwt,
+    devicePrivateKeyPath: paths.authenticationPrivateKey,
+    publicDir: paths.publicDir,
+    securityDir: paths.securityDir
+  };
+}
+function plannedFiles(rootDir, layout) {
+  const entry = (absolutePath, role, required, secret) => ({
+    path: toPosixRelative(rootDir, absolutePath),
+    role,
+    required,
+    secret,
+    absolutePath,
+    mode: secret ? 384 : 420,
+    dirMode: secret ? 448 : 493
+  });
+  return [
+    entry(layout.devicePrivateKeyPath, "device_private_key", true, true),
+    entry(layout.didJsonPath, "device_document", true, false),
+    entry(layout.deviceDocJwtPath, "device_document_jwt", true, false),
+    entry(layout.deviceMiniDocJwtPath, "device_mini_document_jwt", true, false),
+    entry(layout.zoneBootOverridePath, "zone_boot_override", true, false),
+    entry(layout.zoneDocumentJwtPath, "zone_document_jwt", true, false),
+    entry(layout.dnsRecordsPath, "dns_records", false, false),
+    entry(layout.startConfigPath, "start_config", true, false),
+    entry(layout.gatewayParamsPath, "gateway_params", true, false),
+    entry(layout.nodeIdentityPath, "node_identity", true, false)
+  ];
+}
+function publicEntry(file) {
+  return { path: file.path, role: file.role, required: file.required, secret: file.secret };
+}
+function readLock(lockPath) {
+  if (!lstatOrNull(lockPath))
+    return null;
+  const base = {
+    path: lockPath,
+    schemaVersion: null,
+    traceId: null,
+    startedAt: null,
+    domain: null,
+    stage: null,
+    committedFiles: [],
+    ownerKeyBackupPath: null,
+    corrupt: false
+  };
+  try {
+    const value = readJsonObjectOrThrow(lockPath);
+    const stage = value.stage;
+    return {
+      ...base,
+      schemaVersion: typeof value.schema_version === "number" ? value.schema_version : null,
+      traceId: typeof value.trace_id === "string" ? value.trace_id : null,
+      startedAt: typeof value.started_at === "number" ? value.started_at : null,
+      domain: typeof value.domain === "string" ? value.domain : null,
+      stage: stage === "locked" || stage === "backup_saved" || stage === "committing" || stage === "committed" ? stage : null,
+      committedFiles: Array.isArray(value.committed) ? value.committed.filter((item) => typeof item === "string") : [],
+      ownerKeyBackupPath: typeof value.owner_key_backup === "string" ? value.owner_key_backup : null
+    };
+  } catch {
+    return { ...base, corrupt: true };
+  }
+}
+function acquireLock(lockPath, record) {
+  const fs = requireNode$1("node:fs");
+  try {
+    fs.writeFileSync(lockPath, jsonPretty(record), { mode: 384, flag: "wx" });
+  } catch (error) {
+    if (error.code === "EEXIST") {
+      throw new ActivationError(
+        "ACTIVATION_IN_PROGRESS",
+        `another activation holds the lock ${lockPath}; inspect it with provision status`,
+        { lock_file: lockPath, lock: readLock(lockPath) }
+      );
+    }
+    throw error;
+  }
+}
+function updateLock(lockPath, record) {
+  const fs = requireNode$1("node:fs");
+  const path = requireNode$1("node:path");
+  const temporary = path.join(path.dirname(lockPath), `.${ACTIVATION_LOCK_FILE_NAME}.${randomSuffix()}`);
+  try {
+    fs.writeFileSync(temporary, jsonPretty(record), { mode: 384, flag: "wx" });
+    fs.renameSync(temporary, lockPath);
+  } finally {
+    if (lstatOrNull(temporary)) {
+      fs.rmSync(temporary, { force: true });
+    }
+  }
+}
+function listSubdirectories(dirPath) {
+  const fs = requireNode$1("node:fs");
+  if (!isDirectory(dirPath))
+    return [];
+  return fs.readdirSync(dirPath, { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
+}
+function listFilesMatching(dirPath, predicate) {
+  const fs = requireNode$1("node:fs");
+  if (!isDirectory(dirPath))
+    return [];
+  return fs.readdirSync(dirPath, { withFileTypes: true }).filter((entry) => entry.isFile() && predicate(entry.name)).map((entry) => entry.name).sort();
+}
+function observeIdentity(nodeIdentityPath, problems) {
+  if (!isFile(nodeIdentityPath))
+    return { nodeIdentity: null, zoneDid: null, deviceDid: null };
+  try {
+    const value = readJsonObjectOrThrow(nodeIdentityPath);
+    if (value.schema !== NODE_IDENTITY_SCHEMA_V2) {
+      problems.push({
+        code: "NODE_IDENTITY_SCHEMA",
+        message: `etc/node_identity.json schema '${String(value.schema)}' is not ${NODE_IDENTITY_SCHEMA_V2}`
+      });
+      return { nodeIdentity: value, zoneDid: null, deviceDid: null };
+    }
+    const zoneDid = DID.fromStr(String(value.zone_did));
+    const deviceDid = DID.fromStr(String(value.device_did));
+    return { nodeIdentity: value, zoneDid, deviceDid };
+  } catch (error) {
+    problems.push({
+      code: "NODE_IDENTITY_UNREADABLE",
+      message: `etc/node_identity.json cannot be parsed: ${error instanceof Error ? error.message : String(error)}`
+    });
+    return { nodeIdentity: null, zoneDid: null, deviceDid: null };
+  }
+}
+function gatewayParamsIsPlaceholder(gatewayParamsPath) {
+  try {
+    const value = readJsonObjectOrThrow(gatewayParamsPath);
+    const params = value.params;
+    return !!params && typeof params === "object" && params.device_did === UNACTIVATED_GATEWAY_DEVICE_DID;
+  } catch {
+    return false;
+  }
+}
+async function validateActivationMaterials(rootDir, layout, identity, problems) {
+  var _a3, _b, _c;
+  const fs = requireNode$1("node:fs");
+  const nodeIdentity = identity.nodeIdentity;
+  if (!nodeIdentity || !identity.zoneDid || !identity.deviceDid) {
+    return { ownerDid: null, accessHostname: null };
+  }
+  const problem = (code, message) => problems.push({ code, message });
+  const zoneDid = identity.zoneDid;
+  const deviceDid = identity.deviceDid;
+  const ownerDid = String(nodeIdentity.owner_did);
+  const ownerKey = nodeIdentity.owner_public_key;
+  if (zoneDid.method !== "web") {
+    problem("IDENTITY_NOT_DID_WEB", `zone DID ${zoneDid.toString()} is not a did:web identity`);
+  }
+  if (ownerDid !== zoneDid.toString()) {
+    problem("OWNER_ZONE_MISMATCH", `owner DID ${ownerDid} differs from zone DID ${zoneDid.toString()}`);
+  }
+  const expectedDeviceDid = buildDeviceDid(String(nodeIdentity.device_name), zoneDid).toString();
+  if (deviceDid.toString() !== expectedDeviceDid) {
+    problem("DEVICE_DID_MISMATCH", `device DID ${deviceDid.toString()} is not ${expectedDeviceDid}`);
+  }
+  if (!ownerKey || typeof ownerKey !== "object" || typeof ownerKey.x !== "string") {
+    problem("OWNER_KEY_MISSING", "etc/node_identity.json owner_public_key is not an Ed25519 JWK");
+    return { ownerDid, accessHostname: null };
+  }
+  let startConfig = null;
+  try {
+    startConfig = readJsonObjectOrThrow(layout.startConfigPath);
+  } catch (error) {
+    problem("START_CONFIG_UNREADABLE", `etc/start_config.json cannot be parsed: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  let accessHostname = null;
+  const jwts = {};
+  if (startConfig) {
+    for (const key of ["user_name", "zone_name", "access_hostname", "admin_password_hash"]) {
+      if (typeof startConfig[key] !== "string" || startConfig[key].length === 0) {
+        problem("START_CONFIG_FIELD", `etc/start_config.json is missing ${key}`);
+      }
+    }
+    for (const key of ["boot_config_jwt", "device_doc_jwt", "device_mini_doc_jwt", "zone_document_jwt", "ood_jwt"]) {
+      if (typeof startConfig[key] === "string" && startConfig[key].length > 0) {
+        jwts[key] = startConfig[key];
+      } else {
+        problem("START_CONFIG_FIELD", `etc/start_config.json is missing ${key}`);
+      }
+    }
+    if (startConfig.zone_name !== zoneDid.toString()) {
+      problem("START_CONFIG_ZONE", `etc/start_config.json zone_name is not ${zoneDid.toString()}`);
+    }
+    if (typeof startConfig.access_hostname === "string") {
+      accessHostname = startConfig.access_hostname;
+      if (accessHostname !== zoneDid.toRawHostName()) {
+        problem("START_CONFIG_HOSTNAME", `etc/start_config.json access_hostname is not ${zoneDid.toRawHostName()}`);
+      }
+    }
+    const ownerDocument = startConfig.owner_document;
+    if (!ownerDocument || typeof ownerDocument !== "object") {
+      problem("START_CONFIG_OWNER", "etc/start_config.json is missing owner_document");
+    } else {
+      if (ownerDocument.id !== ownerDid) {
+        problem("START_CONFIG_OWNER", `owner_document id ${String(ownerDocument.id)} is not ${ownerDid}`);
+      }
+      const method = Array.isArray(ownerDocument.verificationMethod) ? ownerDocument.verificationMethod.find((item) => item && item.id === "#main_key") : void 0;
+      if (!method || getXFromJwkSafe(method.publicKeyJwk) !== ownerKey.x) {
+        problem("START_CONFIG_OWNER_KEY", "owner_document #main_key differs from node_identity owner_public_key");
+      }
+    }
+    if (jwts.ood_jwt && jwts.device_doc_jwt && jwts.ood_jwt !== jwts.device_doc_jwt) {
+      problem("START_CONFIG_OOD_JWT", "etc/start_config.json ood_jwt differs from device_doc_jwt");
+    }
+    for (const [key, secret] of [["private_key", true], ["device_private_key", true], ["sn_access_token", true], ["bns_evm_private_key", true]]) {
+      if (secret && key in startConfig)
+        problem("START_CONFIG_SECRET", `etc/start_config.json must not contain ${key}`);
+    }
+  }
+  const readText = (filePath, label) => {
+    try {
+      return String(fs.readFileSync(filePath, "utf8"));
+    } catch (error) {
+      problem("FILE_UNREADABLE", `${label} cannot be read: ${error instanceof Error ? error.message : String(error)}`);
+      return null;
+    }
+  };
+  const zoneDocumentJwt = ((_a3 = readText(layout.zoneDocumentJwtPath, "etc/zone_document.jwt")) == null ? void 0 : _a3.trim()) ?? null;
+  const deviceDocJwt = ((_b = readText(layout.deviceDocJwtPath, toPosixRelative(rootDir, layout.deviceDocJwtPath))) == null ? void 0 : _b.trim()) ?? null;
+  const deviceMiniDocJwt = ((_c = readText(layout.deviceMiniDocJwtPath, toPosixRelative(rootDir, layout.deviceMiniDocJwtPath))) == null ? void 0 : _c.trim()) ?? null;
+  if (zoneDocumentJwt && jwts.zone_document_jwt && zoneDocumentJwt !== jwts.zone_document_jwt) {
+    problem("ZONE_DOCUMENT_MISMATCH", "etc/zone_document.jwt differs from start_config zone_document_jwt");
+  }
+  if (deviceDocJwt && jwts.device_doc_jwt && deviceDocJwt !== jwts.device_doc_jwt) {
+    problem("DEVICE_DOCUMENT_MISMATCH", "device_doc.jwt differs from start_config device_doc_jwt");
+  }
+  if (deviceMiniDocJwt && jwts.device_mini_doc_jwt && deviceMiniDocJwt !== jwts.device_mini_doc_jwt) {
+    problem("DEVICE_MINI_DOCUMENT_MISMATCH", "device_mini_doc.jwt differs from start_config device_mini_doc_jwt");
+  }
+  const verify = async (jwt, label) => {
+    if (!jwt)
+      return null;
+    try {
+      return await verifyJwtEdDSA(jwt, ownerKey);
+    } catch (error) {
+      problem("JWT_SIGNATURE", `${label} is not signed by the owner key: ${error instanceof Error ? error.message : String(error)}`);
+      return null;
+    }
+  };
+  const boot = await verify(jwts.boot_config_jwt ?? null, "boot_config_jwt");
+  const device = await verify(deviceDocJwt ?? jwts.device_doc_jwt ?? null, "device_doc.jwt");
+  const mini = await verify(deviceMiniDocJwt ?? jwts.device_mini_doc_jwt ?? null, "device_mini_doc.jwt");
+  const zone = await verify(zoneDocumentJwt ?? jwts.zone_document_jwt ?? null, "zone_document.jwt");
+  const now = buckyosGetUnixTimestamp();
+  if (boot) {
+    if (boot.id !== zoneDid.toString())
+      problem("BOOT_DOCUMENT", "boot document id differs from zone DID");
+    if (!Array.isArray(boot.oods) || boot.oods.length === 0)
+      problem("BOOT_DOCUMENT", "boot document has no oods");
+    if ("sn" in boot)
+      problem("BOOT_DOCUMENT", "boot document must not reference an SN in offline mode");
+    if (typeof boot.exp !== "number" || boot.exp <= now)
+      problem("BOOT_DOCUMENT", "boot document has expired");
+    try {
+      const override = readJsonObjectOrThrow(layout.zoneBootOverridePath);
+      if (JSON.stringify(override) !== JSON.stringify(boot)) {
+        problem("BOOT_OVERRIDE_MISMATCH", `${toPosixRelative(rootDir, layout.zoneBootOverridePath)} differs from boot_config_jwt`);
+      }
+    } catch (error) {
+      problem("BOOT_OVERRIDE_UNREADABLE", `local boot override cannot be parsed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  let deviceKeyX = null;
+  if (device) {
+    if (device.id !== deviceDid.toString())
+      problem("DEVICE_DOCUMENT", "device document id differs from node_identity device_did");
+    if (device.owner !== ownerDid)
+      problem("DEVICE_DOCUMENT", "device document owner differs from owner DID");
+    if (device.zone_did !== zoneDid.toString())
+      problem("DEVICE_DOCUMENT", "device document zone_did differs from zone DID");
+    if (typeof device.exp !== "number" || device.exp <= now)
+      problem("DEVICE_DOCUMENT", "device document has expired");
+    const method = Array.isArray(device.verificationMethod) ? device.verificationMethod.find((item) => item && item.id === "#main_key") : void 0;
+    deviceKeyX = method ? getXFromJwkSafe(method.publicKeyJwk) : null;
+    if (!deviceKeyX)
+      problem("DEVICE_DOCUMENT", "device document has no #main_key");
+    try {
+      const didJson = readJsonObjectOrThrow(layout.didJsonPath);
+      if (didJson.id !== deviceDid.toString()) {
+        problem("DEVICE_DID_JSON", `${toPosixRelative(rootDir, layout.didJsonPath)} id differs from node_identity device_did`);
+      }
+    } catch (error) {
+      problem("DEVICE_DID_JSON", `device did.json cannot be parsed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  if (mini && deviceKeyX && mini.x !== deviceKeyX) {
+    problem("DEVICE_MINI_DOCUMENT", "device mini document key differs from device document key");
+  }
+  if (zone) {
+    if (zone.id !== zoneDid.toString())
+      problem("ZONE_DOCUMENT", "zone document id differs from zone DID");
+    if (zone.owner !== ownerDid)
+      problem("ZONE_DOCUMENT", "zone document owner differs from owner DID");
+    if (jwts.boot_config_jwt && zone.boot_jwt !== jwts.boot_config_jwt) {
+      problem("ZONE_DOCUMENT", "zone document boot_jwt differs from start_config boot_config_jwt");
+    }
+    if ("sn" in zone)
+      problem("ZONE_DOCUMENT", "zone document must not reference an SN in offline mode");
+  }
+  if (deviceKeyX) {
+    try {
+      const pem = String(fs.readFileSync(layout.devicePrivateKeyPath, "utf8"));
+      const x = await getPublicKeyXFromPrivatePem(pem);
+      if (x !== deviceKeyX)
+        problem("DEVICE_PRIVATE_KEY", "device private key does not match the device document key");
+    } catch (error) {
+      problem("DEVICE_PRIVATE_KEY", `device private key cannot be loaded: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    if (!isWindows()) {
+      const stats = lstatOrNull(layout.devicePrivateKeyPath);
+      if (stats && (stats.mode & 63) !== 0) {
+        problem("DEVICE_PRIVATE_KEY_MODE", "device private key is readable by other users");
+      }
+    }
+  }
+  return { ownerDid, accessHostname };
+}
+function getXFromJwkSafe(jwk) {
+  try {
+    return getXFromJwk(jwk);
+  } catch {
+    return null;
+  }
+}
+async function inspectActivationRoot(rootDir) {
+  const path = requireNode$1("node:path");
+  const root = path.resolve(String(rootDir ?? ""));
+  const observedAt = buckyosGetUnixTimestamp();
+  const problems = [];
+  const warnings = [];
+  const base = (state) => ({
+    rootDir: root,
+    state,
+    startupRequired: state === "configured",
+    observedAt,
+    zoneDid: null,
+    ownerDid: null,
+    deviceDid: null,
+    deviceName: null,
+    accessHostname: null,
+    files: [],
+    problems,
+    warnings,
+    lock: null
+  });
+  if (!isDirectory(root)) {
+    problems.push({ code: "ROOT_MISSING", message: `BUCKYOS_ROOT does not exist: ${root}` });
+    return base("not_installed");
+  }
+  const missingDirs = ["bin", "etc"].filter((name) => !isDirectory(path.join(root, name)));
+  if (missingDirs.length > 0) {
+    for (const name of missingDirs) {
+      problems.push({ code: "INSTALL_INCOMPLETE", message: `installed BuckyOS directory is missing: ${path.join(root, name)}` });
+    }
+    return base("not_installed");
+  }
+  const etcDir = path.join(root, "etc");
+  const lock = readLock(path.join(etcDir, ACTIVATION_LOCK_FILE_NAME));
+  const identity = observeIdentity(path.join(etcDir, "node_identity.json"), problems);
+  let zoneDid = identity.zoneDid;
+  let deviceDid = identity.deviceDid;
+  const publicDirs = listSubdirectories(path.join(root, "local", "identity"));
+  const securityDirs = listSubdirectories(path.join(root, "security"));
+  const zoneJsonFiles = listFilesMatching(etcDir, (name) => name.endsWith(".zone.json"));
+  if (!zoneDid && zoneJsonFiles.length > 0) {
+    const host = zoneJsonFiles[0].slice(0, -".zone.json".length);
+    if (!host.endsWith(".did"))
+      zoneDid = new DID("web", host);
+  }
+  if (!deviceDid && zoneDid)
+    deviceDid = buildDeviceDid(ACTIVATION_DEVICE_NAME, zoneDid);
+  const strayIdentityDirs = [...publicDirs, ...securityDirs].filter(
+    (name) => !deviceDid || name !== path.basename(deviceIdentityPathsForRoots(identityRootsFor(root), deviceDid).publicDir)
+  );
+  const files = [];
+  let layout = null;
+  if (zoneDid && deviceDid) {
+    layout = layoutFor(root, zoneDid, deviceDid);
+    for (const planned of plannedFiles(root, layout)) {
+      files.push({ ...publicEntry(planned), present: isFile(planned.absolutePath) });
+    }
+  } else {
+    for (const [name, role, required] of [
+      ["node_identity.json", "node_identity", true],
+      ["start_config.json", "start_config", true],
+      [ZONE_DOCUMENT_JWT_FILE_NAME, "zone_document_jwt", true],
+      ["node_gateway_params.json", "gateway_params", true],
+      [ZONE_DNS_RECORDS_FILE_NAME, "dns_records", false]
+    ]) {
+      files.push({ path: `etc/${name}`, role, required, secret: false, present: isFile(path.join(etcDir, name)) });
+    }
+    for (const name of zoneJsonFiles) {
+      files.push({ path: `etc/${name}`, role: "zone_boot_override", required: true, secret: false, present: true });
+    }
+  }
+  const gatewayEntry = files.find((file) => file.role === "gateway_params");
+  const gatewayPlaceholder = (gatewayEntry == null ? void 0 : gatewayEntry.present) === true && gatewayParamsIsPlaceholder(path.join(etcDir, "node_gateway_params.json"));
+  if (gatewayEntry && gatewayPlaceholder)
+    gatewayEntry.present = false;
+  const markers = files.filter((file) => file.present && file.role !== "dns_records");
+  const requiredMissing = files.filter((file) => file.required && !file.present);
+  const status = base("unactivated");
+  status.files = files;
+  status.lock = lock;
+  status.zoneDid = (zoneDid == null ? void 0 : zoneDid.toString()) ?? null;
+  status.deviceDid = (deviceDid == null ? void 0 : deviceDid.toString()) ?? null;
+  status.deviceName = identity.nodeIdentity ? String(identity.nodeIdentity.device_name) : deviceDid ? ACTIVATION_DEVICE_NAME : null;
+  status.ownerDid = identity.nodeIdentity ? String(identity.nodeIdentity.owner_did) : null;
+  if (lock) {
+    warnings.push(
+      lock.corrupt ? `activation lock ${lock.path} exists but cannot be parsed` : `activation lock ${lock.path} exists (stage=${lock.stage ?? "unknown"}, committed=${lock.committedFiles.length})`
+    );
+  }
+  for (const name of strayIdentityDirs) {
+    warnings.push(`unexpected identity directory: ${name}`);
+  }
+  if (markers.length === 0 && strayIdentityDirs.length === 0 && !lock && problems.length === 0) {
+    status.state = "unactivated";
+    return status;
+  }
+  if (requiredMissing.length > 0 || !layout || strayIdentityDirs.length > 0 && markers.length === 0) {
+    for (const file of requiredMissing) {
+      problems.push({ code: "FILE_MISSING", message: `${file.path} is missing` });
+    }
+    status.state = "partial";
+    return status;
+  }
+  const validated = await validateActivationMaterials(root, layout, identity, problems);
+  status.ownerDid = validated.ownerDid ?? status.ownerDid;
+  status.accessHostname = validated.accessHostname ?? (zoneDid ? zoneDid.toRawHostName() : null);
+  if (lock && lock.stage !== "committed") {
+    problems.push({
+      code: "ACTIVATION_INTERRUPTED",
+      message: `activation lock is still at stage ${lock.stage ?? "unknown"}; the commit did not finish cleanly`
+    });
+  }
+  status.state = problems.length === 0 ? "configured" : "invalid";
+  status.startupRequired = status.state === "configured";
+  return status;
+}
+function inspectOwnerKeyBackupTarget(backupPath, problems) {
+  const path = requireNode$1("node:path");
+  const directory = path.dirname(backupPath);
+  const directoryExists = isDirectory(directory);
+  const exists = lstatOrNull(backupPath) !== null;
+  if (!directoryExists) {
+    problems.push({
+      code: "OWNER_KEY_BACKUP_DIRECTORY_MISSING",
+      message: `owner key backup directory does not exist: ${directory}`
+    });
+  }
+  if (exists) {
+    problems.push({ code: "OWNER_KEY_BACKUP_EXISTS", message: `owner key backup already exists: ${backupPath}` });
+  }
+  return { path: backupPath, directoryExists, exists };
+}
+function targetStateProblem(status) {
+  if (status.lock) {
+    return {
+      code: "ACTIVATION_IN_PROGRESS",
+      message: `activation lock exists: ${status.lock.path} (stage=${status.lock.stage ?? "unknown"})`
+    };
+  }
+  switch (status.state) {
+    case "unactivated":
+      return null;
+    case "not_installed":
+      return { code: "TARGET_NOT_INSTALLED", message: `BuckyOS is not installed at ${status.rootDir}` };
+    case "configured":
+      return { code: "TARGET_ALREADY_ACTIVATED", message: `BuckyOS is already activated at ${status.rootDir}` };
+    case "invalid":
+      return {
+        code: "TARGET_ALREADY_ACTIVATED",
+        message: `BuckyOS activation material exists but is invalid at ${status.rootDir}; it is not overwritten`
+      };
+    case "partial":
+      return {
+        code: "TARGET_PARTIALLY_ACTIVATED",
+        message: `BuckyOS is partially activated at ${status.rootDir}; remove the partial material or reinstall`
+      };
+  }
+}
+async function checkOfflineActivation(options) {
+  const params = normalizeActivationParams(options);
+  const status = await inspectActivationRoot(params.rootDir);
+  const problems = [];
+  const stateProblem = targetStateProblem(status);
+  if (stateProblem)
+    problems.push(stateProblem);
+  const ownerKeyBackup = inspectOwnerKeyBackupTarget(params.ownerKeyBackupPath, problems);
+  const layout = layoutFor(params.rootDir, params.zoneDid, params.deviceDid);
+  return {
+    ready: problems.length === 0,
+    rootDir: params.rootDir,
+    state: status.state,
+    domain: params.domain,
+    ownerName: params.ownerName,
+    ownerDid: params.ownerDid.toString(),
+    zoneDid: params.zoneDid.toString(),
+    deviceDid: params.deviceDid.toString(),
+    deviceName: ACTIVATION_DEVICE_NAME,
+    accessHostname: params.domain,
+    rtcpPort: params.rtcpPort,
+    guestAccess: params.guestAccess,
+    publicIp: params.publicIp ?? null,
+    dnsRecords: buildActivationDnsRecords(params.domain, params.publicIp),
+    ownerKeyBackup,
+    plannedFiles: plannedFiles(params.rootDir, layout).map(publicEntry),
+    problems,
+    status
+  };
+}
+function precheckError(precheck) {
+  const first = precheck.problems[0];
+  return new ActivationError(
+    precheck.problems.length === 1 ? first.code : "ACTIVATION_PRECHECK_FAILED",
+    precheck.problems.length === 1 ? first.message : `activation precheck failed: ${precheck.problems.map((item) => item.message).join("; ")}`,
+    { state: precheck.state, problems: precheck.problems }
+  );
+}
+async function generateMaterial(params, adminPassword, ownerKeyPair, deviceKeyPair) {
+  const now = buckyosGetUnixTimestamp();
+  const exp = now + ACTIVATION_DOCUMENT_VALIDITY_SECONDS;
+  const ownerJwk = createJwkByX(ownerKeyPair.publicKeyX);
+  const deviceJwk = createJwkByX(deviceKeyPair.publicKeyX);
+  const ownerDidStr = params.ownerDid.toString();
+  const zoneDidStr = params.zoneDid.toString();
+  const deviceDidStr = params.deviceDid.toString();
+  const ownerDoc = newOwnerDocument({
+    did: params.ownerDid,
+    name: params.ownerName,
+    displayName: params.ownerName,
+    publicKeyJwk: ownerJwk,
+    now
+  });
+  ownerDoc.exp = exp;
+  ownerDocumentSetDefaultZoneDid(ownerDoc, params.zoneDid);
+  const ownerDocument = ownerDocumentToOrderedJson(ownerDoc);
+  const oodString = oodDescriptionToString(parseOODDescription(`${ACTIVATION_DEVICE_NAME}@${ACTIVATION_NET_ID}`));
+  const bootJwt = await encodeZoneBootDocument(
+    newZoneBootDocument({ id: params.zoneDid, oods: [oodString], exp }),
+    ownerKeyPair.privateKeyPem
+  );
+  const bootDocument = decodeJwtClaimWithoutVerify(bootJwt);
+  const deviceDoc = newDeviceDocumentByJwkWithDid(
+    ACTIVATION_DEVICE_NAME,
+    deviceJwk,
+    params.deviceDid,
+    now
+  );
+  delete deviceDoc.support_container;
+  deviceDoc.owner = ownerDidStr;
+  deviceDoc.zone_did = zoneDidStr;
+  deviceDoc.net_id = ACTIVATION_NET_ID;
+  deviceDoc.rtcp_port = params.rtcpPort;
+  deviceDoc.iat = now;
+  deviceDoc.exp = exp;
+  deviceDoc.version_seq = 0;
+  const deviceDocument = deviceDocumentToOrderedJson(deviceDoc);
+  const deviceDocJwt = await encodeDeviceDocument(deviceDoc, ownerKeyPair.privateKeyPem);
+  const miniDoc = newDeviceMiniDocumentByDeviceDocument(deviceDoc);
+  miniDoc.iat = now;
+  const deviceMiniDocJwt = await deviceMiniDocumentToJwt(miniDoc, ownerKeyPair.privateKeyPem);
+  const zoneDoc = newZoneDocument({
+    id: params.zoneDid,
+    ownerDid: params.ownerDid,
+    publicKeyJwk: ownerJwk,
+    now
+  });
+  zoneDoc.hostname = params.domain;
+  zoneDoc.owner = ownerDidStr;
+  zoneDoc.oods = [oodString];
+  zoneDoc.boot_jwt = bootJwt;
+  zoneDoc.devices = { [ACTIVATION_DEVICE_NAME]: deviceDocument };
+  zoneDoc.mini_device_jwts = { [ACTIVATION_DEVICE_NAME]: deviceMiniDocJwt };
+  zoneDoc.iat = now;
+  zoneDoc.exp = exp;
+  zoneDoc.version_seq = 0;
+  delete zoneDoc.sn;
+  const zoneDocumentJwt = await encodeZoneDocument(zoneDoc, ownerKeyPair.privateKeyPem);
+  if (new TextEncoder().encode(zoneDocumentJwt).length >= MAX_INLINE_DOCUMENT_BYTES) {
+    throw new ActivationError(
+      "ZONE_DOCUMENT_TOO_LARGE",
+      `zone document JWT exceeds the ${MAX_INLINE_DOCUMENT_BYTES} byte inline limit`
+    );
+  }
+  const nodeIdentity = newLocalNodeIdentityConfig({
+    zoneDid: params.zoneDid,
+    ownerDid: params.ownerDid,
+    ownerPublicKey: ownerJwk,
+    deviceName: ACTIVATION_DEVICE_NAME,
+    deviceDid: params.deviceDid,
+    zoneIat: now
+  });
+  const startConfig = {
+    user_name: params.ownerName,
+    owner_document: ownerDocument,
+    zone_name: zoneDidStr,
+    access_hostname: params.domain,
+    zone_document_jwt: zoneDocumentJwt,
+    boot_config_jwt: bootJwt,
+    device_doc_jwt: deviceDocJwt,
+    device_mini_doc_jwt: deviceMiniDocJwt,
+    ood_jwt: deviceDocJwt,
+    admin_password_hash: hashAdminPassword(params.ownerName, adminPassword),
+    guest_access: params.guestAccess,
+    friend_passcode: "",
+    enabled_features: {},
+    ai_provider_config: {},
+    jarvis_msg_tunnel_config: {}
+  };
+  return {
+    documentIat: now,
+    documentExp: exp,
+    ownerDocument,
+    bootDocument,
+    bootJwt,
+    deviceDocument,
+    deviceDocJwt,
+    deviceMiniDocJwt,
+    zoneDocumentJwt,
+    nodeIdentity,
+    startConfig,
+    gatewayParams: { params: { device_did: deviceDidStr } },
+    dnsRecords: buildActivationDnsRecords(params.domain, params.publicIp)
+  };
+}
+function fileContent(file, material, deviceKeyPair, domain) {
+  switch (file.role) {
+    case "device_private_key":
+      return deviceKeyPair.privateKeyPem;
+    case "device_document":
+      return jsonPretty(material.deviceDocument);
+    case "device_document_jwt":
+      return material.deviceDocJwt;
+    case "device_mini_document_jwt":
+      return material.deviceMiniDocJwt;
+    case "zone_boot_override":
+      return jsonPretty(material.bootDocument);
+    case "zone_document_jwt":
+      return material.zoneDocumentJwt;
+    case "dns_records":
+      return jsonPretty({ hostname: domain, records: material.dnsRecords });
+    case "start_config":
+      return jsonPretty(material.startConfig);
+    case "gateway_params":
+      return jsonPretty(material.gatewayParams);
+    case "node_identity":
+      return jsonPretty(material.nodeIdentity);
+  }
+}
+function saveOwnerKeyBackup(backupPath, privateKeyPem) {
+  const fs = requireNode$1("node:fs");
+  fs.writeFileSync(backupPath, privateKeyPem, { mode: 384, flag: "wx" });
+  if (!isWindows()) {
+    fs.chmodSync(backupPath, 384);
+  }
+}
+function recoverySteps(lockPath, backupPath, committed) {
+  return [
+    `inspect the target with: buckyos provision status --root <root>`,
+    committed.length > 0 ? `the following files were committed and are left in place: ${committed.join(", ")}` : "no activation file was committed to the target root",
+    `the owner private key backup was saved at ${backupPath}; keep it or delete it before retrying (the backup path must not exist)`,
+    `remove the committed files and the lock file ${lockPath} (or reinstall BuckyOS), then run provision check again`,
+    "the generated identity is not deleted or regenerated automatically"
+  ];
+}
+async function activateOfflineZone(options) {
+  const fs = requireNode$1("node:fs");
+  const params = normalizeActivationParams(options);
+  const adminPassword = validateAdminPassword(options.adminPassword);
+  const precheck = await checkOfflineActivation(options);
+  if (!precheck.ready)
+    throw precheckError(precheck);
+  const ownerKeyPair = options.ownerKeyPair ?? generateProvisionKeyPair();
+  const deviceKeyPair = options.deviceKeyPair ?? generateProvisionKeyPair();
+  const material = await generateMaterial(params, adminPassword, ownerKeyPair, deviceKeyPair);
+  const layout = layoutFor(params.rootDir, params.zoneDid, params.deviceDid);
+  const files = plannedFiles(params.rootDir, layout);
+  const warnings = [];
+  const lockRecord = {
+    schema_version: ACTIVATION_LOCK_SCHEMA_VERSION,
+    trace_id: options.traceId ?? null,
+    started_at: buckyosGetUnixTimestamp(),
+    domain: params.domain,
+    owner_key_backup: params.ownerKeyBackupPath,
+    stage: "locked",
+    committed: []
+  };
+  acquireLock(layout.lockPath, lockRecord);
+  const releaseLock = () => {
+    try {
+      fs.rmSync(layout.lockPath, { force: true });
+    } catch {
+    }
+  };
+  let recheck;
+  try {
+    recheck = await checkOfflineActivation(options);
+  } catch (error) {
+    releaseLock();
+    throw error;
+  }
+  const recheckProblems = recheck.problems.filter((problem) => problem.code !== "ACTIVATION_IN_PROGRESS");
+  if (recheckProblems.length > 0) {
+    releaseLock();
+    throw precheckError({ ...recheck, problems: recheckProblems });
+  }
+  for (const file of files) {
+    if (lstatOrNull(file.absolutePath)) {
+      releaseLock();
+      throw new ActivationError(
+        "TARGET_PARTIALLY_ACTIVATED",
+        `activation file already exists: ${file.path}`,
+        { state: "partial", problems: [{ code: "FILE_EXISTS", message: `${file.path} already exists` }] }
+      );
+    }
+  }
+  try {
+    saveOwnerKeyBackup(params.ownerKeyBackupPath, ownerKeyPair.privateKeyPem);
+  } catch (error) {
+    releaseLock();
+    const code = error.code;
+    throw new ActivationError(
+      code === "EEXIST" ? "OWNER_KEY_BACKUP_EXISTS" : "OWNER_KEY_BACKUP_FAILED",
+      `owner key backup could not be saved: ${error instanceof Error ? error.message : String(error)}`,
+      { owner_key_backup: { path: params.ownerKeyBackupPath, saved: false }, committed_files: [] }
+    );
+  }
+  lockRecord.stage = "backup_saved";
+  const committed = [];
+  const failCommit = (error, stage) => {
+    throw new ActivationError(
+      "ACTIVATION_COMMIT_FAILED",
+      `activation commit failed at ${stage}: ${error instanceof Error ? error.message : String(error)}`,
+      {
+        stage,
+        owner_key_backup: { path: params.ownerKeyBackupPath, saved: true },
+        committed_files: committed,
+        lock_file: layout.lockPath,
+        recovery: recoverySteps(layout.lockPath, params.ownerKeyBackupPath, committed.map((file) => file.path))
+      }
+    );
+  };
+  try {
+    updateLock(layout.lockPath, lockRecord);
+  } catch (error) {
+    failCommit(error, "lock:backup_saved");
+  }
+  lockRecord.stage = "committing";
+  for (const file of files) {
+    const content = fileContent(file, material, deviceKeyPair, params.domain);
+    try {
+      commitFile(file.absolutePath, content, file.mode, file.dirMode);
+    } catch (error) {
+      failCommit(error, file.path);
+    }
+    committed.push({ ...publicEntry(file), sha256: file.secret ? null : sha256Hex(content) });
+    lockRecord.committed = committed.map((item) => item.path);
+    try {
+      updateLock(layout.lockPath, lockRecord);
+    } catch (error) {
+      failCommit(error, `lock:${file.path}`);
+    }
+  }
+  lockRecord.stage = "committed";
+  try {
+    updateLock(layout.lockPath, lockRecord);
+    fs.rmSync(layout.lockPath, { force: true });
+  } catch (error) {
+    warnings.push(
+      `activation completed but the lock ${layout.lockPath} could not be removed: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+  return {
+    rootDir: params.rootDir,
+    state: "configured",
+    startupRequired: true,
+    domain: params.domain,
+    ownerName: params.ownerName,
+    ownerDid: params.ownerDid.toString(),
+    zoneDid: params.zoneDid.toString(),
+    deviceDid: params.deviceDid.toString(),
+    deviceName: ACTIVATION_DEVICE_NAME,
+    accessHostname: params.domain,
+    rtcpPort: params.rtcpPort,
+    guestAccess: params.guestAccess,
+    publicIp: params.publicIp ?? null,
+    documentIat: material.documentIat,
+    documentExp: material.documentExp,
+    ownerKeyBackup: { path: params.ownerKeyBackupPath, saved: true },
+    dnsRecords: material.dnsRecords,
+    committedFiles: committed,
+    warnings
+  };
 }
 const PROVISION_BASE_TIME = 1743478939;
 const DEFAULT_EXP_YEARS = 10;
@@ -14831,6 +15860,13 @@ function buildDidDocs(outputDir, options) {
   return written;
 }
 export {
+  ACTIVATION_DEFAULT_RTCP_PORT,
+  ACTIVATION_DEVICE_NAME,
+  ACTIVATION_DOCUMENT_VALIDITY_SECONDS,
+  ACTIVATION_LOCK_FILE_NAME,
+  ACTIVATION_MIN_PASSWORD_LENGTH,
+  ACTIVATION_NET_ID,
+  ActivationError,
   DEVICE_DOC_JWT_FILE_NAME,
   DEVICE_MINI_DOC_JWT_FILE_NAME,
   DEV_TEST_EVM_ACCOUNTS,
@@ -14850,11 +15886,16 @@ export {
   NODE_IDENTITY_SCHEMA_V2,
   PROVISION_BASE_TIME,
   PROVISION_DEFAULT_EXP,
+  ZONE_DNS_RECORDS_FILE_NAME,
+  ZONE_DOCUMENT_JWT_FILE_NAME,
+  activateOfflineZone,
   assertProvisionRuntime,
   bindDeviceDocumentDid,
+  buildActivationDnsRecords,
   buildDeviceDid,
   buildDidDocs,
   calcPkgMetaObjId,
+  checkOfflineActivation,
   createCa,
   createCertFromCa,
   createIdentityCertFromCa,
@@ -14871,13 +15912,16 @@ export {
   didWebDocumentUrl,
   encodeIdentityDirName,
   ensureCa,
+  generateProvisionKeyPair,
   getDevTestEvmAccountByIndex,
   getDevTestEvmAccountByUsername,
   getDevTestKeyPairById,
   getDevTestKeyPairByIndex,
+  hashAdminPassword,
   identityDirName,
   identityFileName,
   identityRawHostUri,
+  inspectActivationRoot,
   loadDeviceDocJwtForRoots,
   loadDeviceMiniDocJwtForRoots,
   loadLocalDeviceDocumentForRoots,
@@ -14892,6 +15936,11 @@ export {
   saveNodeGatewayParams,
   setPkgMeta,
   uniqueNameToDid,
+  validateAdminPassword,
+  validateOwnerName,
+  validatePublicIp,
+  validateRtcpPort,
+  validateZoneDomain,
   versionToInt
 };
 //# sourceMappingURL=provision.mjs.map

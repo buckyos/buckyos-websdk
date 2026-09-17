@@ -132,6 +132,10 @@ export interface ToolHost {
     options: { read?: boolean; write?: boolean; createNew?: boolean; mode?: number },
   ): Promise<HostFile>
 
+  // Policy check without a filesystem side effect: rejects paths outside the
+  // distribution policy (or escaping it through symlinks) with PermissionDenied.
+  assertAccess(path: string, operation: 'read' | 'write'): Promise<void>
+
   createHash(algorithm: 'sha256'): HostHash
   gzipFile(source: string, destination: string): Promise<void>
   run(command: string, args: string[]): Promise<HostCommandOutput>
@@ -226,6 +230,9 @@ export function buildDistributionPolicy(options: PolicyOptions): DistributionPol
     writePaths.add(path.join(buckyosRoot, 'cache', 'control_panel', 'pikg_staging', 'incoming'))
   }
   for (const candidate of parsed.read) readPaths.add(resolveInputPath(candidate, cwd, path))
+  for (const candidate of parsed.readParents) {
+    readPaths.add(path.dirname(resolveInputPath(candidate, cwd, path)))
+  }
   for (const candidate of parsed.write) writePaths.add(resolveInputPath(candidate, cwd, path))
   for (const candidate of parsed.writeParents) {
     writePaths.add(path.dirname(resolveInputPath(candidate, cwd, path)))
@@ -234,7 +241,7 @@ export function buildDistributionPolicy(options: PolicyOptions): DistributionPol
     ? ['docker']
     : []
   const network = parsed.module !== undefined &&
-    !['pikg', 'command', 'completion', 'config'].includes(parsed.module)
+    !['pikg', 'command', 'completion', 'config', 'provision'].includes(parsed.module)
   const allowedEnvironment = options.distribution === 'developer'
     ? TOOL_ENVIRONMENT_NAMES.filter((name) => name !== 'BUCKYOS_ROOT')
     : TOOL_ENVIRONMENT_NAMES
@@ -267,12 +274,14 @@ function resolveInputPath(value: string, cwd: string, path: HostPath): string {
 
 function collectArgumentPaths(argv: string[]): {
   read: string[]
+  readParents: string[]
   write: string[]
   writeParents: string[]
   module?: string
   verb?: string
 } {
   const read: string[] = []
+  const readParents: string[] = []
   const write: string[] = []
   const writeParents: string[] = []
   let module: string | undefined
@@ -342,6 +351,14 @@ function collectArgumentPaths(argv: string[]): {
       } else if (name === 'path') write.push(value)
       else if (name === 'file' && module === 'system-config' && verb === 'set-file') {
         read.push(value)
+      } else if (name === 'root' && module === 'provision') {
+        // status/check read the target root; activate also writes it.
+        read.push(value)
+        if (verb === 'activate') write.push(value)
+      } else if (name === 'owner-key-backup' && module === 'provision') {
+        // check inspects the backup location; activate creates the file there.
+        readParents.push(value)
+        if (verb === 'activate') writeParents.push(value)
       } else if (!valueOptions.has(name)) continue
       continue
     }
@@ -353,7 +370,7 @@ function collectArgumentPaths(argv: string[]): {
       else if (verb === 'build' || verb === 'clean') writeParents.push(token)
     }
   }
-  return { read, write, writeParents, module, verb }
+  return { read, readParents, write, writeParents, module, verb }
 }
 
 export function policyView(host: ToolHost): Record<string, unknown> {

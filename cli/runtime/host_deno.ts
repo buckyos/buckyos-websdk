@@ -237,6 +237,10 @@ export class DenoHost implements ToolHost {
     }
   }
 
+  async assertAccess(path: string, operation: 'read' | 'write'): Promise<void> {
+    await this.assertPath(path, operation)
+  }
+
   createHash(_algorithm: 'sha256') {
     const hash = denoCreateHash('sha256')
     return {

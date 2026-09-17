@@ -10,6 +10,12 @@
 //   setPkgMeta         <-> buckycli set_pkg_meta
 //   buildDidDocs       <-> buckycli build_did_docs
 //
+// Production offline activation (single OOD, did:web, no SN/BNS) lives in
+// provision_activate.ts and is re-exported below:
+//   inspectActivationRoot  <-> buckyos provision status
+//   checkOfflineActivation <-> buckyos provision check
+//   activateOfflineZone    <-> buckyos provision activate
+//
 // Node identity uses schema v2 (see device_identity.ts): createNodeConfigs
 // writes node_identity.json (metadata only) + node_gateway_params.json into
 // the node dir, and the device document / jwts / private key into the
@@ -108,6 +114,49 @@ export type {
   X509PathMatch,
   X509Paths,
 } from './cert'
+
+// Production offline activation API (never uses dev/test keys or defaults).
+export {
+  ACTIVATION_DEFAULT_RTCP_PORT,
+  ACTIVATION_DEVICE_NAME,
+  ACTIVATION_DOCUMENT_VALIDITY_SECONDS,
+  ACTIVATION_LOCK_FILE_NAME,
+  ACTIVATION_MIN_PASSWORD_LENGTH,
+  ACTIVATION_NET_ID,
+  ActivationError,
+  activateOfflineZone,
+  buildActivationDnsRecords,
+  checkOfflineActivation,
+  generateProvisionKeyPair,
+  hashAdminPassword,
+  inspectActivationRoot,
+  validateAdminPassword,
+  validateOwnerName,
+  validatePublicIp,
+  validateRtcpPort,
+  validateZoneDomain,
+  ZONE_DNS_RECORDS_FILE_NAME,
+  ZONE_DOCUMENT_JWT_FILE_NAME,
+} from './provision_activate'
+export type {
+  ActivationDnsRecord,
+  ActivationErrorDetails,
+  ActivationFileEntry,
+  ActivationFileRole,
+  ActivationLockInfo,
+  ActivationLockStage,
+  ActivationProblem,
+  ActivationState,
+  ActivationStatus,
+  CommittedActivationFile,
+  ObservedActivationFile,
+  OfflineActivationCheckOptions,
+  OfflineActivationOptions,
+  OfflineActivationPrecheck,
+  OfflineActivationResult,
+  OwnerKeyBackupTarget,
+  ProvisionKeyPair,
+} from './provision_activate'
 
 // Dev-only deterministic keys/accounts; never use in production.
 export {

@@ -33,6 +33,7 @@ import { type AppModuleDependencies, createAppModule } from '../modules/app.ts'
 import { createDiagnosticModule, type DiagnosticModuleDependencies } from '../modules/diagnostic.ts'
 import { createLogModule, type LogModuleDependencies } from '../modules/log.ts'
 import { createTaskModule } from '../modules/task.ts'
+import { createProvisionModule, type ProvisionModuleDependencies } from '../modules/provision.ts'
 import {
   distributionManifestView,
   getHost,
@@ -68,6 +69,7 @@ export interface ApplicationDependencies {
   app?: AppModuleDependencies
   log?: LogModuleDependencies
   diagnostic?: DiagnosticModuleDependencies
+  provision?: ProvisionModuleDependencies
 }
 
 export class BuckyOSToolApplication {
@@ -91,6 +93,7 @@ export class BuckyOSToolApplication {
       dependencies.app,
       dependencies.log,
       dependencies.diagnostic,
+      dependencies.provision,
     )
     this.#environment = dependencies.environment ?? readEnvironment()
     this.#cwd = dependencies.cwd ?? getHost().cwd()
@@ -180,6 +183,7 @@ export class BuckyOSToolApplication {
         await this.#stdio.stdout(`${commandHelp(this.registry, command)}\n`)
         return EXIT_SUCCESS
       }
+      if (command.execution === 'local') assertNoSessionOptions(invocation.global, command)
       const setup = await this.#resolveForCommand(command, invocation.global)
       const inputObject = invocation.global.input
         ? await this.#readInputObject(invocation.global.input)
@@ -456,6 +460,7 @@ export function createRegistry(
   appDependencies?: AppModuleDependencies,
   logDependencies?: LogModuleDependencies,
   diagnosticDependencies?: DiagnosticModuleDependencies,
+  provisionDependencies?: ProvisionModuleDependencies,
 ): CommandRegistry {
   const registry = new CommandRegistry()
   for (const module of createCoreModules(registry)) registry.register(module)
@@ -467,7 +472,30 @@ export function createRegistry(
   registry.register(createTaskModule())
   registry.register(createLogModule(logDependencies))
   registry.register(createDiagnosticModule(diagnosticDependencies))
+  registry.register(createProvisionModule(provisionDependencies))
   return registry
+}
+
+// Commands that declare execution=local run without a Zone, profile, identity,
+// or network; online-only session options must not silently retarget them.
+function assertNoSessionOptions(global: GlobalOptions, command: RegisteredCommand): void {
+  for (
+    const [name, value] of [
+      ['profile', global.profile],
+      ['zone', global.zone],
+      ['endpoint', global.endpoint],
+      ['identity', global.identity],
+      ['session-token', global.sessionToken],
+      ['session-token-file', global.sessionTokenFile],
+    ] as const
+  ) {
+    if (value !== undefined) {
+      throw new UsageError(
+        'ARGUMENT_CONFLICT',
+        `--${name} cannot be combined with the local command ${command.module} ${command.verb}`,
+      )
+    }
+  }
 }
 
 const unavailableClients: ServiceClientRegistry = {

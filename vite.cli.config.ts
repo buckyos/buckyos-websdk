@@ -17,7 +17,9 @@ export default defineConfig({
       fileName: () => 'cli.mjs',
     },
     rollupOptions: {
-      external: (id) => id === 'buckyos/node' || builtins.has(id) || id.startsWith('node:'),
+      external: (id) =>
+        id === 'buckyos/node' || id === 'buckyos/provision' || builtins.has(id) ||
+        id.startsWith('node:'),
     },
   },
 })

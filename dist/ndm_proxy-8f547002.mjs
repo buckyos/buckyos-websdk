@@ -35,7 +35,7 @@ var __privateMethod = (obj, member, method) => {
   return method;
 };
 var _listener, _listeners, _cancelled, _allowInsecure, _gzip, _headers, _method, _timeout, _url, _body, _bodyType, _creds, _preflight, _process, _retry, _signal, _throttle, _getUrlFunc, _send, send_fn, _statusCode, _statusMessage, _headers2, _body2, _request, _error, _names, _data, _dataLength, _writeData, writeData_fn, _data2, _offset, _bytesRead, _parent, _maxInflation, _incrementBytesRead, incrementBytesRead_fn, _peekBytes, peekBytes_fn, _r, _s, _v, _networkV, _privateKey, _options, _type, _to, _data3, _nonce, _gasLimit, _gasPrice, _maxPriorityFeePerGas, _maxFeePerGas, _value, _chainId, _sig, _accessList, _maxFeePerBlobGas, _blobVersionedHashes, _kzg, _blobs, _auths, _blobWrapperVersion, _getSerialized, getSerialized_fn, _types, _fullTypes, _encoderCache, _getEncoder, getEncoder_fn, _offset2, _tokens, _subTokenString, subTokenString_fn, _walkAsync, walkAsync_fn, _getCoder, getCoder_fn, _errors, _events, _functions, _abiCoder, _getFunction, getFunction_fn, _getEvent, getEvent_fn, _transactions, _logs, _startBlock, _iface, _iface2, _filter, _a, _supports2544, _resolver, _fetch, fetch_fn, _getResolver, getResolver_fn, _url2, _processFunc, _name, _chainId2, _plugins, _provider, _poller, _interval, _blockNumber, _poll, poll_fn, _provider2, _poll2, _running, _tag, _lastBlock, _filter2, _hash, _provider3, _filter3, _poller2, _running2, _blockNumber2, _poll3, poll_fn2, _subs, _plugins2, _pausedState, _destroyed, _networkPromise, _anyNetwork, _performCache, _lastBlockNumber, _nextTimer, _timers, _disableCcipRead, _requestRate, _requestTimes, _options2, _getDelay, getDelay_fn, _perform, perform_fn, _call, call_fn, _checkNetwork, checkNetwork_fn, _getAccountValue, getAccountValue_fn, _getBlock, getBlock_fn, _hasSub, hasSub_fn, _getSub, getSub_fn, _throwUnsupported, throwUnsupported_fn, _provider4, _filterIdPromise, _poller3, _running3, _network, _hault, _poll4, poll_fn3, _teardown, teardown_fn, _event, _options3, _nextId, _payloads, _drainTimer, _notReady, _network2, _pendingDetectNetwork, _scheduleDrain, scheduleDrain_fn, _pollingInterval, _connect, _signingKey, _data4, _checksum, _words, _loadWords, loadWords_fn, _account, account_fn, _fromSeed, fromSeed_fn, _fromAccount, fromAccount_fn;
-import { u as ht, v as DID, o as parseBuckyOSOwnerDocument, w as canonicalize, x as signJwtEdDSA, O as ObjId, C as ChunkId, F as FileObject, y as sha256Bytes, z as DirObject, S as SimpleChunkList } from "./ndn_types-f6c08d20.mjs";
+import { v as DID, w as getBrowserUserInfo, x as saveBrowserUserInfo, q as parseBuckyOSOwnerDocument, h as hashPassword, y as saveLocalAccountInfo, z as cleanLocalAccountInfo, A as canonicalize, B as signJwtEdDSA, O as ObjId, C as ChunkId, F as FileObject, E as sha256Bytes, G as DirObject, S as SimpleChunkList } from "./ndn_types-d768245f.mjs";
 class RPCError extends Error {
   constructor(message) {
     super(message);
@@ -212,108 +212,6 @@ class AuthClient {
     const authURL = this.buildLoginURL(redirectUri);
     this.navigate(authURL);
   }
-}
-const LEGACY_ACCOUNT_STORAGE_KEY = "buckyos.account_info";
-const BROWSER_USER_INFO_STORAGE_KEY = "user_info";
-function getAccountStorageKey(appId) {
-  return `buckyos.account_info.${appId}`;
-}
-function parseAccountInfo(raw) {
-  if (raw == null) {
-    return null;
-  }
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
-}
-function parseBrowserUserInfo(raw) {
-  if (raw == null) {
-    return null;
-  }
-  try {
-    const parsed = JSON.parse(raw);
-    const userId = typeof parsed.user_id === "string" ? parsed.user_id.trim() : "";
-    const userType = typeof parsed.user_type === "string" ? parsed.user_type.trim() : "";
-    const userNameCandidate = typeof parsed.user_name === "string" ? parsed.user_name.trim() : typeof parsed.show_name === "string" ? parsed.show_name.trim() : "";
-    if (!userId || !userType) {
-      return null;
-    }
-    return {
-      user_name: userNameCandidate || userId,
-      user_id: userId,
-      user_type: userType
-    };
-  } catch {
-    return null;
-  }
-}
-function parseTokenAppId(sessionToken) {
-  const parts = sessionToken.split(".");
-  if (parts.length < 2) {
-    return null;
-  }
-  try {
-    const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-    const padded = base64 + "=".repeat((4 - base64.length % 4) % 4);
-    const payload = JSON.parse(atob(padded));
-    if (typeof payload.appid === "string" && payload.appid.trim().length > 0) {
-      return payload.appid;
-    }
-  } catch {
-    return null;
-  }
-  return null;
-}
-function hashPassword(username, password, nonce = null) {
-  const shaObj = new ht("SHA-256", "TEXT", { encoding: "UTF8" });
-  shaObj.update(password + username + ".buckyos");
-  let org_password_hash_str = shaObj.getHash("B64");
-  if (nonce == null) {
-    return org_password_hash_str;
-  }
-  const shaObj2 = new ht("SHA-256", "TEXT", { encoding: "UTF8" });
-  let salt = org_password_hash_str + nonce.toString();
-  shaObj2.update(salt);
-  let result = shaObj2.getHash("B64");
-  return result;
-}
-function cleanLocalAccountInfo(appId) {
-  localStorage.removeItem(getAccountStorageKey(appId));
-  localStorage.removeItem(BROWSER_USER_INFO_STORAGE_KEY);
-  const legacy = parseAccountInfo(localStorage.getItem(LEGACY_ACCOUNT_STORAGE_KEY));
-  if ((legacy == null ? void 0 : legacy.session_token) && parseTokenAppId(legacy.session_token) === appId) {
-    localStorage.removeItem(LEGACY_ACCOUNT_STORAGE_KEY);
-  }
-  let cookie_options = {
-    path: "/",
-    expires: /* @__PURE__ */ new Date(0),
-    secure: true,
-    sameSite: "Lax"
-  };
-  document.cookie = `${appId}_token=; ${Object.entries(cookie_options).map(([key, value]) => `${key}=${value}`).join("; ")}`;
-}
-function saveLocalAccountInfo(appId, account_info) {
-  if (account_info.session_token == null) {
-    console.error("session_token is null,can't save account info");
-    return;
-  }
-  localStorage.setItem(getAccountStorageKey(appId), JSON.stringify(account_info));
-  let cookie_options = {
-    path: "/",
-    expires: new Date(Date.now() + 1e3 * 60 * 60 * 24 * 30),
-    // 30天
-    secure: true,
-    sameSite: "Lax"
-  };
-  document.cookie = `${appId}_token=${account_info.session_token}; ${Object.entries(cookie_options).map(([key, value]) => `${key}=${value}`).join("; ")}`;
-}
-function saveBrowserUserInfo(userInfo) {
-  localStorage.setItem(BROWSER_USER_INFO_STORAGE_KEY, JSON.stringify(userInfo));
-}
-function getBrowserUserInfo() {
-  return parseBrowserUserInfo(localStorage.getItem(BROWSER_USER_INFO_STORAGE_KEY));
 }
 function serializeAuthTarget(target) {
   if (!target || typeof target !== "object") {
@@ -27769,7 +27667,7 @@ async function uploadChunkViaTus(endpoint, file, chunkInfo, chunkIndex, appId, f
   const logicalPath = `${appId}/${chunkInfo.chunkId}`;
   let tusModule;
   try {
-    tusModule = await import("./tus_client-573066b3.mjs");
+    tusModule = await import("./tus_client-b1c35e8c.mjs");
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new NdmError("UPLOAD_FAILED", `Failed to load tus-js-client: ${message}`);
@@ -28490,137 +28388,136 @@ const ndm_proxy = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.definePro
   unpinOwner
 }, Symbol.toStringTag, { value: "Module" }));
 export {
-  TASK_ERR_INVALID_PHASE as $,
-  WORKFLOW_SEND_MESSAGE_TASK_SCHEMA_ID as A,
+  TASK_ERR_CONTROL_NOT_AVAILABLE as $,
+  WORKFLOW_EXECUTE_RPC_TASK_SCHEMA_ID as A,
   BS_SERVICE_VERIFY_HUB as B,
-  WORKFLOW_EXECUTE_RPC_TASK_SCHEMA_ID as C,
+  WORKFLOW_RUN_TARGET_TASK_SCHEMA_ID as C,
   DOWNLOAD_TASK_SCHEMA_ID as D,
-  WORKFLOW_RUN_TARGET_TASK_SCHEMA_ID as E,
-  AGENT_DELEGATE_TASK_SCHEMA_ID as F,
-  HUMAN_INPUT_TASK_SCHEMA_ID as G,
+  AGENT_DELEGATE_TASK_SCHEMA_ID as E,
+  HUMAN_INPUT_TASK_SCHEMA_ID as F,
+  OPENDAN_COMMAND_TASK_SCHEMA_ID as G,
   HUMAN_APPROVAL_SCHEMA_ID as H,
-  OPENDAN_COMMAND_TASK_SCHEMA_ID as I,
-  TOOL_EXEC_BASH_TASK_SCHEMA_ID as J,
-  AICC_COMPUTE_TASK_SCHEMA_ID as K,
-  APP_INSTALL_TASK_SCHEMA_ID as L,
+  TOOL_EXEC_BASH_TASK_SCHEMA_ID as I,
+  AICC_COMPUTE_TASK_SCHEMA_ID as J,
+  APP_INSTALL_TASK_SCHEMA_ID as K,
+  APP_UNINSTALL_TASK_SCHEMA_ID as L,
   MsgQueueClient as M,
-  APP_UNINSTALL_TASK_SCHEMA_ID as N,
+  APP_START_TASK_SCHEMA_ID as N,
   OPENDAN_ASYNC_TOOL_TASK_SCHEMA_ID as O,
-  APP_START_TASK_SCHEMA_ID as P,
-  APP_UPDATE_TASK_SCHEMA_ID as Q,
+  APP_UPDATE_TASK_SCHEMA_ID as P,
+  APP_UPDATE_BATCH_TASK_SCHEMA_ID as Q,
   RuntimeType as R,
   SystemConfigClient as S,
   TASK_MANAGER_SERVICE_UNIQUE_ID as T,
-  APP_UPDATE_BATCH_TASK_SCHEMA_ID as U,
+  TASK_ERR_NOT_FOUND as U,
   VerifyHubClient as V,
   WEB3_BRIDGE_HOST as W,
-  TASK_ERR_NOT_FOUND as X,
-  TASK_ERR_PERMISSION_DENIED as Y,
-  TASK_ERR_REVISION_CONFLICT as Z,
-  TASK_ERR_STALE_RUNNER_EPOCH as _,
+  TASK_ERR_PERMISSION_DENIED as X,
+  TASK_ERR_REVISION_CONFLICT as Y,
+  TASK_ERR_STALE_RUNNER_EPOCH as Z,
+  TASK_ERR_INVALID_PHASE as _,
   ndm_proxy as a,
-  createAppInstanceId as a$,
-  TASK_ERR_CONTROL_NOT_AVAILABLE as a0,
-  TASK_ERR_CONTROL_ALREADY_PENDING as a1,
-  TASK_ERR_ALREADY_COMPLETED as a2,
-  TASK_ERR_INPUT_SCHEMA_MISMATCH as a3,
-  TASK_ERR_RESULT_SCHEMA_MISMATCH as a4,
-  TASK_ERR_IDEMPOTENCY_CONFLICT as a5,
-  TASK_ERR_SCHEMA_NOT_FOUND as a6,
-  TASK_MGR_ERROR_CODES as a7,
-  taskMgrTaskEventPath as a8,
-  taskMgrTreeEventPath as a9,
-  WorkflowScheduledTaskFireStatus as aA,
-  WorkflowClient as aB,
-  AICC_SERVICE_NAME as aC,
-  AICC_SERVICE_UNIQUE_ID as aD,
-  AICC_SERVICE_SERVICE_NAME as aE,
-  AICC_SERVICE_SERVICE_PORT as aF,
-  AICC_AI_METHODS as aG,
-  AICC_CONTROL_METHODS as aH,
-  AICC_FEATURES as aI,
-  isAiccAiMethod as aJ,
-  aiccTextMessage as aK,
-  aiccMessageTextContent as aL,
-  aiccMessageFirstText as aM,
-  aiccResponseTextContent as aN,
-  aiccResponseToolCalls as aO,
-  aiccResponseArtifacts as aP,
-  aiccRenderMessageForDebug as aQ,
-  aiccEstimateMessageTextLen as aR,
-  validateAiccMessage as aS,
-  validateAiccMessages as aT,
-  validateAiccResponse as aU,
-  AiccClient as aV,
-  KEventReader as aW,
-  KEventClient as aX,
-  appIdFromDid as aY,
-  parseAppId as aZ,
-  appDidFromId as a_,
-  taskMgrErrorCode as aa,
-  TaskExecutorKind as ab,
-  TaskPhase as ac,
-  isTerminalTaskPhase as ad,
-  TaskWaitReasonKind as ae,
-  TaskOutcome as af,
-  TaskControlAction as ag,
-  baselineTaskControlProfile as ah,
-  DEFAULT_CHILD_CONTROL_POLICY as ai,
-  TaskAction as aj,
-  TaskGrantScope as ak,
-  TaskDataScope as al,
-  StorageDomain as am,
-  TaskEventType as an,
-  TaskManagerClient as ao,
-  WORKFLOW_SERVICE_NAME as ap,
-  WorkflowStepType as aq,
-  WorkflowOutputMode as ar,
-  WorkflowJoinMode as as,
-  WorkflowRetryFallback as at,
-  WorkflowDefinitionStatus as au,
-  WorkflowRunStatus as av,
-  WorkflowNodeRunState as aw,
-  WorkflowHumanActionKind as ax,
-  WorkflowScheduledTaskStatus as ay,
-  WorkflowScheduledTaskMisfirePolicy as az,
+  parseAppInstanceId as a$,
+  TASK_ERR_CONTROL_ALREADY_PENDING as a0,
+  TASK_ERR_ALREADY_COMPLETED as a1,
+  TASK_ERR_INPUT_SCHEMA_MISMATCH as a2,
+  TASK_ERR_RESULT_SCHEMA_MISMATCH as a3,
+  TASK_ERR_IDEMPOTENCY_CONFLICT as a4,
+  TASK_ERR_SCHEMA_NOT_FOUND as a5,
+  TASK_MGR_ERROR_CODES as a6,
+  taskMgrTaskEventPath as a7,
+  taskMgrTreeEventPath as a8,
+  taskMgrErrorCode as a9,
+  WorkflowClient as aA,
+  AICC_SERVICE_NAME as aB,
+  AICC_SERVICE_UNIQUE_ID as aC,
+  AICC_SERVICE_SERVICE_NAME as aD,
+  AICC_SERVICE_SERVICE_PORT as aE,
+  AICC_AI_METHODS as aF,
+  AICC_CONTROL_METHODS as aG,
+  AICC_FEATURES as aH,
+  isAiccAiMethod as aI,
+  aiccTextMessage as aJ,
+  aiccMessageTextContent as aK,
+  aiccMessageFirstText as aL,
+  aiccResponseTextContent as aM,
+  aiccResponseToolCalls as aN,
+  aiccResponseArtifacts as aO,
+  aiccRenderMessageForDebug as aP,
+  aiccEstimateMessageTextLen as aQ,
+  validateAiccMessage as aR,
+  validateAiccMessages as aS,
+  validateAiccResponse as aT,
+  AiccClient as aU,
+  KEventReader as aV,
+  KEventClient as aW,
+  appIdFromDid as aX,
+  parseAppId as aY,
+  appDidFromId as aZ,
+  createAppInstanceId as a_,
+  TaskExecutorKind as aa,
+  TaskPhase as ab,
+  isTerminalTaskPhase as ac,
+  TaskWaitReasonKind as ad,
+  TaskOutcome as ae,
+  TaskControlAction as af,
+  baselineTaskControlProfile as ag,
+  DEFAULT_CHILD_CONTROL_POLICY as ah,
+  TaskAction as ai,
+  TaskGrantScope as aj,
+  TaskDataScope as ak,
+  StorageDomain as al,
+  TaskEventType as am,
+  TaskManagerClient as an,
+  WORKFLOW_SERVICE_NAME as ao,
+  WorkflowStepType as ap,
+  WorkflowOutputMode as aq,
+  WorkflowJoinMode as ar,
+  WorkflowRetryFallback as as,
+  WorkflowDefinitionStatus as at,
+  WorkflowRunStatus as au,
+  WorkflowNodeRunState as av,
+  WorkflowHumanActionKind as aw,
+  WorkflowScheduledTaskStatus as ax,
+  WorkflowScheduledTaskMisfirePolicy as ay,
+  WorkflowScheduledTaskFireStatus as az,
   bns_client as b,
-  parseAppInstanceId as b0,
-  BNS_EVM_DEFAULT_GAS_LIMIT as b1,
-  BNS_EVM_DEFAULT_MAX_FEE_PER_GAS as b2,
-  BNS_EVM_DEFAULT_MAX_PRIORITY_FEE_PER_GAS as b3,
-  BNS_MAX_INLINE_DOCUMENT_BYTES as b4,
-  BNS_DNS_TXT_DEFAULT_TTL as b5,
-  BNS_DNS_TXT_DOC_TYPE as b6,
-  BNS_PUBLISH_DOCUMENT_ABI as b7,
-  BnsEvmTxError as b8,
-  BnsEvmTxBuilder as b9,
-  decodeBnsPublishDocumentCalldata as ba,
-  BnsTxExecutorError as bb,
-  walletUserHasSnAccount as bc,
-  BnsTxExecutor as bd,
+  BNS_EVM_DEFAULT_GAS_LIMIT as b0,
+  BNS_EVM_DEFAULT_MAX_FEE_PER_GAS as b1,
+  BNS_EVM_DEFAULT_MAX_PRIORITY_FEE_PER_GAS as b2,
+  BNS_MAX_INLINE_DOCUMENT_BYTES as b3,
+  BNS_DNS_TXT_DEFAULT_TTL as b4,
+  BNS_DNS_TXT_DOC_TYPE as b5,
+  BNS_PUBLISH_DOCUMENT_ABI as b6,
+  BnsEvmTxError as b7,
+  BnsEvmTxBuilder as b8,
+  decodeBnsPublishDocumentCalldata as b9,
+  BnsTxExecutorError as ba,
+  walletUserHasSnAccount as bb,
+  BnsTxExecutor as bc,
   createSDKModule as c,
   BS_SERVICE_TASK_MANAGER as d,
   getActiveRuntimeType as e,
   getActiveZoneGatewayOrigin as f,
   getCurrentWalletUserFromHost as g,
-  hashPassword as h,
-  getActiveSessionToken as i,
-  BuckyOSSDK as j,
-  MsgCenterClient as k,
-  RepoClient as l,
-  TASK_MANAGER_SERVICE_NAME as m,
+  getActiveSessionToken as h,
+  BuckyOSSDK as i,
+  MsgCenterClient as j,
+  RepoClient as k,
+  TASK_MANAGER_SERVICE_NAME as l,
+  TASK_MANAGER_SERVICE_PORT as m,
   ndm_client as n,
-  TASK_MANAGER_SERVICE_PORT as o,
+  TASK_POLICY_PRESET_COLLABORATIVE_TREE_V1 as o,
   parseSessionTokenClaims as p,
-  TASK_POLICY_PRESET_COLLABORATIVE_TREE_V1 as q,
+  RAW_TASK_SCHEMA_ID as q,
   resolveDidFromHost as r,
   sn_client as s,
-  RAW_TASK_SCHEMA_ID as t,
-  SCHEDULER_DISPATCH_THUNK_TASK_SCHEMA_ID as u,
-  WORKFLOW_RUN_TREE_TASK_SCHEMA_ID as v,
-  WORKFLOW_STEP_TASK_SCHEMA_ID as w,
-  WORKFLOW_MAP_SHARD_TASK_SCHEMA_ID as x,
-  WORKFLOW_THUNK_TASK_SCHEMA_ID as y,
-  WORKFLOW_SCHEDULE_TASK_SCHEMA_ID as z
+  SCHEDULER_DISPATCH_THUNK_TASK_SCHEMA_ID as t,
+  WORKFLOW_RUN_TREE_TASK_SCHEMA_ID as u,
+  WORKFLOW_STEP_TASK_SCHEMA_ID as v,
+  WORKFLOW_MAP_SHARD_TASK_SCHEMA_ID as w,
+  WORKFLOW_THUNK_TASK_SCHEMA_ID as x,
+  WORKFLOW_SCHEDULE_TASK_SCHEMA_ID as y,
+  WORKFLOW_SEND_MESSAGE_TASK_SCHEMA_ID as z
 };
-//# sourceMappingURL=ndm_proxy-c00bc561.mjs.map
+//# sourceMappingURL=ndm_proxy-8f547002.mjs.map

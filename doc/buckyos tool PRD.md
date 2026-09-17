@@ -4,6 +4,9 @@ Distribution and immutable system packaging are specified in [distribution.md](d
 The Rust CLI retirement gate and command coverage are tracked in
 [buckycli-coverage.md](buckycli-coverage.md).
 
+未实现模块的服务、SDK、CLI 差距与修订后的命令边界见
+[模块设计 Review](modules/README.md)（2026-09-17）。模块文档中的规划命令不表示当前已可执行。
+
 > 状态：Draft v0.5
 > 目标版本：Beta 2.2 以后
 > 命令名称：`buckyos`
@@ -24,6 +27,7 @@ Agent 稳定调用的生产接口。
 - 通过正式 BuckyOS SDK、kRPC 服务和受控的本机控制桥执行操作；
 - 线上业务模块是薄客户端，不在 CLI 内复制 scheduler、installer、MessageHub 等服务逻辑；
 - `pikg` 是明确的本地开发工具例外，在不连接 BuckyOS Zone 时构造、封装和分析 PIKG；
+- `provision` 是明确的本机生产初始化入口，在目标 Zone 尚未启动、没有 session 时完成首次激活；
 - 单次命令默认输出稳定的机器可读 JSON，适合 Jarvis 和其它 Agent 调用；显式进入交互命令行
   时提供面向人工运维的持续 session 和显示方式。
 
@@ -72,6 +76,9 @@ Beta 2.2 是 breaking change，本工具不承担旧命令、旧参数、旧输�
 安装器提供的 `buckyos` 是正式用户入口。源码环境同时保留 Deno 原始入口，便于开发、调试
 和容器执行；两种入口必须进入同一个 `main.ts` 和 Command Registry，不允许形成两套行为。
 
+上述容器优先规则用于系统激活后的管理。`provision` 首版本机激活通过 Host 上的安装器入口及其
+自带 runtime 执行，不依赖 Jarvis 已运行；容器内的远程 Host 激活需另行实现授权桥接，不能推断目录映射。
+
 ### 3.2 宿主机操作边界
 
 TS 工具不得假设自己可以直接执行 `systemd`、`launchd`、Windows 计划任务、Docker Host
@@ -84,6 +91,9 @@ TS 工具不得假设自己可以直接执行 `systemd`、`launchd`、Windows �
 必须通过 `node-control`、native helper 或受控的 host bridge 完成。Windows 下不设计第二套
 命令协议和认证协议：本机源码、Jarvis 容器和 paios 临时容器都使用相同的 BuckyOS
 session/identity 认证及 HostControlClient 抽象，不在业务模块中散落平台特例。
+
+首次激活是授权来源的明确例外：`provision` 在没有 Zone 身份时使用 OS/安装器授权，
+仅写入显式目标 root 与恢复密钥路径，不触发设备身份回退或 verify-hub 登录；实际启动仍交给受控节点入口。
 
 `pikg init/build` 在开发者本机检查或导出已存在的 Docker image，是上述限制的唯一
 Docker CLI 例外。它们必须使用命令元数据声明本地进程权限，`init` 只能执行参数化的
@@ -526,6 +536,8 @@ core 必须先解析 module/verb 元数据，再决定是否建立线上上下�
 ### 6.4 服务访问
 
 - 复用 BuckyOS TS SDK 和已有 service client，不手写重复 HTTP/kRPC 协议。
+- 正式服务不局限于 kRPC：Files 使用 NFSP `/nfs/v1` HTTP/流协议，NDM 使用 proxy，
+  DID 可使用公开 HTTP resolver；分别适配 transport，不强行改为 `/kapi/<service>`。
 - 用户请求必须透传调用者身份，不能用 Tool 自身 service token 覆盖源身份。
 - core 负责 endpoint 解析、token 注入、trace、deadline 和 transport error 归一化。
 - 写操作只对明确声明为幂等的错误进行自动重试；其余交给用户或 TaskManager。
@@ -703,7 +715,8 @@ Apply 还必须验证 operation 未过期、revision 和目标当前状态，避
 2. `command list/describe` 提供机器可读的自描述能力。
 3. 复杂输入支持 stdin JSON，避免 shell escaping 和 argv 长度限制。
 4. 不在非交互模式询问问题；缺参数、确认或 sudo 时立即返回稳定错误。
-5. 命令必须支持 trace id、idempotency key、timeout 和任务等待。
+5. 命令统一支持 trace id 和超时，并声明真实幂等/任务能力；不支持幂等键或等待的操作拒绝对应选项。
+   本机首次激活等无后端任务的操作不伪造 TaskManager 任务。
 6. 输出中区分 desired state、observed state、task state，不能压成一个模糊的 `status`。
 7. 所有 list 支持服务端分页；持续输出使用 jsonl。
 8. 所有变更支持明确 selector，禁止“当前默认 App”“最近联系人”等隐式目标。
@@ -716,6 +729,7 @@ Apply 还必须验证 operation 未过期、revision 和目标当前状态，避
 
 | 模块 | 文档 | 主要范围 |
 | --- | --- | --- |
+| Provision | [provision.md](modules/provision.md) | 本机首次激活、首个 Zone/Owner/OOD 初始化、身份与启动材料；无 Zone session |
 | User | [user.md](modules/user.md) | 用户、状态、类型、Profile、密码与 Message Tunnel 绑定 |
 | App | [app.md](modules/app.md) | Catalog、安装事务、已安装 App 与运行期望状态 |
 | PIKG | [pikg.md](modules/pikg.md) | 本地 `dapp_meta`、`dapp_dist`、PIKG 构造、封装、验证和清理 |
