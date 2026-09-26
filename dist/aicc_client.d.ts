@@ -8,6 +8,7 @@ export declare const AICC_AI_METHODS: {
     readonly EMBEDDING_TEXT: "embedding.text";
     readonly EMBEDDING_MULTIMODAL: "embedding.multimodal";
     readonly RERANK: "rerank";
+    readonly DECISION_EVALUATE: "decision.evaluate";
     readonly IMAGE_IMG2IMG: "image.img2img";
     readonly IMAGE_INPAINT: "image.inpaint";
     readonly IMAGE_UPSCALE: "image.upscale";
@@ -39,6 +40,7 @@ export declare const AICC_MANAGEMENT_METHODS: {
     readonly USAGE_QUERY: "usage.query";
     readonly TRACE_QUERY: "trace.query";
     readonly ROUTING_GET: "routing.get";
+    readonly ROUTING_PREVIEW: "routing.preview";
     readonly ROUTING_UPDATE: "routing.update";
     readonly PROVIDER_CATALOG: "provider.catalog";
     readonly PROTOCOL_ADAPTER_LIST: "protocol_adapter.list";
@@ -59,6 +61,7 @@ export declare const AICC_METHODS: {
     readonly USAGE_QUERY: "usage.query";
     readonly TRACE_QUERY: "trace.query";
     readonly ROUTING_GET: "routing.get";
+    readonly ROUTING_PREVIEW: "routing.preview";
     readonly ROUTING_UPDATE: "routing.update";
     readonly PROVIDER_CATALOG: "provider.catalog";
     readonly PROTOCOL_ADAPTER_LIST: "protocol_adapter.list";
@@ -81,6 +84,7 @@ export declare const AICC_METHODS: {
     readonly EMBEDDING_TEXT: "embedding.text";
     readonly EMBEDDING_MULTIMODAL: "embedding.multimodal";
     readonly RERANK: "rerank";
+    readonly DECISION_EVALUATE: "decision.evaluate";
     readonly IMAGE_IMG2IMG: "image.img2img";
     readonly IMAGE_INPAINT: "image.inpaint";
     readonly IMAGE_UPSCALE: "image.upscale";
@@ -105,8 +109,8 @@ export type AiccMethod = typeof AICC_METHODS[keyof typeof AICC_METHODS];
 export type JsonValue = null | boolean | number | string | JsonValue[] | {
     [key: string]: JsonValue;
 };
-export type ApiType = 'llm' | 'embedding.text' | 'embedding.multimodal' | 'rerank' | 'image.txt2img' | 'image.img2img' | 'image.inpaint' | 'image.upscale' | 'image.bg_remove' | 'vision.ocr' | 'vision.caption' | 'vision.detect' | 'vision.segment' | 'audio.tts' | 'audio.asr' | 'audio.music' | 'audio.enhance' | 'video.txt2video' | 'video.img2video' | 'video.video2video' | 'video.extend' | 'video.upscale' | 'agent.computer_use';
-export type Capability = 'llm' | 'embedding' | 'rerank' | 'image' | 'vision' | 'audio' | 'video' | 'agent';
+export type ApiType = 'llm' | 'embedding.text' | 'embedding.multimodal' | 'decision' | 'rerank' | 'image.txt2img' | 'image.img2img' | 'image.inpaint' | 'image.upscale' | 'image.bg_remove' | 'vision.ocr' | 'vision.caption' | 'vision.detect' | 'vision.segment' | 'audio.tts' | 'audio.asr' | 'audio.music' | 'audio.enhance' | 'video.txt2video' | 'video.img2video' | 'video.video2video' | 'video.extend' | 'video.upscale' | 'agent.computer_use';
+export type Capability = 'llm' | 'embedding' | 'decision' | 'rerank' | 'image' | 'vision' | 'audio' | 'video' | 'agent';
 export type Feature = string;
 export declare const AICC_FEATURES: {
     readonly PLAN: "plan";
@@ -245,6 +249,7 @@ export interface AiOutputOptions {
     fps?: number;
 }
 export interface ModelRequirement {
+    decision?: DecisionRequirements;
     streaming?: boolean;
     tool_call?: boolean;
     json_schema?: boolean;
@@ -253,9 +258,9 @@ export interface ModelRequirement {
     image_generation?: boolean;
     min_context_tokens?: number;
 }
-export interface ModelDisable extends ModelRequirement {
+export interface ModelDisable extends Omit<ModelRequirement, "decision"> {
 }
-export interface HelperModelRequirement extends ModelRequirement {
+export interface HelperModelRequirement extends Omit<ModelRequirement, "decision"> {
 }
 export interface RoutePolicy {
     profile?: 'cheap' | 'fast' | 'balanced' | 'quality';
@@ -510,6 +515,71 @@ export interface EmbeddingTextResponse extends InferenceResponse {
     data_resource?: ResourceRef;
 }
 export type EmbeddingMultimodalResponse = EmbeddingTextResponse;
+export type DecisionText = string | JsonValue[] | {
+    [key: string]: JsonValue;
+};
+export type DecisionQuestionType = 'choice' | 'score' | 'boolean';
+export interface DecisionOption {
+    id: string;
+    description: DecisionText | null;
+}
+export interface DecisionBooleanCriteria {
+    true?: DecisionText;
+    false?: DecisionText;
+}
+export type DecisionQuestion = {
+    type: 'choice';
+    id: string;
+    instructions: DecisionText;
+    options: DecisionOption[];
+} | {
+    type: 'score';
+    id: string;
+    instructions: DecisionText;
+    levels: DecisionText[];
+} | {
+    type: 'boolean';
+    id: string;
+    instructions: DecisionText;
+    criteria?: DecisionBooleanCriteria;
+};
+export type DecisionAnswer = {
+    type: 'choice';
+    id: string;
+    selected: string;
+    probabilities: Record<string, number>;
+    confidence?: number;
+} | {
+    type: 'score';
+    id: string;
+    score: number;
+    levels: DecisionText[];
+    probabilities: Record<string, number>;
+    confidence?: number;
+} | {
+    type: 'boolean';
+    id: string;
+    probability_true: number;
+    confidence?: number;
+};
+export interface DecisionEvaluateRequest extends InferenceRequest {
+    state: DecisionText;
+    questions: DecisionQuestion[];
+}
+export interface DecisionEvaluateResponse extends InferenceResponse {
+    answers?: DecisionAnswer[];
+    model?: string;
+}
+export interface DecisionRequirements {
+    question_types?: DecisionQuestionType[];
+    structured_state?: boolean;
+    structured_rules?: boolean;
+    question_count?: number;
+    max_options?: number;
+    max_levels?: number;
+    input_bytes?: number;
+    max_state_question_bytes?: number;
+}
 export interface RerankDocument {
     id: string;
     text?: string;
@@ -1123,6 +1193,24 @@ export interface QueryRouteTraceResponse {
     next_cursor?: string;
     total_count?: number;
 }
+export interface RoutingPreviewRequest {
+    paths?: string[];
+    explain?: boolean;
+    requirements?: ModelRequirement;
+}
+export interface RoutingPreviewEntry {
+    path: string;
+    api_type: ApiType;
+    kind: 'task' | 'spec' | 'family' | 'directory';
+    available: boolean;
+    selected_exact_model?: string;
+    error?: string;
+    trace?: JsonValue;
+}
+export interface RoutingPreviewResponse {
+    settings_revision: number;
+    entries: RoutingPreviewEntry[];
+}
 export interface RoutingGetResponse {
     settings_revision: number;
     routing: AiccRouteOverlay;
@@ -1189,6 +1277,7 @@ export declare class AiccClient {
     helperTextToImage(r: TextToImageHelperRequest): Promise<TextToImageInvokeResponse>;
     embeddingText(r: EmbeddingTextRequest): Promise<EmbeddingTextResponse>;
     embeddingMultimodal(r: EmbeddingMultimodalRequest): Promise<EmbeddingTextResponse>;
+    decisionEvaluate(r: DecisionEvaluateRequest): Promise<DecisionEvaluateResponse>;
     rerank(r: RerankRequest): Promise<RerankResponse>;
     imageToImage(r: ImageToImageRequest): Promise<ImageToImageResponse>;
     imageInpaint(r: ImageInpaintRequest): Promise<ImageToImageResponse>;
@@ -1213,6 +1302,7 @@ export declare class AiccClient {
     queryQuota(r?: QuotaQueryRequest): Promise<QuotaQueryResponse>;
     queryUsage(r: QueryUsageRequest): Promise<QueryUsageResponse>;
     queryTrace(r?: QueryRouteTraceRequest): Promise<QueryRouteTraceResponse>;
+    previewRouting(r?: RoutingPreviewRequest): Promise<RoutingPreviewResponse>;
     getRouting(): Promise<RoutingGetResponse>;
     updateRouting(r: RoutingUpdateRequest): Promise<RoutingUpdateResponse>;
     providerCatalog(): Promise<ProviderCatalogResponse>;
@@ -1228,5 +1318,8 @@ export declare class AiccClient {
     getDriverMetadataUpdate(): Promise<DriverMetadataUpdateView>;
     setDriverMetadataUpdate(r: DriverMetadataUpdateSetReq): Promise<DriverMetadataUpdateSetResponse>;
 }
+export declare function decisionRequirements(request: Pick<DecisionEvaluateRequest, 'state' | 'questions'>): ModelRequirement;
+export declare function validateDecisionRequest(request: DecisionEvaluateRequest): void;
+export declare function validateDecisionAnswers(request: DecisionEvaluateRequest, answers: DecisionAnswer[]): void;
 export {};
 //# sourceMappingURL=aicc_client.d.ts.map

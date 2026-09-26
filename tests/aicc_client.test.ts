@@ -117,7 +117,7 @@ describe('canonical AICC contract', () => {
   })
 
   it('dispatches every canonical typed inference method', async () => {
-    const fetcher = echoingFetcher({ task_id: 't', status: 'succeeded' })
+    const fetcher = echoingFetcher({ task_id: 't', status: 'succeeded', answers: [{id:'q',type:'boolean',probability_true:0.5}] })
     const client = new AiccClient(new kRPCClient('/kapi/aicc/', null, 1, { fetcher }))
     const ref: ResourceRef = { kind: 'url', url: 'https://example.test/resource' }
     const inferenceCases: Array<[string, () => Promise<unknown>]> = [
@@ -126,6 +126,7 @@ describe('canonical AICC contract', () => {
       [AICC_AI_METHODS.EMBEDDING_TEXT, () => client.embeddingText({ exact_model: 'm@p', items: [{ type: 'text', text: 'cat' }] })],
       [AICC_AI_METHODS.EMBEDDING_MULTIMODAL, () => client.embeddingMultimodal({ exact_model: 'm@p', items: [{ id: '1', text: 'cat' }] })],
       [AICC_AI_METHODS.RERANK, () => client.rerank({ exact_model: 'm@p', query: 'cat', documents: [{ id: '1', text: 'cat' }] })],
+      [AICC_AI_METHODS.DECISION_EVALUATE, () => client.decisionEvaluate({exact_model:'m@p',state:'s',questions:[{id:'q',type:'boolean',instructions:'q'}]})],
       [AICC_AI_METHODS.IMAGE_IMG2IMG, () => client.imageToImage({ exact_model: 'm@p', images: [ref], prompt: 'cat' })],
       [AICC_AI_METHODS.IMAGE_INPAINT, () => client.imageInpaint({ exact_model: 'm@p', image: ref, mask: ref, prompt: 'cat' })],
       [AICC_AI_METHODS.IMAGE_UPSCALE, () => client.imageUpscale({ exact_model: 'm@p', image: ref })],
@@ -168,6 +169,7 @@ describe('canonical AICC contract', () => {
       [AICC_MANAGEMENT_METHODS.USAGE_QUERY, () => client.queryUsage({ time_range: { kind: 'last1d' } })],
       [AICC_MANAGEMENT_METHODS.TRACE_QUERY, () => client.queryTrace()],
       [AICC_MANAGEMENT_METHODS.ROUTING_GET, () => client.getRouting()],
+      [AICC_MANAGEMENT_METHODS.ROUTING_PREVIEW, () => client.previewRouting({ paths: ['decision'], requirements: {decision: {question_types: ['choice', 'score', 'boolean']}} })],
       [AICC_MANAGEMENT_METHODS.ROUTING_UPDATE, () => client.updateRouting({ settings_revision: 1, provider_weights: {} })],
       [AICC_MANAGEMENT_METHODS.PROVIDER_CATALOG, () => client.providerCatalog()],
       [AICC_MANAGEMENT_METHODS.PROTOCOL_ADAPTER_LIST, () => client.listProtocolAdapters()],
@@ -279,5 +281,54 @@ describe('canonical AICC contract', () => {
       client.callMethod(legacyRequest, legacyPayload)
     }
     expect(true).toBe(true)
+  })
+})
+
+describe('decision.evaluate', () => {
+  const request: import('../src/aicc_client').DecisionEvaluateRequest = {
+    exact_model: 'jev-1.13.0@typesafe', state: { text: 'payment issue' },
+    questions: [
+      { id: 'team', type: 'choice', instructions: { task: 'Choose team' }, options: [{ id: 'billing', description: 'Payments' }, { id: 'support', description: null }] },
+      { id: 'level', type: 'score', instructions: 'Priority', levels: ['Low', 'High'] },
+      { id: 'urgent', type: 'boolean', instructions: 'Urgent?', criteria: { true: ['Explicit urgency'] } },
+    ],
+  }
+  const answers = [
+    { id: 'team', type: 'choice', selected: 'billing', probabilities: { billing: 0.9, support: 0.1 }, confidence: 0.7 },
+    { id: 'level', type: 'score', score: 0.8, levels: ['Low', 'High'], probabilities: { 0: 0.2, 1: 0.8 } },
+    { id: 'urgent', type: 'boolean', probability_true: 0.9 },
+  ]
+
+  it('sends a mixed batch and preserves probabilities, confidence and real usage', async () => {
+    const fetcher = echoingFetcher({ task_id: 't', status: 'succeeded', answers, usage: { input_tokens: 31, output_tokens: 15 } })
+    const client = new AiccClient(new kRPCClient('/kapi/aicc', null, 1, { fetcher }))
+    const result = await client.decisionEvaluate(request)
+    expect(sent(fetcher).method).toBe('decision.evaluate')
+    expect(sent(fetcher).params.questions).toEqual(request.questions)
+    expect(result.answers).toEqual(answers)
+    expect(result.answers![2].confidence).toBeUndefined()
+    expect(result.usage!.output_tokens).toBe(15)
+    expect(isAiccAiMethod('decision.evaluate')).toBe(true)
+  })
+
+  it('rejects malformed requests before RPC and malformed successful responses', async () => {
+    const fetcher = echoingFetcher({ task_id: 't', status: 'succeeded', answers: answers.slice(1) })
+    const client = new AiccClient(new kRPCClient('/kapi/aicc', null, 1, { fetcher }))
+    await expect(client.decisionEvaluate({ ...request, questions: [] })).rejects.toThrow()
+    await expect(client.decisionEvaluate({ ...request, questions: [request.questions[0], request.questions[0]] })).rejects.toThrow()
+    await expect(client.decisionEvaluate({ ...request, extra: true } as unknown as typeof request)).rejects.toThrow()
+    expect(fetcher).not.toHaveBeenCalled()
+    await expect(client.decisionEvaluate(request)).rejects.toThrow('decision answers')
+  })
+
+  it('derives routing requirements and rejects bad distributions without normalizing', async () => {
+    const { decisionRequirements, validateDecisionAnswers } = await import('../src/aicc_client')
+    expect(decisionRequirements(request).decision).toMatchObject({ question_types: ['choice', 'score', 'boolean'], structured_state: true, structured_rules: true, max_options: 2, max_levels: 2, question_count: 3 })
+    for (const mutated of [
+      [{ ...answers[0], selected: 'outside' }, answers[1], answers[2]],
+      [{ ...answers[0], probabilities: { billing: 0.5, support: 0.1 } }, answers[1], answers[2]],
+      [answers[0], { ...answers[1], score: 1.5 }, answers[2]],
+      [answers[0], answers[1], { ...answers[2], probability_true: Number.NaN }],
+    ]) expect(() => validateDecisionAnswers(request, mutated as import('../src/aicc_client').DecisionAnswer[])).toThrow()
   })
 })

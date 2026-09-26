@@ -1169,6 +1169,7 @@ const AICC_AI_METHODS = {
   EMBEDDING_TEXT: "embedding.text",
   EMBEDDING_MULTIMODAL: "embedding.multimodal",
   RERANK: "rerank",
+  DECISION_EVALUATE: "decision.evaluate",
   IMAGE_IMG2IMG: "image.img2img",
   IMAGE_INPAINT: "image.inpaint",
   IMAGE_UPSCALE: "image.upscale",
@@ -1200,6 +1201,7 @@ const AICC_MANAGEMENT_METHODS = {
   USAGE_QUERY: "usage.query",
   TRACE_QUERY: "trace.query",
   ROUTING_GET: "routing.get",
+  ROUTING_PREVIEW: "routing.preview",
   ROUTING_UPDATE: "routing.update",
   PROVIDER_CATALOG: "provider.catalog",
   PROTOCOL_ADAPTER_LIST: "protocol_adapter.list",
@@ -1290,6 +1292,7 @@ const schemas = {
   [AICC_AI_METHODS.IMAGES_GENERATE]: [...common, "prompt", "negative_prompt", "n", "aspect_ratio", "size", "quality", "style", "seed", "output"],
   [AICC_AI_METHODS.EMBEDDING_TEXT]: [...common, "items", "chunking", "embedding_space_id", "dimensions", "normalize", "prefer_artifact"],
   [AICC_AI_METHODS.EMBEDDING_MULTIMODAL]: [...common, "items", "dimensions", "normalize"],
+  [AICC_AI_METHODS.DECISION_EVALUATE]: [...common, "state", "questions"],
   [AICC_AI_METHODS.RERANK]: [...common, "query", "documents", "n", "return_documents"],
   [AICC_AI_METHODS.IMAGE_IMG2IMG]: [...common, "images", "prompt", "strength", "output"],
   [AICC_AI_METHODS.IMAGE_INPAINT]: [...common, "image", "mask", "prompt", "mask_semantics", "output"],
@@ -1318,6 +1321,7 @@ const schemas = {
   [AICC_MANAGEMENT_METHODS.USAGE_QUERY]: ["time_range", "filters", "group_by", "time_bucket", "output_mode", "limit", "cursor"],
   [AICC_MANAGEMENT_METHODS.TRACE_QUERY]: ["limit", "cursor", "start_time_ms", "end_time_ms", "task_ids", "request_ids", "api_types", "provider_instance_names", "selected_exact_models", "scheduler_profiles", "query", "outcome"],
   [AICC_MANAGEMENT_METHODS.ROUTING_GET]: [],
+  [AICC_MANAGEMENT_METHODS.ROUTING_PREVIEW]: ["paths", "explain", "requirements"],
   [AICC_MANAGEMENT_METHODS.ROUTING_UPDATE]: ["settings_revision", "provider_weights"],
   [AICC_MANAGEMENT_METHODS.PROVIDER_CATALOG]: [],
   [AICC_MANAGEMENT_METHODS.PROTOCOL_ADAPTER_LIST]: [],
@@ -1375,6 +1379,13 @@ class AiccClient {
   }
   embeddingMultimodal(r) {
     return this.inference(AICC_AI_METHODS.EMBEDDING_MULTIMODAL, r);
+  }
+  async decisionEvaluate(r) {
+    validateDecisionRequest(r);
+    const result = await this.inference(AICC_AI_METHODS.DECISION_EVALUATE, r);
+    if (result.status === "succeeded")
+      validateDecisionAnswers(r, result.answers ?? []);
+    return result;
   }
   rerank(r) {
     return this.inference(AICC_AI_METHODS.RERANK, r);
@@ -1450,6 +1461,9 @@ class AiccClient {
   queryTrace(r = {}) {
     return this.call(AICC_MANAGEMENT_METHODS.TRACE_QUERY, r);
   }
+  previewRouting(r = {}) {
+    return this.call(AICC_MANAGEMENT_METHODS.ROUTING_PREVIEW, r);
+  }
   getRouting() {
     return this.call(AICC_MANAGEMENT_METHODS.ROUTING_GET, {});
   }
@@ -1492,6 +1506,132 @@ class AiccClient {
   }
   setDriverMetadataUpdate(r) {
     return this.call(AICC_MANAGEMENT_METHODS.DRIVER_METADATA_UPDATE_SET, r);
+  }
+}
+function decisionText(value, nonempty = true) {
+  if (typeof value === "string")
+    return !nonempty || value.trim().length > 0;
+  return value !== null && typeof value === "object" && (!nonempty || Object.keys(value).length > 0);
+}
+function decisionId(value) {
+  return typeof value === "string" && /^[A-Za-z0-9_.-]{1,128}$/.test(value);
+}
+function decisionJson(value) {
+  if (value === null || typeof value !== "object")
+    return JSON.stringify(value);
+  if (Array.isArray(value))
+    return `[${value.map(decisionJson).join(",")}]`;
+  return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${decisionJson(value[key])}`).join(",")}}`;
+}
+function decisionBytes(value) {
+  return new TextEncoder().encode(JSON.stringify(value)).length;
+}
+function decisionRequirements(request) {
+  const stateBytes = decisionBytes(request.state);
+  const decision = {
+    question_types: [],
+    structured_state: typeof request.state !== "string",
+    structured_rules: false,
+    question_count: request.questions.length,
+    max_options: 0,
+    max_levels: 0,
+    input_bytes: stateBytes + decisionBytes(request.questions),
+    max_state_question_bytes: 0
+  };
+  for (const question of request.questions) {
+    if (!decision.question_types.includes(question.type))
+      decision.question_types.push(question.type);
+    const rules = [question.instructions];
+    if (question.type === "choice") {
+      decision.max_options = Math.max(decision.max_options, question.options.length);
+      rules.push(...question.options.map((option) => option.description));
+    } else if (question.type === "score") {
+      decision.max_levels = Math.max(decision.max_levels, question.levels.length);
+      rules.push(...question.levels);
+    } else if (question.criteria)
+      rules.push(...Object.values(question.criteria));
+    decision.structured_rules || (decision.structured_rules = rules.some((value) => value !== null && typeof value === "object"));
+    decision.max_state_question_bytes = Math.max(decision.max_state_question_bytes, stateBytes + decisionBytes(question));
+  }
+  return { decision };
+}
+function validateDecisionRequest(request) {
+  exact(request.exact_model);
+  strict(request, schemas[AICC_AI_METHODS.DECISION_EVALUATE]);
+  if (!decisionText(request.state, false) || !Array.isArray(request.questions) || !request.questions.length || request.questions.length > 1024) {
+    throw new RPCError("decision requires a text/JSON state and 1..1024 questions");
+  }
+  const ids = /* @__PURE__ */ new Set();
+  for (const question of request.questions) {
+    if (!question || !decisionId(question.id) || ids.has(question.id) || !decisionText(question.instructions))
+      throw new RPCError("invalid decision question");
+    ids.add(question.id);
+    if (question.type === "choice") {
+      strict(question, ["type", "id", "instructions", "options"]);
+      if (!Array.isArray(question.options) || !question.options.length || question.options.length > 1024)
+        throw new RPCError("invalid decision options");
+      const options = /* @__PURE__ */ new Set();
+      for (const option of question.options) {
+        strict(option, ["id", "description"]);
+        if (!decisionId(option.id) || options.has(option.id) || !(option.description === null || decisionText(option.description)))
+          throw new RPCError("invalid decision option");
+        options.add(option.id);
+      }
+    } else if (question.type === "score") {
+      strict(question, ["type", "id", "instructions", "levels"]);
+      if (!Array.isArray(question.levels) || question.levels.length < 2 || question.levels.length > 1024 || question.levels.some((level) => !decisionText(level)) || new Set(question.levels.map(decisionJson)).size !== question.levels.length)
+        throw new RPCError("invalid decision levels");
+    } else if (question.type === "boolean") {
+      strict(question, ["type", "id", "instructions", "criteria"]);
+      if (question.criteria !== void 0) {
+        if (question.criteria === null || typeof question.criteria !== "object" || Array.isArray(question.criteria))
+          throw new RPCError("invalid decision criteria");
+        strict(question.criteria, ["true", "false"]);
+        if (Object.values(question.criteria).some((value) => !decisionText(value)))
+          throw new RPCError("invalid decision criteria");
+      }
+    } else
+      throw new RPCError("invalid decision question type");
+  }
+  if (decisionRequirements(request).decision.input_bytes > 1024 * 1024)
+    throw new RPCError("decision input exceeds 1 MiB");
+}
+function validateDecisionAnswers(request, answers) {
+  const probability = (value) => typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1;
+  const invalid = () => {
+    throw new RPCError("invalid or incomplete decision answers");
+  };
+  if (!Array.isArray(answers) || answers.length !== request.questions.length)
+    invalid();
+  const ids = /* @__PURE__ */ new Set();
+  for (const answer of answers) {
+    if (!answer || ids.has(answer.id))
+      invalid();
+    ids.add(answer.id);
+    const question = request.questions.find((question2) => question2.id === answer.id);
+    if (!question)
+      throw new RPCError("unknown decision question ID");
+    if (question.type !== answer.type || answer.confidence !== void 0 && !probability(answer.confidence))
+      invalid();
+    if (answer.type === "boolean") {
+      strict(answer, ["type", "id", "probability_true", "confidence"]);
+      if (!probability(answer.probability_true))
+        invalid();
+      continue;
+    }
+    strict(answer, answer.type === "choice" ? ["type", "id", "selected", "probabilities", "confidence"] : ["type", "id", "score", "levels", "probabilities", "confidence"]);
+    const keys = question.type === "choice" ? question.options.map((option) => option.id) : question.type === "score" ? question.levels.map((_, i) => String(i)) : [];
+    if (!answer.probabilities || Array.isArray(answer.probabilities) || Object.keys(answer.probabilities).length !== keys.length || keys.some((key) => !Object.prototype.hasOwnProperty.call(answer.probabilities, key) || !probability(answer.probabilities[key])) || Math.abs(Object.values(answer.probabilities).reduce((sum, p) => sum + p, 0) - 1) > 1e-4)
+      invalid();
+    if (answer.type === "choice") {
+      if (!keys.includes(answer.selected) || Object.values(answer.probabilities).some((p) => p > answer.probabilities[answer.selected] + 1e-4))
+        invalid();
+    } else if (answer.type === "score" && question.type === "score") {
+      const expected = keys.reduce((sum, key, i) => sum + i * answer.probabilities[key], 0);
+      if (!Number.isFinite(answer.score) || answer.score < 0 || answer.score > keys.length - 1 || Math.abs(answer.score - expected) > 1e-4 * (keys.length - 1) || decisionJson(answer.levels) !== decisionJson(question.levels))
+        invalid();
+    } else
+      invalid();
   }
 }
 const DEFAULT_QUEUE_CONFIG = {
@@ -28306,7 +28446,7 @@ export {
   TASK_ERR_STALE_RUNNER_EPOCH as Z,
   TASK_ERR_INVALID_PHASE as _,
   ndm_proxy as a,
-  BNS_DNS_TXT_DEFAULT_TTL as a$,
+  BNS_EVM_DEFAULT_MAX_FEE_PER_GAS as a$,
   TASK_ERR_CONTROL_ALREADY_PENDING as a0,
   TASK_ERR_ALREADY_COMPLETED as a1,
   TASK_ERR_INPUT_SCHEMA_MISMATCH as a2,
@@ -28333,17 +28473,17 @@ export {
   aiccMessageFirstText as aN,
   validateAiccMessage as aO,
   AiccClient as aP,
-  KEventReader as aQ,
-  KEventClient as aR,
-  appIdFromDid as aS,
-  parseAppId as aT,
-  appDidFromId as aU,
-  createAppInstanceId as aV,
-  parseAppInstanceId as aW,
-  BNS_EVM_DEFAULT_GAS_LIMIT as aX,
-  BNS_EVM_DEFAULT_MAX_FEE_PER_GAS as aY,
-  BNS_EVM_DEFAULT_MAX_PRIORITY_FEE_PER_GAS as aZ,
-  BNS_MAX_INLINE_DOCUMENT_BYTES as a_,
+  decisionRequirements as aQ,
+  validateDecisionRequest as aR,
+  validateDecisionAnswers as aS,
+  KEventReader as aT,
+  KEventClient as aU,
+  appIdFromDid as aV,
+  parseAppId as aW,
+  appDidFromId as aX,
+  createAppInstanceId as aY,
+  parseAppInstanceId as aZ,
+  BNS_EVM_DEFAULT_GAS_LIMIT as a_,
   TaskExecutorKind as aa,
   TaskPhase as ab,
   isTerminalTaskPhase as ac,
@@ -28371,14 +28511,17 @@ export {
   WorkflowScheduledTaskMisfirePolicy as ay,
   WorkflowScheduledTaskFireStatus as az,
   bns_client as b,
-  BNS_DNS_TXT_DOC_TYPE as b0,
-  BNS_PUBLISH_DOCUMENT_ABI as b1,
-  BnsEvmTxError as b2,
-  BnsEvmTxBuilder as b3,
-  decodeBnsPublishDocumentCalldata as b4,
-  BnsTxExecutorError as b5,
-  walletUserHasSnAccount as b6,
-  BnsTxExecutor as b7,
+  BNS_EVM_DEFAULT_MAX_PRIORITY_FEE_PER_GAS as b0,
+  BNS_MAX_INLINE_DOCUMENT_BYTES as b1,
+  BNS_DNS_TXT_DEFAULT_TTL as b2,
+  BNS_DNS_TXT_DOC_TYPE as b3,
+  BNS_PUBLISH_DOCUMENT_ABI as b4,
+  BnsEvmTxError as b5,
+  BnsEvmTxBuilder as b6,
+  decodeBnsPublishDocumentCalldata as b7,
+  BnsTxExecutorError as b8,
+  walletUserHasSnAccount as b9,
+  BnsTxExecutor as ba,
   createSDKModule as c,
   BS_SERVICE_TASK_MANAGER as d,
   getActiveRuntimeType as e,
@@ -28404,4 +28547,4 @@ export {
   WORKFLOW_SCHEDULE_TASK_SCHEMA_ID as y,
   WORKFLOW_SEND_MESSAGE_TASK_SCHEMA_ID as z
 };
-//# sourceMappingURL=ndm_proxy-3fce55e8.mjs.map
+//# sourceMappingURL=ndm_proxy-ebc5a1bf.mjs.map

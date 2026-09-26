@@ -10,6 +10,7 @@ export const AICC_AI_METHODS = {
   EMBEDDING_TEXT: 'embedding.text',
   EMBEDDING_MULTIMODAL: 'embedding.multimodal',
   RERANK: 'rerank',
+  DECISION_EVALUATE: 'decision.evaluate',
   IMAGE_IMG2IMG: 'image.img2img',
   IMAGE_INPAINT: 'image.inpaint',
   IMAGE_UPSCALE: 'image.upscale',
@@ -43,6 +44,7 @@ export const AICC_MANAGEMENT_METHODS = {
   USAGE_QUERY: 'usage.query',
   TRACE_QUERY: 'trace.query',
   ROUTING_GET: 'routing.get',
+  ROUTING_PREVIEW: 'routing.preview',
   ROUTING_UPDATE: 'routing.update',
   PROVIDER_CATALOG: 'provider.catalog',
   PROTOCOL_ADAPTER_LIST: 'protocol_adapter.list',
@@ -62,11 +64,11 @@ export const AICC_METHODS = { ...AICC_AI_METHODS, ...AICC_CORE_METHODS, ...AICC_
 export type AiccAiMethod = typeof AICC_AI_METHODS[keyof typeof AICC_AI_METHODS]
 export type AiccMethod = typeof AICC_METHODS[keyof typeof AICC_METHODS]
 export type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue }
-export type ApiType = 'llm' | 'embedding.text' | 'embedding.multimodal' | 'rerank' | 'image.txt2img' |
+export type ApiType = 'llm' | 'embedding.text' | 'embedding.multimodal' | 'decision' | 'rerank' | 'image.txt2img' |
   'image.img2img' | 'image.inpaint' | 'image.upscale' | 'image.bg_remove' | 'vision.ocr' | 'vision.caption' |
   'vision.detect' | 'vision.segment' | 'audio.tts' | 'audio.asr' | 'audio.music' | 'audio.enhance' |
   'video.txt2video' | 'video.img2video' | 'video.video2video' | 'video.extend' | 'video.upscale' | 'agent.computer_use'
-export type Capability = 'llm' | 'embedding' | 'rerank' | 'image' | 'vision' | 'audio' | 'video' | 'agent'
+export type Capability = 'llm' | 'embedding' | 'decision' | 'rerank' | 'image' | 'vision' | 'audio' | 'video' | 'agent'
 export type Feature = string
 export const AICC_FEATURES = {
   PLAN: 'plan', TOOL_CALL: 'tool_call', JSON_SCHEMA: 'json_schema', WEB_SEARCH: 'web_search',
@@ -111,10 +113,10 @@ export interface AiToolCall { name: string; args: Record<string, JsonValue>; cal
 export type AiMethodStatus = 'succeeded' | 'running' | 'failed'
 export interface AiTaskOptions { parent_id?: string }
 export interface AiOutputOptions { media_type?: string; size?: string; sample_rate?: number; fps?: number }
-export interface ModelRequirement { streaming?: boolean; tool_call?: boolean; json_schema?: boolean; web_search?: boolean;
+export interface ModelRequirement { decision?: DecisionRequirements; streaming?: boolean; tool_call?: boolean; json_schema?: boolean; web_search?: boolean;
   vision?: boolean; image_generation?: boolean; min_context_tokens?: number }
-export interface ModelDisable extends ModelRequirement {}
-export interface HelperModelRequirement extends ModelRequirement {}
+export interface ModelDisable extends Omit<ModelRequirement, "decision"> {}
+export interface HelperModelRequirement extends Omit<ModelRequirement, "decision"> {}
 export interface RoutePolicy { profile?: 'cheap' | 'fast' | 'balanced' | 'quality'; local_only?: boolean;
   allow_fallback?: boolean; runtime_failover?: boolean; explain?: boolean; allowed_provider_instances?: string[];
   blocked_provider_instances?: string[]; max_cost?: Money; max_latency_ms?: number }
@@ -189,6 +191,23 @@ export interface EmbeddingTextRequest extends InferenceRequest { items: Embeddin
 export interface EmbeddingMultimodalRequest extends InferenceRequest { items: EmbeddingMultimodalItem[]; dimensions?: number; normalize?: boolean }
 export interface EmbeddingTextResponse extends InferenceResponse { data?: EmbeddingValue[]; data_resource?: ResourceRef }
 export type EmbeddingMultimodalResponse = EmbeddingTextResponse
+export type DecisionText = string | JsonValue[] | { [key: string]: JsonValue }
+export type DecisionQuestionType = 'choice' | 'score' | 'boolean'
+export interface DecisionOption { id: string; description: DecisionText | null }
+export interface DecisionBooleanCriteria { true?: DecisionText; false?: DecisionText }
+export type DecisionQuestion =
+  | { type: 'choice'; id: string; instructions: DecisionText; options: DecisionOption[] }
+  | { type: 'score'; id: string; instructions: DecisionText; levels: DecisionText[] }
+  | { type: 'boolean'; id: string; instructions: DecisionText; criteria?: DecisionBooleanCriteria }
+export type DecisionAnswer =
+  | { type: 'choice'; id: string; selected: string; probabilities: Record<string, number>; confidence?: number }
+  | { type: 'score'; id: string; score: number; levels: DecisionText[]; probabilities: Record<string, number>; confidence?: number }
+  | { type: 'boolean'; id: string; probability_true: number; confidence?: number }
+export interface DecisionEvaluateRequest extends InferenceRequest { state: DecisionText; questions: DecisionQuestion[] }
+export interface DecisionEvaluateResponse extends InferenceResponse { answers?: DecisionAnswer[]; model?: string }
+export interface DecisionRequirements { question_types?: DecisionQuestionType[]; structured_state?: boolean; structured_rules?: boolean;
+  question_count?: number; max_options?: number; max_levels?: number; input_bytes?: number; max_state_question_bytes?: number }
+
 export interface RerankDocument { id: string; text?: string; resource?: ResourceRef; metadata?: JsonValue }
 export interface RerankResult { index: number; id: string; score: number; document?: RerankDocument }
 export interface RerankRequest extends InferenceRequest { query: string; documents: RerankDocument[]; n?: number; return_documents?: boolean }
@@ -343,6 +362,9 @@ export interface QueryRouteTraceRequest { limit?: number; cursor?: string; start
   task_ids?: string[]; request_ids?: string[]; api_types?: string[]; provider_instance_names?: string[];
   selected_exact_models?: string[]; scheduler_profiles?: string[]; query?: string; outcome?: string }
 export interface QueryRouteTraceResponse { traces?: JsonValue[]; next_cursor?: string; total_count?: number }
+export interface RoutingPreviewRequest { paths?: string[]; explain?: boolean; requirements?: ModelRequirement }
+export interface RoutingPreviewEntry { path: string; api_type: ApiType; kind: 'task' | 'spec' | 'family' | 'directory'; available: boolean; selected_exact_model?: string; error?: string; trace?: JsonValue }
+export interface RoutingPreviewResponse { settings_revision: number; entries: RoutingPreviewEntry[] }
 export interface RoutingGetResponse { settings_revision: number; routing: AiccRouteOverlay }
 export interface RoutingUpdateRequest { settings_revision: number; provider_weights: Record<string, number> }
 export interface RoutingUpdateResponse { ok: boolean; settings_revision: number; routing: AiccRouteOverlay }
@@ -404,6 +426,7 @@ const schemas: Partial<Record<AiccMethod, string[]>> = {
   [AICC_AI_METHODS.IMAGES_GENERATE]: [...common, 'prompt', 'negative_prompt', 'n', 'aspect_ratio', 'size', 'quality', 'style', 'seed', 'output'],
   [AICC_AI_METHODS.EMBEDDING_TEXT]: [...common, 'items', 'chunking', 'embedding_space_id', 'dimensions', 'normalize', 'prefer_artifact'],
   [AICC_AI_METHODS.EMBEDDING_MULTIMODAL]: [...common, 'items', 'dimensions', 'normalize'],
+  [AICC_AI_METHODS.DECISION_EVALUATE]: [...common, 'state', 'questions'],
   [AICC_AI_METHODS.RERANK]: [...common, 'query', 'documents', 'n', 'return_documents'],
   [AICC_AI_METHODS.IMAGE_IMG2IMG]: [...common, 'images', 'prompt', 'strength', 'output'],
   [AICC_AI_METHODS.IMAGE_INPAINT]: [...common, 'image', 'mask', 'prompt', 'mask_semantics', 'output'],
@@ -432,6 +455,7 @@ const schemas: Partial<Record<AiccMethod, string[]>> = {
   [AICC_MANAGEMENT_METHODS.USAGE_QUERY]: ['time_range', 'filters', 'group_by', 'time_bucket', 'output_mode', 'limit', 'cursor'],
   [AICC_MANAGEMENT_METHODS.TRACE_QUERY]: ['limit', 'cursor', 'start_time_ms', 'end_time_ms', 'task_ids', 'request_ids', 'api_types', 'provider_instance_names', 'selected_exact_models', 'scheduler_profiles', 'query', 'outcome'],
   [AICC_MANAGEMENT_METHODS.ROUTING_GET]: [],
+  [AICC_MANAGEMENT_METHODS.ROUTING_PREVIEW]: ['paths', 'explain', 'requirements'],
   [AICC_MANAGEMENT_METHODS.ROUTING_UPDATE]: ['settings_revision', 'provider_weights'],
   [AICC_MANAGEMENT_METHODS.PROVIDER_CATALOG]: [],
   [AICC_MANAGEMENT_METHODS.PROTOCOL_ADAPTER_LIST]: [],
@@ -469,6 +493,12 @@ export class AiccClient {
   helperTextToImage(r: TextToImageHelperRequest) { logical(r.logical_model); return this.call<TextToImageInvokeResponse, TextToImageHelperRequest>(AICC_CORE_METHODS.HELPER_TEXT_TO_IMAGE, r) }
   embeddingText(r: EmbeddingTextRequest) { return this.inference<EmbeddingTextResponse, EmbeddingTextRequest>(AICC_AI_METHODS.EMBEDDING_TEXT, r) }
   embeddingMultimodal(r: EmbeddingMultimodalRequest) { return this.inference<EmbeddingMultimodalResponse, EmbeddingMultimodalRequest>(AICC_AI_METHODS.EMBEDDING_MULTIMODAL, r) }
+  async decisionEvaluate(r: DecisionEvaluateRequest) {
+    validateDecisionRequest(r)
+    const result = await this.inference<DecisionEvaluateResponse, DecisionEvaluateRequest>(AICC_AI_METHODS.DECISION_EVALUATE, r)
+    if (result.status === 'succeeded') validateDecisionAnswers(r, result.answers ?? [])
+    return result
+  }
   rerank(r: RerankRequest) { return this.inference<RerankResponse, RerankRequest>(AICC_AI_METHODS.RERANK, r) }
   imageToImage(r: ImageToImageRequest) { return this.inference<ImageToImageResponse, ImageToImageRequest>(AICC_AI_METHODS.IMAGE_IMG2IMG, r) }
   imageInpaint(r: ImageInpaintRequest) { return this.inference<ImageInpaintResponse, ImageInpaintRequest>(AICC_AI_METHODS.IMAGE_INPAINT, r) }
@@ -493,6 +523,7 @@ export class AiccClient {
   queryQuota(r: QuotaQueryRequest = {}) { return this.call<QuotaQueryResponse, QuotaQueryRequest>(AICC_MANAGEMENT_METHODS.QUOTA_QUERY, r) }
   queryUsage(r: QueryUsageRequest) { return this.call<QueryUsageResponse, QueryUsageRequest>(AICC_MANAGEMENT_METHODS.USAGE_QUERY, r) }
   queryTrace(r: QueryRouteTraceRequest = {}) { return this.call<QueryRouteTraceResponse, QueryRouteTraceRequest>(AICC_MANAGEMENT_METHODS.TRACE_QUERY, r) }
+  previewRouting(r: RoutingPreviewRequest = {}) { return this.call<RoutingPreviewResponse, RoutingPreviewRequest>(AICC_MANAGEMENT_METHODS.ROUTING_PREVIEW, r) }
   getRouting() { return this.call<RoutingGetResponse, EmptyRequest>(AICC_MANAGEMENT_METHODS.ROUTING_GET, {}) }
   updateRouting(r: RoutingUpdateRequest) { return this.call<RoutingUpdateResponse, RoutingUpdateRequest>(AICC_MANAGEMENT_METHODS.ROUTING_UPDATE, r) }
   providerCatalog() { return this.call<ProviderCatalogResponse, EmptyRequest>(AICC_MANAGEMENT_METHODS.PROVIDER_CATALOG, {}) }
@@ -507,4 +538,106 @@ export class AiccClient {
   listModels() { return this.call<JsonValue, EmptyRequest>(AICC_MANAGEMENT_METHODS.MODELS_LIST, {}) }
   getDriverMetadataUpdate() { return this.call<DriverMetadataUpdateView, EmptyRequest>(AICC_MANAGEMENT_METHODS.DRIVER_METADATA_UPDATE_GET, {}) }
   setDriverMetadataUpdate(r: DriverMetadataUpdateSetReq) { return this.call<DriverMetadataUpdateSetResponse, DriverMetadataUpdateSetReq>(AICC_MANAGEMENT_METHODS.DRIVER_METADATA_UPDATE_SET, r) }
+}
+
+function decisionText(value: unknown, nonempty = true): value is DecisionText {
+  if (typeof value === 'string') return !nonempty || value.trim().length > 0
+  return value !== null && typeof value === 'object' && (!nonempty || Object.keys(value).length > 0)
+}
+
+function decisionId(value: unknown): value is string {
+  return typeof value === 'string' && /^[A-Za-z0-9_.-]{1,128}$/.test(value)
+}
+
+function decisionJson(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value)
+  if (Array.isArray(value)) return `[${value.map(decisionJson).join(',')}]`
+  return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${decisionJson((value as Record<string, unknown>)[key])}`).join(',')}}`
+}
+
+function decisionBytes(value: unknown): number {
+  return new TextEncoder().encode(JSON.stringify(value)).length
+}
+
+export function decisionRequirements(request: Pick<DecisionEvaluateRequest, 'state' | 'questions'>): ModelRequirement {
+  const stateBytes = decisionBytes(request.state)
+  const decision: Required<DecisionRequirements> = { question_types: [], structured_state: typeof request.state !== 'string',
+    structured_rules: false, question_count: request.questions.length, max_options: 0, max_levels: 0,
+    input_bytes: stateBytes + decisionBytes(request.questions), max_state_question_bytes: 0 }
+  for (const question of request.questions) {
+    if (!decision.question_types.includes(question.type)) decision.question_types.push(question.type)
+    const rules: unknown[] = [question.instructions]
+    if (question.type === 'choice') {
+      decision.max_options = Math.max(decision.max_options, question.options.length)
+      rules.push(...question.options.map(option => option.description))
+    } else if (question.type === 'score') {
+      decision.max_levels = Math.max(decision.max_levels, question.levels.length)
+      rules.push(...question.levels)
+    } else if (question.criteria) rules.push(...Object.values(question.criteria))
+    decision.structured_rules ||= rules.some(value => value !== null && typeof value === 'object')
+    decision.max_state_question_bytes = Math.max(decision.max_state_question_bytes, stateBytes + decisionBytes(question))
+  }
+  return { decision }
+}
+
+export function validateDecisionRequest(request: DecisionEvaluateRequest): void {
+  exact(request.exact_model)
+  strict(request, schemas[AICC_AI_METHODS.DECISION_EVALUATE]!)
+  if (!decisionText(request.state, false) || !Array.isArray(request.questions) || !request.questions.length || request.questions.length > 1024) {
+    throw new RPCError('decision requires a text/JSON state and 1..1024 questions')
+  }
+  const ids = new Set<string>()
+  for (const question of request.questions) {
+    if (!question || !decisionId(question.id) || ids.has(question.id) || !decisionText(question.instructions)) throw new RPCError('invalid decision question')
+    ids.add(question.id)
+    if (question.type === 'choice') {
+      strict(question, ['type', 'id', 'instructions', 'options'])
+      if (!Array.isArray(question.options) || !question.options.length || question.options.length > 1024) throw new RPCError('invalid decision options')
+      const options = new Set<string>()
+      for (const option of question.options) {
+        strict(option, ['id', 'description'])
+        if (!decisionId(option.id) || options.has(option.id) || !(option.description === null || decisionText(option.description))) throw new RPCError('invalid decision option')
+        options.add(option.id)
+      }
+    } else if (question.type === 'score') {
+      strict(question, ['type', 'id', 'instructions', 'levels'])
+      if (!Array.isArray(question.levels) || question.levels.length < 2 || question.levels.length > 1024 || question.levels.some(level => !decisionText(level)) || new Set(question.levels.map(decisionJson)).size !== question.levels.length) throw new RPCError('invalid decision levels')
+    } else if (question.type === 'boolean') {
+      strict(question, ['type', 'id', 'instructions', 'criteria'])
+      if (question.criteria !== undefined) {
+        if (question.criteria === null || typeof question.criteria !== 'object' || Array.isArray(question.criteria)) throw new RPCError('invalid decision criteria')
+        strict(question.criteria, ['true', 'false'])
+        if (Object.values(question.criteria).some(value => !decisionText(value))) throw new RPCError('invalid decision criteria')
+      }
+    } else throw new RPCError('invalid decision question type')
+  }
+  if (decisionRequirements(request).decision!.input_bytes! > 1024 * 1024) throw new RPCError('decision input exceeds 1 MiB')
+}
+
+export function validateDecisionAnswers(request: DecisionEvaluateRequest, answers: DecisionAnswer[]): void {
+  const probability = (value: number) => typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1
+  const invalid = () => { throw new RPCError('invalid or incomplete decision answers') }
+  if (!Array.isArray(answers) || answers.length !== request.questions.length) invalid()
+  const ids = new Set<string>()
+  for (const answer of answers) {
+    if (!answer || ids.has(answer.id)) invalid()
+    ids.add(answer.id)
+    const question = request.questions.find(question => question.id === answer.id)
+    if (!question) throw new RPCError('unknown decision question ID')
+    if (question.type !== answer.type || (answer.confidence !== undefined && !probability(answer.confidence))) invalid()
+    if (answer.type === 'boolean') {
+      strict(answer, ['type', 'id', 'probability_true', 'confidence'])
+      if (!probability(answer.probability_true)) invalid()
+      continue
+    }
+    strict(answer, answer.type === 'choice' ? ['type', 'id', 'selected', 'probabilities', 'confidence'] : ['type', 'id', 'score', 'levels', 'probabilities', 'confidence'])
+    const keys = question.type === 'choice' ? question.options.map(option => option.id) : question.type === 'score' ? question.levels.map((_, i) => String(i)) : []
+    if (!answer.probabilities || Array.isArray(answer.probabilities) || Object.keys(answer.probabilities).length !== keys.length || keys.some(key => !Object.prototype.hasOwnProperty.call(answer.probabilities, key) || !probability(answer.probabilities[key])) || Math.abs(Object.values(answer.probabilities).reduce((sum, p) => sum + p, 0) - 1) > 1e-4) invalid()
+    if (answer.type === 'choice') {
+      if (!keys.includes(answer.selected) || Object.values(answer.probabilities).some(p => p > answer.probabilities[answer.selected] + 1e-4)) invalid()
+    } else if (answer.type === 'score' && question.type === 'score') {
+      const expected = keys.reduce((sum, key, i) => sum + i * answer.probabilities[key], 0)
+      if (!Number.isFinite(answer.score) || answer.score < 0 || answer.score > keys.length - 1 || Math.abs(answer.score - expected) > 1e-4 * (keys.length - 1) || decisionJson(answer.levels) !== decisionJson(question.levels)) invalid()
+    } else invalid()
+  }
 }
