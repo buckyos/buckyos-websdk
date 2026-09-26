@@ -4865,7 +4865,7 @@ function invalid(stage, message, entry) {
 function stableJsonDigest(value) {
   return sha256Bytes(new TextEncoder().encode(ndn.toCanonicalJsonString(value)));
 }
-const PACKAGE_VERSION = "0.7.123";
+const PACKAGE_VERSION = "0.7.124";
 const TOOL_VERSION = PACKAGE_VERSION;
 const SDK_VERSION = PACKAGE_VERSION;
 const PROTOCOL_VERSION = "1";
