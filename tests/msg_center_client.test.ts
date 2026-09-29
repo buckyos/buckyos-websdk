@@ -1,5 +1,5 @@
 import { kRPCClient } from '../src/krpc_client'
-import { MsgCenterClient } from '../src/msg_center_client'
+import { MsgCenterClient, mailboxAddress, mailboxResource } from '../src/msg_center_client'
 
 function makeResponse(body: unknown, seq: number = 1) {
   return {
@@ -17,6 +17,36 @@ function bodyOf(fetcher: jest.Mock, callIdx = 0) {
 }
 
 describe('MsgCenterClient', () => {
+  it('builds exact default and session addresses with canonical encoding', () => {
+    expect(mailboxAddress('did:bns:alice')).toBe('did:bns:alice')
+    expect(mailboxAddress('did:bns:alice', 'dm:did:bns:bob')).toBe('did:bns:alice/dm:did:bns:bob')
+    expect(mailboxAddress('did:web:example.com%3A8080', '审批/a b%*')).toBe('did:web:example.com%3A8080/%E5%AE%A1%E6%89%B9%2Fa%20b%25%2A')
+    for (const session of ['', '.', '..', ' padded ', 'a\n']) {
+      expect(() => mailboxAddress('did:bns:alice', session)).toThrow()
+    }
+    for (const owner of ['did', 'alice', 'did:bns:alice/session', 'did:bns:']) {
+      expect(() => mailboxAddress(owner)).toThrow()
+    }
+  })
+
+  it('builds literal RBAC resources for dotted and escaped session IDs', () => {
+    const address = mailboxAddress('did:web:agent.zone', 'approval.1')
+    expect(mailboxResource(address, 'INBOX')).toBe('obj://msg-center/inbox/did:web:agent%2Ezone/approval%2E1')
+    expect(mailboxResource(mailboxAddress('did:web:agent%2Ezone', 'approval%2E1'), 'INBOX')).toBe('obj://msg-center/inbox/did:web:agent%252Ezone/approval%25252E1')
+    expect(mailboxResource(mailboxAddress('did:bns:alice', '审批/a b%*'), 'INBOX')).toBe('obj://msg-center/inbox/did:bns:alice/%25E5%25AE%25A1%25E6%2589%25B9%252Fa%2520b%2525%252A')
+  })
+
+  it('lists pending mailboxes and moves a record to the default inbox', async () => {
+    const fetcher = jest.fn()
+      .mockResolvedValueOnce(makeResponse(['did:bns:alice/a', 'did:bns:alice/b'], 1))
+      .mockResolvedValueOnce(makeResponse({ record_id: 'r1', mailbox: 'did:bns:alice' }, 2))
+    const client = new MsgCenterClient(new kRPCClient('/kapi/msg-center/', null, 1, { fetcher }))
+    expect(await client.listMailboxes('did:bns:alice', 'INBOX')).toEqual(['did:bns:alice/a', 'did:bns:alice/b'])
+    expect((await client.moveRecord('r1', mailboxAddress('did:bns:alice'))).mailbox).toBe('did:bns:alice')
+    expect(bodyOf(fetcher, 0).params).toEqual({ owner: 'did:bns:alice', box_kind: 'INBOX' })
+    expect(bodyOf(fetcher, 1).params).toEqual({ record_id: 'r1', mailbox: 'did:bns:alice' })
+  })
+
   it('dispatch forwards msg/ingress_ctx/idempotency_key and parses DispatchResult', async () => {
     const fetcher = jest.fn().mockResolvedValue(makeResponse({
       ok: true,
@@ -84,12 +114,12 @@ describe('MsgCenterClient', () => {
     const fetcher = jest.fn().mockResolvedValue(makeResponse(null, 3))
     const client = new MsgCenterClient(new kRPCClient('/kapi/msg-center/', null, 3, { fetcher }))
 
-    const result = await client.getNext({ owner: 'did:bns:user', box_kind: 'INBOX' })
+    const result = await client.getNext({ mailbox: 'did:bns:user/session-1', box_kind: 'INBOX' })
 
     expect(result).toBeNull()
     expect(bodyOf(fetcher)).toEqual({
       method: 'msg.get_next',
-      params: { owner: 'did:bns:user', box_kind: 'INBOX' },
+      params: { mailbox: 'did:bns:user/session-1', box_kind: 'INBOX' },
       sys: [3],
     })
   })
@@ -125,7 +155,7 @@ describe('MsgCenterClient', () => {
     const client = new MsgCenterClient(new kRPCClient('/kapi/msg-center/', null, 4, { fetcher }))
 
     const out = await client.peekBox({
-      owner: 'did:bns:user',
+      mailbox: 'did:bns:user/session-1',
       box_kind: 'INBOX',
       state_filter: ['UNREAD', 'READING'],
       limit: 10,
@@ -134,7 +164,7 @@ describe('MsgCenterClient', () => {
 
     expect(out).toHaveLength(2)
     expect(bodyOf(fetcher).params).toEqual({
-      owner: 'did:bns:user',
+      mailbox: 'did:bns:user/session-1',
       box_kind: 'INBOX',
       state_filter: ['UNREAD', 'READING'],
       limit: 10,
@@ -151,7 +181,7 @@ describe('MsgCenterClient', () => {
     const client = new MsgCenterClient(new kRPCClient('/kapi/msg-center/', null, 5, { fetcher }))
 
     const page = await client.listBoxByTime({
-      owner: 'did:bns:user',
+      mailbox: 'did:bns:user/session-1',
       box_kind: 'INBOX',
       cursor_sort_key: 100,
       descending: true,
@@ -161,7 +191,7 @@ describe('MsgCenterClient', () => {
     expect(page.next_cursor_sort_key).toBe(99)
     expect(page.next_cursor_record_id).toBe('r1')
     expect(bodyOf(fetcher).params).toEqual({
-      owner: 'did:bns:user',
+      mailbox: 'did:bns:user/session-1',
       box_kind: 'INBOX',
       cursor_sort_key: 100,
       descending: true,
@@ -474,7 +504,7 @@ describe('MsgCenterClient', () => {
     const client = new MsgCenterClient(new kRPCClient('/kapi/msg-center/', null, 21, { fetcher }))
 
     await expect(
-      client.peekBox({ owner: 'did:bns:u', box_kind: 'INBOX' }),
+      client.peekBox({ mailbox: 'did:bns:u', box_kind: 'INBOX' }),
     ).rejects.toThrow('expected Vec<MailboxRecordWithObject> to be an array')
   })
 })

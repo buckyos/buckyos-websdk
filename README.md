@@ -289,3 +289,37 @@ npm dist-tag add buckyos@<已验证版本> latest
 
 回滚 dist-tag 不会改变已经安装的 BuckyOS system Tool；系统 Tool 只随 installer/updater 事务
 更新或回滚。
+
+### Session inbox addresses (breaking change)
+
+MsgCenter queue calls (`getNext`, `peekBox`, `listBoxByTime`) require `mailbox`
+in place of `owner`: `did:bns:alice/session-123` selects exactly that session;
+`did:bns:alice` selects only records without a session. Existing `session_id`
+values define the partitions, including automatically derived `dm:<peer DID>`
+and group sessions. Set `msg.thread.topic` to address a chosen session.
+
+```ts
+import { mailboxAddress } from 'buckyos'
+const record = await client.getNext({
+  mailbox: mailboxAddress('did:bns:alice', 'session-123'),
+  box_kind: 'INBOX',
+  lock_on_take: true,
+})
+```
+
+`listMailboxes(owner, boxKind)` lists inboxes with unread records for an authorized
+owner-wide router. `moveRecord(recordId, mailbox)` moves a record within one
+owner; `updateRecordSession` also moves its inbox. Both source and destination
+require write access. Omitting the session in `moveRecord` selects the default
+inbox. Record responses include their canonical `mailbox` address.
+
+RBAC resources are `obj://msg-center/inbox/<did>/<session_id>` (and analogous
+`sent`, `group_inbox`, `request_box` paths). Read access permits non-locking
+reads; consumption and updates require write access. Exact grants do not cover
+other sessions, the default inbox, owner-wide projections, or delivery queues.
+
+Use `mailboxResource(mailboxAddress(owner, sessionId), 'INBOX')` to construct
+RBAC policy keys. Resource encoding additionally escapes dots, percent signs,
+and pattern characters so `keyMatch3` cannot expand an exact session grant.
+For example, `did:web:agent.zone/approval.1` maps to
+`obj://msg-center/inbox/did:web:agent%2Ezone/approval%2E1`.

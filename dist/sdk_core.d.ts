@@ -164,7 +164,8 @@ export * from './task_mgr_client';
 export * from './workflow_client';
 export * from './aicc_client';
 export { MsgQueueClient };
-export { MsgCenterClient };
+export { MsgCenterClient, mailboxAddress, mailboxResource } from './msg_center_client';
+export type { MailboxAddress, GetNextParams, PeekBoxParams, ListBoxByTimeParams } from './msg_center_client';
 export { RepoClient };
 export * from './kevent_client';
 //# sourceMappingURL=sdk_core.d.ts.map

@@ -83,6 +83,7 @@ export interface DeliveryRecord {
 }
 
 export interface MailboxRecord {
+  mailbox: MailboxAddress
   record_id: string
   owner: DID
   box_kind: MailboxKind
@@ -335,8 +336,31 @@ export type GroupExpansionSnapshot = JsonObject
 export type GroupSummary = JsonObject
 export type GroupAccessDecision = JsonObject
 
+export type MailboxAddress = string
+
+export function mailboxAddress(owner: DID, sessionId?: string): MailboxAddress {
+  if (!/^did:[^:]+:.+$/.test(owner) || /[\s\x00-\x1f\x7f-\x9f/\\?#*|]/.test(owner)) {
+    throw new RPCError('mailbox owner must be a bare DID')
+  }
+  if (sessionId === undefined) return owner
+  if (!sessionId || sessionId.trim() !== sessionId || [...sessionId].length > 200 || sessionId === '.' || sessionId === '..' || /[\x00-\x1f\x7f-\x9f]/.test(sessionId)) {
+    throw new RPCError('invalid mailbox session_id')
+  }
+  const encoded = encodeURIComponent(sessionId)
+    .replace(/[!'()*]/g, char => `%${char.charCodeAt(0).toString(16).toUpperCase()}`)
+    .replace(/%3A/g, ':').replace(/%40/g, '@')
+  return `${owner}/${encoded}`
+}
+
+export function mailboxResource(mailbox: MailboxAddress, kind: MailboxKind): string {
+  const encoded = encodeURIComponent(mailbox)
+    .replace(/[!'()*.]/g, char => `%${char.charCodeAt(0).toString(16).toUpperCase()}`)
+    .replace(/%3A/g, ':').replace(/%40/g, '@').replace(/%2F/g, '/')
+  return `obj://msg-center/${kind.toLowerCase()}/${encoded}`
+}
+
 export interface GetNextParams {
-  owner: DID
+  mailbox: MailboxAddress
   box_kind: MailboxKind
   state_filter?: RecipientState[]
   lock_on_take?: boolean
@@ -350,7 +374,7 @@ export interface GetNextDeliveryParams {
 }
 
 export interface PeekBoxParams {
-  owner: DID
+  mailbox: MailboxAddress
   box_kind: MailboxKind
   state_filter?: RecipientState[]
   limit?: number
@@ -358,7 +382,7 @@ export interface PeekBoxParams {
 }
 
 export interface ListBoxByTimeParams {
-  owner: DID
+  mailbox: MailboxAddress
   box_kind: MailboxKind
   state_filter?: RecipientState[]
   limit?: number
@@ -476,6 +500,14 @@ export class MsgCenterClient {
       idempotency_key: idempotencyKey,
     }))
     return asRecord(result, 'PostSendResult') as unknown as PostSendResult
+  }
+
+  async listMailboxes(owner: DID, boxKind: MailboxKind): Promise<MailboxAddress[]> {
+    return asArrayOf<MailboxAddress>(await this.call('msg.list_mailboxes', { owner, box_kind: boxKind }), 'Vec<MailboxAddress>')
+  }
+
+  async moveRecord(recordId: string, mailbox: MailboxAddress): Promise<MailboxRecord> {
+    return asRecord(await this.call('msg.move_record', { record_id: recordId, mailbox }), 'MailboxRecord') as unknown as MailboxRecord
   }
 
   async getNext(req: GetNextParams): Promise<MailboxRecordWithObject | null> {

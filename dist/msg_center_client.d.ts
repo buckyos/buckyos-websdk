@@ -69,6 +69,7 @@ export interface DeliveryRecord {
     updated_at_ms: number;
 }
 export interface MailboxRecord {
+    mailbox: MailboxAddress;
     record_id: string;
     owner: DID;
     box_kind: MailboxKind;
@@ -293,8 +294,11 @@ export type GroupSubgroup = JsonObject;
 export type GroupExpansionSnapshot = JsonObject;
 export type GroupSummary = JsonObject;
 export type GroupAccessDecision = JsonObject;
+export type MailboxAddress = string;
+export declare function mailboxAddress(owner: DID, sessionId?: string): MailboxAddress;
+export declare function mailboxResource(mailbox: MailboxAddress, kind: MailboxKind): string;
 export interface GetNextParams {
-    owner: DID;
+    mailbox: MailboxAddress;
     box_kind: MailboxKind;
     state_filter?: RecipientState[];
     lock_on_take?: boolean;
@@ -306,14 +310,14 @@ export interface GetNextDeliveryParams {
     with_object?: boolean;
 }
 export interface PeekBoxParams {
-    owner: DID;
+    mailbox: MailboxAddress;
     box_kind: MailboxKind;
     state_filter?: RecipientState[];
     limit?: number;
     with_object?: boolean;
 }
 export interface ListBoxByTimeParams {
-    owner: DID;
+    mailbox: MailboxAddress;
     box_kind: MailboxKind;
     state_filter?: RecipientState[];
     limit?: number;
@@ -360,6 +364,8 @@ export declare class MsgCenterClient {
     private call;
     dispatch(msg: MsgObject, ingressCtx?: IngressContext, idempotencyKey?: string): Promise<DispatchResult>;
     postSend(msg: MsgObject, idempotencyKey?: string): Promise<PostSendResult>;
+    listMailboxes(owner: DID, boxKind: MailboxKind): Promise<MailboxAddress[]>;
+    moveRecord(recordId: string, mailbox: MailboxAddress): Promise<MailboxRecord>;
     getNext(req: GetNextParams): Promise<MailboxRecordWithObject | null>;
     getNextDelivery(req: GetNextDeliveryParams): Promise<DeliveryRecordWithObject | null>;
     peekBox(req: PeekBoxParams): Promise<MailboxRecordWithObject[]>;
