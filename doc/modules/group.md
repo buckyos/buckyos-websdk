@@ -1,6 +1,6 @@
 # Group 模块需求
 
-> 状态：Draft，经 2026-09-17 实现核对；CLI 未注册。对应 module：`group`。
+> 状态：v1 历史草案；旧 GroupMgr、`group.*` RPC 和 WebSDK 群方法已删除，CLI 未注册。后续以 [Self-Host Group v2](../../../buckyos/doc/message_hub/Self-Host-Groupv2.md) 为准，v2 尚未实现。下文保留删除前的命令设计和核对记录，不代表当前可用能力。
 > 命令状态与共同约束见 [Review 总览](README.md)。
 
 ## 1. 目标与资源

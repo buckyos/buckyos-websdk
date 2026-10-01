@@ -2080,66 +2080,6 @@ class MsgCenterClient {
       subscriber_count: record.subscriber_count
     };
   }
-  async groupCreate(req) {
-    return asRecord$2(await this.call("group.create", req), "GroupDoc");
-  }
-  async groupGetDoc(req) {
-    return asOptionalRecord(await this.call("group.get_doc", req), "GroupDoc");
-  }
-  async groupUpdateProfile(req) {
-    return asRecord$2(await this.call("group.update_profile", req), "GroupDoc");
-  }
-  async groupInviteMember(req) {
-    return asRecord$2(await this.call("group.invite_member", req), "GroupMemberRecord");
-  }
-  async groupSubmitMemberProof(req) {
-    return asRecord$2(await this.call("group.submit_member_proof", req), "GroupMemberRecord");
-  }
-  async groupRequestJoin(req) {
-    return asRecord$2(await this.call("group.request_join", req), "GroupMemberRecord");
-  }
-  async groupApproveMember(req) {
-    return asRecord$2(await this.call("group.approve_member", req), "GroupMemberRecord");
-  }
-  async groupRejectMember(req) {
-    return asRecord$2(await this.call("group.reject_member", req), "GroupMemberRecord");
-  }
-  async groupRemoveMember(req) {
-    return asRecord$2(await this.call("group.remove_member", req), "GroupMemberRecord");
-  }
-  async groupUpdateMemberRole(req) {
-    return asRecord$2(await this.call("group.update_member_role", req), "GroupMemberRecord");
-  }
-  async groupListMembers(req) {
-    return asArrayOf(await this.call("group.list_members", req), "Vec<GroupMemberRecord>");
-  }
-  async groupCreateSubgroup(req) {
-    return asRecord$2(await this.call("group.create_subgroup", req), "GroupSubgroup");
-  }
-  async groupUpdateSubgroup(req) {
-    return asRecord$2(await this.call("group.update_subgroup", req), "GroupSubgroup");
-  }
-  async groupListSubgroups(req) {
-    return asArrayOf(await this.call("group.list_subgroups", req), "Vec<GroupSubgroup>");
-  }
-  async groupUpdateCollectionPolicy(req) {
-    return asRecord$2(await this.call("group.update_collection_policy", req), "GroupDoc");
-  }
-  async groupUpdateAttributionPolicy(req) {
-    return asRecord$2(await this.call("group.update_attribution_policy", req), "GroupDoc");
-  }
-  async groupExpandMembers(req) {
-    return asRecord$2(await this.call("group.expand_members", req), "GroupExpansionSnapshot");
-  }
-  async groupListByMember(req) {
-    return asArrayOf(await this.call("group.list_by_member", req), "Vec<GroupSummary>");
-  }
-  async groupListParents(req) {
-    return asArrayOf(await this.call("group.list_parents", req), "Vec<GroupSummary>");
-  }
-  async groupCheckAccess(req) {
-    return asRecord$2(await this.call("group.check_access", req), "GroupAccessDecision");
-  }
 }
 function compact(input) {
   const out = {};
@@ -28571,4 +28511,4 @@ export {
   WORKFLOW_MAP_SHARD_TASK_SCHEMA_ID as y,
   WORKFLOW_THUNK_TASK_SCHEMA_ID as z
 };
-//# sourceMappingURL=ndm_proxy-34f05c0c.mjs.map
+//# sourceMappingURL=ndm_proxy-54e7d13f.mjs.map

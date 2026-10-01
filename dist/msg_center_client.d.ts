@@ -268,32 +268,6 @@ export interface SetGroupSubscribersResult {
     group_id: DID;
     subscriber_count: number;
 }
-export type GroupCreateReq = JsonObject;
-export type GroupGetDocReq = JsonObject;
-export type GroupUpdateProfileReq = JsonObject;
-export type GroupInviteMemberReq = JsonObject;
-export type GroupSubmitMemberProofReq = JsonObject;
-export type GroupRequestJoinReq = JsonObject;
-export type GroupApproveMemberReq = JsonObject;
-export type GroupRejectMemberReq = JsonObject;
-export type GroupRemoveMemberReq = JsonObject;
-export type GroupUpdateMemberRoleReq = JsonObject;
-export type GroupListMembersReq = JsonObject;
-export type GroupCreateSubgroupReq = JsonObject;
-export type GroupUpdateSubgroupReq = JsonObject;
-export type GroupListSubgroupsReq = JsonObject;
-export type GroupUpdateCollectionPolicyReq = JsonObject;
-export type GroupUpdateAttributionPolicyReq = JsonObject;
-export type GroupExpandMembersReq = JsonObject;
-export type GroupListByMemberReq = JsonObject;
-export type GroupListParentsReq = JsonObject;
-export type GroupCheckAccessReq = JsonObject;
-export type GroupDoc = JsonObject;
-export type GroupMemberRecord = JsonObject;
-export type GroupSubgroup = JsonObject;
-export type GroupExpansionSnapshot = JsonObject;
-export type GroupSummary = JsonObject;
-export type GroupAccessDecision = JsonObject;
 export type MailboxAddress = string;
 export declare function mailboxAddress(owner: DID, sessionId?: string): MailboxAddress;
 export declare function mailboxResource(mailbox: MailboxAddress, kind: MailboxKind): string;
@@ -399,25 +373,5 @@ export declare class MsgCenterClient {
     listContacts(query: ContactQuery, contactMgrOwner?: DID): Promise<Contact[]>;
     getGroupSubscribers(groupId: DID, limit?: number, offset?: number, contactMgrOwner?: DID): Promise<DID[]>;
     setGroupSubscribers(groupId: DID, subscribers: DID[], contactMgrOwner?: DID): Promise<SetGroupSubscribersResult>;
-    groupCreate(req: GroupCreateReq): Promise<GroupDoc>;
-    groupGetDoc(req: GroupGetDocReq): Promise<GroupDoc | null>;
-    groupUpdateProfile(req: GroupUpdateProfileReq): Promise<GroupDoc>;
-    groupInviteMember(req: GroupInviteMemberReq): Promise<GroupMemberRecord>;
-    groupSubmitMemberProof(req: GroupSubmitMemberProofReq): Promise<GroupMemberRecord>;
-    groupRequestJoin(req: GroupRequestJoinReq): Promise<GroupMemberRecord>;
-    groupApproveMember(req: GroupApproveMemberReq): Promise<GroupMemberRecord>;
-    groupRejectMember(req: GroupRejectMemberReq): Promise<GroupMemberRecord>;
-    groupRemoveMember(req: GroupRemoveMemberReq): Promise<GroupMemberRecord>;
-    groupUpdateMemberRole(req: GroupUpdateMemberRoleReq): Promise<GroupMemberRecord>;
-    groupListMembers(req: GroupListMembersReq): Promise<GroupMemberRecord[]>;
-    groupCreateSubgroup(req: GroupCreateSubgroupReq): Promise<GroupSubgroup>;
-    groupUpdateSubgroup(req: GroupUpdateSubgroupReq): Promise<GroupSubgroup>;
-    groupListSubgroups(req: GroupListSubgroupsReq): Promise<GroupSubgroup[]>;
-    groupUpdateCollectionPolicy(req: GroupUpdateCollectionPolicyReq): Promise<GroupDoc>;
-    groupUpdateAttributionPolicy(req: GroupUpdateAttributionPolicyReq): Promise<GroupDoc>;
-    groupExpandMembers(req: GroupExpandMembersReq): Promise<GroupExpansionSnapshot>;
-    groupListByMember(req: GroupListByMemberReq): Promise<GroupSummary[]>;
-    groupListParents(req: GroupListParentsReq): Promise<GroupSummary[]>;
-    groupCheckAccess(req: GroupCheckAccessReq): Promise<GroupAccessDecision>;
 }
 //# sourceMappingURL=msg_center_client.d.ts.map

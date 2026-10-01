@@ -479,26 +479,6 @@ describe('MsgCenterClient', () => {
     ).rejects.toThrow('Invalid SetGroupSubscribersResult')
   })
 
-  it('group methods pass group_mgr requests through unchanged', async () => {
-    const fetcher = jest
-      .fn()
-      .mockResolvedValueOnce(makeResponse({ group_did: 'did:bns:group' }, 21))
-      .mockResolvedValueOnce(makeResponse([{ member_did: 'did:bns:alice' }], 22))
-    const client = new MsgCenterClient(new kRPCClient('/kapi/msg-center/', null, 21, { fetcher }))
-
-    await client.groupCreate({ owner: 'did:bns:owner', profile: { name: 'team' } })
-    await client.groupListMembers({ group_did: 'did:bns:group', state_filter: ['active'] })
-
-    expect(bodyOf(fetcher, 0)).toMatchObject({
-      method: 'group.create',
-      params: { owner: 'did:bns:owner', profile: { name: 'team' } },
-    })
-    expect(bodyOf(fetcher, 1)).toMatchObject({
-      method: 'group.list_members',
-      params: { group_did: 'did:bns:group', state_filter: ['active'] },
-    })
-  })
-
   it('peekBox throws on a non-array response', async () => {
     const fetcher = jest.fn().mockResolvedValue(makeResponse({ items: [] }, 21))
     const client = new MsgCenterClient(new kRPCClient('/kapi/msg-center/', null, 21, { fetcher }))

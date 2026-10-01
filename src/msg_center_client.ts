@@ -309,33 +309,6 @@ export interface SetGroupSubscribersResult {
   subscriber_count: number
 }
 
-export type GroupCreateReq = JsonObject
-export type GroupGetDocReq = JsonObject
-export type GroupUpdateProfileReq = JsonObject
-export type GroupInviteMemberReq = JsonObject
-export type GroupSubmitMemberProofReq = JsonObject
-export type GroupRequestJoinReq = JsonObject
-export type GroupApproveMemberReq = JsonObject
-export type GroupRejectMemberReq = JsonObject
-export type GroupRemoveMemberReq = JsonObject
-export type GroupUpdateMemberRoleReq = JsonObject
-export type GroupListMembersReq = JsonObject
-export type GroupCreateSubgroupReq = JsonObject
-export type GroupUpdateSubgroupReq = JsonObject
-export type GroupListSubgroupsReq = JsonObject
-export type GroupUpdateCollectionPolicyReq = JsonObject
-export type GroupUpdateAttributionPolicyReq = JsonObject
-export type GroupExpandMembersReq = JsonObject
-export type GroupListByMemberReq = JsonObject
-export type GroupListParentsReq = JsonObject
-export type GroupCheckAccessReq = JsonObject
-export type GroupDoc = JsonObject
-export type GroupMemberRecord = JsonObject
-export type GroupSubgroup = JsonObject
-export type GroupExpansionSnapshot = JsonObject
-export type GroupSummary = JsonObject
-export type GroupAccessDecision = JsonObject
-
 export type MailboxAddress = string
 
 export function mailboxAddress(owner: DID, sessionId?: string): MailboxAddress {
@@ -823,85 +796,5 @@ export class MsgCenterClient {
       group_id: record.group_id,
       subscriber_count: record.subscriber_count,
     }
-  }
-
-  async groupCreate(req: GroupCreateReq): Promise<GroupDoc> {
-    return asRecord(await this.call('group.create', req), 'GroupDoc')
-  }
-
-  async groupGetDoc(req: GroupGetDocReq): Promise<GroupDoc | null> {
-    return asOptionalRecord<GroupDoc>(await this.call('group.get_doc', req), 'GroupDoc')
-  }
-
-  async groupUpdateProfile(req: GroupUpdateProfileReq): Promise<GroupDoc> {
-    return asRecord(await this.call('group.update_profile', req), 'GroupDoc')
-  }
-
-  async groupInviteMember(req: GroupInviteMemberReq): Promise<GroupMemberRecord> {
-    return asRecord(await this.call('group.invite_member', req), 'GroupMemberRecord')
-  }
-
-  async groupSubmitMemberProof(req: GroupSubmitMemberProofReq): Promise<GroupMemberRecord> {
-    return asRecord(await this.call('group.submit_member_proof', req), 'GroupMemberRecord')
-  }
-
-  async groupRequestJoin(req: GroupRequestJoinReq): Promise<GroupMemberRecord> {
-    return asRecord(await this.call('group.request_join', req), 'GroupMemberRecord')
-  }
-
-  async groupApproveMember(req: GroupApproveMemberReq): Promise<GroupMemberRecord> {
-    return asRecord(await this.call('group.approve_member', req), 'GroupMemberRecord')
-  }
-
-  async groupRejectMember(req: GroupRejectMemberReq): Promise<GroupMemberRecord> {
-    return asRecord(await this.call('group.reject_member', req), 'GroupMemberRecord')
-  }
-
-  async groupRemoveMember(req: GroupRemoveMemberReq): Promise<GroupMemberRecord> {
-    return asRecord(await this.call('group.remove_member', req), 'GroupMemberRecord')
-  }
-
-  async groupUpdateMemberRole(req: GroupUpdateMemberRoleReq): Promise<GroupMemberRecord> {
-    return asRecord(await this.call('group.update_member_role', req), 'GroupMemberRecord')
-  }
-
-  async groupListMembers(req: GroupListMembersReq): Promise<GroupMemberRecord[]> {
-    return asArrayOf<GroupMemberRecord>(await this.call('group.list_members', req), 'Vec<GroupMemberRecord>')
-  }
-
-  async groupCreateSubgroup(req: GroupCreateSubgroupReq): Promise<GroupSubgroup> {
-    return asRecord(await this.call('group.create_subgroup', req), 'GroupSubgroup')
-  }
-
-  async groupUpdateSubgroup(req: GroupUpdateSubgroupReq): Promise<GroupSubgroup> {
-    return asRecord(await this.call('group.update_subgroup', req), 'GroupSubgroup')
-  }
-
-  async groupListSubgroups(req: GroupListSubgroupsReq): Promise<GroupSubgroup[]> {
-    return asArrayOf<GroupSubgroup>(await this.call('group.list_subgroups', req), 'Vec<GroupSubgroup>')
-  }
-
-  async groupUpdateCollectionPolicy(req: GroupUpdateCollectionPolicyReq): Promise<GroupDoc> {
-    return asRecord(await this.call('group.update_collection_policy', req), 'GroupDoc')
-  }
-
-  async groupUpdateAttributionPolicy(req: GroupUpdateAttributionPolicyReq): Promise<GroupDoc> {
-    return asRecord(await this.call('group.update_attribution_policy', req), 'GroupDoc')
-  }
-
-  async groupExpandMembers(req: GroupExpandMembersReq): Promise<GroupExpansionSnapshot> {
-    return asRecord(await this.call('group.expand_members', req), 'GroupExpansionSnapshot')
-  }
-
-  async groupListByMember(req: GroupListByMemberReq): Promise<GroupSummary[]> {
-    return asArrayOf<GroupSummary>(await this.call('group.list_by_member', req), 'Vec<GroupSummary>')
-  }
-
-  async groupListParents(req: GroupListParentsReq): Promise<GroupSummary[]> {
-    return asArrayOf<GroupSummary>(await this.call('group.list_parents', req), 'Vec<GroupSummary>')
-  }
-
-  async groupCheckAccess(req: GroupCheckAccessReq): Promise<GroupAccessDecision> {
-    return asRecord(await this.call('group.check_access', req), 'GroupAccessDecision')
   }
 }

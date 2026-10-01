@@ -16,7 +16,7 @@
 | [Files](files.md) | 真实 nfs-server、NFSP HTTP、桌面 TS client、TaskMgr copy | 改为适配 `/nfs/v1`；补齐普通文件请求鉴权；分开 delete/unlink；复制使用已有任务协议 |
 | [Object](object.md) | NDM proxy 与 RepoClient/RepoService | 上传 bytes 与 Repo 记账分开；pin 不下载；stat 不能用 Repo 汇总统计；补齐查询分页与授权 |
 | [Contact](contact.md) | 联系人读写、导入、合并和临时准入 | 服务端绑定 owner；导入目前仅汇总报告；forget/archive 尚无协议 |
-| [Group](group.md) | GroupMgr 与成员、策略、subgroup 协议 | actor/owner 必须由认证约束；proof 结构检查不等于验签；expand 会持久化快照 |
+| [Group](group.md) | v1 历史设计；服务与 SDK 群接口已删除 | 等待 Self-Host Group v2 实现，CLI 尚未注册 |
 | [DID / DID Object](did-object.md) | Rust 解析/验证库、HTTP resolver、DIDObjectClient | TS 适配与可信解析链仍需实现；动态 action 风险不能统一标为 write |
 | [Content](content.md) | publish handler 源码、NFSP grant/revoke | publish 未挂载为运行服务；grant 数据面未执行 capability；不能直接宣称分享/发布可用 |
 | [System](system.md) | CLI status、Control Panel 指标、Rust node-control | status 不是完整 Zone 健康；update 仍占位；节点/服务控制需要正式 API/host bridge |
