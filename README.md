@@ -296,7 +296,8 @@ MsgCenter queue calls (`getNext`, `peekBox`, `listBoxByTime`) require `mailbox`
 in place of `owner`: `did:bns:alice/session-123` selects exactly that session;
 `did:bns:alice` selects only records without a session. Existing `session_id`
 values define the partitions, including automatically derived `dm:<peer DID>`
-and group sessions. Set `msg.thread.topic` to address a chosen session.
+and group sessions. Set `msg.to_session` (MsgObject v2) to address a chosen session;
+`msg.thread.topic` is only a semantic hint and never selects a session.
 
 ```ts
 import { mailboxAddress } from 'buckyos'
