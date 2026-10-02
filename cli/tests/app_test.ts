@@ -27,6 +27,7 @@ Deno.test('app module exposes the frozen beta 2.2 command surface', () => {
     'install',
     'upgrade',
     'uninstall',
+    'cancel',
     'start',
     'stop',
     'restart',
@@ -37,6 +38,30 @@ Deno.test('app module exposes the frozen beta 2.2 command surface', () => {
     mode: 'fixed',
     level: 'destructive',
   })
+})
+
+Deno.test('app cancel forwards force to Installer and preserves cleanup status', async () => {
+  for (const force of [false, true]) {
+    const calls: RecordedCall[] = []
+    const clients = clientsFor(calls, (method, params) => {
+      assertEquals(method, 'apps.install.cancel')
+      assertEquals(params, { task_id: 'install-1', force })
+      return {
+        task_id: 'install-1',
+        task_phase: 'Terminal',
+        task_outcome: 'Canceled',
+        mutation_released: true,
+        cleanup_pending: force,
+      }
+    })
+    const result = await run('cancel', { task_id: 'install-1', force }, clients) as Record<
+      string,
+      unknown
+    >
+    assertEquals(result.task_outcome, 'Canceled')
+    assertEquals(result.cleanup_pending, force)
+    assertEquals(calls.length, 1)
+  }
 })
 
 Deno.test('app fetch normalizes a BNS short name before calling Installer', async () => {

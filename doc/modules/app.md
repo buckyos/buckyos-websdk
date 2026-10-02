@@ -55,6 +55,7 @@ binding、Secret 解析和其它资源/权限管理不在本模块。Secret 只�
 | `app install <source> [--plan <path>]` | write | task/either | 未安装 App 必须给出计划；已安装 App 禁止给出计划并按默认升级计划处理 |
 | `app upgrade [app-name]` | write | task/either | 无参时检查全部已安装 App 的 Catalog 更新；带名称时只检查一个 App |
 | `app uninstall <app-name>` | destructive | task | 必须指定 `--data <retain-or-delete>` |
+| `app cancel <task-id> [--force]` | write | sync | 取消安装或升级任务并释放 mutation；force 允许延后 staging 清理，仍保留部署提交边界 |
 | `app start <app-name>` | write | task | 进入期望运行态 |
 | `app stop <app-name>` | write | task/either | 进入期望停止态 |
 | `app restart <app-name>` | write | task | 默认 recreate；当前 `--strategy rolling` 返回稳定 unsupported 错误 |

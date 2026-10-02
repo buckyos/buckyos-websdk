@@ -92,6 +92,7 @@ export function createAppModule(dependencies: AppModuleDependencies = {}): Comma
     installCommand(dependencies),
     upgradeCommand(dependencies),
     uninstallCommand(dependencies),
+    cancelCommand(),
     lifecycleCommand('start', 'Start an installed App'),
     lifecycleCommand('stop', 'Stop an installed App'),
     restartCommand(),
@@ -107,6 +108,36 @@ export function createAppModule(dependencies: AppModuleDependencies = {}): Comma
         handler: async (ctx, input) => sanitizeAppOutput(await handler(ctx, input)),
       }
     }),
+  }
+}
+
+function cancelCommand(): CommandDefinition {
+  return {
+    verb: 'cancel',
+    summary: 'Cancel an installation or upgrade task and release its App mutation',
+    positionals: [{ name: 'task_id', description: 'Installation Task ID', required: true }],
+    options: [{
+      name: 'force',
+      description: 'Defer staging cleanup after cancellation',
+      type: 'boolean',
+    }],
+    inputSchema: {
+      type: 'object',
+      properties: { task_id: { type: 'string', minLength: 1 }, force: { type: 'boolean' } },
+      required: ['task_id'],
+      additionalProperties: false,
+    },
+    outputSchema: OBJECT_OUTPUT,
+    resultSchemaVersion: 1,
+    access: { mode: 'fixed', level: 'write' },
+    asyncMode: 'sync',
+    requiresSession: true,
+    examples: ['buckyos app cancel t-0123456789abcdef0123456789abcdef --force'],
+    handler: async (ctx, input) =>
+      await callControl(ctx, 'apps.install.cancel', {
+        task_id: expectString(input, 'task_id'),
+        force: input.force === true,
+      }),
   }
 }
 

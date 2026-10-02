@@ -4865,7 +4865,7 @@ function invalid(stage, message, entry) {
 function stableJsonDigest(value) {
   return sha256Bytes(new TextEncoder().encode(ndn.toCanonicalJsonString(value)));
 }
-const PACKAGE_VERSION = "0.7.125";
+const PACKAGE_VERSION = "0.7.126";
 const TOOL_VERSION = PACKAGE_VERSION;
 const SDK_VERSION = PACKAGE_VERSION;
 const PROTOCOL_VERSION = "1";
@@ -6328,6 +6328,7 @@ function createAppModule(dependencies = {}) {
     installCommand(dependencies),
     upgradeCommand(dependencies),
     uninstallCommand(dependencies),
+    cancelCommand$1(),
     lifecycleCommand("start", "Start an installed App"),
     lifecycleCommand("stop", "Stop an installed App"),
     restartCommand(),
@@ -6342,6 +6343,34 @@ function createAppModule(dependencies = {}) {
         ...command,
         handler: async (ctx, input) => sanitizeAppOutput(await handler(ctx, input))
       };
+    })
+  };
+}
+function cancelCommand$1() {
+  return {
+    verb: "cancel",
+    summary: "Cancel an installation or upgrade task and release its App mutation",
+    positionals: [{ name: "task_id", description: "Installation Task ID", required: true }],
+    options: [{
+      name: "force",
+      description: "Defer staging cleanup after cancellation",
+      type: "boolean"
+    }],
+    inputSchema: {
+      type: "object",
+      properties: { task_id: { type: "string", minLength: 1 }, force: { type: "boolean" } },
+      required: ["task_id"],
+      additionalProperties: false
+    },
+    outputSchema: OBJECT_OUTPUT$4,
+    resultSchemaVersion: 1,
+    access: { mode: "fixed", level: "write" },
+    asyncMode: "sync",
+    requiresSession: true,
+    examples: ["buckyos app cancel t-0123456789abcdef0123456789abcdef --force"],
+    handler: async (ctx, input) => await callControl(ctx, "apps.install.cancel", {
+      task_id: expectString$1(input, "task_id"),
+      force: input.force === true
     })
   };
 }
