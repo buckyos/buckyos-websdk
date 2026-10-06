@@ -2,12 +2,12 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { spawnSync } from 'node:child_process'
+import spawn from 'cross-spawn'
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const workspace = await mkdtemp(join(tmpdir(), 'buckyos-release-manifest-'))
+const workspace = await mkdtemp(join(tmpdir(), 'buckyos release-manifest-示例-'))
 try {
-  const packed = run(managerCommand('npm'), ['pack', '--json', '--pack-destination', workspace])
+  const packed = run('npm', ['pack', '--json', '--pack-destination', workspace])
   const packInfo = JSON.parse(packed.stdout)[0]
   const deno = run('deno', ['eval', 'console.log(Deno.execPath())']).stdout.trim()
   const sbom = join(workspace, 'sbom.cdx.json')
@@ -58,19 +58,14 @@ try {
 }
 
 function run(command, args) {
-  const result = spawnSync(command, args, {
+  const result = spawn.sync(command, args, {
     cwd: packageRoot,
     encoding: 'utf8',
     maxBuffer: 32 * 1024 * 1024,
-    shell: process.platform === 'win32' && command.endsWith('.cmd'),
   })
   if (result.error) throw result.error
   if (result.status !== 0) {
     throw new Error(`${command} ${args.join(' ')} failed:\n${result.stderr}${result.stdout}`)
   }
   return result
-}
-
-function managerCommand(name) {
-  return process.platform === 'win32' ? `${name}.cmd` : name
 }

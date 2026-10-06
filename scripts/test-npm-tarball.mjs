@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { spawnSync } from 'node:child_process'
+import spawn from 'cross-spawn'
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const workspace = await mkdtemp(join(tmpdir(), 'buckyos npm-smoke-示例-'))
@@ -10,7 +10,7 @@ const packDirectory = join(workspace, 'packed artifact')
 await mkdir(packDirectory, { recursive: true })
 
 try {
-  const packed = run(managerCommand('npm'), [
+  const packed = run('npm', [
     'pack',
     '--json',
     '--pack-destination',
@@ -36,7 +36,7 @@ async function smokeManager(manager, tarball) {
   const installArgs = manager === 'npm'
     ? ['install', '--ignore-scripts', tarball]
     : ['add', '--ignore-scripts', tarball]
-  run(managerCommand(manager), installArgs, project)
+  run(manager, installArgs, project)
   const binary = join(
     project,
     'node_modules',
@@ -46,16 +46,17 @@ async function smokeManager(manager, tarball) {
   await stat(binary)
   await assertMissing(join(project, 'node_modules', 'buckyos', 'cli', 'runtime', 'deno'))
 
+  const traceId = 'smoke with spaces-示例'
   const commands = [
     ['--version'],
-    ['--output', 'json', '--trace-id', 'smoke', 'command', 'list'],
-    ['--output', 'json', '--trace-id', 'smoke', 'command', 'describe', 'pikg', 'build'],
+    ['--output', 'json', '--trace-id', traceId, 'command', 'list'],
+    ['--output', 'json', '--trace-id', traceId, 'command', 'describe', 'pikg', 'build'],
     [
       '--non-interactive',
       '--output',
       'json',
       '--trace-id',
-      'smoke',
+      traceId,
       'pikg',
       'init',
       '.',
@@ -68,21 +69,25 @@ async function smokeManager(manager, tarball) {
       '--source',
       './web/dist',
     ],
-    ['--output', 'json', '--trace-id', 'smoke', 'pikg', 'build'],
-    ['--output', 'json', '--trace-id', 'smoke', 'pikg', 'pack'],
-    ['--output', 'json', '--trace-id', 'smoke', 'pikg', 'info', './dapp_dist/smoke-app-0.1.0.pikg'],
-    ['--non-interactive', '--yes', '--output', 'json', '--trace-id', 'smoke', 'pikg', 'clean'],
+    ['--output', 'json', '--trace-id', traceId, 'pikg', 'build'],
+    ['--output', 'json', '--trace-id', traceId, 'pikg', 'pack'],
+    ['--output', 'json', '--trace-id', traceId, 'pikg', 'info', './dapp_dist/smoke-app-0.1.0.pikg'],
+    ['--non-interactive', '--yes', '--output', 'json', '--trace-id', traceId, 'pikg', 'clean'],
   ]
-  for (const args of commands) run(binary, args, project)
+  for (const args of commands) {
+    const result = run(binary, args, project)
+    if (args.includes('--trace-id') && JSON.parse(result.stdout).meta?.trace_id !== traceId) {
+      throw new Error(`${manager}: installed CLI did not preserve the trace ID argument`)
+    }
+  }
 }
 
 function run(command, args, cwd) {
-  const result = spawnSync(command, args, {
+  const result = spawn.sync(command, args, {
     cwd,
     env: { ...process.env, SOURCE_DATE_EPOCH: '1800000000' },
     encoding: 'utf8',
     maxBuffer: 32 * 1024 * 1024,
-    shell: process.platform === 'win32' && command.endsWith('.cmd'),
   })
   if (result.error) throw result.error
   if (result.status !== 0) {
@@ -101,8 +106,4 @@ async function assertMissing(path) {
     throw error
   }
   throw new Error(`developer tarball unexpectedly contains a Deno runtime: ${path}`)
-}
-
-function managerCommand(name) {
-  return process.platform === 'win32' ? `${name}.cmd` : name
 }

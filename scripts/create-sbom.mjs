@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { readFile, writeFile } from 'node:fs/promises'
-import { spawnSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
+import spawn from 'cross-spawn'
 import process from 'node:process'
 
 const options = parseArgs(process.argv.slice(2))
@@ -13,7 +14,7 @@ const packageJson = JSON.parse(await readFile(new URL('../package.json', import.
 const lockfile = await readFile(new URL('../pnpm-lock.yaml', import.meta.url))
 const tarball = await readFile(options.tarball)
 const deno = await readFile(options.deno)
-const denoResult = spawnSync(options.deno, ['--version'], { encoding: 'utf8' })
+const denoResult = spawn.sync(options.deno, ['--version'], { encoding: 'utf8' })
 if (denoResult.status !== 0) throw new Error(denoResult.stderr || 'failed to run Deno')
 const denoVersion = denoResult.stdout.split(/\r?\n/, 1)[0].split(/\s+/)[1]
 const dependencyTree = productionDependencyTree()
@@ -84,16 +85,12 @@ await writeFile(options.output, `${JSON.stringify(sbom, null, 2)}\n`, { flag: 'w
 
 function productionDependencyTree() {
   const packageManager = process.env.npm_execpath
-  const command = packageManager
-    ? process.execPath
-    : process.platform === 'win32'
-    ? 'pnpm.cmd'
-    : 'pnpm'
+  const command = packageManager ? process.execPath : 'pnpm'
   const args = packageManager
     ? [packageManager, 'list', '--prod', '--json', '--depth', 'Infinity']
     : ['list', '--prod', '--json', '--depth', 'Infinity']
-  const result = spawnSync(command, args, {
-    cwd: new URL('..', import.meta.url),
+  const result = spawn.sync(command, args, {
+    cwd: fileURLToPath(new URL('..', import.meta.url)),
     encoding: 'utf8',
     maxBuffer: 32 * 1024 * 1024,
   })
