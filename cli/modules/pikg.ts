@@ -23,6 +23,7 @@ import {
   rejectUnknown,
   stableJsonDigest,
   validatePermissions,
+  validateContentHandlers,
   validateServiceConfigTips,
   validateSnapshot,
   validateSubpackageName,
@@ -80,6 +81,7 @@ interface AppMeta {
   show_name: string
   categories: string[]
   permissions: unknown[]
+  content_handlers?: unknown[]
   selector_type: string
   service_config_tips: Record<string, unknown>
 }
@@ -710,6 +712,7 @@ async function buildCommand(
       pkg_list: pkgList,
       show_name: appMeta.show_name,
       ...(appMeta.permissions.length ? { permissions: appMeta.permissions } : {}),
+      ...(appMeta.content_handlers?.length ? { content_handlers: appMeta.content_handlers } : {}),
       selector_type: appMeta.selector_type,
       service_config_tips: appMeta.service_config_tips,
     }
@@ -885,6 +888,7 @@ function parseAppMeta(value: Record<string, unknown>): AppMeta {
       'show_name',
       'categories',
       'permissions',
+      'content_handlers',
       'selector_type',
       'service_config_tips',
     ],
@@ -929,6 +933,7 @@ function parseAppMeta(value: Record<string, unknown>): AppMeta {
     show_name: developmentString(value.show_name, 'app.json.show_name'),
     categories: categories as string[],
     permissions,
+    ...(value.content_handlers === undefined ? {} : { content_handlers: developmentValidation(() => validateContentHandlers(value.content_handlers, permissions)) }),
     selector_type: developmentString(value.selector_type, 'app.json.selector_type'),
     service_config_tips: serviceConfig,
   }

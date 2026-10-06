@@ -387,3 +387,19 @@ Deno.test('pikg command schemas are local and expose the doctor workflow', () =>
     assertEquals(command.networkAccess, false)
   }
 })
+
+Deno.test('content handler declarations reject unsafe entries and preserve normal declarations', async () => {
+  const { validateContentHandlers } = await import('../modules/pikg_protocol.ts')
+  const valid = [{ handler_id: 'text', version: 1, selectors: [{ mime: 'text/*' }], intents: { open: { entry: { type: 'web', path: '/open?src={source}' }, priority: 60 } } }]
+  assertEquals(validateContentHandlers(valid, []), valid)
+  for (const path of ['//evil.example/open', '/%2e%2e/secret', '/\\evil', '/open#x']) {
+    const invalid = structuredClone(valid); invalid[0].intents.open.entry.path = path
+    let rejected = false
+    try { validateContentHandlers(invalid, []) } catch { rejected = true }
+    assert(rejected)
+  }
+  const duplicate = [...valid, ...valid]
+  let rejected = false
+  try { validateContentHandlers(duplicate, []) } catch { rejected = true }
+  assert(rejected)
+})

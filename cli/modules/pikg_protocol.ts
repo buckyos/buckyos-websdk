@@ -828,6 +828,7 @@ export function validateAppDocShape(appDoc: Record<string, unknown>): void {
       'sdk_version',
       'req_capbilities',
       'permissions',
+      'content_handlers',
       'selector_type',
       'service_config_tips',
     ],
@@ -897,6 +898,9 @@ export function validateAppDocShape(appDoc: Record<string, unknown>): void {
     throw invalid('appdoc', 'APPDOC.permissions must be an array')
   }
   validatePermissions(appDoc.permissions ?? [], 'APPDOC.permissions')
+  if (appDoc.content_handlers !== undefined && !Array.isArray(appDoc.content_handlers)) {
+    throw invalid('appdoc', 'APPDOC.content_handlers must be an array')
+  }
   validateServiceConfigTips(appDoc.service_config_tips, 'APPDOC.service_config_tips')
   const pkgList = expectObject(appDoc.pkg_list, 'APPDOC.pkg_list')
   if (Object.keys(pkgList).length === 0) {
@@ -1129,4 +1133,40 @@ function invalid(stage: string, message: string, entry?: string): ToolError {
 
 export function stableJsonDigest(value: unknown): string {
   return sha256Bytes(new TextEncoder().encode(ndn.toCanonicalJsonString(value)))
+}
+
+export function validateContentHandlers(value: unknown, permissions: unknown[]): unknown[] {
+  if (!Array.isArray(value)) throw invalid('appdoc', 'content_handlers must be an array')
+  const ids = new Set<string>()
+  for (const raw of value) {
+    const h = expectObject(raw, 'content handler')
+    const id = expectNonEmptyString(h.handler_id, 'handler_id')
+    if (!/^[a-zA-Z0-9_-]+$/.test(id) || ids.has(id)) throw invalid('appdoc', 'invalid or duplicate handler_id')
+    ids.add(id)
+    if (!Number.isSafeInteger(h.version) || Number(h.version) < 1) throw invalid('appdoc', 'invalid handler version')
+    if (!Array.isArray(h.selectors) || !h.selectors.length) throw invalid('appdoc', 'missing selectors')
+    for (const rawSelector of h.selectors) {
+      const s = expectObject(rawSelector, 'selector')
+      if (!['mime', 'objType', 'schema', 'ext'].some(k => k in s)) throw invalid('appdoc', 'empty selector')
+      for (const key of ['mime', 'objType', 'schema']) {
+        const v = s[key]
+        if (v !== undefined && !(typeof v === 'string' && v.length) && !(Array.isArray(v) && v.length && v.every(i => typeof i === 'string' && i.length))) throw invalid('appdoc', 'invalid selector field')
+      }
+      if (s.maxSize !== undefined && (!Number.isSafeInteger(s.maxSize) || Number(s.maxSize) < 0)) throw invalid('appdoc', 'invalid maxSize')
+    }
+    const intents = expectObject(h.intents, 'intents')
+    if (Object.keys(intents).length !== 1 || !intents.open) throw invalid('appdoc', 'only open intent is supported')
+    const open = expectObject(intents.open, 'open')
+    const entry = expectObject(open.entry, 'entry')
+    const path = expectNonEmptyString(entry.path, 'entry.path')
+    let decoded: string
+    try { decoded = decodeURIComponent(path) } catch { throw invalid('appdoc', 'invalid entry path') }
+    if (entry.type !== 'web' || !decoded.startsWith('/') || decoded.startsWith('//') || decoded.includes('..') || decoded.includes('\\') || decoded.includes('://') || decoded.includes('#') || /[\r\n]/.test(decoded)) throw invalid('appdoc', 'unsafe Web entry')
+    if (open.priority !== undefined && (!Number.isSafeInteger(open.priority) || Number(open.priority) < 0 || Number(open.priority) > 80)) throw invalid('appdoc', 'priority must be 0..80')
+    if (open.window !== undefined && open.window !== 'new' && open.window !== 'reuse') throw invalid('appdoc', 'invalid window policy')
+    if (open.multiSource !== undefined && typeof open.multiSource !== 'boolean') throw invalid('appdoc', 'invalid multiSource')
+    if (open.modes !== undefined && (!Array.isArray(open.modes) || !open.modes.length || open.modes.some(m => m !== 'view' && m !== 'edit'))) throw invalid('appdoc', 'invalid modes')
+    if (h.permissions !== undefined && (!Array.isArray(h.permissions) || h.permissions.some(scope => !permissions.some(p => p && typeof p === 'object' && (p as Record<string, unknown>).scope_path === scope)))) throw invalid('appdoc', 'handler permissions exceed App permissions')
+  }
+  return value
 }

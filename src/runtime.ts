@@ -282,7 +282,9 @@ class BrowserRuntimeProfile extends BaseRuntimeProfile {
   }
 
   getServiceSettingsPath(runtime: BuckyOSRuntime): string {
-    return `services/${runtime.getAppId()}/settings`
+    const user = getBrowserUserInfo()?.user_id
+    if (!user) throw new Error('Login is required for App settings')
+    return `users/${user}/apps/${runtime.getAppId()}/settings`
   }
 
   getZoneServiceURL(_runtime: BuckyOSRuntime, servicePath: string): string {

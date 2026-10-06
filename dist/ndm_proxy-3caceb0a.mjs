@@ -2463,7 +2463,11 @@ class BrowserRuntimeProfile extends BaseRuntimeProfile {
     return "/kapi/system_config";
   }
   getServiceSettingsPath(runtime) {
-    return `services/${runtime.getAppId()}/settings`;
+    var _a2;
+    const user = (_a2 = getBrowserUserInfo()) == null ? void 0 : _a2.user_id;
+    if (!user)
+      throw new Error("Login is required for App settings");
+    return `users/${user}/apps/${runtime.getAppId()}/settings`;
   }
   getZoneServiceURL(_runtime, servicePath) {
     return this.getRelativeZoneServiceURL(servicePath);
@@ -28512,4 +28516,4 @@ export {
   WORKFLOW_MAP_SHARD_TASK_SCHEMA_ID as y,
   WORKFLOW_THUNK_TASK_SCHEMA_ID as z
 };
-//# sourceMappingURL=ndm_proxy-1b07ecf3.mjs.map
+//# sourceMappingURL=ndm_proxy-3caceb0a.mjs.map

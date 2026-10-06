@@ -1,6 +1,6 @@
 {
   "name": "buckyos",
-  "version": "0.7.127",
+  "version": "0.7.128",
   "description": "BuckyOS WebSDK for browser and Node.js environments",
   "license": "MIT",
   "repository": {
@@ -64,7 +64,22 @@
       },
       "default": "./dist/provision.mjs"
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./nfsp": {
+      "types": "./dist/nfsp.d.ts",
+      "import": "./dist/nfsp.mjs",
+      "require": "./dist/nfsp.cjs"
+    },
+    "./content": {
+      "types": "./dist/content.d.ts",
+      "import": "./dist/content.mjs",
+      "require": "./dist/content.cjs"
+    },
+    "./app-frame": {
+      "types": "./dist/app-frame.d.ts",
+      "import": "./dist/app-frame.mjs",
+      "require": "./dist/app-frame.cjs"
+    }
   },
   "files": [
     "dist",

@@ -4594,6 +4594,7 @@ function validateAppDocShape(appDoc) {
       "sdk_version",
       "req_capbilities",
       "permissions",
+      "content_handlers",
       "selector_type",
       "service_config_tips"
     ],
@@ -4660,6 +4661,9 @@ function validateAppDocShape(appDoc) {
     throw invalid("appdoc", "APPDOC.permissions must be an array");
   }
   validatePermissions(appDoc.permissions ?? [], "APPDOC.permissions");
+  if (appDoc.content_handlers !== void 0 && !Array.isArray(appDoc.content_handlers)) {
+    throw invalid("appdoc", "APPDOC.content_handlers must be an array");
+  }
   validateServiceConfigTips(appDoc.service_config_tips, "APPDOC.service_config_tips");
   const pkgList = expectObject$3(appDoc.pkg_list, "APPDOC.pkg_list");
   if (Object.keys(pkgList).length === 0) {
@@ -4865,7 +4869,60 @@ function invalid(stage, message, entry) {
 function stableJsonDigest(value) {
   return sha256Bytes(new TextEncoder().encode(ndn.toCanonicalJsonString(value)));
 }
-const PACKAGE_VERSION = "0.7.127";
+function validateContentHandlers(value, permissions) {
+  if (!Array.isArray(value))
+    throw invalid("appdoc", "content_handlers must be an array");
+  const ids = /* @__PURE__ */ new Set();
+  for (const raw of value) {
+    const h = expectObject$3(raw, "content handler");
+    const id = expectNonEmptyString(h.handler_id, "handler_id");
+    if (!/^[a-zA-Z0-9_-]+$/.test(id) || ids.has(id))
+      throw invalid("appdoc", "invalid or duplicate handler_id");
+    ids.add(id);
+    if (!Number.isSafeInteger(h.version) || Number(h.version) < 1)
+      throw invalid("appdoc", "invalid handler version");
+    if (!Array.isArray(h.selectors) || !h.selectors.length)
+      throw invalid("appdoc", "missing selectors");
+    for (const rawSelector of h.selectors) {
+      const s = expectObject$3(rawSelector, "selector");
+      if (!["mime", "objType", "schema", "ext"].some((k) => k in s))
+        throw invalid("appdoc", "empty selector");
+      for (const key of ["mime", "objType", "schema"]) {
+        const v = s[key];
+        if (v !== void 0 && !(typeof v === "string" && v.length) && !(Array.isArray(v) && v.length && v.every((i) => typeof i === "string" && i.length)))
+          throw invalid("appdoc", "invalid selector field");
+      }
+      if (s.maxSize !== void 0 && (!Number.isSafeInteger(s.maxSize) || Number(s.maxSize) < 0))
+        throw invalid("appdoc", "invalid maxSize");
+    }
+    const intents = expectObject$3(h.intents, "intents");
+    if (Object.keys(intents).length !== 1 || !intents.open)
+      throw invalid("appdoc", "only open intent is supported");
+    const open2 = expectObject$3(intents.open, "open");
+    const entry = expectObject$3(open2.entry, "entry");
+    const path = expectNonEmptyString(entry.path, "entry.path");
+    let decoded;
+    try {
+      decoded = decodeURIComponent(path);
+    } catch {
+      throw invalid("appdoc", "invalid entry path");
+    }
+    if (entry.type !== "web" || !decoded.startsWith("/") || decoded.startsWith("//") || decoded.includes("..") || decoded.includes("\\") || decoded.includes("://") || decoded.includes("#") || /[\r\n]/.test(decoded))
+      throw invalid("appdoc", "unsafe Web entry");
+    if (open2.priority !== void 0 && (!Number.isSafeInteger(open2.priority) || Number(open2.priority) < 0 || Number(open2.priority) > 80))
+      throw invalid("appdoc", "priority must be 0..80");
+    if (open2.window !== void 0 && open2.window !== "new" && open2.window !== "reuse")
+      throw invalid("appdoc", "invalid window policy");
+    if (open2.multiSource !== void 0 && typeof open2.multiSource !== "boolean")
+      throw invalid("appdoc", "invalid multiSource");
+    if (open2.modes !== void 0 && (!Array.isArray(open2.modes) || !open2.modes.length || open2.modes.some((m) => m !== "view" && m !== "edit")))
+      throw invalid("appdoc", "invalid modes");
+    if (h.permissions !== void 0 && (!Array.isArray(h.permissions) || h.permissions.some((scope) => !permissions.some((p) => p && typeof p === "object" && p.scope_path === scope))))
+      throw invalid("appdoc", "handler permissions exceed App permissions");
+  }
+  return value;
+}
+const PACKAGE_VERSION = "0.7.128";
 const TOOL_VERSION = PACKAGE_VERSION;
 const SDK_VERSION = PACKAGE_VERSION;
 const PROTOCOL_VERSION = "1";
@@ -5428,6 +5485,7 @@ async function buildCommand(ctx, input, docker, now) {
       pkg_list: pkgList,
       show_name: appMeta.show_name,
       ...appMeta.permissions.length ? { permissions: appMeta.permissions } : {},
+      ...appMeta.content_handlers?.length ? { content_handlers: appMeta.content_handlers } : {},
       selector_type: appMeta.selector_type,
       service_config_tips: appMeta.service_config_tips
     };
@@ -5591,6 +5649,7 @@ function parseAppMeta(value) {
       "show_name",
       "categories",
       "permissions",
+      "content_handlers",
       "selector_type",
       "service_config_tips"
     ],
@@ -5632,6 +5691,7 @@ function parseAppMeta(value) {
     show_name: developmentString(value.show_name, "app.json.show_name"),
     categories,
     permissions,
+    ...value.content_handlers === void 0 ? {} : { content_handlers: developmentValidation(() => validateContentHandlers(value.content_handlers, permissions)) },
     selector_type: developmentString(value.selector_type, "app.json.selector_type"),
     service_config_tips: serviceConfig
   };
