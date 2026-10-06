@@ -9666,6 +9666,47 @@ async function runCli(host2, argv) {
   installHost(host2);
   return await new BuckyOSToolApplication().run(argv);
 }
+async function assertPathAccess(policy2, path, realPath, candidate, operation, resolveLinks = true) {
+  const roots = operation === "read" ? policy2.readPaths : policy2.writePaths;
+  const absolute = path.resolve(candidate);
+  const physicalRoots = [];
+  for (const root of roots) {
+    try {
+      physicalRoots.push(await realPath(path.resolve(root)));
+    } catch (error) {
+      if (!isHostError(error, "NotFound") && !isHostError(error, "PermissionDenied"))
+        throw error;
+    }
+  }
+  if (!insideAny(absolute, roots, path) && !insideAny(absolute, physicalRoots, path)) {
+    throw new HostError(
+      "PermissionDenied",
+      `${operation} access is outside ${policy2.name}: ${absolute}`,
+      absolute
+    );
+  }
+  if (!resolveLinks)
+    return;
+  try {
+    const physical = await realPath(absolute);
+    if (!insideAny(physical, physicalRoots, path)) {
+      throw new HostError(
+        "PermissionDenied",
+        `${operation} access escapes ${policy2.name}: ${absolute}`,
+        absolute
+      );
+    }
+  } catch (error) {
+    if (!isHostError(error, "NotFound"))
+      throw error;
+  }
+}
+function insideAny(candidate, roots, path) {
+  return roots.some((root) => {
+    const relative2 = path.relative(path.resolve(root), candidate);
+    return relative2 === "" || relative2 !== ".." && !relative2.startsWith(`..${path.sep}`) && !path.isAbsolute(relative2);
+  });
+}
 class NodeHost {
   constructor(policy2) {
     this.kind = "node";
@@ -9976,30 +10017,20 @@ class NodeHost {
     }
   }
   async assertPath(candidate, operation, resolveLinks = true) {
-    const roots = operation === "read" ? this.policy.readPaths : this.policy.writePaths;
-    const absolute = nodePath.resolve(candidate);
-    if (!insideAny(absolute, roots)) {
-      throw new HostError(
-        "PermissionDenied",
-        `${operation} access is outside ${this.policy.name}: ${absolute}`,
-        absolute
-      );
-    }
-    if (!resolveLinks)
-      return;
-    try {
-      const physical = await realpath(absolute);
-      if (!insideAny(physical, roots)) {
-        throw new HostError(
-          "PermissionDenied",
-          `${operation} access escapes ${this.policy.name}: ${absolute}`,
-          absolute
-        );
-      }
-    } catch (error) {
-      if (error.code !== "ENOENT")
-        throw error;
-    }
+    await assertPathAccess(
+      this.policy,
+      nodePath,
+      async (path) => {
+        try {
+          return await realpath(path);
+        } catch (error) {
+          throw translateNodeError(error, path);
+        }
+      },
+      candidate,
+      operation,
+      resolveLinks
+    );
   }
 }
 async function* fixedChunks(source) {
@@ -10066,12 +10097,6 @@ function fileInfo(value) {
     dev: value.dev ?? null,
     ino: value.ino ?? null
   };
-}
-function insideAny(candidate, roots) {
-  return roots.some((root) => {
-    const relative2 = nodePath.relative(nodePath.resolve(root), candidate);
-    return relative2 === "" || relative2 !== ".." && !relative2.startsWith(`..${nodePath.sep}`) && !nodePath.isAbsolute(relative2);
-  });
 }
 async function capture(command, args) {
   return await new Promise((resolve2, reject) => {

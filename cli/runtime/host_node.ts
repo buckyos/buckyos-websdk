@@ -24,6 +24,7 @@ import { createInterface } from 'node:readline/promises'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { constants as zlibConstants, createGzip } from 'node:zlib'
+import { assertPathAccess } from './path_policy.ts'
 import {
   type DistributionPolicy,
   HostError,
@@ -399,28 +400,20 @@ export class NodeHost implements ToolHost {
     operation: 'read' | 'write',
     resolveLinks = true,
   ): Promise<void> {
-    const roots = operation === 'read' ? this.policy.readPaths : this.policy.writePaths
-    const absolute = nodePath.resolve(candidate)
-    if (!insideAny(absolute, roots)) {
-      throw new HostError(
-        'PermissionDenied',
-        `${operation} access is outside ${this.policy.name}: ${absolute}`,
-        absolute,
-      )
-    }
-    if (!resolveLinks) return
-    try {
-      const physical = await realpath(absolute)
-      if (!insideAny(physical, roots)) {
-        throw new HostError(
-          'PermissionDenied',
-          `${operation} access escapes ${this.policy.name}: ${absolute}`,
-          absolute,
-        )
-      }
-    } catch (error) {
-      if ((error as { code?: string }).code !== 'ENOENT') throw error
-    }
+    await assertPathAccess(
+      this.policy,
+      nodePath,
+      async (path) => {
+        try {
+          return await realpath(path)
+        } catch (error) {
+          throw translateNodeError(error, path)
+        }
+      },
+      candidate,
+      operation,
+      resolveLinks,
+    )
   }
 }
 
@@ -506,14 +499,6 @@ function fileInfo(value: {
     dev: value.dev ?? null,
     ino: value.ino ?? null,
   }
-}
-
-function insideAny(candidate: string, roots: readonly string[]): boolean {
-  return roots.some((root) => {
-    const relative = nodePath.relative(nodePath.resolve(root), candidate)
-    return relative === '' || relative !== '..' && !relative.startsWith(`..${nodePath.sep}`) &&
-        !nodePath.isAbsolute(relative)
-  })
 }
 
 async function capture(command: string, args: string[]) {

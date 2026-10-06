@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -8,7 +8,7 @@ import { spawnSync } from 'node:child_process'
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const nodeLauncher = join(packageRoot, 'cli', 'launcher.mjs')
 const systemLauncher = join(packageRoot, 'cli', 'system_launcher.ts')
-const workspace = await mkdtemp(join(tmpdir(), 'buckyos conformance-示例-'))
+const workspace = await realpath(await mkdtemp(join(tmpdir(), 'buckyos conformance-示例-')))
 const project = join(workspace, 'app with space-示例')
 const environment = {
   ...process.env,
@@ -124,7 +124,6 @@ function runDeno(args, cwd = project) {
       `--allow-read=${packageRoot},${workspace},/opt/buckyos`,
       `--allow-write=${workspace}`,
       '--allow-env',
-      '--allow-run=docker',
       systemLauncher,
       ...args,
     ],

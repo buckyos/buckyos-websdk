@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url'
 import { Readable, Writable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { constants as zlibConstants, createGzip } from 'node:zlib'
+import { assertPathAccess } from './path_policy.ts'
 import {
   type DistributionPolicy,
   HostError,
@@ -392,28 +393,20 @@ export class DenoHost implements ToolHost {
     operation: 'read' | 'write',
     resolveLinks = true,
   ): Promise<void> {
-    const roots = operation === 'read' ? this.policy.readPaths : this.policy.writePaths
-    const absolute = denoPath.resolve(candidate)
-    if (!insideAny(absolute, roots)) {
-      throw new HostError(
-        'PermissionDenied',
-        `${operation} access is outside ${this.policy.name}: ${absolute}`,
-        absolute,
-      )
-    }
-    if (!resolveLinks) return
-    try {
-      const physical = await Deno.realPath(absolute)
-      if (!insideAny(physical, roots)) {
-        throw new HostError(
-          'PermissionDenied',
-          `${operation} access escapes ${this.policy.name}: ${absolute}`,
-          absolute,
-        )
-      }
-    } catch (error) {
-      if (!(error instanceof Deno.errors.NotFound)) throw error
-    }
+    await assertPathAccess(
+      this.policy,
+      denoPath,
+      async (path) => {
+        try {
+          return await Deno.realPath(path)
+        } catch (error) {
+          throw translateDenoError(error, path)
+        }
+      },
+      candidate,
+      operation,
+      resolveLinks,
+    )
   }
 }
 
@@ -486,19 +479,11 @@ function fileInfo(value: Deno.FileInfo): HostFileInfo {
   }
 }
 
-function insideAny(candidate: string, roots: readonly string[]): boolean {
-  return roots.some((root) => {
-    const relative = denoPath.relative(denoPath.resolve(root), candidate)
-    return relative === '' || relative !== '..' && !relative.startsWith(`..${denoPath.sep}`) &&
-        !denoPath.isAbsolute(relative)
-  })
-}
-
 function translateDenoError(error: unknown, path?: string): HostError {
   if (error instanceof HostError) return error
   const kind = error instanceof Deno.errors.NotFound
     ? 'NotFound'
-    : error instanceof Deno.errors.PermissionDenied
+    : error instanceof Deno.errors.PermissionDenied || error instanceof Deno.errors.NotCapable
     ? 'PermissionDenied'
     : error instanceof Deno.errors.AlreadyExists
     ? 'AlreadyExists'

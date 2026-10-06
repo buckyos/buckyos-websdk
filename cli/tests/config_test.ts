@@ -1,4 +1,5 @@
 import './setup.ts'
+import { join } from 'node:path'
 import { ConfigStore, resolveConfig } from '../core/config.ts'
 import { identityRootPairs } from '../core/identity.ts'
 import { assert, assertEquals, assertRejects, testConfig } from './test_helpers.ts'
@@ -64,8 +65,8 @@ Deno.test('operations and developer identity roots are fixed and selected separa
   const operations = identityRootPairs(config, environment)
   assertEquals(operations, [
     {
-      publicRoot: '/home/alice/.buckyos/local/identity',
-      securityRoot: '/home/alice/.buckyos/security',
+      publicRoot: join(environment.HOME, '.buckyos', 'local', 'identity'),
+      securityRoot: join(environment.HOME, '.buckyos', 'security'),
       source: 'buckyos-home',
     },
   ])
@@ -75,12 +76,14 @@ Deno.test('operations and developer identity roots are fixed and selected separa
   })
   assertEquals(developer, [
     {
-      publicRoot: '/home/alice/.buckycli/local/identity',
-      securityRoot: '/home/alice/.buckycli/security',
+      publicRoot: join(environment.HOME, '.buckycli', 'local', 'identity'),
+      securityRoot: join(environment.HOME, '.buckycli', 'security'),
       source: 'buckycli-home',
     },
   ])
-  assert([...operations, ...developer].every((pair) => !pair.publicRoot.startsWith('/untrusted')))
+  assert(
+    [...operations, ...developer].every((pair) => !pair.publicRoot.startsWith(join('/untrusted'))),
+  )
 })
 
 Deno.test('config files reject secret or unknown fields', async () => {

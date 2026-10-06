@@ -1,5 +1,5 @@
 import './setup.ts'
-import { dirname, join } from 'node:path'
+import { join, posix, win32 } from 'node:path'
 import { BuckyOSToolApplication, createRegistry, type ToolStdio } from '../core/app.ts'
 import { CommandRegistry } from '../core/registry.ts'
 import { createProvisionModule } from '../modules/provision.ts'
@@ -75,84 +75,75 @@ Deno.test('provision module registers local, offline, session-free commands', ()
   assertEquals(createRegistry().get('provision', 'status').module, 'provision')
 })
 
-Deno.test('provision launcher policy grants only the target root and the backup directory', () => {
-  const path = {
-    sep: '/',
-    basename: (value: string) => value.split('/').pop() ?? '',
-    dirname,
-    isAbsolute: (value: string) => value.startsWith('/'),
-    join,
-    relative: (from: string, to: string) => to.replace(`${from}/`, ''),
-    resolve: (...parts: string[]) => join('/', ...parts),
-    parse: (value: string) => ({
-      root: '/',
-      dir: dirname(value),
-      base: value,
-      ext: '',
-      name: value,
-    }),
-  }
-  const base = {
-    distribution: 'developer' as const,
-    cwd: '/work',
-    packageRoot: '/pkg',
-    homeDir: '/home/user',
-    environment: {},
-    path,
-  }
-  const activate = buildDistributionPolicy({
-    ...base,
-    argv: [
-      '--non-interactive',
-      '--yes',
-      '--input',
-      '/secrets/activation.json',
-      'provision',
-      'activate',
-      '--root',
-      '/opt/buckyos',
-      '--owner-key-backup',
-      '/secure-backup/corp-owner.pem',
-    ],
-  })
-  assertEquals(activate.network, false)
-  assertEquals(activate.subprocesses, [])
-  assert(activate.readPaths.includes('/opt/buckyos'))
-  assert(activate.readPaths.includes('/secure-backup'))
-  assert(activate.readPaths.includes('/secrets/activation.json'))
-  assert(activate.writePaths.includes('/opt/buckyos'))
-  assert(activate.writePaths.includes('/secure-backup'))
-  assert(!activate.writePaths.includes('/secrets/activation.json'))
+for (const path of [posix, win32]) {
+  Deno.test(`provision launcher policy scopes root and backup paths (${path.sep})`, () => {
+    const volume = path === win32 ? 'C:\\' : '/'
+    const root = path.join(volume, 'opt', 'buckyos')
+    const backupDir = path.join(volume, 'secure-backup')
+    const backupFile = path.join(backupDir, 'corp-owner.pem')
+    const inputFile = path.join(volume, 'secrets', 'activation.json')
+    const base = {
+      distribution: 'developer' as const,
+      cwd: path.join(volume, 'work'),
+      packageRoot: path.join(volume, 'pkg'),
+      homeDir: path.join(volume, 'home', 'user'),
+      environment: {},
+      path,
+    }
+    const activate = buildDistributionPolicy({
+      ...base,
+      argv: [
+        '--non-interactive',
+        '--yes',
+        '--input',
+        inputFile,
+        'provision',
+        'activate',
+        '--root',
+        root,
+        '--owner-key-backup',
+        backupFile,
+      ],
+    })
+    assertEquals(activate.network, false)
+    assertEquals(activate.subprocesses, [])
+    assert(activate.readPaths.includes(root))
+    assert(activate.readPaths.includes(backupDir))
+    assert(activate.readPaths.includes(inputFile))
+    assert(activate.writePaths.includes(root))
+    assert(activate.writePaths.includes(backupDir))
+    assert(!activate.writePaths.includes(inputFile))
 
-  const check = buildDistributionPolicy({
-    ...base,
-    argv: [
-      'provision',
-      'check',
-      '--root',
-      '/opt/buckyos',
-      '--domain',
-      'corp.example.com',
-      '--owner-name',
-      'admin',
-      '--owner-key-backup',
-      '/secure-backup/corp-owner.pem',
-    ],
-  })
-  assertEquals(check.network, false)
-  assert(check.readPaths.includes('/opt/buckyos'))
-  assert(check.readPaths.includes('/secure-backup'))
-  assert(!check.writePaths.includes('/opt/buckyos'))
-  assert(!check.writePaths.includes('/secure-backup'))
+    const check = buildDistributionPolicy({
+      ...base,
+      argv: [
+        'provision',
+        'check',
+        '--root',
+        root,
+        '--domain',
+        'corp.example.com',
+        '--owner-name',
+        'admin',
+        '--owner-key-backup',
+        backupFile,
+      ],
+    })
+    assertEquals(check.network, false)
+    assert(check.readPaths.includes(root))
+    assert(check.readPaths.includes(backupDir))
+    assert(!check.writePaths.includes(root))
+    assert(!check.writePaths.includes(backupDir))
 
-  const status = buildDistributionPolicy({
-    ...base,
-    argv: ['provision', 'status', '--root', '/opt/buckyos'],
+    const status = buildDistributionPolicy({
+      ...base,
+      argv: ['provision', 'status', '--root', root],
+    })
+    assertEquals(status.network, false)
+    assert(status.readPaths.includes(root))
+    assert(!status.writePaths.includes(root))
   })
-  assertEquals(status.network, false)
-  assert(status.readPaths.includes('/opt/buckyos'))
-  assert(!status.writePaths.includes('/opt/buckyos'))
-})
+}
 
 Deno.test('provision status/check/activate run without a Zone and never print secrets', async () => {
   const sandbox = await Deno.makeTempDir()
