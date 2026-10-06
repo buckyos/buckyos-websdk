@@ -1,5 +1,5 @@
-import { c as createSDKModule } from "./ndm_proxy-54e7d13f.mjs";
-import { G, aG, L, aH, aL, aK, aI, aJ, aE, aF, aD, N, Q, P, X, U, aR, b4, b5, b0, b1, b2, b3, b6, d, B, b8, b7, bc, ba, i, aj, D, H, I, aW, aV, k, M, O, J, u, j, R, v, an, S, a3, a2, a1, a6, a4, a0, Y, Z, a5, _, a7, $, o, q, T, a8, t, K, ak, ah, am, ao, ac, al, ap, ag, ad, af, V, W, E, y, F, w, A, C, aq, x, z, aC, av, ay, at, ax, as, au, aw, aB, aA, az, ar, aP, aO, aN, aZ, aX, ai, b, a_, aS, b9, e, h, f, g, aM, ae, m, l, n, a, aY, a$, p, r, s, ab, a9, aa, aQ, aU, aT, bb } from "./ndm_proxy-54e7d13f.mjs";
+import { c as createSDKModule } from "./ndm_proxy-1b07ecf3.mjs";
+import { G, aG, L, aH, aL, aK, aI, aJ, aE, aF, aD, N, Q, P, X, U, aR, b4, b5, b0, b1, b2, b3, b6, d, B, b8, b7, bc, ba, i, aj, D, H, I, aW, aV, k, M, O, J, u, j, R, v, an, S, a3, a2, a1, a6, a4, a0, Y, Z, a5, _, a7, $, o, q, T, a8, t, K, ak, ah, am, ao, ac, al, ap, ag, ad, af, V, W, E, y, F, w, A, C, aq, x, z, aC, av, ay, at, ax, as, au, aw, aB, aA, az, ar, aP, aO, aN, aZ, aX, ai, b, a_, aS, b9, e, h, f, g, aM, ae, m, l, n, a, aY, a$, p, r, s, ab, a9, aa, aQ, aU, aT, bb } from "./ndm_proxy-1b07ecf3.mjs";
 import { b as b10, D as D2, N as N2, u as u2, t as t2, h as h2, k as k2, m as m2, j as j2, d as d2, g as g2, f as f2, c, e as e2, o as o2, l as l2, i as i2, n as n2, a as a10, s as s2, r as r2, q as q2, p as p2 } from "./ndn_types-d768245f.mjs";
 const sdkModule = createSDKModule("universal");
 const buckyos = sdkModule.buckyos;

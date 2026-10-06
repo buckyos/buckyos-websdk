@@ -1288,7 +1288,7 @@ function strict(request, allowed) {
 }
 const common = ["exact_model", "trace_id", "execution_mode", "idempotency_key", "task_options", "session_id"];
 const schemas = {
-  [AICC_AI_METHODS.CHAT_COMPLETIONS_CREATE]: [...common, "messages", "tools", "response_format", "temperature", "top_p", "max_output_tokens", "seed", "stop", "output"],
+  [AICC_AI_METHODS.CHAT_COMPLETIONS_CREATE]: [...common, "web_search", "messages", "tools", "response_format", "temperature", "top_p", "max_output_tokens", "seed", "stop", "output"],
   [AICC_AI_METHODS.IMAGES_GENERATE]: [...common, "prompt", "negative_prompt", "n", "aspect_ratio", "size", "quality", "style", "seed", "output"],
   [AICC_AI_METHODS.EMBEDDING_TEXT]: [...common, "items", "chunking", "embedding_space_id", "dimensions", "normalize", "prefer_artifact"],
   [AICC_AI_METHODS.EMBEDDING_MULTIMODAL]: [...common, "items", "dimensions", "normalize"],
@@ -1638,6 +1638,7 @@ const DEFAULT_QUEUE_CONFIG = {
   max_messages: null,
   retention_seconds: null,
   sync_write: false,
+  keep_acked: false,
   other_app_can_read: true,
   other_app_can_write: false,
   other_user_can_read: false,
@@ -28511,4 +28512,4 @@ export {
   WORKFLOW_MAP_SHARD_TASK_SCHEMA_ID as y,
   WORKFLOW_THUNK_TASK_SCHEMA_ID as z
 };
-//# sourceMappingURL=ndm_proxy-54e7d13f.mjs.map
+//# sourceMappingURL=ndm_proxy-1b07ecf3.mjs.map

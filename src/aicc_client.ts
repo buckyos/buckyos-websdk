@@ -171,7 +171,7 @@ interface ChatFields { messages: AiMessage[]; tools?: AiToolSpec[]; response_for
   top_p?: number; max_output_tokens?: number; seed?: number; stop?: string[]; output?: AiOutputOptions }
 interface ImageGenerationFields { prompt: string; negative_prompt?: string; n?: number; aspect_ratio?: string; size?: string;
   quality?: string; style?: string; seed?: number; output?: AiOutputOptions }
-export interface LlmChatInvokeRequest extends InferenceRequest, ChatFields {}
+export interface LlmChatInvokeRequest extends InferenceRequest, ChatFields { web_search?: boolean }
 export interface LlmChatHelperRequest extends ChatFields { logical_model: string; requirements?: HelperModelRequirement; disable?: ModelDisable;
   trace_id?: string; execution_mode?: AiccExecutionMode; policy?: RoutePolicy; idempotency_key?: string;
   task_options?: AiTaskOptions; session_overlay?: AiccRouteOverlay; session_id?: string }
@@ -422,7 +422,7 @@ function strict(request: object, allowed: readonly string[]) {
 }
 const common = ['exact_model', 'trace_id', 'execution_mode', 'idempotency_key', 'task_options', 'session_id']
 const schemas: Partial<Record<AiccMethod, string[]>> = {
-  [AICC_AI_METHODS.CHAT_COMPLETIONS_CREATE]: [...common, 'messages', 'tools', 'response_format', 'temperature', 'top_p', 'max_output_tokens', 'seed', 'stop', 'output'],
+  [AICC_AI_METHODS.CHAT_COMPLETIONS_CREATE]: [...common, 'web_search', 'messages', 'tools', 'response_format', 'temperature', 'top_p', 'max_output_tokens', 'seed', 'stop', 'output'],
   [AICC_AI_METHODS.IMAGES_GENERATE]: [...common, 'prompt', 'negative_prompt', 'n', 'aspect_ratio', 'size', 'quality', 'style', 'seed', 'output'],
   [AICC_AI_METHODS.EMBEDDING_TEXT]: [...common, 'items', 'chunking', 'embedding_space_id', 'dimensions', 'normalize', 'prefer_artifact'],
   [AICC_AI_METHODS.EMBEDDING_MULTIMODAL]: [...common, 'items', 'dimensions', 'normalize'],

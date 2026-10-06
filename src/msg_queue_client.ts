@@ -27,6 +27,8 @@ export interface QueueConfig {
   max_messages?: number | null
   retention_seconds?: number | null
   sync_write: boolean
+  /** Keep acknowledged messages (log semantics). Default: a message acknowledged by every subscription is deleted. */
+  keep_acked?: boolean
   other_app_can_read: boolean
   other_app_can_write: boolean
   other_user_can_read: boolean
@@ -37,6 +39,7 @@ export const DEFAULT_QUEUE_CONFIG: QueueConfig = {
   max_messages: null,
   retention_seconds: null,
   sync_write: false,
+  keep_acked: false,
   other_app_can_read: true,
   other_app_can_write: false,
   other_user_can_read: false,

@@ -437,6 +437,7 @@ interface ImageGenerationFields {
     output?: AiOutputOptions;
 }
 export interface LlmChatInvokeRequest extends InferenceRequest, ChatFields {
+    web_search?: boolean;
 }
 export interface LlmChatHelperRequest extends ChatFields {
     logical_model: string;

@@ -61,6 +61,7 @@ describe('canonical AICC contract', () => {
     const result = await client.chatCompletionsCreate({
       exact_model: 'gpt-5@openai-main',
       trace_id: 'trace-chat-1',
+      web_search: true,
       execution_mode: AICC_EXECUTION_MODES.STREAM,
       session_id: 'session-chat-1',
       messages: [aiccTextMessage('user', 'hello')],
@@ -72,6 +73,7 @@ describe('canonical AICC contract', () => {
       params: {
         exact_model: 'gpt-5@openai-main',
         trace_id: 'trace-chat-1',
+        web_search: true,
         execution_mode: 'stream',
         session_id: 'session-chat-1',
         messages: [{ role: 'user', content: [{ type: 'text', text: 'hello' }] }],
