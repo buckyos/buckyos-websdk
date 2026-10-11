@@ -14953,7 +14953,7 @@ async function generateMaterial(params, adminPassword, ownerKeyPair, deviceKeyPa
     friend_passcode: "",
     enabled_features: {},
     ai_provider_config: {},
-    jarvis_msg_tunnel_config: {}
+    owner_telegram_account_id: ""
   };
   return {
     documentIat: now,
