@@ -526,6 +526,55 @@ export interface AckControlReq extends RunnerWriteEnvelope {
   reject_reason?: string
 }
 
+// Human task data (buckyos-api/src/taskdata.rs): what a HumanSet task asks
+// and the result a human commits.
+
+export type HumanPromptOptionStyle = 'default' | 'primary' | 'danger'
+
+export interface HumanPromptOption {
+  value: string
+  label: string
+  description?: string
+  style?: HumanPromptOptionStyle
+}
+
+export interface HumanPromptChoiceControl {
+  kind: 'choice'
+  id: string
+  label?: string
+  options?: HumanPromptOption[]
+  multiple?: boolean
+  required?: boolean
+}
+
+export interface HumanPromptTextInputControl {
+  kind: 'text_input'
+  id: string
+  label?: string
+  placeholder?: string
+  default_value?: string
+  multiline?: boolean
+  required?: boolean
+}
+
+export type HumanPromptControl = HumanPromptChoiceControl | HumanPromptTextInputControl
+
+export interface HumanTaskPrompt {
+  title?: string
+  message?: string
+  controls?: HumanPromptControl[]
+}
+
+export type TaskDataResult =
+  | { kind: 'machine'; output: unknown }
+  | {
+    kind: 'human'
+    action?: string
+    values?: Record<string, unknown>
+    submitted_by?: string
+    submitted_at?: number
+  }
+
 export interface CommitResultReq {
   task_id: TaskId
   result: unknown

@@ -1,4 +1,6 @@
 import { kRPCClient } from './krpc_client';
+import type { KEventClient } from './kevent_client';
+import type { CommitResultReq, HumanPromptOption, HumanTaskPrompt, Task, TaskDataResult } from './task_mgr_client';
 export declare const MSG_CENTER_SERVICE_UNIQUE_ID = "msg-center";
 export declare const MSG_CENTER_SERVICE_NAME = "msg-center";
 export declare const MSG_CENTER_SERVICE_PORT = 4050;
@@ -331,6 +333,168 @@ export interface ListReadReceiptsParams {
     limit?: number;
     offset?: number;
 }
+export declare const NOTIFY_INTENT = "buckyos.notify";
+/** Written into an Agent's own INBOX when its notification also reached one of its conversations. */
+export declare const NOTIFY_DELIVERED_INTENT = "buckyos.notify.delivered";
+export declare const NOTIFY_DATA_VERSION = 1;
+/** Owner-local sessions of a user that hold the notifications by category. */
+export declare const NOTIFY_SESSION_PREFIX = "sysnotify:";
+export declare const NOTIFY_CHOICE_CONTROL_ID = "option";
+export declare const NOTIFY_TEXT_CONTROL_ID = "text";
+export declare const NOTIFY_ACTION_ANSWER = "answer";
+export declare const NOTIFY_ACTION_DISMISS = "dismiss";
+/** Path of the MessageHub card of a notification: `<path>?notify=<id>`. */
+export declare const NOTIFY_LINK_PATH = "/messagehub";
+export type NotifyKind = 'notice' | 'input';
+/** Derived by msg-center from the caller; only system services may name one. */
+export type NotifyCategory = 'todo' | 'agent' | 'app';
+export type NotifyLevel = 'quiet' | 'normal' | 'timely' | 'urgent';
+export type NotifyStatus = 'open' | 'read' | 'answered' | 'dismissed' | 'expired' | 'canceled';
+/** Nothing can change any more (everything but `open` and `read`). */
+export declare function isNotifyClosed(status: NotifyStatus): boolean;
+export declare function notifyCategorySessionId(category: NotifyCategory): string;
+export declare function notifyCategoryFromSessionId(sessionId: string): NotifyCategory | null;
+/** A conversation of the user with the source. */
+export interface NotifyConversation {
+    /** The user's endpoint (DID or tunnel endpoint DID). */
+    to: string;
+    to_session?: string;
+}
+export interface NotifySource {
+    /** Filled by msg-center from the caller's identity. */
+    app_id?: string;
+    /** Filled by msg-center when the caller is an Agent. */
+    agent_did?: string;
+    session_id?: string;
+    turn?: number;
+    call_id?: string;
+    goal_id?: string;
+    /** One sentence: what this is for. */
+    operation?: string;
+    /** A page of the App about this matter. */
+    link?: string;
+    conversation?: NotifyConversation;
+}
+export interface NotifySendReq {
+    /** Zone user id of the recipient. */
+    to_user: string;
+    kind: NotifyKind;
+    level?: NotifyLevel;
+    category?: NotifyCategory;
+    prompt: HumanTaskPrompt;
+    source?: NotifySource;
+    expires_at_ms?: number;
+    /** Same caller + same key → the same notification, delivered once. */
+    idempotency_key: string;
+}
+/** One mailbox record of a notification. */
+export interface NotifyRecordRef {
+    owner: string;
+    session_id: string;
+    record_id: string;
+    msg_id: string;
+    from: string;
+}
+/** A copy of an Agent's notification in one of its conversations with the user. */
+export interface NotifyDelivery {
+    session_id: string;
+    /** `native` or the tunnel platform. */
+    platform: string;
+    to: string;
+    to_session?: string;
+    msg_id?: string;
+    ok: boolean;
+    reason?: string;
+}
+/** What the user (or someone on their behalf) submitted for an `input`. */
+export interface NotifyResult {
+    /** `answer` or `dismiss`. */
+    action: string;
+    /** `option` and / or `text`. */
+    values?: Record<string, unknown>;
+    submitted_by?: string;
+    submitted_at?: number;
+    /** `<user>|<app>` that committed it, from TaskMgr. */
+    committed_by?: string;
+}
+export interface NotifyView {
+    notify_id: string;
+    /** `https://<zone host>/messagehub?notify=<id>`, or the bare path. */
+    url: string;
+    to_user: string;
+    kind: NotifyKind;
+    category: NotifyCategory;
+    level: NotifyLevel;
+    status: NotifyStatus;
+    prompt: HumanTaskPrompt;
+    source: NotifySource;
+    created_at_ms: number;
+    expires_at_ms?: number;
+    closed_at_ms?: number;
+    closed_reason?: string;
+    /** Who acknowledged a `notice` on the user's behalf, when not the user. */
+    acked_by?: string;
+    task_id?: string;
+    result?: NotifyResult;
+    /** The record in the user's notification session. */
+    home?: NotifyRecordRef;
+    deliveries?: NotifyDelivery[];
+}
+export interface NotifyListReq {
+    status?: NotifyStatus[];
+    kind?: NotifyKind;
+    category?: NotifyCategory;
+    agent_did?: string;
+    app_id?: string;
+    session_id?: string;
+    goal_id?: string;
+    since_ms?: number;
+    /** Only system services may name someone else than the caller. */
+    to_user?: string;
+    cursor?: string;
+    limit?: number;
+}
+export interface NotifyListResult {
+    items: NotifyView[];
+    next_cursor?: string;
+}
+/** `content.machine.data` of a notification message (intent `buckyos.notify`). */
+export interface NotifyMessageData {
+    version: number;
+    notify_id: string;
+    kind: NotifyKind;
+    category: NotifyCategory;
+    level: NotifyLevel;
+    /** `true` for the record in the user's notification session, `false` for a copy. */
+    home: boolean;
+    source: NotifySource;
+    prompt: HumanTaskPrompt;
+    task_id?: string;
+    url: string;
+    expires_at_ms?: number;
+}
+/** `content.machine.data` of the record (intent `buckyos.notify.delivered`) in an Agent's own INBOX. */
+export interface NotifyDeliveredData {
+    notify_id: string;
+    url: string;
+    kind: NotifyKind;
+    category: NotifyCategory;
+    level: NotifyLevel;
+    title: string;
+    message?: string;
+    options?: HumanPromptOption[];
+    source: NotifySource;
+    delivered_msg_id?: string;
+    reply_route: NotifyConversation;
+    at_ms: number;
+}
+/** The answer to an `input`, or what to do with a `notice`. */
+export interface NotifyAnswer {
+    /** `true`: dismiss instead of answering. */
+    dismiss?: boolean;
+    option?: string;
+    text?: string;
+}
 export declare class MsgCenterClient {
     private rpcClient;
     constructor(rpcClient: kRPCClient);
@@ -373,5 +537,68 @@ export declare class MsgCenterClient {
     listContacts(query: ContactQuery, contactMgrOwner?: DID): Promise<Contact[]>;
     getGroupSubscribers(groupId: DID, limit?: number, offset?: number, contactMgrOwner?: DID): Promise<DID[]>;
     setGroupSubscribers(groupId: DID, subscribers: DID[], contactMgrOwner?: DID): Promise<SetGroupSubscribersResult>;
+    /** Notify a zone user (System Notify). */
+    notifySend(req: NotifySendReq): Promise<NotifyView>;
+    notifyGet(notifyId: string): Promise<NotifyView>;
+    notifyList(req?: NotifyListReq): Promise<NotifyListResult>;
+    /** Mark a `notice` read; `onBehalf` names who acknowledges for the user. */
+    notifyAck(notifyId: string, onBehalf?: string): Promise<NotifyView>;
+    notifyDismiss(notifyId: string): Promise<NotifyView>;
+    notifyCancel(notifyId: string, reason?: string): Promise<NotifyView>;
 }
+/**
+ * The prompt of an `input`: a required `option` choice when there are
+ * options, a `text` input when there are none or free text is allowed.
+ */
+export declare function inputPrompt(title: string, message: string, options: HumanPromptOption[], allowText?: boolean): HumanTaskPrompt;
+/** The options of a prompt's `option` choice. */
+export declare function promptOptions(prompt: HumanTaskPrompt): HumanPromptOption[];
+/** The task result of an answer (`TaskDataResult` `human`). */
+export declare function notifyAnswerToTaskResult(answer: NotifyAnswer, submittedBy: string, submittedAtMs: number): TaskDataResult;
+/** Checks an answer against the prompt of an `input`; returns the error, or null. */
+export declare function validateNotifyAnswer(answer: NotifyAnswer, prompt: HumanTaskPrompt): string | null;
+/** `/messagehub?notify=<id>` under `https://<host>` when the host is known. */
+export declare function notifyUrl(zoneHost: string | null | undefined, notifyId: string): string;
+/** The `content.machine.data` of a message, when it carries `intent`. */
+export declare function msgMachineData<T = JsonObject>(msg: MsgObject | null | undefined, intent: string): T | null;
+/** The notification data of a message, when it is one. */
+export declare function notifyMessageData(msg: MsgObject | null | undefined): NotifyMessageData | null;
+/** The TaskMgr side of answering an `input` (a `TaskManagerClient` fits). */
+export interface NotifyTaskAccess {
+    getTask(taskId: string): Promise<Task>;
+    commitResult(req: CommitResultReq): Promise<Task>;
+}
+/** How an attempt to answer ended: this answer is the result, or the task was already closed (by someone else's answer, a cancel or expiry). */
+export type NotifyCommit = {
+    kind: 'committed';
+    task: Task;
+} | {
+    kind: 'already_closed';
+    task: Task;
+};
+/**
+ * Commit `answer` to the task of an `input`: read the latest snapshot and
+ * write with `expected_revision`; a lost race re-reads so the caller sees
+ * the final state.
+ */
+export declare function commitNotifyAnswer(tasks: NotifyTaskAccess, taskId: string, answer: NotifyAnswer, submittedBy: string, nowMs?: number): Promise<NotifyCommit>;
+/**
+ * Answer an `input` (or dismiss it); for a `notice` acknowledge or dismiss
+ * it. Returns the final view: when someone else answered first, theirs.
+ * `submittedBy` defaults to the notification's user.
+ */
+export declare function answerNotify(msgCenter: Pick<MsgCenterClient, 'notifyGet' | 'notifyAck' | 'notifyDismiss'>, taskMgr: NotifyTaskAccess, notifyId: string, answer: NotifyAnswer, submittedBy?: string): Promise<NotifyView>;
+export interface WaitNotifyOptions {
+    /**
+     * When given, `/task_mgr/<task_id>` events of an `input` wake the wait
+     * early; without it (or if the reader cannot be opened) it only polls.
+     */
+    kevent?: Pick<KEventClient, 'createEventReader'> | null;
+}
+/**
+ * Wait until the notification is closed or `deadlineMs` (epoch ms) passes;
+ * returns the last view either way. Polls `notify.get` every 0.5 s, doubling
+ * up to 30 s, never past the deadline.
+ */
+export declare function waitNotify(msgCenter: Pick<MsgCenterClient, 'notifyGet'>, notifyId: string, deadlineMs: number, opts?: WaitNotifyOptions): Promise<NotifyView>;
 //# sourceMappingURL=msg_center_client.d.ts.map

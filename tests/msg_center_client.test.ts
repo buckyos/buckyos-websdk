@@ -1,5 +1,35 @@
-import { kRPCClient } from '../src/krpc_client'
-import { MsgCenterClient, mailboxAddress, mailboxResource } from '../src/msg_center_client'
+import { kRPCClient, RPCError } from '../src/krpc_client'
+import type { KEventReader } from '../src/kevent_client'
+import {
+  MsgCenterClient,
+  NotifyAnswer,
+  NotifyTaskAccess,
+  NotifyView,
+  answerNotify,
+  commitNotifyAnswer,
+  inputPrompt,
+  isNotifyClosed,
+  mailboxAddress,
+  mailboxResource,
+  notifyAnswerToTaskResult,
+  notifyCategoryFromSessionId,
+  notifyCategorySessionId,
+  notifyMessageData,
+  notifyUrl,
+  promptOptions,
+  validateNotifyAnswer,
+  waitNotify,
+} from '../src/msg_center_client'
+import {
+  CommitResultReq,
+  DEFAULT_CHILD_CONTROL_POLICY,
+  StorageDomain,
+  Task,
+  TaskManagerClient,
+  TaskOutcome,
+  TaskPhase,
+  baselineTaskControlProfile,
+} from '../src/task_mgr_client'
 
 function makeResponse(body: unknown, seq: number = 1) {
   return {
@@ -486,5 +516,543 @@ describe('MsgCenterClient', () => {
     await expect(
       client.peekBox({ mailbox: 'did:bns:u', box_kind: 'INBOX' }),
     ).rejects.toThrow('expected Vec<MailboxRecordWithObject> to be an array')
+  })
+})
+
+// System Notify: wire shapes follow buckyos-api/src/msg_notify.rs.
+
+const CHOICE_PROMPT = inputPrompt('Which one?', 'pick', [{ value: 'a', label: 'A' }], true)
+
+// A NotifyView as msg-center serializes it (serde, skip_serializing_if).
+const VIEW_WIRE = {
+  notify_id: 'nt-1',
+  url: 'https://test.buckyos.io/messagehub?notify=nt-1',
+  to_user: 'alice',
+  kind: 'input',
+  category: 'agent',
+  level: 'timely',
+  status: 'answered',
+  prompt: {
+    title: 'Which one?',
+    message: 'pick',
+    controls: [
+      { kind: 'choice', id: 'option', options: [{ value: 'a', label: 'A' }], multiple: false, required: false },
+      { kind: 'text_input', id: 'text', multiline: true, required: false },
+    ],
+  },
+  source: {
+    agent_did: 'did:web:jarvis.test',
+    session_id: 'work-1',
+    turn: 3,
+    call_id: 'call-1',
+    conversation: { to: 'did:bns:alice' },
+  },
+  created_at_ms: 1000,
+  expires_at_ms: 5000,
+  closed_at_ms: 2000,
+  task_id: 't1',
+  result: {
+    action: 'answer',
+    values: { option: 'a' },
+    submitted_by: 'alice',
+    submitted_at: 1999,
+    committed_by: 'alice|system:control-panel',
+  },
+  home: {
+    owner: 'did:bns:alice',
+    session_id: 'sysnotify:agent',
+    record_id: 'r1',
+    msg_id: 'm1',
+    from: 'did:bns:zone',
+  },
+  deliveries: [{ session_id: 'dm:1', platform: 'native', to: 'did:bns:alice', msg_id: 'm2', ok: true }],
+}
+
+function clone<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T
+}
+
+function humanTask(revision: number): Task {
+  return {
+    task_id: 't1',
+    name: 'notify',
+    root_id: 't1',
+    child_control_policy: DEFAULT_CHILD_CONTROL_POLICY,
+    schema_id: 'human.input/v1',
+    schema_version: 1,
+    input: {},
+    input_digest: '',
+    creator: { user_id: 'ood1', app_id: 'system:msg-center' },
+    storage_domain: StorageDomain.User,
+    idempotency_key: 'notify:nt-1',
+    executor: { kind: 'HumanSet' },
+    runner_epoch: 0,
+    assignees: ['alice'],
+    phase: TaskPhase.Waiting,
+    control_profile: baselineTaskControlProfile(0),
+    policy_preset: 'collaborative-tree/v1',
+    permission_boundary: false,
+    revision,
+    created_at: 0,
+    updated_at: 0,
+  }
+}
+
+/** One task; a commit with a stale revision loses (like TaskMgr's CAS). */
+class OneTask implements NotifyTaskAccess {
+  commits = 0
+  conflicts = 0
+  late = 0
+
+  constructor(public task: Task) {}
+
+  async getTask(): Promise<Task> {
+    return clone(this.task)
+  }
+
+  async commitResult(req: CommitResultReq): Promise<Task> {
+    if (this.task.phase === TaskPhase.Terminal) {
+      this.late += 1
+      throw new RPCError('RPC call error: task_already_completed: terminal')
+    }
+    if (this.task.revision !== req.expected_revision) {
+      this.conflicts += 1
+      throw new RPCError('RPC call error: revision_conflict: stale')
+    }
+    this.commits += 1
+    this.task = {
+      ...this.task,
+      result: req.result,
+      outcome: TaskOutcome.Succeeded,
+      phase: TaskPhase.Terminal,
+      revision: this.task.revision + 1,
+      completed_by: { user_id: 'alice', app_id: 'system:control-panel' },
+    }
+    return clone(this.task)
+  }
+}
+
+/** msg-center as seen by the SDK: the status of an `input` comes from its task. */
+function fakeMsgCenter(tasks: OneTask, kind: 'input' | 'notice' = 'input') {
+  const calls: string[] = []
+  const view = (): NotifyView => {
+    const task = tasks.task
+    const base: NotifyView = {
+      notify_id: 'nt-1',
+      url: notifyUrl(null, 'nt-1'),
+      to_user: 'alice',
+      kind,
+      category: 'app',
+      level: 'normal',
+      status: 'open',
+      prompt: kind === 'input' ? inputPrompt('q', '', [{ value: 'a', label: 'A' }, { value: 'b', label: 'B' }]) : { title: 'hi' },
+      source: {},
+      created_at_ms: 0,
+    }
+    if (kind === 'notice') return base
+    base.task_id = task.task_id
+    if (task.phase === TaskPhase.Terminal) {
+      const result = task.result as { action: string; values?: Record<string, unknown>; submitted_by?: string }
+      base.status = result.action === 'dismiss' ? 'dismissed' : 'answered'
+      base.result = { ...result, committed_by: 'alice|system:control-panel' }
+    }
+    return base
+  }
+  return {
+    calls,
+    notifyGet: jest.fn(async (_notifyId: string) => {
+      calls.push('get')
+      return view()
+    }),
+    notifyAck: jest.fn(async (_notifyId: string, _onBehalf?: string) => {
+      calls.push('ack')
+      return { ...view(), status: 'read' as const }
+    }),
+    notifyDismiss: jest.fn(async (_notifyId: string) => {
+      calls.push('dismiss')
+      return { ...view(), status: 'dismissed' as const }
+    }),
+  }
+}
+
+describe('System Notify', () => {
+  it('notifySend sends the NotifySendReq fields and parses the NotifyView', async () => {
+    const fetcher = jest.fn().mockResolvedValue(makeResponse(VIEW_WIRE, 1))
+    const client = new MsgCenterClient(new kRPCClient('/kapi/msg-center/', null, 1, { fetcher }))
+
+    const view = await client.notifySend({
+      to_user: 'alice',
+      kind: 'input',
+      level: 'timely',
+      prompt: CHOICE_PROMPT,
+      source: { session_id: 'work-1', operation: 'pick one', link: undefined },
+      expires_at_ms: 5000,
+      idempotency_key: 'k1',
+    })
+
+    expect(bodyOf(fetcher)).toEqual({
+      method: 'notify.send',
+      params: {
+        to_user: 'alice',
+        kind: 'input',
+        level: 'timely',
+        prompt: VIEW_WIRE.prompt,
+        source: { session_id: 'work-1', operation: 'pick one' },
+        expires_at_ms: 5000,
+        idempotency_key: 'k1',
+      },
+      sys: [1],
+    })
+    expect(clone(view)).toEqual(VIEW_WIRE)
+    expect(view.result?.values?.option).toBe('a')
+    expect(view.home?.session_id).toBe(notifyCategorySessionId('agent'))
+    expect(isNotifyClosed(view.status)).toBe(true)
+  })
+
+  it('notify get/list/ack/dismiss/cancel send the Rust request shapes', async () => {
+    const open = { ...VIEW_WIRE, status: 'open', result: undefined }
+    const fetcher = jest.fn()
+      .mockResolvedValueOnce(makeResponse(open, 1))
+      .mockResolvedValueOnce(makeResponse({ items: [open], next_cursor: 'c2' }, 2))
+      .mockResolvedValueOnce(makeResponse({ items: [] }, 3))
+      .mockResolvedValueOnce(makeResponse({ ...open, status: 'read', acked_by: 'did:web:jarvis.test' }, 4))
+      .mockResolvedValueOnce(makeResponse({ ...open, status: 'read' }, 5))
+      .mockResolvedValueOnce(makeResponse({ ...open, status: 'dismissed' }, 6))
+      .mockResolvedValueOnce(makeResponse({ ...open, status: 'canceled', closed_reason: 'gone' }, 7))
+      .mockResolvedValueOnce(makeResponse({ ...open, status: 'canceled' }, 8))
+    const client = new MsgCenterClient(new kRPCClient('/kapi/msg-center/', null, 1, { fetcher }))
+
+    expect((await client.notifyGet('nt-1')).status).toBe('open')
+    const page = await client.notifyList({ status: ['open', 'read'], kind: 'input', category: 'agent', since_ms: 10, limit: 20 })
+    expect(page.items.map((item) => item.notify_id)).toEqual(['nt-1'])
+    expect(page.next_cursor).toBe('c2')
+    expect((await client.notifyList()).items).toEqual([])
+    expect((await client.notifyAck('nt-1', 'did:web:jarvis.test')).acked_by).toBe('did:web:jarvis.test')
+    expect((await client.notifyAck('nt-1')).status).toBe('read')
+    expect((await client.notifyDismiss('nt-1')).status).toBe('dismissed')
+    expect((await client.notifyCancel('nt-1', 'gone')).closed_reason).toBe('gone')
+    await client.notifyCancel('nt-1')
+
+    const sent = fetcher.mock.calls.map((_, index) => {
+      const body = bodyOf(fetcher, index)
+      return [body.method, body.params]
+    })
+    expect(sent).toEqual([
+      ['notify.get', { notify_id: 'nt-1' }],
+      ['notify.list', { status: ['open', 'read'], kind: 'input', category: 'agent', since_ms: 10, limit: 20 }],
+      ['notify.list', {}],
+      ['notify.ack', { notify_id: 'nt-1', on_behalf: 'did:web:jarvis.test' }],
+      ['notify.ack', { notify_id: 'nt-1' }],
+      ['notify.dismiss', { notify_id: 'nt-1' }],
+      ['notify.cancel', { notify_id: 'nt-1', reason: 'gone' }],
+      ['notify.cancel', { notify_id: 'nt-1' }],
+    ])
+  })
+
+  it('rejects responses that are not a NotifyView', async () => {
+    const fetcher = jest.fn()
+      .mockResolvedValueOnce(makeResponse({ notify_id: 'nt-1' }, 1))
+      .mockResolvedValueOnce(makeResponse({ items: [{ status: 'open' }] }, 2))
+    const client = new MsgCenterClient(new kRPCClient('/kapi/msg-center/', null, 1, { fetcher }))
+
+    await expect(client.notifyGet('nt-1')).rejects.toThrow('Invalid NotifyView')
+    await expect(client.notifyList()).rejects.toThrow('Invalid NotifyView')
+  })
+
+  it('inputPrompt lays out the option choice and the text input like Rust input_prompt', () => {
+    const options = [{ value: 'yes', label: 'Overwrite' }, { value: 'no', label: 'Keep', style: 'danger' as const }]
+    expect(inputPrompt('Overwrite?', 'A file exists.', options)).toEqual({
+      title: 'Overwrite?',
+      message: 'A file exists.',
+      controls: [{ kind: 'choice', id: 'option', options, multiple: false, required: true }],
+    })
+    expect(inputPrompt('Overwrite?', '', options, true)).toEqual({
+      title: 'Overwrite?',
+      controls: [
+        { kind: 'choice', id: 'option', options, multiple: false, required: false },
+        { kind: 'text_input', id: 'text', multiline: true, required: false },
+      ],
+    })
+    expect(inputPrompt('Why?', '', [])).toEqual({
+      title: 'Why?',
+      controls: [{ kind: 'text_input', id: 'text', multiline: true, required: true }],
+    })
+    expect(promptOptions(inputPrompt('q', '', options, true))).toEqual(options)
+    expect(promptOptions({ title: 'notice' })).toEqual([])
+  })
+
+  it('checks answers against the prompt and builds the human task result', () => {
+    const choice = inputPrompt('q', '', [{ value: 'a', label: 'A' }])
+    expect(validateNotifyAnswer({ option: 'a' }, choice)).toBeNull()
+    expect(validateNotifyAnswer({ option: 'b' }, choice)).toBe("no option 'b'; options: a")
+    expect(validateNotifyAnswer({ text: 'free' }, choice)).toBe('this question takes one of its options, not free text')
+    expect(validateNotifyAnswer({ dismiss: true }, choice)).toBeNull()
+    const text = inputPrompt('q', '', [])
+    expect(validateNotifyAnswer({ text: 'free' }, text)).toBeNull()
+    expect(validateNotifyAnswer({ text: '  ' }, text)).toBe('an answer needs an option or a text')
+    expect(validateNotifyAnswer({}, text)).toBe('an answer needs an option or a text')
+    expect(validateNotifyAnswer({ option: 'a', text: 'why' }, inputPrompt('q', '', [{ value: 'a', label: 'A' }], true))).toBeNull()
+
+    expect(notifyAnswerToTaskResult({ option: 'a', text: ' ' }, 'alice', 7)).toEqual({
+      kind: 'human',
+      action: 'answer',
+      values: { option: 'a' },
+      submitted_by: 'alice',
+      submitted_at: 7,
+    })
+    expect(notifyAnswerToTaskResult({ dismiss: true }, 'alice', 8)).toEqual({
+      kind: 'human',
+      action: 'dismiss',
+      submitted_by: 'alice',
+      submitted_at: 8,
+    })
+  })
+
+  it('builds links, maps category sessions and reads notification messages', () => {
+    expect(notifyUrl('test.buckyos.io', 'nt-1')).toBe('https://test.buckyos.io/messagehub?notify=nt-1')
+    expect(notifyUrl(' ', 'nt-1')).toBe('/messagehub?notify=nt-1')
+    expect(notifyUrl(undefined, 'nt-1')).toBe('/messagehub?notify=nt-1')
+    expect(notifyCategorySessionId('todo')).toBe('sysnotify:todo')
+    expect(notifyCategoryFromSessionId('sysnotify:agent')).toBe('agent')
+    expect(notifyCategoryFromSessionId('sysnotify:other')).toBeNull()
+    expect(notifyCategoryFromSessionId('dm:did:bns:bob')).toBeNull()
+    expect(isNotifyClosed('read')).toBe(false)
+    expect(isNotifyClosed('expired')).toBe(true)
+
+    const data = {
+      version: 1,
+      notify_id: 'nt-1',
+      kind: 'input',
+      category: 'agent',
+      level: 'timely',
+      home: true,
+      source: { agent_did: 'did:web:jarvis.test' },
+      prompt: CHOICE_PROMPT,
+      task_id: 't1',
+      url: notifyUrl('test.buckyos.io', 'nt-1'),
+    }
+    const msg = { from: 'did:bns:zone', content: { content: 'Which one?', machine: { intent: 'buckyos.notify', data } } }
+    expect(notifyMessageData(msg)).toEqual(data)
+    expect(notifyMessageData({ content: { machine: { intent: 'buckyos.notify.delivered', data } } })).toBeNull()
+    expect(notifyMessageData({ content: { content: 'plain' } })).toBeNull()
+    expect(notifyMessageData(null)).toBeNull()
+  })
+
+  it('answerNotify: the first answer wins, a later one sees the final result', async () => {
+    const tasks = new OneTask(humanTask(3))
+    const msgCenter = fakeMsgCenter(tasks)
+
+    const first = await answerNotify(msgCenter, tasks, 'nt-1', { option: 'a' })
+    expect(first.status).toBe('answered')
+    expect(tasks.task.result).toEqual({
+      kind: 'human',
+      action: 'answer',
+      values: { option: 'a' },
+      submitted_by: 'alice',
+      submitted_at: expect.any(Number),
+    })
+
+    const second = await answerNotify(msgCenter, tasks, 'nt-1', { option: 'b' }, 'bob')
+    expect(second.status).toBe('answered')
+    expect(second.result?.values).toEqual({ option: 'a' })
+    expect(tasks.commits).toBe(1)
+  })
+
+  it('answerNotify: of two concurrent answers one commits and both return its result', async () => {
+    const tasks = new OneTask(humanTask(3))
+    const msgCenter = fakeMsgCenter(tasks)
+    // Both answers read the same open snapshot before either writes.
+    let reads = 0
+    let release!: () => void
+    const bothRead = new Promise<void>((resolve) => { release = resolve })
+    const gated: NotifyTaskAccess = {
+      getTask: async () => {
+        const snapshot = await tasks.getTask()
+        reads += 1
+        if (reads === 2) release()
+        if (reads <= 2) await bothRead
+        return snapshot
+      },
+      commitResult: (req) => tasks.commitResult(req),
+    }
+
+    const [a, b] = await Promise.all([
+      answerNotify(msgCenter, gated, 'nt-1', { option: 'a' }),
+      answerNotify(msgCenter, gated, 'nt-1', { dismiss: true }),
+    ])
+
+    // The loser's write is refused (the task is already completed).
+    expect(tasks.commits).toBe(1)
+    expect(tasks.late).toBe(1)
+    expect(a.status).toBe('answered')
+    expect(b).toEqual(a)
+  })
+
+  it('commitNotifyAnswer retries a revision conflict and reports a task closed under it', async () => {
+    // A stale snapshot loses the CAS, re-reads and still wins while the task is open.
+    const racy = new OneTask(humanTask(5))
+    let stale = true
+    const access: NotifyTaskAccess = {
+      getTask: async (taskId) => {
+        const task = await racy.getTask()
+        if (stale) {
+          stale = false
+          task.revision -= 1
+        }
+        expect(taskId).toBe('t1')
+        return task
+      },
+      commitResult: (req) => racy.commitResult(req),
+    }
+    const won = await commitNotifyAnswer(access, 't1', { dismiss: true }, 'alice', 3)
+    expect(won.kind).toBe('committed')
+    expect(racy.conflicts).toBe(1)
+    expect(won.task.result).toEqual({ kind: 'human', action: 'dismiss', submitted_by: 'alice', submitted_at: 3 })
+
+    // The task completes between the read and the write.
+    const done = new OneTask(humanTask(1))
+    await done.commitResult({ task_id: 't1', result: { kind: 'human', action: 'answer' }, expected_revision: 1 })
+    let first = true
+    const late: NotifyTaskAccess = {
+      getTask: async () => {
+        if (first) {
+          first = false
+          return humanTask(2)
+        }
+        return done.getTask()
+      },
+      commitResult: (req) => done.commitResult(req),
+    }
+    const lost = await commitNotifyAnswer(late, 't1', { option: 'a' }, 'alice', 4)
+    expect(lost.kind).toBe('already_closed')
+    expect(lost.task.phase).toBe(TaskPhase.Terminal)
+
+    // A task that keeps changing is an error, not a silent loss.
+    const busy: NotifyTaskAccess = {
+      getTask: async () => humanTask(1),
+      commitResult: async () => {
+        throw new RPCError('RPC call error: revision_conflict: stale')
+      },
+    }
+    await expect(commitNotifyAnswer(busy, 't1', { option: 'a' }, 'alice', 5)).rejects.toThrow('keeps changing')
+
+    const denied: NotifyTaskAccess = {
+      getTask: async () => humanTask(1),
+      commitResult: async () => {
+        throw new RPCError('RPC call error: permission_denied: not an assignee')
+      },
+    }
+    await expect(commitNotifyAnswer(denied, 't1', { option: 'a' }, 'alice', 6)).rejects.toThrow('permission_denied')
+  })
+
+  it('answerNotify acks or dismisses a notice and never touches TaskMgr for it', async () => {
+    const tasks = new OneTask(humanTask(1))
+    const msgCenter = fakeMsgCenter(tasks, 'notice')
+
+    expect((await answerNotify(msgCenter, tasks, 'nt-1', {})).status).toBe('read')
+    expect((await answerNotify(msgCenter, tasks, 'nt-1', { dismiss: true })).status).toBe('dismissed')
+    expect(msgCenter.notifyAck).toHaveBeenCalledWith('nt-1')
+    expect(msgCenter.calls).toEqual(['get', 'ack', 'get', 'dismiss'])
+    expect(tasks.commits).toBe(0)
+  })
+
+  it('answerNotify rejects an invalid answer and returns a closed input as it is', async () => {
+    const tasks = new OneTask(humanTask(1))
+    const msgCenter = fakeMsgCenter(tasks)
+
+    await expect(answerNotify(msgCenter, tasks, 'nt-1', { option: 'z' })).rejects.toThrow("no option 'z'")
+    expect(tasks.commits).toBe(0)
+
+    await tasks.commitResult({
+      task_id: 't1',
+      result: notifyAnswerToTaskResult({ option: 'b' }, 'alice', 1),
+      expected_revision: 1,
+    })
+    const closed = await answerNotify(msgCenter, tasks, 'nt-1', { option: 'z' })
+    expect(closed.result?.values).toEqual({ option: 'b' })
+    expect(tasks.commits).toBe(1)
+  })
+
+  it('answerNotify writes commit_result with expected_revision through the SDK clients', async () => {
+    const open = { ...VIEW_WIRE, category: 'app', status: 'open', result: undefined }
+    const msgFetcher = jest.fn()
+      .mockResolvedValueOnce(makeResponse(open, 1))
+      .mockResolvedValueOnce(makeResponse(VIEW_WIRE, 2))
+    const taskFetcher = jest.fn()
+      .mockResolvedValueOnce(makeResponse({ task: humanTask(3) }, 1))
+      .mockResolvedValueOnce(makeResponse({ task: { ...humanTask(4), phase: TaskPhase.Terminal } }, 2))
+    const msgCenter = new MsgCenterClient(new kRPCClient('/kapi/msg-center/', null, 1, { fetcher: msgFetcher }))
+    const taskMgr: NotifyTaskAccess = new TaskManagerClient(new kRPCClient('/kapi/task-manager/', null, 1, { fetcher: taskFetcher }))
+
+    const answer: NotifyAnswer = { option: 'a' }
+    const view = await answerNotify(msgCenter, taskMgr, 'nt-1', answer)
+
+    expect(view.status).toBe('answered')
+    expect(bodyOf(taskFetcher, 0)).toMatchObject({ method: 'get_task', params: { task_id: 't1' } })
+    expect(bodyOf(taskFetcher, 1)).toMatchObject({
+      method: 'commit_result',
+      params: {
+        task_id: 't1',
+        result: { kind: 'human', action: 'answer', values: { option: 'a' }, submitted_by: 'alice' },
+        expected_revision: 3,
+      },
+    })
+    expect(Object.keys(bodyOf(taskFetcher, 1).params).sort()).toEqual(['expected_revision', 'result', 'task_id'])
+  })
+
+  it('waitNotify returns the open view at the deadline', async () => {
+    const tasks = new OneTask(humanTask(1))
+    const msgCenter = fakeMsgCenter(tasks)
+    const start = Date.now()
+
+    const view = await waitNotify(msgCenter, 'nt-1', start + 300)
+
+    expect(view.status).toBe('open')
+    expect(Date.now() - start).toBeGreaterThanOrEqual(290)
+    expect(msgCenter.notifyGet.mock.calls.length).toBeGreaterThanOrEqual(2)
+
+    msgCenter.notifyGet.mockClear()
+    expect((await waitNotify(msgCenter, 'nt-1', Date.now() - 1)).status).toBe('open')
+    expect(msgCenter.notifyGet).toHaveBeenCalledTimes(1)
+
+    // An event stream that never opens does not hold the wait past its deadline.
+    const stuck = { createEventReader: jest.fn(() => new Promise<KEventReader>(() => undefined)) }
+    const before = Date.now()
+    expect((await waitNotify(msgCenter, 'nt-1', before + 200, { kevent: stuck })).status).toBe('open')
+    expect(Date.now() - before).toBeLessThan(1000)
+  })
+
+  it('waitNotify returns once the notification is closed; task events wake it early', async () => {
+    const tasks = new OneTask(humanTask(1))
+    const msgCenter = fakeMsgCenter(tasks)
+    let gets = 0
+    msgCenter.notifyGet.mockImplementation(async () => {
+      gets += 1
+      if (gets === 3) {
+        await tasks.commitResult({
+          task_id: 't1',
+          result: notifyAnswerToTaskResult({ option: 'a' }, 'alice', 1),
+          expected_revision: 1,
+        })
+      }
+      return fakeMsgCenter(tasks).notifyGet('nt-1')
+    })
+    const reader = {
+      pullEvent: jest.fn(async () => ({ eventid: 'e1', source_node: 'ood1', source_pid: 1, timestamp: 0, data: {} })),
+      close: jest.fn(async () => undefined),
+    }
+    const kevent = { createEventReader: jest.fn(async () => reader as unknown as KEventReader) }
+    const start = Date.now()
+
+    const view = await waitNotify(msgCenter, 'nt-1', start + 60_000, { kevent })
+
+    expect(view.status).toBe('answered')
+    expect(view.result?.values).toEqual({ option: 'a' })
+    expect(gets).toBe(3)
+    // 0.5 s sleep before the reader is up, then the task event instead of 1 s.
+    expect(Date.now() - start).toBeLessThan(1200)
+    expect(kevent.createEventReader).toHaveBeenCalledWith(['/task_mgr/t1'])
+    expect(reader.pullEvent).toHaveBeenCalled()
+    expect(reader.close).toHaveBeenCalled()
   })
 })

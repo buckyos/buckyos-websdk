@@ -1781,6 +1781,27 @@ function mailboxResource(mailbox, kind) {
   const encoded = encodeURIComponent(mailbox).replace(/[!'()*.]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`).replace(/%3A/g, ":").replace(/%40/g, "@").replace(/%2F/g, "/");
   return `obj://msg-center/${kind.toLowerCase()}/${encoded}`;
 }
+const NOTIFY_INTENT = "buckyos.notify";
+const NOTIFY_DELIVERED_INTENT = "buckyos.notify.delivered";
+const NOTIFY_DATA_VERSION = 1;
+const NOTIFY_SESSION_PREFIX = "sysnotify:";
+const NOTIFY_CHOICE_CONTROL_ID = "option";
+const NOTIFY_TEXT_CONTROL_ID = "text";
+const NOTIFY_ACTION_ANSWER = "answer";
+const NOTIFY_ACTION_DISMISS = "dismiss";
+const NOTIFY_LINK_PATH = "/messagehub";
+function isNotifyClosed(status) {
+  return status !== "open" && status !== "read";
+}
+function notifyCategorySessionId(category) {
+  return `${NOTIFY_SESSION_PREFIX}${category}`;
+}
+function notifyCategoryFromSessionId(sessionId) {
+  if (!sessionId.startsWith(NOTIFY_SESSION_PREFIX))
+    return null;
+  const category = sessionId.slice(NOTIFY_SESSION_PREFIX.length);
+  return category === "todo" || category === "agent" || category === "app" ? category : null;
+}
 function compact$1(input) {
   const out = {};
   for (const [key, value] of Object.entries(input)) {
@@ -1813,6 +1834,13 @@ function asDid(value, method) {
 }
 function asOptionalDid(value, method) {
   return value == null ? null : asDid(value, method);
+}
+function asNotifyView(value) {
+  const view = asRecord$2(value, "NotifyView");
+  if (typeof view.notify_id !== "string" || typeof view.status !== "string") {
+    throw new RPCError("Invalid NotifyView");
+  }
+  return view;
 }
 class MsgCenterClient {
   constructor(rpcClient) {
@@ -2080,6 +2108,220 @@ class MsgCenterClient {
       group_id: record.group_id,
       subscriber_count: record.subscriber_count
     };
+  }
+  /** Notify a zone user (System Notify). */
+  async notifySend(req) {
+    return asNotifyView(await this.call("notify.send", compact$1({ ...req })));
+  }
+  async notifyGet(notifyId) {
+    return asNotifyView(await this.call("notify.get", { notify_id: notifyId }));
+  }
+  async notifyList(req = {}) {
+    const result = asRecord$2(await this.call("notify.list", compact$1({ ...req })), "NotifyListResult");
+    return {
+      ...result,
+      items: asArrayOf(result.items, "Vec<NotifyView>").map(asNotifyView)
+    };
+  }
+  /** Mark a `notice` read; `onBehalf` names who acknowledges for the user. */
+  async notifyAck(notifyId, onBehalf) {
+    return asNotifyView(await this.call("notify.ack", compact$1({ notify_id: notifyId, on_behalf: onBehalf })));
+  }
+  async notifyDismiss(notifyId) {
+    return asNotifyView(await this.call("notify.dismiss", { notify_id: notifyId }));
+  }
+  async notifyCancel(notifyId, reason) {
+    return asNotifyView(await this.call("notify.cancel", compact$1({ notify_id: notifyId, reason })));
+  }
+}
+function inputPrompt(title, message, options, allowText = false) {
+  const controls = [];
+  const hasOptions = options.length > 0;
+  if (hasOptions) {
+    controls.push({
+      kind: "choice",
+      id: NOTIFY_CHOICE_CONTROL_ID,
+      options,
+      multiple: false,
+      required: !allowText
+    });
+  }
+  if (!hasOptions || allowText) {
+    controls.push({
+      kind: "text_input",
+      id: NOTIFY_TEXT_CONTROL_ID,
+      multiline: true,
+      required: !hasOptions
+    });
+  }
+  return message ? { title, message, controls } : { title, controls };
+}
+function promptOptions(prompt) {
+  for (const control of prompt.controls ?? []) {
+    if (control.kind === "choice" && control.id === NOTIFY_CHOICE_CONTROL_ID) {
+      return control.options ?? [];
+    }
+  }
+  return [];
+}
+function notifyAnswerToTaskResult(answer, submittedBy, submittedAtMs) {
+  const values = {};
+  if (answer.option) {
+    values[NOTIFY_CHOICE_CONTROL_ID] = answer.option;
+  }
+  if (answer.text && answer.text.trim()) {
+    values[NOTIFY_TEXT_CONTROL_ID] = answer.text;
+  }
+  return {
+    kind: "human",
+    action: answer.dismiss ? NOTIFY_ACTION_DISMISS : NOTIFY_ACTION_ANSWER,
+    ...Object.keys(values).length > 0 ? { values } : {},
+    submitted_by: submittedBy,
+    submitted_at: submittedAtMs
+  };
+}
+function validateNotifyAnswer(answer, prompt) {
+  if (answer.dismiss) {
+    return null;
+  }
+  const options = promptOptions(prompt);
+  const acceptsText = (prompt.controls ?? []).some(
+    (control) => control.kind === "text_input" && control.id === NOTIFY_TEXT_CONTROL_ID
+  );
+  if (answer.option != null && !options.some((option) => option.value === answer.option)) {
+    return `no option '${answer.option}'; options: ${options.map((option) => option.value).join(", ")}`;
+  }
+  const hasText = !!answer.text && answer.text.trim() !== "";
+  if (hasText && !acceptsText) {
+    return "this question takes one of its options, not free text";
+  }
+  if (answer.option == null && !hasText) {
+    return "an answer needs an option or a text";
+  }
+  return null;
+}
+function notifyUrl(zoneHost, notifyId) {
+  const path = `${NOTIFY_LINK_PATH}?notify=${notifyId}`;
+  const host = zoneHost == null ? void 0 : zoneHost.trim();
+  return host ? `https://${host}${path}` : path;
+}
+function msgMachineData(msg, intent) {
+  const content = msg == null ? void 0 : msg.content;
+  if (!content || typeof content !== "object")
+    return null;
+  const machine = content.machine;
+  if (!machine || typeof machine !== "object" || machine.intent !== intent)
+    return null;
+  const data = machine.data;
+  return data && typeof data === "object" && !Array.isArray(data) ? data : null;
+}
+function notifyMessageData(msg) {
+  const data = msgMachineData(msg, NOTIFY_INTENT);
+  return data && typeof data.notify_id === "string" ? data : null;
+}
+async function commitNotifyAnswer(tasks, taskId, answer, submittedBy, nowMs = Date.now()) {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const task2 = await tasks.getTask(taskId);
+    if (isTerminalTaskPhase(task2.phase) || task2.result != null) {
+      return { kind: "already_closed", task: task2 };
+    }
+    try {
+      const committed = await tasks.commitResult({
+        task_id: taskId,
+        result: notifyAnswerToTaskResult(answer, submittedBy, nowMs),
+        expected_revision: task2.revision
+      });
+      return { kind: "committed", task: committed };
+    } catch (error) {
+      const code = taskMgrErrorCode(error);
+      if (code === TASK_ERR_ALREADY_COMPLETED) {
+        return { kind: "already_closed", task: await tasks.getTask(taskId) };
+      }
+      if (code !== TASK_ERR_REVISION_CONFLICT) {
+        throw error;
+      }
+    }
+  }
+  const task = await tasks.getTask(taskId);
+  if (isTerminalTaskPhase(task.phase)) {
+    return { kind: "already_closed", task };
+  }
+  throw new RPCError(`task ${taskId} keeps changing; answer not committed`);
+}
+async function answerNotify(msgCenter, taskMgr, notifyId, answer, submittedBy) {
+  const view = await msgCenter.notifyGet(notifyId);
+  if (view.kind === "notice") {
+    return answer.dismiss ? msgCenter.notifyDismiss(notifyId) : msgCenter.notifyAck(notifyId);
+  }
+  if (!view.task_id) {
+    throw new RPCError(`notification ${notifyId} has no task`);
+  }
+  if (isNotifyClosed(view.status)) {
+    return view;
+  }
+  const invalid = validateNotifyAnswer(answer, view.prompt);
+  if (invalid) {
+    throw new RPCError(invalid);
+  }
+  await commitNotifyAnswer(taskMgr, view.task_id, answer, submittedBy ?? view.to_user);
+  return msgCenter.notifyGet(notifyId);
+}
+const NOTIFY_WAIT_FIRST_INTERVAL_MS = 500;
+const NOTIFY_WAIT_MAX_INTERVAL_MS = 3e4;
+function sleepMs(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+async function pauseNotifyWait(ms, reader) {
+  const startedAt = Date.now();
+  if (reader) {
+    try {
+      if (await reader.pullEvent(ms)) {
+        return;
+      }
+    } catch {
+    }
+  }
+  const left = ms - (Date.now() - startedAt);
+  if (left > 0) {
+    await sleepMs(left);
+  }
+}
+async function waitNotify(msgCenter, notifyId, deadlineMs, opts = {}) {
+  let view = await msgCenter.notifyGet(notifyId);
+  let reader = null;
+  let finished = false;
+  if (opts.kevent && view.task_id && !isNotifyClosed(view.status)) {
+    opts.kevent.createEventReader([taskMgrTaskEventPath(view.task_id)]).then(
+      (opened) => {
+        if (finished) {
+          opened.close().catch(() => void 0);
+        } else {
+          reader = opened;
+        }
+      },
+      () => void 0
+    );
+  }
+  try {
+    let interval = NOTIFY_WAIT_FIRST_INTERVAL_MS;
+    for (; ; ) {
+      if (isNotifyClosed(view.status)) {
+        return view;
+      }
+      const now = Date.now();
+      if (now >= deadlineMs) {
+        return view;
+      }
+      await pauseNotifyWait(Math.min(interval, deadlineMs - now), reader);
+      interval = Math.min(interval * 2, NOTIFY_WAIT_MAX_INTERVAL_MS);
+      view = await msgCenter.notifyGet(notifyId);
+    }
+  } finally {
+    finished = true;
+    const opened = reader;
+    if (opened) {
+      await opened.close().catch(() => void 0);
+    }
   }
 }
 function compact(input) {
@@ -28384,113 +28626,135 @@ const ndm_proxy = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.definePro
   unpinOwner
 }, Symbol.toStringTag, { value: "Module" }));
 export {
-  TASK_ERR_STALE_RUNNER_EPOCH as $,
-  WORKFLOW_SCHEDULE_TASK_SCHEMA_ID as A,
+  WORKFLOW_RUN_TREE_TASK_SCHEMA_ID as $,
+  notifyCategorySessionId as A,
   BS_SERVICE_VERIFY_HUB as B,
-  WORKFLOW_SEND_MESSAGE_TASK_SCHEMA_ID as C,
-  DOWNLOAD_TASK_SCHEMA_ID as D,
-  WORKFLOW_EXECUTE_RPC_TASK_SCHEMA_ID as E,
-  WORKFLOW_RUN_TARGET_TASK_SCHEMA_ID as F,
-  AGENT_DELEGATE_TASK_SCHEMA_ID as G,
-  HUMAN_APPROVAL_SCHEMA_ID as H,
-  HUMAN_INPUT_TASK_SCHEMA_ID as I,
-  OPENDAN_COMMAND_TASK_SCHEMA_ID as J,
-  TOOL_EXEC_BASH_TASK_SCHEMA_ID as K,
-  AICC_COMPUTE_TASK_SCHEMA_ID as L,
+  notifyCategoryFromSessionId as C,
+  inputPrompt as D,
+  promptOptions as E,
+  notifyAnswerToTaskResult as F,
+  validateNotifyAnswer as G,
+  notifyUrl as H,
+  msgMachineData as I,
+  notifyMessageData as J,
+  commitNotifyAnswer as K,
+  answerNotify as L,
   MsgQueueClient as M,
-  APP_INSTALL_TASK_SCHEMA_ID as N,
-  OPENDAN_ASYNC_TOOL_TASK_SCHEMA_ID as O,
-  APP_UNINSTALL_TASK_SCHEMA_ID as P,
-  APP_START_TASK_SCHEMA_ID as Q,
+  NOTIFY_INTENT as N,
+  waitNotify as O,
+  TASK_MANAGER_SERVICE_NAME as P,
+  TASK_MANAGER_SERVICE_PORT as Q,
   RuntimeType as R,
   SystemConfigClient as S,
   TASK_MANAGER_SERVICE_UNIQUE_ID as T,
-  APP_UPDATE_TASK_SCHEMA_ID as U,
+  TASK_POLICY_PRESET_COLLABORATIVE_TREE_V1 as U,
   VerifyHubClient as V,
   WEB3_BRIDGE_HOST as W,
-  APP_UPDATE_BATCH_TASK_SCHEMA_ID as X,
-  TASK_ERR_NOT_FOUND as Y,
-  TASK_ERR_PERMISSION_DENIED as Z,
-  TASK_ERR_REVISION_CONFLICT as _,
+  RAW_TASK_SCHEMA_ID as X,
+  HUMAN_APPROVAL_SCHEMA_ID as Y,
+  DOWNLOAD_TASK_SCHEMA_ID as Z,
+  SCHEDULER_DISPATCH_THUNK_TASK_SCHEMA_ID as _,
   ndm_proxy as a,
-  parseAppInstanceId as a$,
-  TASK_ERR_INVALID_PHASE as a0,
-  TASK_ERR_CONTROL_NOT_AVAILABLE as a1,
-  TASK_ERR_CONTROL_ALREADY_PENDING as a2,
-  TASK_ERR_ALREADY_COMPLETED as a3,
-  TASK_ERR_INPUT_SCHEMA_MISMATCH as a4,
-  TASK_ERR_RESULT_SCHEMA_MISMATCH as a5,
-  TASK_ERR_IDEMPOTENCY_CONFLICT as a6,
-  TASK_ERR_SCHEMA_NOT_FOUND as a7,
-  TASK_MGR_ERROR_CODES as a8,
-  taskMgrTaskEventPath as a9,
-  WorkflowScheduledTaskMisfirePolicy as aA,
-  WorkflowScheduledTaskFireStatus as aB,
-  WorkflowClient as aC,
-  AICC_SERVICE_UNIQUE_ID as aD,
-  AICC_SERVICE_SERVICE_NAME as aE,
-  AICC_SERVICE_SERVICE_PORT as aF,
-  AICC_AI_METHODS as aG,
-  AICC_CORE_METHODS as aH,
-  AICC_MANAGEMENT_METHODS as aI,
-  AICC_METHODS as aJ,
-  AICC_FEATURES as aK,
-  AICC_EXECUTION_MODES as aL,
-  isAiccAiMethod as aM,
-  aiccTextMessage as aN,
-  aiccMessageTextContent as aO,
-  aiccMessageFirstText as aP,
-  validateAiccMessage as aQ,
-  AiccClient as aR,
-  decisionRequirements as aS,
-  validateDecisionRequest as aT,
-  validateDecisionAnswers as aU,
-  KEventReader as aV,
-  KEventClient as aW,
-  appIdFromDid as aX,
-  parseAppId as aY,
-  appDidFromId as aZ,
-  createAppInstanceId as a_,
-  taskMgrTreeEventPath as aa,
-  taskMgrErrorCode as ab,
-  TaskExecutorKind as ac,
-  TaskPhase as ad,
-  isTerminalTaskPhase as ae,
-  TaskWaitReasonKind as af,
-  TaskOutcome as ag,
-  TaskControlAction as ah,
-  baselineTaskControlProfile as ai,
-  DEFAULT_CHILD_CONTROL_POLICY as aj,
-  TaskAction as ak,
-  TaskGrantScope as al,
-  TaskDataScope as am,
-  StorageDomain as an,
-  TaskEventType as ao,
-  TaskManagerClient as ap,
-  WORKFLOW_SERVICE_NAME as aq,
-  WorkflowStepType as ar,
-  WorkflowOutputMode as as,
-  WorkflowJoinMode as at,
-  WorkflowRetryFallback as au,
-  WorkflowDefinitionStatus as av,
-  WorkflowRunStatus as aw,
-  WorkflowNodeRunState as ax,
-  WorkflowHumanActionKind as ay,
-  WorkflowScheduledTaskStatus as az,
+  AICC_SERVICE_SERVICE_PORT as a$,
+  WORKFLOW_STEP_TASK_SCHEMA_ID as a0,
+  WORKFLOW_MAP_SHARD_TASK_SCHEMA_ID as a1,
+  WORKFLOW_THUNK_TASK_SCHEMA_ID as a2,
+  WORKFLOW_SCHEDULE_TASK_SCHEMA_ID as a3,
+  WORKFLOW_SEND_MESSAGE_TASK_SCHEMA_ID as a4,
+  WORKFLOW_EXECUTE_RPC_TASK_SCHEMA_ID as a5,
+  WORKFLOW_RUN_TARGET_TASK_SCHEMA_ID as a6,
+  AGENT_DELEGATE_TASK_SCHEMA_ID as a7,
+  HUMAN_INPUT_TASK_SCHEMA_ID as a8,
+  OPENDAN_ASYNC_TOOL_TASK_SCHEMA_ID as a9,
+  isTerminalTaskPhase as aA,
+  TaskWaitReasonKind as aB,
+  TaskOutcome as aC,
+  TaskControlAction as aD,
+  baselineTaskControlProfile as aE,
+  DEFAULT_CHILD_CONTROL_POLICY as aF,
+  TaskAction as aG,
+  TaskGrantScope as aH,
+  TaskDataScope as aI,
+  StorageDomain as aJ,
+  TaskEventType as aK,
+  TaskManagerClient as aL,
+  WORKFLOW_SERVICE_NAME as aM,
+  WorkflowStepType as aN,
+  WorkflowOutputMode as aO,
+  WorkflowJoinMode as aP,
+  WorkflowRetryFallback as aQ,
+  WorkflowDefinitionStatus as aR,
+  WorkflowRunStatus as aS,
+  WorkflowNodeRunState as aT,
+  WorkflowHumanActionKind as aU,
+  WorkflowScheduledTaskStatus as aV,
+  WorkflowScheduledTaskMisfirePolicy as aW,
+  WorkflowScheduledTaskFireStatus as aX,
+  WorkflowClient as aY,
+  AICC_SERVICE_UNIQUE_ID as aZ,
+  AICC_SERVICE_SERVICE_NAME as a_,
+  OPENDAN_COMMAND_TASK_SCHEMA_ID as aa,
+  TOOL_EXEC_BASH_TASK_SCHEMA_ID as ab,
+  AICC_COMPUTE_TASK_SCHEMA_ID as ac,
+  APP_INSTALL_TASK_SCHEMA_ID as ad,
+  APP_UNINSTALL_TASK_SCHEMA_ID as ae,
+  APP_START_TASK_SCHEMA_ID as af,
+  APP_UPDATE_TASK_SCHEMA_ID as ag,
+  APP_UPDATE_BATCH_TASK_SCHEMA_ID as ah,
+  TASK_ERR_NOT_FOUND as ai,
+  TASK_ERR_PERMISSION_DENIED as aj,
+  TASK_ERR_REVISION_CONFLICT as ak,
+  TASK_ERR_STALE_RUNNER_EPOCH as al,
+  TASK_ERR_INVALID_PHASE as am,
+  TASK_ERR_CONTROL_NOT_AVAILABLE as an,
+  TASK_ERR_CONTROL_ALREADY_PENDING as ao,
+  TASK_ERR_ALREADY_COMPLETED as ap,
+  TASK_ERR_INPUT_SCHEMA_MISMATCH as aq,
+  TASK_ERR_RESULT_SCHEMA_MISMATCH as ar,
+  TASK_ERR_IDEMPOTENCY_CONFLICT as as,
+  TASK_ERR_SCHEMA_NOT_FOUND as at,
+  TASK_MGR_ERROR_CODES as au,
+  taskMgrTaskEventPath as av,
+  taskMgrTreeEventPath as aw,
+  taskMgrErrorCode as ax,
+  TaskExecutorKind as ay,
+  TaskPhase as az,
   bns_client as b,
-  BNS_EVM_DEFAULT_GAS_LIMIT as b0,
-  BNS_EVM_DEFAULT_MAX_FEE_PER_GAS as b1,
-  BNS_EVM_DEFAULT_MAX_PRIORITY_FEE_PER_GAS as b2,
-  BNS_MAX_INLINE_DOCUMENT_BYTES as b3,
-  BNS_DNS_TXT_DEFAULT_TTL as b4,
-  BNS_DNS_TXT_DOC_TYPE as b5,
-  BNS_PUBLISH_DOCUMENT_ABI as b6,
-  BnsEvmTxError as b7,
-  BnsEvmTxBuilder as b8,
-  decodeBnsPublishDocumentCalldata as b9,
-  BnsTxExecutorError as ba,
-  walletUserHasSnAccount as bb,
-  BnsTxExecutor as bc,
+  AICC_AI_METHODS as b0,
+  AICC_CORE_METHODS as b1,
+  AICC_MANAGEMENT_METHODS as b2,
+  AICC_METHODS as b3,
+  AICC_FEATURES as b4,
+  AICC_EXECUTION_MODES as b5,
+  isAiccAiMethod as b6,
+  aiccTextMessage as b7,
+  aiccMessageTextContent as b8,
+  aiccMessageFirstText as b9,
+  validateAiccMessage as ba,
+  AiccClient as bb,
+  decisionRequirements as bc,
+  validateDecisionRequest as bd,
+  validateDecisionAnswers as be,
+  KEventReader as bf,
+  KEventClient as bg,
+  appIdFromDid as bh,
+  parseAppId as bi,
+  appDidFromId as bj,
+  createAppInstanceId as bk,
+  parseAppInstanceId as bl,
+  BNS_EVM_DEFAULT_GAS_LIMIT as bm,
+  BNS_EVM_DEFAULT_MAX_FEE_PER_GAS as bn,
+  BNS_EVM_DEFAULT_MAX_PRIORITY_FEE_PER_GAS as bo,
+  BNS_MAX_INLINE_DOCUMENT_BYTES as bp,
+  BNS_DNS_TXT_DEFAULT_TTL as bq,
+  BNS_DNS_TXT_DOC_TYPE as br,
+  BNS_PUBLISH_DOCUMENT_ABI as bs,
+  BnsEvmTxError as bt,
+  BnsEvmTxBuilder as bu,
+  decodeBnsPublishDocumentCalldata as bv,
+  BnsTxExecutorError as bw,
+  walletUserHasSnAccount as bx,
+  BnsTxExecutor as by,
   createSDKModule as c,
   BS_SERVICE_TASK_MANAGER as d,
   getActiveRuntimeType as e,
@@ -28503,17 +28767,17 @@ export {
   mailboxResource as l,
   mailboxAddress as m,
   ndm_client as n,
-  TASK_MANAGER_SERVICE_NAME as o,
+  NOTIFY_DELIVERED_INTENT as o,
   parseSessionTokenClaims as p,
-  TASK_MANAGER_SERVICE_PORT as q,
+  NOTIFY_DATA_VERSION as q,
   resolveDidFromHost as r,
   sn_client as s,
-  TASK_POLICY_PRESET_COLLABORATIVE_TREE_V1 as t,
-  RAW_TASK_SCHEMA_ID as u,
-  SCHEDULER_DISPATCH_THUNK_TASK_SCHEMA_ID as v,
-  WORKFLOW_RUN_TREE_TASK_SCHEMA_ID as w,
-  WORKFLOW_STEP_TASK_SCHEMA_ID as x,
-  WORKFLOW_MAP_SHARD_TASK_SCHEMA_ID as y,
-  WORKFLOW_THUNK_TASK_SCHEMA_ID as z
+  NOTIFY_SESSION_PREFIX as t,
+  NOTIFY_CHOICE_CONTROL_ID as u,
+  NOTIFY_TEXT_CONTROL_ID as v,
+  NOTIFY_ACTION_ANSWER as w,
+  NOTIFY_ACTION_DISMISS as x,
+  NOTIFY_LINK_PATH as y,
+  isNotifyClosed as z
 };
-//# sourceMappingURL=ndm_proxy-3caceb0a.mjs.map
+//# sourceMappingURL=ndm_proxy-a167f2a4.mjs.map

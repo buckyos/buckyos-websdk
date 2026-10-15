@@ -164,8 +164,8 @@ export * from './task_mgr_client';
 export * from './workflow_client';
 export * from './aicc_client';
 export { MsgQueueClient };
-export { MsgCenterClient, mailboxAddress, mailboxResource } from './msg_center_client';
-export type { MailboxAddress, GetNextParams, PeekBoxParams, ListBoxByTimeParams } from './msg_center_client';
+export { MsgCenterClient, mailboxAddress, mailboxResource, NOTIFY_INTENT, NOTIFY_DELIVERED_INTENT, NOTIFY_DATA_VERSION, NOTIFY_SESSION_PREFIX, NOTIFY_CHOICE_CONTROL_ID, NOTIFY_TEXT_CONTROL_ID, NOTIFY_ACTION_ANSWER, NOTIFY_ACTION_DISMISS, NOTIFY_LINK_PATH, isNotifyClosed, notifyCategorySessionId, notifyCategoryFromSessionId, inputPrompt, promptOptions, notifyAnswerToTaskResult, validateNotifyAnswer, notifyUrl, msgMachineData, notifyMessageData, commitNotifyAnswer, answerNotify, waitNotify, } from './msg_center_client';
+export type { MailboxAddress, GetNextParams, PeekBoxParams, ListBoxByTimeParams, NotifyKind, NotifyCategory, NotifyLevel, NotifyStatus, NotifyConversation, NotifySource, NotifySendReq, NotifyRecordRef, NotifyDelivery, NotifyResult, NotifyView, NotifyListReq, NotifyListResult, NotifyMessageData, NotifyDeliveredData, NotifyAnswer, NotifyTaskAccess, NotifyCommit, WaitNotifyOptions, } from './msg_center_client';
 export { RepoClient };
 export * from './kevent_client';
 //# sourceMappingURL=sdk_core.d.ts.map
