@@ -45,7 +45,7 @@ NFSP 入口为 `/nfs/v1`，控制请求 `POST /nfs/v1/{method}`，数据读取�
 | `files copy-decide <task-id>` | `--item-id`、`--choice`、可选 `--apply-to-same-kind` | write / sync | copy_decide；适配，解决同名冲突 |
 | `files copy-retry <task-id>` | 新幂等键 | write / task | copy_submit + retry_of；适配，遵循失败项重试规则 |
 | `files copy-cancel <task-id>` | 明确取消请求 | write / sync | copy_cancel；适配，返回已请求而非已回滚 |
-| `files acl-get/acl-set <url>` | 待正式 ACL schema | read / write，sync | 规划，两个独立命令，当前无 ACL API |
+| `files acl-get/acl-set <url>` | `{inherit, entries[{principal, level}]}`、`--expected-revision` | read / write，sync | get_acl / set_acl；服务端已实现，CLI 命令规划中（SDK：`getAcl`/`setAcl`/`listAcls`） |
 
 write 暂固定 destructive，因为允许覆盖；缺省 `overwrite=false`。覆盖必须显式选项、确认和 parent revision，
 不能只依赖本地路径是否存在。未来拆分创建/覆盖命令时可分别调整级别，不能由未审查 JSON 隐式提升操作风险。
@@ -93,14 +93,17 @@ copy-cancel 可能保留已完成项，返回真实任务/逐项状态，不能�
 
 ## 6. 身份与发布门槛
 
-目前 copy_* 已验证实际用户 Bearer token；其余 NFSP 方法尚未完整接入 SSO/cap。
-hello 返回的随机 session 是协议会话，不是 Verify Hub principal。SDK 始终发送目标 Zone 的正确凭证，
-服务端完成逐请求身份、导出范围和文件/容器权限检查后，才能发布面向多用户的普通文件 CLI。
-CLI 的路径校验和 capability 检查不能代替这一服务端修复。
+nfs-server 逐请求验证 Verify Hub session token（`Authorization: Bearer`，`<img>`/下载走同源 SSO cookie
+`buckyos_session_token`），无凭证即匿名，只能访问 ACL 授予 `public` 的路径。hello 会话绑定发起它的身份，
+换了身份的请求必须重新 hello。授权按路径 ACL：Zone owner 全部可管理；用户可管理自己的 `home/<user_id>`；
+其它路径由 `user:<id>` / `zone_users` / `public` 记录授予 read、write 或 manage，向下继承，可关闭继承。
+节点、列表项与搜索结果带 `access_level`（`traverse` 表示只是通往共享项的上级，只列出相关子项）。
+CLI 的路径校验和 capability 检查不能代替服务端检查。
 
 上传/下载 URL 必须限制到可信服务源，跨源跳转不得转发 Zone token。
 symlink、导出边界及 reference 解析均由服务安全校验；容器内 CLI 无权自动浏览/挂载 Host 文件系统。
-ACL 不得用 get_meta/set_meta 模拟；grant/revoke 已落库但尚无数据面 cap 放行，分享门槛见 [Content](content.md)。
+ACL 只走 get_acl/set_acl/list_acls，不得用 get_meta/set_meta 模拟；grant/revoke 需要 manage，已落库但尚无数据面
+cap 放行，分享门槛见 [Content](content.md)。
 
 ## 7. 实现依据与验收
 

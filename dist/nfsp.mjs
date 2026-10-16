@@ -215,7 +215,11 @@ class NfspClient {
     }, { overwrite: opts == null ? void 0 : opts.overwrite });
   }
   // ---------- data plane read ----------
-  /** URL for `GET /nfs/v1/read/{node_id}` (usable in <img>, <a download>, …). */
+  /**
+   * URL for `GET /nfs/v1/read/{node_id}` (usable in <img>, <a download>, …).
+   * It carries no token: same-origin requests authenticate with the SSO cookie,
+   * anything else only reads public paths.
+   */
   readUrl(nodeId, opts) {
     const params = new URLSearchParams();
     if (opts == null ? void 0 : opts.download)
@@ -302,6 +306,21 @@ class NfspClient {
   }
   async revoke(capId) {
     return await this.write("revoke", { args: { cap_id: capId } });
+  }
+  // ---------- acl ----------
+  async getAcl(at) {
+    return await this.call("get_acl", { at: toLocator(at) });
+  }
+  /** Replaces the node's own record; `inherit: true` with no entries removes it. */
+  async setAcl(at, acl, opts) {
+    return await this.write("set_acl", {
+      at: toLocator(at),
+      args: { inherit: acl.inherit, entries: acl.entries, expected_revision: opts == null ? void 0 : opts.expectedRevision }
+    });
+  }
+  /** Every ACL record the caller may manage (all of them for the zone owner). */
+  async listAcls() {
+    return await this.call("list_acls", {});
   }
   // ---------- watch (SSE) ----------
   /**

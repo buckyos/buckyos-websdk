@@ -63,6 +63,48 @@ export type WantGroup = 'base' | 'ident' | 'access' | 'meta'
 
 export type NodeKind = 'dir' | 'file' | 'symlink' | 'view' | 'collection' | 'group'
 
+/**
+ * The caller's effective permission on a node. `traverse` = only the way to
+ * something shared deeper down: listable, but only those children are shown.
+ */
+export type AccessLevel = 'none' | 'traverse' | 'read' | 'write' | 'manage'
+
+/** `user:<user_id>`, `zone_users` (any signed-in user) or `public` (anyone, read only). */
+export type AclPrincipal = `user:${string}` | 'zone_users' | 'public'
+
+export interface AclEntry {
+  principal: AclPrincipal
+  level: Exclude<AccessLevel, 'none' | 'traverse'>
+}
+
+/** `get_acl` result; the entry lists only appear for callers who may manage. */
+export interface AclInfo {
+  path: string
+  access_level: AccessLevel
+  can_manage: boolean
+  revision: string
+  inherit?: boolean
+  entries?: AclEntry[]
+  /** Grants arriving from ancestors, with the directory they come from. */
+  inherited?: (AclEntry & { from: string })[]
+  /** Built-in rules (zone owner, home owner) that no record can remove. */
+  builtin?: (AclEntry & { reason: 'zone_owner' | 'home_owner' })[]
+  updated_by?: string
+  updated_at?: number
+}
+
+export interface AclRecordInfo {
+  path: string
+  inherit: boolean
+  entries: AclEntry[]
+  home_owner: string | null
+  updated_by: string
+  updated_at: number
+  revision: string
+  /** The path no longer exists (removed outside the protocol). */
+  missing: boolean
+}
+
 export interface Capabilities {
   list: boolean
   read: boolean
@@ -79,6 +121,7 @@ export interface NodeInfo {
   ref: WireRef
   copy_ref?: WireRef | null
   capabilities: Capabilities
+  access_level?: AccessLevel
   revision?: string
   locations?: unknown[]
   // base
@@ -120,8 +163,9 @@ export interface EntryTarget {
     obj_id?: string
     access_urls?: { kind: string; url: string }[]
   } & Record<string, unknown>
-  /** `stale` when a referenced target no longer resolves. */
+  /** `stale` when a referenced target no longer resolves, `denied` when the caller may not see it. */
   target_state?: string
+  access_level?: AccessLevel
 }
 
 export interface Entry {
@@ -157,6 +201,8 @@ export interface HelloResult {
   features: string[]
   limits: { max_batch: number; max_list: number; replay_window: number; attr_ttl_ms: number }
   realms: { id: string; writable: boolean }[]
+  /** Who this session acts as (`admin` = the zone owner or a trusted service). */
+  identity?: { user_id: string | null; role: 'admin' | 'user' | 'anonymous' }
 }
 
 export type BatchOp =
@@ -552,7 +598,11 @@ export class NfspClient {
 
   // ---------- data plane read ----------
 
-  /** URL for `GET /nfs/v1/read/{node_id}` (usable in <img>, <a download>, …). */
+  /**
+   * URL for `GET /nfs/v1/read/{node_id}` (usable in <img>, <a download>, …).
+   * It carries no token: same-origin requests authenticate with the SSO cookie,
+   * anything else only reads public paths.
+   */
   readUrl(nodeId: string, opts?: { download?: boolean; name?: string }): string {
     const params = new URLSearchParams()
     if (opts?.download) params.set('download', '1')
@@ -668,6 +718,29 @@ export class NfspClient {
 
   async revoke(capId: string): Promise<{ revoked: string }> {
     return (await this.write('revoke', { args: { cap_id: capId } })) as { revoked: string }
+  }
+
+  // ---------- acl ----------
+
+  async getAcl(at: LocatorLike): Promise<AclInfo> {
+    return (await this.call('get_acl', { at: toLocator(at) })) as AclInfo
+  }
+
+  /** Replaces the node's own record; `inherit: true` with no entries removes it. */
+  async setAcl(
+    at: LocatorLike,
+    acl: { inherit: boolean; entries: AclEntry[] },
+    opts?: { expectedRevision?: string },
+  ): Promise<{ path: string; revision: string }> {
+    return (await this.write('set_acl', {
+      at: toLocator(at),
+      args: { inherit: acl.inherit, entries: acl.entries, expected_revision: opts?.expectedRevision },
+    })) as { path: string; revision: string }
+  }
+
+  /** Every ACL record the caller may manage (all of them for the zone owner). */
+  async listAcls(): Promise<{ records: AclRecordInfo[]; zone_owner: string | null; is_admin: boolean }> {
+    return (await this.call('list_acls', {})) as { records: AclRecordInfo[]; zone_owner: string | null; is_admin: boolean }
   }
 
   // ---------- watch (SSE) ----------
