@@ -1,5 +1,7 @@
 # 未实现模块设计 Review
 
+> 当前 PIKG 文档见 [PIKG 模块](pikg.md) 与 [App 模块](app.md)，完整资料见 [PIKG 文档总览](https://github.com/buckyos/buckyos/blob/main/doc/pikg/README.md)。以下内容保留原 Review 的范围与结论。
+
 > Review 日期：2026-09-17。这里只修改需求设计，不表示相应 CLI 已实现或服务已通过线上验收。
 
 依据当前工作区实现核对：`buckyos-websdk`（HEAD `afdc5fd`）、`buckyos`（`ffbfa5fa`）、

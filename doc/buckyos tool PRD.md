@@ -155,9 +155,7 @@ buckyos --profile production --identity ops --cli
 涉及软删除、归档、封禁、忘记联系人的领域必须在模块资源模型中明确真实语义；当 `delete`
 会产生误解时，应使用 `archive`、`close`、`forget` 等领域动词。
 
-PIKG 模块按开发者对发行物的领域习惯使用 `init`、`build`、`pack`、`info`、`clean`。`init`
-是生成开发元数据的最小问答向导，不是通用工程脚手架。`info`
-必须同时执行严格离线验证，不得只列出 ZIP entry；`clean` 属于 destructive 操作。
+PIKG 是本地开发模块，其六个现行命令、开发输入、离线验证与 destructive clean 规则只在 [PIKG CLI](modules/pikg.md) 维护，不在总 PRD 重复定义。
 
 ### 4.3 通用参数
 
@@ -761,11 +759,7 @@ Apply 还必须验证 operation 未过期、revision 和目标当前状态，避
 
 ### Phase 0.5：本地 PIKG 闭环
 
-- local/online command metadata 与延迟登录；
-- `dapp_meta` schema 与受管理的 `dapp_dist`；
-- `pikg init|build|pack|info|clean`；
-- 复用 Installer 同源的 PIKG parser、canonicalization、Object ID 和 verifier；
-- 无 Zone、无 identity、无网络的 Docker、Script 和 Static Web fixture 测试。
+本阶段的现行结果与边界统一见 [PIKG CLI](modules/pikg.md) 和 [格式规范](https://github.com/buckyos/buckyos/blob/main/doc/pikg/format.md)。TypeScript/Rust 为独立实现；历史阶段名不作为待实施清单。
 
 ### Phase 1：认证和最小在线闭环
 
@@ -851,7 +845,6 @@ Apply 还必须验证 operation 未过期、revision 和目标当前状态，避
    session token；外部 token 只能由其原始来源更新。
 9. 保留原 `buckyos <module> <verb>` 的本机运维习惯：没有任何身份和连接配置时使用当前设备
    身份，但必须经过交互确认或显式 `--yes`，避免无提示使用高权限设备凭证。
-10. `pikg` 是本地开发模块，首版命令为 `init|build|pack|info|clean`；它不解析线上身份，也不
-    承担签名、上传或发布。
+10. `pikg` 的当前契约以 [模块文档](modules/pikg.md) 为唯一命令/开发输入规范；它不承担签名、上传或发布。
 11. `app publish` 只写 Repo candidate（见 App 模块 § 9）。后续发布设计分离 PIKG 托管、Owner AppDoc 签名和 BNS 权威更新的
     命令及授权边界。

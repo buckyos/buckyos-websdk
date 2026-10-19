@@ -1,5 +1,7 @@
 # BuckyOS SDK / Tool distribution
 
+> Current authority for SDK/Tool distributions, launchers and system artifacts. PIKG metadata and commands are maintained in [the PIKG module](modules/pikg.md).
+
 `buckyos-websdk` is the only source repository for the TypeScript Tool. BuckyOS source consumers
 track its latest `main` branch and do not commit dependency lockfiles. A system-image build resolves
 that source once and stages one verified `buckyos-<version>.tgz`; only third-party App projects pin
