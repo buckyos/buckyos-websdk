@@ -2,7 +2,7 @@
 
 > 状态：已实现（Beta 2.2）
 > 对应 module：`pikg`  
-> 适用范围：普通 App 的本地开发和发行候选构造
+> 适用范围：普通 App 与 Agent skill 包的本地开发和发行候选构造
 
 ## 1. 目标
 
@@ -248,7 +248,7 @@ AppDoc/PackageMeta。目标工程目录必须已存在且可写；本命令只�
 | --- | --- | --- |
 | App name | 默认使用工程目录名规范化后的值；只有无法合法规范化时必须重新输入 | `app.json.name`、默认 `show_name` 和 PIKG 文件名 |
 | Owner DID | 无默认值，必须输入；本地命令不从 profile 或设备身份推测 | `owner`、默认 `author` 和 App DID/namespace |
-| App kind | 必须从 `static-web`、`script`、`docker` 中选择一项 | 初始 subpackage key、category 和 selector |
+| App kind | 必须从 `static-web`、`script`、`docker`、`agent-skills` 中选择一项 | 初始 subpackage key、category 和 selector |
 | Source | path 型输入构建输出目录/`.tar.gz`；Docker 输入本地 image name/ID | `pikg.json.sub_pkgs.*.source` |
 
 其它字段不作为初始引导问题：
@@ -258,7 +258,8 @@ AppDoc/PackageMeta。目标工程目录必须已存在且可写；本命令只�
 - `permissions` 默认为空，`selector_type` 默认为 `single`，服务端点和 mount/database 声明默认为空；
 - `output_dir` 默认 `../dapp_dist`，`pikg_file` 由 name + version 生成；
 - `static-web` 生成 `web`，`script` 生成 `script`，Docker 使用本地 image inspect 推导 arch 并生成
-  `<arch>_docker_image`；`required` 默认为 `true`；
+  `<arch>_docker_image`；`agent-skills` 生成 `agent_skills`，category（即 AppDoc `app_type`）为
+  `agent_skills`，`selector_type` 为 `single`（见 § 6.6）；`required` 默认为 `true`；
 - `pkg_id`、`pkg_objid`、`pkg_list`、digest 和 Object ID 不询问，它们始终由 `build` 生成。
 
 `init` 只生成一个主 subpackage，不追问“是否继续添加”。需要 Web + Agent、多平台 Docker 等组合时，
@@ -351,7 +352,7 @@ Object ID、payload digest 或 Owner/BNS 信任。
 成功结果至少输出：
 
 - `pikg_path`、size、`pikg_digest`、协议/schema 版本和 `valid=true`；
-- App DID、name、version、owner、AppDoc Object ID；
+- App DID、app_id、name（AppDoc 有 name 时）、app_type、version、owner、AppDoc Object ID；
 - `app_doc_form=unsigned|signed|both` 和 `canonical_match`；
 - 每个 subpackage 的 key、selector、required、pkg_id、pkg_objid、payload path/size/digest；
 - `offline_content_validation=passed`；
@@ -380,6 +381,34 @@ entry/object 标识，不能返回 `ok=true, valid=false` 让 Agent 忽略失败
 
 缺失或不匹配 ownership manifest 时必须返回 `UNSAFE_CLEAN_TARGET`，不提供跳过保护的 `--force`。
 目录不存在时按幂等成功处理并返回 `removed=false`。删除包括该 `dapp_dist` 中的最终 PIKG。
+
+### 6.6 Agent skill 包
+
+skill 包是 `app_type=agent_skills` 的 PIKG，`pkg_list` 只有一个 `agent_skills` subpackage，
+其源目录按 `cmd_skills/<name>.md`、`goal_skills/<name>.md`、`tools/<cmd_skill name>/...` 组织；
+包名/版本即 App 的 name/version。手册是带 front matter 的 Markdown：
+
+```markdown
+---
+name: hello
+description: 这个 skill 用来做什么
+requires: 前置条件
+---
+```
+
+```bash
+buckyos --non-interactive pikg init . --owner did:bns:alice --kind agent-skills --source ./skills
+buckyos pikg build && buckyos pikg pack
+buckyos skill install ./dapp_dist/<name>-0.1.0.pikg --agent <agent_id>
+```
+
+verifier 对 `app_type=agent_skills` 额外要求 AppDoc 有 `name`，且 `pkg_list` 只含 `agent_skills`。
+`pikg` 不安装 skill；`skill install` 先用同一个 `inspectPikg` 严格验证，再读取 `agent_skills`
+payload（只接受普通文件与目录、相对路径，拒绝 `..`、绝对路径、symlink/hardlink 等其它 tar 类型），
+把 `cmd_skills/`、`goal_skills/`、`tools/` 下的文件连同可执行位交给 Agent 的 `skills.install`
+（`/kapi/<agent_id>`），其它文件在输出的 `ignored_files` 中列出。`skill list|remove` 调用同一
+Agent 的 `skills.list|remove`；remove 是 destructive，非交互需要 `--yes`。Control Panel Installer
+不安装 `agent_skills` 类型的 App。
 
 ## 7. 权限与安全
 
@@ -423,9 +452,11 @@ TypeScript 侧没有“构造时宽松、读取时跳过”的第二套路径：
 
 ## 10. 与 App 和发布阶段的关系
 
-- `pikg pack` 的结果可直接作为 `app install --pikg <path>` 或 `app upgrade ... --pikg <path>` 的输入。
+- `pikg pack` 的结果可直接作为 `app install --pikg <path>` 或 `app upgrade ... --pikg <path>` 的输入；
+  skill 包的输入是 `skill install <path>`。
 - App 模块必须把已打包 PIKG 作为不可信输入重验，不调用 `pikg build/pack` 也不改写其内容。
-- 本版不设计 `pikg sign/publish`、`app publish`、`repo publish` 或 BNS 发布命令。
+- 本版不设计 `pikg sign/publish`、`repo publish` 或 BNS 发布命令；`app publish` 只把 Control Panel
+  节点上的目录写成 Repo candidate，见 [App 模块](app.md) § 9。
 - 后续发布应把“PIKG 上传/可下载”与“BNS AppDoc 权威更新”分属 Repo/Provider 和 BNS 权限边界。
 - 在 `cyfs-dir-server` 上传 PIKG 的手册延后到正式 URL 结构和 AppDoc 到 PIKG 的映射确定之后。
 

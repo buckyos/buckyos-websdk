@@ -58,6 +58,11 @@ Deno.test('distribution policy grants Docker only to pikg and excludes the syste
       './dapp_meta',
     ],
   })
+  const skillPikg = host.path.resolve(host.homeDir(), 'skills', 'hello-0.1.0.pikg')
+  const skillInstall = buildDistributionPolicy({
+    ...common,
+    argv: ['skill', 'install', '--replace', skillPikg, '--agent', 'jarvis.test.zone'],
+  })
   const topLevel = buildDistributionPolicy({ ...common, argv: ['--version'] })
   const online = buildDistributionPolicy({ ...common, argv: ['system', 'status'] })
   assertEquals(pikg.subprocesses, ['docker'])
@@ -83,6 +88,9 @@ Deno.test('distribution policy grants Docker only to pikg and excludes the syste
   assertEquals(explicitRead.readPaths.filter((path) => path === explicitReadOne).length, 1)
   assertEquals(explicitRead.writePaths.includes(explicitReadOne), false)
   assertEquals(explicitRead.writePaths.includes(explicitReadTwo), false)
+  assertEquals(skillInstall.readPaths.includes(skillPikg), true)
+  assertEquals(skillInstall.writePaths.includes(skillPikg), false)
+  assertEquals(skillInstall.network, true)
 })
 
 Deno.test('invalid token errors are not misclassified as missing resources', () => {

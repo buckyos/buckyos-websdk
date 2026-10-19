@@ -12,6 +12,8 @@ import {
 
 const CONTROL_PANEL = 'control-panel'
 const OBJECT_OUTPUT: JsonSchema = { type: 'object', additionalProperties: true }
+// Stored entry levels (control-panel sys_log_mgr normalize_log_level); WARN is stored as warning.
+const LOG_LEVELS = ['error', 'warning', 'info', 'debug', 'trace']
 
 export interface LogModuleDependencies {
   sleep?: (milliseconds: number, signal: AbortSignal) => Promise<void>
@@ -21,8 +23,40 @@ export interface LogModuleDependencies {
 export function createLogModule(dependencies: LogModuleDependencies = {}): CommandModule {
   return {
     name: 'log',
-    summary: 'Query, follow, and export redacted system logs',
-    commands: [queryCommand(), tailCommand(dependencies), exportCommand(dependencies)],
+    summary: 'List services, query, follow, and export redacted system logs',
+    commands: [
+      servicesCommand(),
+      queryCommand(),
+      tailCommand(dependencies),
+      exportCommand(dependencies),
+    ],
+  }
+}
+
+function servicesCommand(): CommandDefinition {
+  return {
+    verb: 'services',
+    summary: 'List the service IDs that have system logs',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+    outputSchema: {
+      type: 'object',
+      properties: { services: { type: 'array', items: OBJECT_OUTPUT } },
+      required: ['services'],
+      additionalProperties: false,
+    },
+    resultSchemaVersion: 1,
+    access: { mode: 'fixed', level: 'read' },
+    asyncMode: 'sync',
+    requiresSession: true,
+    examples: ['buckyos log services'],
+    handler: async (ctx) => {
+      const response = expectObject(
+        await callService(ctx, CONTROL_PANEL, 'system.logs.list', {}),
+        'Control Panel log service list',
+      )
+      if (!Array.isArray(response.services)) invalidResponse('log service list')
+      return { services: response.services }
+    },
   }
 }
 
@@ -178,7 +212,9 @@ function filterOptions(plural: boolean) {
     {
       name: plural ? 'services' : 'service',
       property: plural ? 'services' : 'service',
-      description: plural ? 'Comma-separated service IDs' : 'Service ID',
+      description: plural
+        ? 'Comma-separated service IDs (buckyos log services)'
+        : 'Service ID (buckyos log services)',
       type: 'string' as const,
       required: true,
     },
@@ -187,7 +223,11 @@ function filterOptions(plural: boolean) {
       description: 'Exact filename in the service log directory',
       type: 'string' as const,
     },
-    { name: 'level', description: 'Exact normalized log level', type: 'string' as const },
+    {
+      name: 'level',
+      description: `Log level: ${LOG_LEVELS.join(', ')} (warn = warning)`,
+      type: 'string' as const,
+    },
     { name: 'keyword', description: 'Case-insensitive content filter', type: 'string' as const },
     { name: 'since', description: 'RFC 3339 lower time boundary', type: 'string' as const },
     { name: 'until', description: 'RFC 3339 upper time boundary', type: 'string' as const },
@@ -224,7 +264,7 @@ function normalizeFilter(
   return compact({
     services,
     file: inputString(input, 'file'),
-    level: inputString(input, 'level')?.toLowerCase(),
+    level: normalizeLevel(inputString(input, 'level')),
     keyword: inputString(input, 'keyword'),
     since: normalizeLogTime(input, 'since'),
     until: normalizeLogTime(input, 'until'),
@@ -232,6 +272,18 @@ function normalizeFilter(
     cursor: withPage ? inputString(input, 'cursor') : undefined,
     limit: withPage ? limit : undefined,
   }) as Record<string, unknown> & { services: string[] }
+}
+
+function normalizeLevel(value: string | undefined): string | undefined {
+  if (!value) return undefined
+  const level = value.toLowerCase() === 'warn' ? 'warning' : value.toLowerCase()
+  if (!LOG_LEVELS.includes(level)) {
+    throw new UsageError(
+      'INVALID_ARGUMENT',
+      `level must be one of ${LOG_LEVELS.join(', ')} (warn = warning)`,
+    )
+  }
+  return level
 }
 
 function normalizeLogTime(input: Record<string, unknown>, key: string): string | undefined {

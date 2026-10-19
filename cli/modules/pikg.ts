@@ -54,6 +54,12 @@ const SHA256_ID = /^sha256:[0-9a-f]{64}$/
 const OBJECT_ID = /^(?:appdoc|pkg):[0-9a-f]{64}$/
 const SAFE_GENERATED_FILE = /^[A-Za-z0-9._-]+$/
 const OBJECT_OUTPUT = { type: 'object' as const, additionalProperties: true }
+const APP_KINDS = ['static-web', 'script', 'docker', 'agent-skills']
+const PATH_KINDS: Record<string, { key: string; category: string; selectorType: string }> = {
+  'static-web': { key: 'web', category: 'web', selectorType: 'static' },
+  script: { key: 'script', category: 'dapp', selectorType: 'single' },
+  'agent-skills': { key: 'agent_skills', category: 'agent_skills', selectorType: 'single' },
+}
 
 export interface DockerImageInfo {
   id: string
@@ -201,7 +207,7 @@ export function createPikgModule(dependencies: PikgModuleDependencies = {}): Com
             name: 'kind',
             description: 'Initial App kind',
             type: 'string',
-            enum: ['static-web', 'script', 'docker'],
+            enum: APP_KINDS,
           },
           {
             name: 'source',
@@ -217,7 +223,7 @@ export function createPikgModule(dependencies: PikgModuleDependencies = {}): Com
             project_dir: { type: 'string', minLength: 1 },
             name: { type: 'string', minLength: 1 },
             owner: { type: 'string', minLength: 1 },
-            kind: { type: 'string', enum: ['static-web', 'script', 'docker'] },
+            kind: { type: 'string', enum: APP_KINDS },
             source: { type: 'string', minLength: 1 },
             version: { type: 'string', minLength: 1 },
             app_did: { type: 'string', minLength: 1 },
@@ -234,6 +240,7 @@ export function createPikgModule(dependencies: PikgModuleDependencies = {}): Com
         examples: [
           'buckyos pikg init .',
           'buckyos --non-interactive pikg init . --owner did:bns:root --kind static-web --source ./web/dist',
+          'buckyos --non-interactive pikg init . --owner did:bns:root --kind agent-skills --source ./skills',
         ],
         handler: async (ctx, input) => await initCommand(ctx, input, docker),
       },
@@ -440,11 +447,11 @@ async function initCommand(
     kind = await requiredPrompt(
       ctx,
       canPrompt,
-      'App kind (static-web/script/docker): ',
+      `App kind (${APP_KINDS.join('/')}): `,
       'kind',
     )
   }
-  if (!['static-web', 'script', 'docker'].includes(kind)) {
+  if (!APP_KINDS.includes(kind)) {
     throw new UsageError('INVALID_APP_KIND', `invalid App kind: ${kind}`)
   }
   let source = optionalInputString(input, 'source')
@@ -474,7 +481,7 @@ async function initCommand(
     sourceValue = { type: 'docker-image', image: source }
     sourceSummary = { type: 'docker-image', image: image.canonicalName, image_id: image.id }
   } else {
-    subpackageKey = kind === 'static-web' ? 'web' : 'script'
+    subpackageKey = PATH_KINDS[kind].key
     const absoluteSource = resolve(projectDir, source)
     const persistedSource = isAbsolute(source)
       ? resolve(source)
@@ -498,9 +505,9 @@ async function initCommand(
     owner,
     author: owner,
     show_name: name,
-    categories: [kind === 'static-web' ? 'web' : 'dapp'],
+    categories: [PATH_KINDS[kind]?.category ?? 'dapp'],
     permissions: [],
-    selector_type: kind === 'static-web' ? 'static' : 'single',
+    selector_type: PATH_KINDS[kind]?.selectorType ?? 'single',
     service_config_tips: {},
   }
   const pikgMeta = {

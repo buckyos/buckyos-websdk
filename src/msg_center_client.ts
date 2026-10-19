@@ -42,7 +42,10 @@ export type ReadReceiptState =
   | 'QUARANTINED'
 
 export type ContactSource = 'manual_import' | 'manual_create' | 'auto_inferred' | 'shared'
-export type AccessGroupLevel = 'block' | 'stranger' | 'temporary' | 'friend'
+/** Delivery policy only (INBOX / REQUEST_BOX / drop); friendship is `Contact.friend_state`. */
+export type AccessGroupLevel = 'block' | 'stranger' | 'temporary' | 'allow'
+/** The owner's side of the friendship with a contact. */
+export type FriendState = 'none' | 'outgoing_pending' | 'incoming_pending' | 'friend'
 export type SessionMessageDirection = 'in' | 'out'
 export type SessionDeliveryOverall = 'sending' | 'delivered' | 'partial_failed' | 'failed'
 
@@ -256,7 +259,7 @@ export interface Contact {
   bindings?: AccountBinding[]
   access_level: AccessGroupLevel
   temp_grants?: TemporaryGrant[]
-  groups?: string[]
+  friend_state?: FriendState
   tags?: string[]
   created_at: number
   updated_at: number
@@ -275,7 +278,6 @@ export interface ImportContactEntry {
   avatar?: string
   note?: string
   bindings?: AccountBinding[]
-  groups?: string[]
   tags?: string[]
 }
 
@@ -297,8 +299,6 @@ export interface ContactPatch {
   access_level?: AccessGroupLevel
   source?: ContactSource
   is_verified?: boolean
-  groups?: string[]
-  tags?: string[]
 }
 
 export interface TemporaryGrantOutcome {
@@ -315,6 +315,9 @@ export interface GrantTemporaryAccessResult {
 export interface ContactQuery {
   source?: ContactSource
   access_level?: AccessGroupLevel
+  friend_state?: FriendState
+  /** Exact tag the contact must carry. */
+  tag?: string
   keyword?: string
   limit?: number
   offset?: number
@@ -323,6 +326,164 @@ export interface ContactQuery {
 export interface SetGroupSubscribersResult {
   group_id: DID
   subscriber_count: number
+}
+
+/* ── Relationships (msg_contact.rs): lookup, friend requests, tags ── */
+
+export const FRIEND_INTENT = 'buckyos.friend'
+export const CONTACT_TAG_ZONE_USER = 'zone_user'
+export const CONTACT_TAG_ZONE_AGENT = 'zone_agent'
+export const CONTACT_TAG_HOMESTATION_FOLLOWING = 'homestation.following'
+export const CONTACT_CHANGED_EVENT_BOX = 'CONTACTS'
+
+export type ContactTagKind = 'system' | 'app' | 'user'
+
+export interface WellKnownContactTag {
+  key: string
+  kind: ContactTagKind
+  /** App that owns the tag; absent for system tags. */
+  app?: string
+  /** Whether the user may add or remove members. */
+  user_editable: boolean
+}
+
+export const WELL_KNOWN_CONTACT_TAGS: readonly WellKnownContactTag[] = [
+  { key: CONTACT_TAG_ZONE_USER, kind: 'system', user_editable: false },
+  { key: CONTACT_TAG_ZONE_AGENT, kind: 'system', user_editable: false },
+  { key: CONTACT_TAG_HOMESTATION_FOLLOWING, kind: 'app', app: 'homestation', user_editable: false },
+]
+
+/** The app namespace of an app tag (`<app>.<name>`, lowercase ASCII). */
+export function contactTagApp(tag: string): string | null {
+  const match = /^([a-z][a-z0-9_-]*)\.([a-z0-9_.-]+)$/.exec(tag)
+  return match ? match[1] : null
+}
+
+/** `zone_user` / `zone_agent` are system tags, `<app>.<name>` app tags, anything else a user tag. */
+export function contactTagKind(tag: string): ContactTagKind {
+  if (tag === CONTACT_TAG_ZONE_USER || tag === CONTACT_TAG_ZONE_AGENT) return 'system'
+  return contactTagApp(tag) ? 'app' : 'user'
+}
+
+export type FriendRequestDirection = 'incoming' | 'outgoing'
+export type FriendRequestState = 'pending' | 'accepted' | 'rejected' | 'cancelled' | 'expired' | 'ignored'
+export type FriendRequestDecision = 'accept' | 'reject' | 'ignore'
+/** How far an outgoing request got: queued for another Zone, delivered, or failed. */
+export type FriendDeliveryState = 'pending' | 'delivered' | 'failed'
+
+export interface FriendDelivery {
+  state: FriendDeliveryState
+  reason?: string
+}
+
+export interface FriendRequest {
+  request_id: string
+  peer_did: DID
+  direction: FriendRequestDirection
+  state: FriendRequestState
+  message?: string
+  msg_id?: string
+  peer_name?: string
+  peer_avatar?: string
+  /** Outgoing requests only. */
+  delivery?: FriendDelivery
+  created_at_ms: number
+  expires_at_ms: number
+  updated_at_ms: number
+}
+
+export interface FriendRequestResult {
+  friend_state: FriendState
+  request?: FriendRequest
+}
+
+/** `machine.data` of a `buckyos.friend` message. */
+export interface FriendMessageData {
+  action: 'request' | 'accept' | 'reject' | 'cancel' | 'remove'
+  request_id: string
+  message?: string
+  profile_hint?: { name?: string; avatar?: string }
+  expires_at_ms?: number
+}
+
+export type LookupKind = 'user' | 'agent' | 'group' | 'zone' | 'device' | 'msgtunnel' | 'unknown'
+/** relation: the owner's contacts and joined groups; zone: users and Agents of this Zone; resolved: the input itself. */
+export type LookupSection = 'relation' | 'zone' | 'resolved'
+export type LookupInputKind = 'empty' | 'text' | 'did' | 'name' | 'invite_link'
+export type ReachabilityState = 'local' | 'tunnel' | 'routable' | 'unknown' | 'unreachable'
+/** Why the input could not be resolved. */
+export type LookupErrorCode = 'invalid-input' | 'not-found' | 'unreachable' | 'forbidden'
+
+export interface Reachability {
+  state: ReachabilityState
+  zone?: string
+  reason?: string
+}
+
+export interface LookupRelation {
+  is_contact: boolean
+  friend_state?: FriendState
+  access_level?: AccessGroupLevel
+  temporary_expires_at_ms?: number
+  tags?: string[]
+  pending_request_id?: string
+  /** Group candidates: the owner's member state (`active`, `invited`, `pending_admin_approval`, ...). */
+  group_state?: string
+  group_role?: string
+}
+
+export interface LookupGroupInfo {
+  join_policy?: string
+  /** Invite token carried by the input link. */
+  invite?: string
+  /** Hosted by this Zone; only these can be joined for now. */
+  hosted_here: boolean
+  host?: string
+  owner?: DID
+  member_count?: number
+}
+
+export interface LookupCandidate {
+  did: DID
+  kind: LookupKind
+  section: LookupSection
+  name?: string
+  avatar?: string
+  note?: string
+  reachability: Reachability
+  relation: LookupRelation
+  group?: LookupGroupInfo
+}
+
+export interface LookupResult {
+  input: string
+  input_kind: LookupInputKind
+  candidates: LookupCandidate[]
+  error?: { code: LookupErrorCode; message?: string }
+}
+
+export interface ContactLookupReq {
+  input: string
+  kinds?: LookupKind[]
+  limit?: number
+  contact_mgr_owner?: DID
+}
+
+export interface ListFriendRequestsReq {
+  direction?: FriendRequestDirection
+  state?: FriendRequestState
+  limit?: number
+  offset?: number
+  contact_mgr_owner?: DID
+}
+
+/** Payload of the `/msg_center/<owner>/CONTACTS/changed` kevent. */
+export interface ContactChangedEvent {
+  owner: DID
+  operation: 'upsert' | 'remove' | 'friend_request'
+  dids?: DID[]
+  request_id?: string
+  updated_at_ms: number
 }
 
 export type MailboxAddress = string
@@ -1011,6 +1172,88 @@ export class MsgCenterClient {
       group_id: record.group_id,
       subscriber_count: record.subscriber_count,
     }
+  }
+
+  /** Find people and groups for raw input: name, DID, BNS name or group invite link. */
+  async lookup(req: ContactLookupReq): Promise<LookupResult> {
+    const result = asRecord(await this.call('contact.lookup', compact({ ...req })), 'LookupResult')
+    return {
+      ...(result as unknown as LookupResult),
+      candidates: Array.isArray(result.candidates) ? result.candidates as LookupCandidate[] : [],
+    }
+  }
+
+  /** Add / remove tags; a user may only change user tags, an app only its own namespace. */
+  async updateContactTags(
+    did: DID,
+    change: { add?: string[]; remove?: string[] },
+    contactMgrOwner?: DID,
+  ): Promise<Contact> {
+    const result = await this.call('contact.update_tags', compact({
+      did,
+      add: change.add,
+      remove: change.remove,
+      contact_mgr_owner: contactMgrOwner,
+    }))
+    return asRecord(result, 'Contact') as unknown as Contact
+  }
+
+  /** Delete the contact record (history stays); relations the system established are refused. */
+  async removeContact(did: DID, contactMgrOwner?: DID): Promise<void> {
+    await this.call('contact.remove_contact', compact({ did, contact_mgr_owner: contactMgrOwner }))
+  }
+
+  async unblockContact(did: DID, contactMgrOwner?: DID): Promise<Contact> {
+    const result = await this.call('contact.unblock_contact', compact({ did, contact_mgr_owner: contactMgrOwner }))
+    return asRecord(result, 'Contact') as unknown as Contact
+  }
+
+  async sendFriendRequest(did: DID, message?: string, contactMgrOwner?: DID): Promise<FriendRequestResult> {
+    const result = await this.call('contact.send_friend_request', compact({
+      did,
+      message,
+      contact_mgr_owner: contactMgrOwner,
+    }))
+    return asRecord(result, 'FriendRequestResult') as unknown as FriendRequestResult
+  }
+
+  async respondFriendRequest(
+    requestId: string,
+    decision: FriendRequestDecision,
+    contactMgrOwner?: DID,
+  ): Promise<FriendRequestResult> {
+    const result = await this.call('contact.respond_friend_request', compact({
+      request_id: requestId,
+      decision,
+      contact_mgr_owner: contactMgrOwner,
+    }))
+    return asRecord(result, 'FriendRequestResult') as unknown as FriendRequestResult
+  }
+
+  async cancelFriendRequest(requestId: string, contactMgrOwner?: DID): Promise<FriendRequestResult> {
+    const result = await this.call('contact.cancel_friend_request', compact({
+      request_id: requestId,
+      contact_mgr_owner: contactMgrOwner,
+    }))
+    return asRecord(result, 'FriendRequestResult') as unknown as FriendRequestResult
+  }
+
+  /** End the friendship; `notify` (default true) tells the peer. */
+  async removeFriend(did: DID, notify?: boolean, contactMgrOwner?: DID): Promise<FriendRequestResult> {
+    const result = await this.call('contact.remove_friend', compact({
+      did,
+      notify,
+      contact_mgr_owner: contactMgrOwner,
+    }))
+    return asRecord(result, 'FriendRequestResult') as unknown as FriendRequestResult
+  }
+
+  async listFriendRequests(req: ListFriendRequestsReq = {}): Promise<FriendRequest[]> {
+    const result = asOptionalRecord<{ items?: FriendRequest[] }>(
+      await this.call('contact.list_friend_requests', compact({ ...req })),
+      'FriendRequestPage',
+    )
+    return result && Array.isArray(result.items) ? result.items : []
   }
 
   /** Notify a zone user (System Notify). */

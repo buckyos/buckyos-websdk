@@ -18,7 +18,7 @@ interface RecordedCall {
   params: Record<string, unknown>
 }
 
-Deno.test('observability facade exposes all ten frozen commands', () => {
+Deno.test('observability facade exposes all eleven commands', () => {
   const registry = createRegistry()
   assertEquals(
     ['task', 'log', 'diagnostic'].flatMap((module) =>
@@ -32,6 +32,7 @@ Deno.test('observability facade exposes all ten frozen commands', () => {
       'task.wait',
       'task.cancel',
       'task.retry',
+      'log.services',
       'log.query',
       'log.tail',
       'log.export',

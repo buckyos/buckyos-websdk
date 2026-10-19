@@ -34,6 +34,9 @@ import { createDiagnosticModule, type DiagnosticModuleDependencies } from '../mo
 import { createLogModule, type LogModuleDependencies } from '../modules/log.ts'
 import { createTaskModule } from '../modules/task.ts'
 import { createProvisionModule, type ProvisionModuleDependencies } from '../modules/provision.ts'
+import { createSkillModule } from '../modules/skill.ts'
+import { createAgentModule } from '../modules/agent.ts'
+import { createAiModule } from '../modules/ai.ts'
 import {
   distributionManifestView,
   getHost,
@@ -473,6 +476,9 @@ export function createRegistry(
   registry.register(createLogModule(logDependencies))
   registry.register(createDiagnosticModule(diagnosticDependencies))
   registry.register(createProvisionModule(provisionDependencies))
+  registry.register(createSkillModule())
+  registry.register(createAgentModule())
+  registry.register(createAiModule())
   return registry
 }
 

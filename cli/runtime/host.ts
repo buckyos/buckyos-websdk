@@ -309,6 +309,7 @@ function collectArgumentPaths(argv: string[]): {
     'name',
   ])
   const booleanOptions = new Set([
+    'replace',
     'cli',
     'wait',
     'non-interactive',
@@ -349,6 +350,7 @@ function collectArgumentPaths(argv: string[]): {
         read.push(value)
         if (module === 'app' && verb === 'fetch') write.push(value)
       } else if (name === 'path') write.push(value)
+      else if (name === 'app-doc' && module === 'app' && verb === 'publish') read.push(value)
       else if (name === 'file' && module === 'system-config' && verb === 'set-file') {
         read.push(value)
       } else if (name === 'root' && module === 'provision') {
@@ -364,6 +366,8 @@ function collectArgumentPaths(argv: string[]): {
     }
     if (module === 'app' && ['fetch', 'install'].includes(verb ?? '') && positional++ === 0) {
       if (!/^https?:\/\//i.test(token)) read.push(token)
+    } else if (module === 'skill' && verb === 'install' && positional++ === 0) {
+      read.push(token)
     } else if (module === 'pikg' && positional++ === 0) {
       read.push(token)
       if (verb === 'init' || verb === 'pack') write.push(token)

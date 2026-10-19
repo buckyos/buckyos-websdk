@@ -32,6 +32,7 @@ Deno.test('app module exposes the frozen beta 2.2 command surface', () => {
     'stop',
     'restart',
     'status',
+    'publish',
   ])
   assert(module.commands.every((command) => command.requiresSession))
   assertEquals(module.commands.find((command) => command.verb === 'uninstall')?.access, {
@@ -61,6 +62,43 @@ Deno.test('app cancel forwards force to Installer and preserves cleanup status',
     assertEquals(result.task_outcome, 'Canceled')
     assertEquals(result.cleanup_pending, force)
     assertEquals(calls.length, 1)
+  }
+})
+
+Deno.test('app publish reports a Repo candidate, not an authoritative release', async () => {
+  const root = await Deno.makeTempDir()
+  try {
+    const appDocPath = join(root, 'demo.appdoc.json')
+    const template = { app_type: 'web', pkg_list: { web: { pkg_id: 'all.web.demo#0.1.0' } } }
+    await Deno.writeTextFile(appDocPath, JSON.stringify(template))
+    const calls: RecordedCall[] = []
+    const clients = clientsFor(calls, (method, params) => {
+      assertEquals(method, 'app.publish')
+      assertEquals(params, { local_dir: '/srv/demo', app_doc: template })
+      return {
+        ok: true,
+        app_did: 'did:bns:demo',
+        app_doc_id: `appdoc:${'1'.repeat(64)}`,
+        pikg_digest: 'f'.repeat(64),
+        publish_status: 'repo_stored_candidate',
+      }
+    })
+    const result = await run(
+      'publish',
+      { local_dir: '/srv/demo', app_doc: appDocPath },
+      clients,
+    ) as Record<string, unknown>
+    assertEquals(result.ok, undefined)
+    assertEquals(result.publish_status, 'repo_stored_candidate')
+    assertEquals(result.app_doc_signature, 'not-signed')
+    assertEquals(result.app_did_publication, 'not-published')
+    await assertRejects(
+      () => run('publish', { local_dir: 'relative/demo', app_doc: appDocPath }, clients),
+      'INVALID_ARGUMENT',
+    )
+    assertEquals(calls.length, 1)
+  } finally {
+    await Deno.remove(root, { recursive: true })
   }
 })
 

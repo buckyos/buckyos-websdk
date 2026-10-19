@@ -1,7 +1,7 @@
 # System 模块需求
 
 > 状态：Partially implemented，经 2026-09-17 核对。对应 modules：`system`、`node`、`service`。
-> 当前仅 CLI `system status` 已注册，其余为目标设计。共同约束见 [Review 总览](README.md)。
+> 当前 CLI 已注册 `system status`、`system info`，其余为目标设计。共同约束见 [Review 总览](README.md)。
 
 ## 1. 目标与当前能力
 
@@ -15,7 +15,8 @@ Provision 写好启动材料后，由安装器/受控 node 控制入口接管启
 
 当前 system.status 返回 Control Panel 所在主机的指标推导状态、warnings 和服务列表；
 服务项 status 可能为 unknown，不能据此宣称已获得每个服务 readiness 或整个 Zone 的一致健康。
-版本信息另有 system.overview/system.buckyos_info.get；指标来自 system.metrics。
+CLI `system status` 另附 `buckyos`（system.buckyos_info.get 的版本记录）；`system info` 单独返回该记录。
+system.overview 是主机 OS 信息，不是 BuckyOS 版本；指标来自 system.metrics。
 system.update.check/apply 虽有路由名，但处理函数仍为 unimplemented。
 
 ## 2. 资源与作用域
@@ -30,6 +31,7 @@ system.update.check/apply 虽有路由名，但处理函数仍为 unimplemented�
 | 命令 | 关键输入 | 级别 / 模式 | 实现状态与边界 |
 | --- | --- | --- | --- |
 | `system status` | 当前 profile/Zone | read / sync | 已实现基础 RPC 透传；补齐真实 scope，勿承诺聚合健康 |
+| `system info` | 当前 profile/Zone | read / sync | 已实现：`system.buckyos_info.get`（version、build_version、release_channel、target） |
 | `system metrics` | `--lite` | read / sync | 适配 Control Panel `system.metrics`，当前为服务所在主机指标 |
 | `system capabilities` | 当前目标 | read / sync | 补齐权威能力发现，不能只列本地注册的命令 |
 | `system dry-run` | `--operation update/rollback`、JSON target/spec | privileged / sync | 规划，持久化不可变预演计划，不执行升级 |

@@ -257,10 +257,10 @@ Deno.test('interactive commands reuse one session and reset command-scoped state
       createClients: () => clients,
       repl: async (options) => {
         await options.execute(
-          ['system', 'status', '--trace-id', 'fixed-trace'],
+          ['system', 'info', '--trace-id', 'fixed-trace'],
           new AbortController().signal,
         )
-        await options.execute(['system', 'status'], new AbortController().signal)
+        await options.execute(['system', 'info'], new AbortController().signal)
       },
     })
     assertEquals(

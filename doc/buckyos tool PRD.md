@@ -853,5 +853,5 @@ Apply 还必须验证 operation 未过期、revision 和目标当前状态，避
    身份，但必须经过交互确认或显式 `--yes`，避免无提示使用高权限设备凭证。
 10. `pikg` 是本地开发模块，首版命令为 `init|build|pack|info|clean`；它不解析线上身份，也不
     承担签名、上传或发布。
-11. 不新增 `app publish`。后续发布设计分离 PIKG 托管、Owner AppDoc 签名和 BNS 权威更新的
+11. `app publish` 只写 Repo candidate（见 App 模块 § 9）。后续发布设计分离 PIKG 托管、Owner AppDoc 签名和 BNS 权威更新的
     命令及授权边界。

@@ -2,6 +2,8 @@ import { kRPCClient, RPCError } from '../src/krpc_client'
 import type { KEventReader } from '../src/kevent_client'
 import {
   MsgCenterClient,
+  contactTagApp,
+  contactTagKind,
   NotifyAnswer,
   NotifyTaskAccess,
   NotifyView,
@@ -471,12 +473,56 @@ describe('MsgCenterClient', () => {
     const fetcher = jest.fn().mockResolvedValue(makeResponse([{ did: 'did:bns:a' }], 17))
     const client = new MsgCenterClient(new kRPCClient('/kapi/msg-center/', null, 17, { fetcher }))
 
-    const list = await client.listContacts({ access_level: 'friend', limit: 50 })
+    const list = await client.listContacts({ access_level: 'allow', limit: 50 })
 
     expect(list).toHaveLength(1)
     expect(bodyOf(fetcher).params).toEqual({
-      query: { access_level: 'friend', limit: 50 },
+      query: { access_level: 'allow', limit: 50 },
     })
+  })
+
+  it('lookup sends the raw input and defaults missing candidates', async () => {
+    const fetcher = jest.fn().mockResolvedValue(makeResponse({ input: 'bob', input_kind: 'text' }, 31))
+    const client = new MsgCenterClient(new kRPCClient('/kapi/msg-center/', null, 31, { fetcher }))
+
+    const result = await client.lookup({ input: 'bob', limit: 5 })
+
+    expect(result.candidates).toEqual([])
+    expect(bodyOf(fetcher).method).toBe('contact.lookup')
+    expect(bodyOf(fetcher).params).toEqual({ input: 'bob', limit: 5 })
+  })
+
+  it('friend request methods use the contact.* wire names', async () => {
+    const clientFor = (body: unknown, seq: number) => {
+      const fetcher = jest.fn().mockResolvedValue(makeResponse(body, seq))
+      return { fetcher, client: new MsgCenterClient(new kRPCClient('/kapi/msg-center/', null, seq, { fetcher })) }
+    }
+
+    const send = clientFor({ friend_state: 'outgoing_pending' }, 32)
+    await send.client.sendFriendRequest('did:bns:bob', 'hi')
+    expect(bodyOf(send.fetcher).method).toBe('contact.send_friend_request')
+    expect(bodyOf(send.fetcher).params).toEqual({ did: 'did:bns:bob', message: 'hi' })
+
+    const respond = clientFor({ friend_state: 'friend' }, 33)
+    await respond.client.respondFriendRequest('r1', 'accept')
+    expect(bodyOf(respond.fetcher).params).toEqual({ request_id: 'r1', decision: 'accept' })
+
+    const list = clientFor({ items: [{ request_id: 'r1' }] }, 34)
+    expect(await list.client.listFriendRequests({ direction: 'incoming' })).toHaveLength(1)
+    expect(bodyOf(list.fetcher).params).toEqual({ direction: 'incoming' })
+
+    const tags = clientFor({ did: 'did:bns:bob', tags: ['家人'] }, 35)
+    await tags.client.updateContactTags('did:bns:bob', { add: ['家人'] })
+    expect(bodyOf(tags.fetcher).method).toBe('contact.update_tags')
+    expect(bodyOf(tags.fetcher).params).toEqual({ did: 'did:bns:bob', add: ['家人'] })
+  })
+
+  it('classifies contact tags', () => {
+    expect(contactTagKind('zone_user')).toBe('system')
+    expect(contactTagKind('homestation.following')).toBe('app')
+    expect(contactTagApp('homestation.following')).toBe('homestation')
+    expect(contactTagKind('家人')).toBe('user')
+    expect(contactTagKind('Work.Friends')).toBe('user')
   })
 
   it('getGroupSubscribers parses the DID array result', async () => {

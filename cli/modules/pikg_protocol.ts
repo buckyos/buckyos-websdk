@@ -77,6 +77,8 @@ export interface PikgInspectionResult {
   app: {
     did: string
     app_id: string
+    name?: string
+    app_type: string
     version: string
     owner: string
     app_doc_object_id: string
@@ -574,6 +576,8 @@ export async function inspectPikg(path: string): Promise<PikgInspectionResult> {
     app: {
       did: String(appDoc.did),
       app_id: appIdFromDid(String(appDoc.did)),
+      ...(typeof appDoc.name === 'string' ? { name: appDoc.name } : {}),
+      app_type: String(appDoc.app_type),
       version: String(appDoc.version),
       owner: String(appDoc.owner),
       app_doc_object_id: validated.appDocObjectId,
@@ -852,7 +856,7 @@ export function validateAppDocShape(appDoc: Record<string, unknown>): void {
     expectNonEmptyString(appDoc[field], `APPDOC.${field}`)
   }
   if (appDoc.doc_type !== 'app') throw invalid('appdoc', 'APPDOC.doc_type must be app')
-  if (!['service', 'dapp', 'web', 'agent'].includes(String(appDoc.app_type))) {
+  if (!['service', 'dapp', 'web', 'agent', 'agent_skills'].includes(String(appDoc.app_type))) {
     throw invalid('appdoc', 'APPDOC.app_type is invalid')
   }
   if (appDoc.name !== undefined) expectNonEmptyString(appDoc.name, 'APPDOC.name')
@@ -905,6 +909,12 @@ export function validateAppDocShape(appDoc: Record<string, unknown>): void {
   const pkgList = expectObject(appDoc.pkg_list, 'APPDOC.pkg_list')
   if (Object.keys(pkgList).length === 0) {
     throw invalid('appdoc', 'APPDOC.pkg_list must not be empty')
+  }
+  if (appDoc.app_type === 'agent_skills') {
+    expectNonEmptyString(appDoc.name, 'APPDOC.name')
+    if (Object.keys(pkgList).join() !== 'agent_skills') {
+      throw invalid('appdoc', 'an agent_skills App must contain only the agent_skills sub package')
+    }
   }
   deriveNamespaceForPackage(appDoc)
 }

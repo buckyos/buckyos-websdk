@@ -1765,6 +1765,25 @@ class MsgQueueClient {
     return asNumber$2(result, "deleted_count");
   }
 }
+const FRIEND_INTENT = "buckyos.friend";
+const CONTACT_TAG_ZONE_USER = "zone_user";
+const CONTACT_TAG_ZONE_AGENT = "zone_agent";
+const CONTACT_TAG_HOMESTATION_FOLLOWING = "homestation.following";
+const CONTACT_CHANGED_EVENT_BOX = "CONTACTS";
+const WELL_KNOWN_CONTACT_TAGS = [
+  { key: CONTACT_TAG_ZONE_USER, kind: "system", user_editable: false },
+  { key: CONTACT_TAG_ZONE_AGENT, kind: "system", user_editable: false },
+  { key: CONTACT_TAG_HOMESTATION_FOLLOWING, kind: "app", app: "homestation", user_editable: false }
+];
+function contactTagApp(tag) {
+  const match = /^([a-z][a-z0-9_-]*)\.([a-z0-9_.-]+)$/.exec(tag);
+  return match ? match[1] : null;
+}
+function contactTagKind(tag) {
+  if (tag === CONTACT_TAG_ZONE_USER || tag === CONTACT_TAG_ZONE_AGENT)
+    return "system";
+  return contactTagApp(tag) ? "app" : "user";
+}
 function mailboxAddress(owner, sessionId) {
   if (!/^did:[^:]+:.+$/.test(owner) || /[\s\x00-\x1f\x7f-\x9f/\\?#*|]/.test(owner)) {
     throw new RPCError("mailbox owner must be a bare DID");
@@ -2108,6 +2127,71 @@ class MsgCenterClient {
       group_id: record.group_id,
       subscriber_count: record.subscriber_count
     };
+  }
+  /** Find people and groups for raw input: name, DID, BNS name or group invite link. */
+  async lookup(req) {
+    const result = asRecord$2(await this.call("contact.lookup", compact$1({ ...req })), "LookupResult");
+    return {
+      ...result,
+      candidates: Array.isArray(result.candidates) ? result.candidates : []
+    };
+  }
+  /** Add / remove tags; a user may only change user tags, an app only its own namespace. */
+  async updateContactTags(did, change, contactMgrOwner) {
+    const result = await this.call("contact.update_tags", compact$1({
+      did,
+      add: change.add,
+      remove: change.remove,
+      contact_mgr_owner: contactMgrOwner
+    }));
+    return asRecord$2(result, "Contact");
+  }
+  /** Delete the contact record (history stays); relations the system established are refused. */
+  async removeContact(did, contactMgrOwner) {
+    await this.call("contact.remove_contact", compact$1({ did, contact_mgr_owner: contactMgrOwner }));
+  }
+  async unblockContact(did, contactMgrOwner) {
+    const result = await this.call("contact.unblock_contact", compact$1({ did, contact_mgr_owner: contactMgrOwner }));
+    return asRecord$2(result, "Contact");
+  }
+  async sendFriendRequest(did, message, contactMgrOwner) {
+    const result = await this.call("contact.send_friend_request", compact$1({
+      did,
+      message,
+      contact_mgr_owner: contactMgrOwner
+    }));
+    return asRecord$2(result, "FriendRequestResult");
+  }
+  async respondFriendRequest(requestId, decision, contactMgrOwner) {
+    const result = await this.call("contact.respond_friend_request", compact$1({
+      request_id: requestId,
+      decision,
+      contact_mgr_owner: contactMgrOwner
+    }));
+    return asRecord$2(result, "FriendRequestResult");
+  }
+  async cancelFriendRequest(requestId, contactMgrOwner) {
+    const result = await this.call("contact.cancel_friend_request", compact$1({
+      request_id: requestId,
+      contact_mgr_owner: contactMgrOwner
+    }));
+    return asRecord$2(result, "FriendRequestResult");
+  }
+  /** End the friendship; `notify` (default true) tells the peer. */
+  async removeFriend(did, notify, contactMgrOwner) {
+    const result = await this.call("contact.remove_friend", compact$1({
+      did,
+      notify,
+      contact_mgr_owner: contactMgrOwner
+    }));
+    return asRecord$2(result, "FriendRequestResult");
+  }
+  async listFriendRequests(req = {}) {
+    const result = asOptionalRecord(
+      await this.call("contact.list_friend_requests", compact$1({ ...req })),
+      "FriendRequestPage"
+    );
+    return result && Array.isArray(result.items) ? result.items : [];
   }
   /** Notify a zone user (System Notify). */
   async notifySend(req) {
@@ -28626,7 +28710,7 @@ const ndm_proxy = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.definePro
   unpinOwner
 }, Symbol.toStringTag, { value: "Module" }));
 export {
-  WORKFLOW_RUN_TREE_TASK_SCHEMA_ID as $,
+  TASK_MANAGER_SERVICE_UNIQUE_ID as $,
   notifyCategorySessionId as A,
   BS_SERVICE_VERIFY_HUB as B,
   notifyCategoryFromSessionId as C,
@@ -28642,119 +28726,127 @@ export {
   MsgQueueClient as M,
   NOTIFY_INTENT as N,
   waitNotify as O,
-  TASK_MANAGER_SERVICE_NAME as P,
-  TASK_MANAGER_SERVICE_PORT as Q,
+  FRIEND_INTENT as P,
+  CONTACT_TAG_ZONE_USER as Q,
   RuntimeType as R,
   SystemConfigClient as S,
-  TASK_MANAGER_SERVICE_UNIQUE_ID as T,
-  TASK_POLICY_PRESET_COLLABORATIVE_TREE_V1 as U,
+  CONTACT_TAG_ZONE_AGENT as T,
+  CONTACT_TAG_HOMESTATION_FOLLOWING as U,
   VerifyHubClient as V,
   WEB3_BRIDGE_HOST as W,
-  RAW_TASK_SCHEMA_ID as X,
-  HUMAN_APPROVAL_SCHEMA_ID as Y,
-  DOWNLOAD_TASK_SCHEMA_ID as Z,
-  SCHEDULER_DISPATCH_THUNK_TASK_SCHEMA_ID as _,
+  CONTACT_CHANGED_EVENT_BOX as X,
+  WELL_KNOWN_CONTACT_TAGS as Y,
+  contactTagApp as Z,
+  contactTagKind as _,
   ndm_proxy as a,
-  AICC_SERVICE_SERVICE_PORT as a$,
-  WORKFLOW_STEP_TASK_SCHEMA_ID as a0,
-  WORKFLOW_MAP_SHARD_TASK_SCHEMA_ID as a1,
-  WORKFLOW_THUNK_TASK_SCHEMA_ID as a2,
-  WORKFLOW_SCHEDULE_TASK_SCHEMA_ID as a3,
-  WORKFLOW_SEND_MESSAGE_TASK_SCHEMA_ID as a4,
-  WORKFLOW_EXECUTE_RPC_TASK_SCHEMA_ID as a5,
-  WORKFLOW_RUN_TARGET_TASK_SCHEMA_ID as a6,
-  AGENT_DELEGATE_TASK_SCHEMA_ID as a7,
-  HUMAN_INPUT_TASK_SCHEMA_ID as a8,
-  OPENDAN_ASYNC_TOOL_TASK_SCHEMA_ID as a9,
-  isTerminalTaskPhase as aA,
-  TaskWaitReasonKind as aB,
-  TaskOutcome as aC,
-  TaskControlAction as aD,
-  baselineTaskControlProfile as aE,
-  DEFAULT_CHILD_CONTROL_POLICY as aF,
-  TaskAction as aG,
-  TaskGrantScope as aH,
-  TaskDataScope as aI,
-  StorageDomain as aJ,
-  TaskEventType as aK,
-  TaskManagerClient as aL,
-  WORKFLOW_SERVICE_NAME as aM,
-  WorkflowStepType as aN,
-  WorkflowOutputMode as aO,
-  WorkflowJoinMode as aP,
-  WorkflowRetryFallback as aQ,
-  WorkflowDefinitionStatus as aR,
-  WorkflowRunStatus as aS,
-  WorkflowNodeRunState as aT,
-  WorkflowHumanActionKind as aU,
-  WorkflowScheduledTaskStatus as aV,
-  WorkflowScheduledTaskMisfirePolicy as aW,
-  WorkflowScheduledTaskFireStatus as aX,
-  WorkflowClient as aY,
-  AICC_SERVICE_UNIQUE_ID as aZ,
-  AICC_SERVICE_SERVICE_NAME as a_,
-  OPENDAN_COMMAND_TASK_SCHEMA_ID as aa,
-  TOOL_EXEC_BASH_TASK_SCHEMA_ID as ab,
-  AICC_COMPUTE_TASK_SCHEMA_ID as ac,
-  APP_INSTALL_TASK_SCHEMA_ID as ad,
-  APP_UNINSTALL_TASK_SCHEMA_ID as ae,
-  APP_START_TASK_SCHEMA_ID as af,
-  APP_UPDATE_TASK_SCHEMA_ID as ag,
-  APP_UPDATE_BATCH_TASK_SCHEMA_ID as ah,
-  TASK_ERR_NOT_FOUND as ai,
-  TASK_ERR_PERMISSION_DENIED as aj,
-  TASK_ERR_REVISION_CONFLICT as ak,
-  TASK_ERR_STALE_RUNNER_EPOCH as al,
-  TASK_ERR_INVALID_PHASE as am,
-  TASK_ERR_CONTROL_NOT_AVAILABLE as an,
-  TASK_ERR_CONTROL_ALREADY_PENDING as ao,
-  TASK_ERR_ALREADY_COMPLETED as ap,
-  TASK_ERR_INPUT_SCHEMA_MISMATCH as aq,
-  TASK_ERR_RESULT_SCHEMA_MISMATCH as ar,
-  TASK_ERR_IDEMPOTENCY_CONFLICT as as,
-  TASK_ERR_SCHEMA_NOT_FOUND as at,
-  TASK_MGR_ERROR_CODES as au,
-  taskMgrTaskEventPath as av,
-  taskMgrTreeEventPath as aw,
-  taskMgrErrorCode as ax,
-  TaskExecutorKind as ay,
-  TaskPhase as az,
+  WorkflowNodeRunState as a$,
+  TASK_MANAGER_SERVICE_NAME as a0,
+  TASK_MANAGER_SERVICE_PORT as a1,
+  TASK_POLICY_PRESET_COLLABORATIVE_TREE_V1 as a2,
+  RAW_TASK_SCHEMA_ID as a3,
+  HUMAN_APPROVAL_SCHEMA_ID as a4,
+  DOWNLOAD_TASK_SCHEMA_ID as a5,
+  SCHEDULER_DISPATCH_THUNK_TASK_SCHEMA_ID as a6,
+  WORKFLOW_RUN_TREE_TASK_SCHEMA_ID as a7,
+  WORKFLOW_STEP_TASK_SCHEMA_ID as a8,
+  WORKFLOW_MAP_SHARD_TASK_SCHEMA_ID as a9,
+  TASK_ERR_IDEMPOTENCY_CONFLICT as aA,
+  TASK_ERR_SCHEMA_NOT_FOUND as aB,
+  TASK_MGR_ERROR_CODES as aC,
+  taskMgrTaskEventPath as aD,
+  taskMgrTreeEventPath as aE,
+  taskMgrErrorCode as aF,
+  TaskExecutorKind as aG,
+  TaskPhase as aH,
+  isTerminalTaskPhase as aI,
+  TaskWaitReasonKind as aJ,
+  TaskOutcome as aK,
+  TaskControlAction as aL,
+  baselineTaskControlProfile as aM,
+  DEFAULT_CHILD_CONTROL_POLICY as aN,
+  TaskAction as aO,
+  TaskGrantScope as aP,
+  TaskDataScope as aQ,
+  StorageDomain as aR,
+  TaskEventType as aS,
+  TaskManagerClient as aT,
+  WORKFLOW_SERVICE_NAME as aU,
+  WorkflowStepType as aV,
+  WorkflowOutputMode as aW,
+  WorkflowJoinMode as aX,
+  WorkflowRetryFallback as aY,
+  WorkflowDefinitionStatus as aZ,
+  WorkflowRunStatus as a_,
+  WORKFLOW_THUNK_TASK_SCHEMA_ID as aa,
+  WORKFLOW_SCHEDULE_TASK_SCHEMA_ID as ab,
+  WORKFLOW_SEND_MESSAGE_TASK_SCHEMA_ID as ac,
+  WORKFLOW_EXECUTE_RPC_TASK_SCHEMA_ID as ad,
+  WORKFLOW_RUN_TARGET_TASK_SCHEMA_ID as ae,
+  AGENT_DELEGATE_TASK_SCHEMA_ID as af,
+  HUMAN_INPUT_TASK_SCHEMA_ID as ag,
+  OPENDAN_ASYNC_TOOL_TASK_SCHEMA_ID as ah,
+  OPENDAN_COMMAND_TASK_SCHEMA_ID as ai,
+  TOOL_EXEC_BASH_TASK_SCHEMA_ID as aj,
+  AICC_COMPUTE_TASK_SCHEMA_ID as ak,
+  APP_INSTALL_TASK_SCHEMA_ID as al,
+  APP_UNINSTALL_TASK_SCHEMA_ID as am,
+  APP_START_TASK_SCHEMA_ID as an,
+  APP_UPDATE_TASK_SCHEMA_ID as ao,
+  APP_UPDATE_BATCH_TASK_SCHEMA_ID as ap,
+  TASK_ERR_NOT_FOUND as aq,
+  TASK_ERR_PERMISSION_DENIED as ar,
+  TASK_ERR_REVISION_CONFLICT as as,
+  TASK_ERR_STALE_RUNNER_EPOCH as at,
+  TASK_ERR_INVALID_PHASE as au,
+  TASK_ERR_CONTROL_NOT_AVAILABLE as av,
+  TASK_ERR_CONTROL_ALREADY_PENDING as aw,
+  TASK_ERR_ALREADY_COMPLETED as ax,
+  TASK_ERR_INPUT_SCHEMA_MISMATCH as ay,
+  TASK_ERR_RESULT_SCHEMA_MISMATCH as az,
   bns_client as b,
-  AICC_AI_METHODS as b0,
-  AICC_CORE_METHODS as b1,
-  AICC_MANAGEMENT_METHODS as b2,
-  AICC_METHODS as b3,
-  AICC_FEATURES as b4,
-  AICC_EXECUTION_MODES as b5,
-  isAiccAiMethod as b6,
-  aiccTextMessage as b7,
-  aiccMessageTextContent as b8,
-  aiccMessageFirstText as b9,
-  validateAiccMessage as ba,
-  AiccClient as bb,
-  decisionRequirements as bc,
-  validateDecisionRequest as bd,
-  validateDecisionAnswers as be,
-  KEventReader as bf,
-  KEventClient as bg,
-  appIdFromDid as bh,
-  parseAppId as bi,
-  appDidFromId as bj,
-  createAppInstanceId as bk,
-  parseAppInstanceId as bl,
-  BNS_EVM_DEFAULT_GAS_LIMIT as bm,
-  BNS_EVM_DEFAULT_MAX_FEE_PER_GAS as bn,
-  BNS_EVM_DEFAULT_MAX_PRIORITY_FEE_PER_GAS as bo,
-  BNS_MAX_INLINE_DOCUMENT_BYTES as bp,
-  BNS_DNS_TXT_DEFAULT_TTL as bq,
-  BNS_DNS_TXT_DOC_TYPE as br,
-  BNS_PUBLISH_DOCUMENT_ABI as bs,
-  BnsEvmTxError as bt,
-  BnsEvmTxBuilder as bu,
-  decodeBnsPublishDocumentCalldata as bv,
-  BnsTxExecutorError as bw,
-  walletUserHasSnAccount as bx,
-  BnsTxExecutor as by,
+  WorkflowHumanActionKind as b0,
+  WorkflowScheduledTaskStatus as b1,
+  WorkflowScheduledTaskMisfirePolicy as b2,
+  WorkflowScheduledTaskFireStatus as b3,
+  WorkflowClient as b4,
+  AICC_SERVICE_UNIQUE_ID as b5,
+  AICC_SERVICE_SERVICE_NAME as b6,
+  AICC_SERVICE_SERVICE_PORT as b7,
+  AICC_AI_METHODS as b8,
+  AICC_CORE_METHODS as b9,
+  BNS_PUBLISH_DOCUMENT_ABI as bA,
+  BnsEvmTxError as bB,
+  BnsEvmTxBuilder as bC,
+  decodeBnsPublishDocumentCalldata as bD,
+  BnsTxExecutorError as bE,
+  walletUserHasSnAccount as bF,
+  BnsTxExecutor as bG,
+  AICC_MANAGEMENT_METHODS as ba,
+  AICC_METHODS as bb,
+  AICC_FEATURES as bc,
+  AICC_EXECUTION_MODES as bd,
+  isAiccAiMethod as be,
+  aiccTextMessage as bf,
+  aiccMessageTextContent as bg,
+  aiccMessageFirstText as bh,
+  validateAiccMessage as bi,
+  AiccClient as bj,
+  decisionRequirements as bk,
+  validateDecisionRequest as bl,
+  validateDecisionAnswers as bm,
+  KEventReader as bn,
+  KEventClient as bo,
+  appIdFromDid as bp,
+  parseAppId as bq,
+  appDidFromId as br,
+  createAppInstanceId as bs,
+  parseAppInstanceId as bt,
+  BNS_EVM_DEFAULT_GAS_LIMIT as bu,
+  BNS_EVM_DEFAULT_MAX_FEE_PER_GAS as bv,
+  BNS_EVM_DEFAULT_MAX_PRIORITY_FEE_PER_GAS as bw,
+  BNS_MAX_INLINE_DOCUMENT_BYTES as bx,
+  BNS_DNS_TXT_DEFAULT_TTL as by,
+  BNS_DNS_TXT_DOC_TYPE as bz,
   createSDKModule as c,
   BS_SERVICE_TASK_MANAGER as d,
   getActiveRuntimeType as e,
@@ -28780,4 +28872,4 @@ export {
   NOTIFY_LINK_PATH as y,
   isNotifyClosed as z
 };
-//# sourceMappingURL=ndm_proxy-a167f2a4.mjs.map
+//# sourceMappingURL=ndm_proxy-501cb1e8.mjs.map

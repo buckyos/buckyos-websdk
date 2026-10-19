@@ -97,6 +97,7 @@ export function createAppModule(dependencies: AppModuleDependencies = {}): Comma
     lifecycleCommand('stop', 'Stop an installed App'),
     restartCommand(),
     statusCommand(),
+    publishCommand(),
   ]
   return {
     name: 'app',
@@ -454,6 +455,91 @@ function statusCommand(): CommandDefinition {
         }
       }))
       return { total: items.length, items }
+    },
+  }
+}
+
+function publishCommand(): CommandDefinition {
+  return {
+    verb: 'publish',
+    summary: 'Package a directory on the control-panel node into the Zone Repo as an App candidate',
+    description:
+      'Calls control-panel app.publish: packages <local_dir> (a path on the control-panel node; nothing is uploaded) with the AppDoc template, stores PackageMeta and the AppDoc in the Zone Repo/NamedStore, and stages a self-checked PIKG there. The AppDoc is not Owner-signed and no BNS/App DID record is updated, so this is not an authoritative App release.',
+    positionals: [
+      { name: 'local_dir', description: 'Absolute source directory on the control-panel node' },
+    ],
+    options: [
+      {
+        name: 'app-doc',
+        property: 'app_doc',
+        description: 'AppDoc template JSON file (pkg_list entries without pkg_objid)',
+        type: 'string',
+        required: true,
+      },
+      {
+        name: 'app-type',
+        property: 'app_type',
+        description: 'App type; defaults to the template app_type',
+        type: 'string',
+        enum: ['dapp', 'web', 'agent'],
+      },
+    ],
+    inputSchema: {
+      type: 'object',
+      properties: {
+        local_dir: { type: 'string', minLength: 1 },
+        app_doc: { type: 'string', minLength: 1 },
+        app_type: { type: 'string', enum: ['dapp', 'web', 'agent'] },
+      },
+      required: ['local_dir', 'app_doc'],
+      additionalProperties: false,
+    },
+    outputSchema: OBJECT_OUTPUT,
+    resultSchemaVersion: 1,
+    access: { mode: 'fixed', level: 'write' },
+    asyncMode: 'sync',
+    requiresSession: true,
+    examples: [
+      'buckyos app publish /srv/build/demo-web --app-doc ./demo-web.appdoc.json',
+      'buckyos app publish /srv/build/demo-agent --app-doc ./demo-agent.appdoc.json --app-type agent',
+    ],
+    handler: async (ctx, input) => {
+      const localDir = expectString(input, 'local_dir')
+      if (!isAbsolute(localDir)) {
+        throw new UsageError(
+          'INVALID_ARGUMENT',
+          'local_dir must be an absolute path on the control-panel node',
+        )
+      }
+      let appDoc: unknown
+      try {
+        appDoc = JSON.parse(
+          await getHost().readTextFile(resolveFromCwd(ctx, expectString(input, 'app_doc'))),
+        )
+      } catch (error) {
+        throw new UsageError(
+          'INVALID_APP_DOC',
+          `failed to read AppDoc template: ${errorMessage(error)}`,
+        )
+      }
+      if (!isObject(appDoc)) {
+        throw new UsageError('INVALID_APP_DOC', 'AppDoc template must be a JSON object')
+      }
+      const result = expectObject(
+        await callControl(ctx, 'app.publish', {
+          local_dir: localDir,
+          app_doc: appDoc,
+          ...(typeof input.app_type === 'string' ? { app_type: input.app_type } : {}),
+        }),
+        'app.publish response',
+      )
+      const { ok: _ok, ...published } = result
+      return {
+        ...published,
+        publish_status: expectString(result, 'publish_status'),
+        app_doc_signature: 'not-signed',
+        app_did_publication: 'not-published',
+      }
     },
   }
 }

@@ -74,6 +74,7 @@ Bundle 文件是有 expiry 的 disposable artifact；Task result 是创建事实
 | `task wait <task-id>` | 全局 `--timeout` | read | stream | 变化 snapshot 的 JSONL 记录 + 最终 envelope |
 | `task cancel <task-id>` | recursive/expected-revision | write | sync | 只请求取消，不承诺回滚副作用 |
 | `task retry <task-id>` | 全局 idempotency-key、no-wait | write | either | 仅终态失败且领域服务声明可重试 |
+| `log services` | 无 | read | sync | 列出有日志的 service id |
 | `log query` | service/file/level/keyword/since/until/direction/cursor/limit | read | sync | 服务端 filter + 分页 |
 | `log tail` | service/file/level/keyword/from | read | stream | 轮询 cursor，持续 JSONL 输出 |
 | `log export` | services/file/level/keyword/since/until/path | read | sync | 导出明确范围到新文件 |
@@ -143,7 +144,8 @@ CLI 先读取原 Task，再调用 Control Panel `task.retry`。服务端必须�
 }
 ```
 
-`query` 另有 `direction`、`cursor`、`limit`；`tail` 只允许一个 service，另有 `from=start|end`
+`level` 取 `error|warning|info|debug|trace`（与服务端存储一致；CLI 把 `warn` 归一为 `warning`，其他值报
+`INVALID_ARGUMENT`）。`query` 另有 `direction`、`cursor`、`limit`；`tail` 只允许一个 service，另有 `from=start|end`
 和内部 cursor；`export` 要求 service 且至少提供 `since`/`until` 之一，禁止无时间范围导出全部 Zone 日志。
 
 ## 6. 权限与安全
@@ -164,7 +166,7 @@ CLI 先读取原 Task，再调用 Control Panel `task.retry`。服务端必须�
 | --- | --- |
 | task list/get/wait/cancel | `/kapi/task-manager`: `list_tasks`、`get_task`、`get_subtasks`、`request_control`; KEvent `/task_mgr/<id>` |
 | task retry | `/kapi/control-panel`: `task.retry`; handler 再调用领域 service |
-| log query/tail/export | `/kapi/control-panel`: `system.logs.query/tail/download` |
+| log services/query/tail/export | `/kapi/control-panel`: `system.logs.list/query/tail/download` |
 | diagnostic collect/export | `/kapi/control-panel`: `diagnostic.collect/export`；Task 状态仍由 TaskManager 提供 |
 
 TS facade 不直接读写 `system-config`、TaskManager RDB 或 `/opt/buckyos/logs`。

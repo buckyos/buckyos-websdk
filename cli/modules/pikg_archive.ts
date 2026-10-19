@@ -136,6 +136,89 @@ export async function gzipFile(source: string, destination: string): Promise<voi
   await getHost().gzipFile(source, destination)
 }
 
+export interface TarFileEntry {
+  path: string
+  executable: boolean
+  bytes: Uint8Array
+}
+
+export async function readTarGz(bytes: Uint8Array, limit: number): Promise<TarFileEntry[]> {
+  const tar = await gunzipBytes(bytes, limit)
+  const decoder = new TextDecoder('utf-8', { fatal: true })
+  const text = (offset: number, length: number) =>
+    decoder.decode(tar.subarray(offset, offset + length)).replace(/\0.*$/s, '')
+  const files: TarFileEntry[] = []
+  const seen = new Set<string>()
+  let offset = 0
+  while (
+    offset + BLOCK_SIZE <= tar.length && tar.subarray(offset, offset + BLOCK_SIZE).some(Boolean)
+  ) {
+    let raw: string
+    let size: number
+    let mode: number
+    try {
+      const prefix = text(offset + 257, 6) === 'ustar' ? text(offset + 345, 155) : ''
+      raw = prefix ? `${prefix}/${text(offset, 100)}` : text(offset, 100)
+      size = Number.parseInt(text(offset + 124, 12).trim() || '0', 8)
+      mode = Number.parseInt(text(offset + 100, 8).trim() || '0', 8)
+    } catch {
+      throw invalidZip('payload', 'tar header is not valid UTF-8')
+    }
+    const type = String.fromCharCode(tar[offset + 156] || 0x30)
+    const path = raw.replace(/^(?:\.\/)+/, '').replace(/\/$/, '')
+    const start = offset + BLOCK_SIZE
+    if (!Number.isSafeInteger(size) || size < 0 || start + size > tar.length) {
+      throw invalidZip('payload', `tar entry is truncated: ${raw}`)
+    }
+    offset = start + Math.ceil(size / BLOCK_SIZE) * BLOCK_SIZE
+    if (type === '5' && (path === '' || path === '.')) continue
+    if (
+      !path || path.startsWith('/') || /^[A-Za-z]:/.test(path) || path.includes('\\') ||
+      path.split('/').some((segment) => !segment || segment === '.' || segment === '..')
+    ) {
+      throw invalidZip('payload', `unsafe tar entry path: ${JSON.stringify(raw)}`)
+    }
+    if (type === '5') continue
+    if (type !== '0') {
+      throw invalidZip('payload', `tar entry is not a regular file or directory: ${path}`)
+    }
+    if (seen.has(path)) throw invalidZip('payload', `duplicate tar entry: ${path}`)
+    seen.add(path)
+    files.push({ path, executable: (mode & 0o111) !== 0, bytes: tar.slice(start, start + size) })
+  }
+  return files
+}
+
+async function gunzipBytes(bytes: Uint8Array, limit: number): Promise<Uint8Array> {
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(bytes)
+      controller.close()
+    },
+  }).pipeThrough(
+    new DecompressionStream('gzip') as unknown as ReadableWritablePair<Uint8Array, Uint8Array>,
+  )
+  const chunks: Uint8Array[] = []
+  let size = 0
+  try {
+    for await (const chunk of stream) {
+      size += chunk.length
+      if (size > limit) throw invalidZip('limits', 'payload expands beyond the size limit')
+      chunks.push(chunk)
+    }
+  } catch (error) {
+    if (error instanceof ToolError) throw error
+    throw invalidZip('compression', 'payload is not a valid gzip stream')
+  }
+  const result = new Uint8Array(size)
+  let position = 0
+  for (const chunk of chunks) {
+    result.set(chunk, position)
+    position += chunk.length
+  }
+  return result
+}
+
 export async function writeStoredZip(
   destination: string,
   sources: ZipWriteSource[],

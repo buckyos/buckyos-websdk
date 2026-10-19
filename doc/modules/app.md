@@ -57,6 +57,7 @@ binding、Secret 解析和其它资源/权限管理不在本模块。Secret 只�
 | `app uninstall <app-name>` | destructive | task | 必须指定 `--data <retain-or-delete>` |
 | `app cancel <task-id> [--force]` | write | sync | 取消安装或升级任务并释放 mutation；force 允许延后 staging 清理，仍保留部署提交边界 |
 | `app start <app-name>` | write | task | 进入期望运行态 |
+| `app publish <local-dir> --app-doc <file>` | write | sync | 把 Control Panel 节点上的目录按 AppDoc 模板写入 Zone Repo/NamedStore 并暂存 PIKG；仅是 candidate，见 § 9 |
 | `app stop <app-name>` | write | task/either | 进入期望停止态 |
 | `app restart <app-name>` | write | task | 默认 recreate；当前 `--strategy rolling` 返回稳定 unsupported 错误 |
 | `app status [app-name]` | read | sync | 聚合 desired、task、scheduled、runtime、目标版本、实际版本和 readiness |
@@ -340,8 +341,16 @@ CLI 可以组合这些能力完成同一条用户命令，但不能自行比较�
 
 ## 9. 发布职责边界
 
-本版不设计发布阶段命令，并明确不新增 `app publish`。App 模块管理安装与运行期望状态，
-不应同时承担发行物托管和 BNS 权威发布。
+`app publish <local-dir> --app-doc <file> [--app-type dapp|web|agent]` 只是 Control Panel
+`app.publish` 的客户端：`<local-dir>` 是 Control Panel 节点上的绝对路径（CLI 不上传），AppDoc
+模板文件由 CLI 本地读取。服务端打包 subpackage、把 PackageMeta 与 AppDoc 写入 NamedStore 并
+`repo.store`，在节点上暂存并自校验 PIKG。Agent 模板含 `pkg_list.agent_skills` 时，该 subpackage
+取自 `<local-dir>/agent_skills`，`agent` subpackage 不再包含该目录；`agent_tools` 仍被拒绝。
+
+输出如实给出 `publish_status=repo_stored_candidate`、`app_doc_signature=not-signed`、
+`app_did_publication=not-published`：AppDoc 未经 Owner 签名，也没有更新任何 BNS/App DID 记录，
+因此不是权威发布。当前后端没有 Owner 签名 AppDoc 或更新 App DID 的发布路径（Repo 的
+`announce` 只在本地排队）。App 模块管理安装与运行期望状态，不承担 BNS 权威发布。
 
 后续方向是把三种权限分开设计：
 

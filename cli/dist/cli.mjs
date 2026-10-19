@@ -575,6 +575,7 @@ function collectArgumentPaths(argv) {
     "name"
   ]);
   const booleanOptions = /* @__PURE__ */ new Set([
+    "replace",
     "cli",
     "wait",
     "non-interactive",
@@ -621,6 +622,8 @@ function collectArgumentPaths(argv) {
           write.push(value);
       } else if (name === "path")
         write.push(value);
+      else if (name === "app-doc" && module === "app" && verb === "publish")
+        read.push(value);
       else if (name === "file" && module === "system-config" && verb === "set-file") {
         read.push(value);
       } else if (name === "root" && module === "provision") {
@@ -638,6 +641,8 @@ function collectArgumentPaths(argv) {
     if (module === "app" && ["fetch", "install"].includes(verb ?? "") && positional++ === 0) {
       if (!/^https?:\/\//i.test(token))
         read.push(token);
+    } else if (module === "skill" && verb === "install" && positional++ === 0) {
+      read.push(token);
     } else if (module === "pikg" && positional++ === 0) {
       read.push(token);
       if (verb === "init" || verb === "pack")
@@ -2493,8 +2498,8 @@ function replPrompt(config) {
   const identity = config.identity ?? "external-session";
   return `buckyos[${profile}|${zone}|${identity}]> `;
 }
-const EMPTY_INPUT$1 = { type: "object", properties: {}, additionalProperties: false };
-const OBJECT_OUTPUT$8 = { type: "object", additionalProperties: true };
+const EMPTY_INPUT$3 = { type: "object", properties: {}, additionalProperties: false };
+const OBJECT_OUTPUT$b = { type: "object", additionalProperties: true };
 function createAuthModule() {
   return {
     name: "auth",
@@ -2503,8 +2508,8 @@ function createAuthModule() {
       {
         verb: "whoami",
         summary: "Show the effective principal and application identity",
-        inputSchema: EMPTY_INPUT$1,
-        outputSchema: OBJECT_OUTPUT$8,
+        inputSchema: EMPTY_INPUT$3,
+        outputSchema: OBJECT_OUTPUT$b,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -2521,8 +2526,8 @@ function createAuthModule() {
       {
         verb: "session-status",
         summary: "Show the in-memory session state without exposing credentials",
-        inputSchema: EMPTY_INPUT$1,
-        outputSchema: OBJECT_OUTPUT$8,
+        inputSchema: EMPTY_INPUT$3,
+        outputSchema: OBJECT_OUTPUT$b,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -2538,12 +2543,12 @@ function createAuthModule() {
     ]
   };
 }
-const EMPTY_INPUT = {
+const EMPTY_INPUT$2 = {
   type: "object",
   properties: {},
   additionalProperties: false
 };
-const OBJECT_OUTPUT$7 = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$a = { type: "object", additionalProperties: true };
 function createCoreModules(registry) {
   return [createCommandModule(registry), createConfigModule(), createCompletionModule(registry)];
 }
@@ -2555,8 +2560,8 @@ function createCommandModule(registry) {
       {
         verb: "list",
         summary: "List registered modules and commands",
-        inputSchema: EMPTY_INPUT,
-        outputSchema: OBJECT_OUTPUT$7,
+        inputSchema: EMPTY_INPUT$2,
+        outputSchema: OBJECT_OUTPUT$a,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -2589,7 +2594,7 @@ function createCommandModule(registry) {
           required: ["target_module", "target_verb"],
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$7,
+        outputSchema: OBJECT_OUTPUT$a,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -2610,8 +2615,8 @@ function createConfigModule() {
       {
         verb: "list",
         summary: "List the global configuration and available profiles",
-        inputSchema: EMPTY_INPUT,
-        outputSchema: OBJECT_OUTPUT$7,
+        inputSchema: EMPTY_INPUT$2,
+        outputSchema: OBJECT_OUTPUT$a,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -2642,7 +2647,7 @@ function createConfigModule() {
           },
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$7,
+        outputSchema: OBJECT_OUTPUT$a,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -2688,7 +2693,7 @@ function createConfigModule() {
           required: ["key", "value"],
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$7,
+        outputSchema: OBJECT_OUTPUT$a,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "write" },
         asyncMode: "sync",
@@ -2728,7 +2733,7 @@ function createConfigModule() {
           required: ["profile_name"],
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$7,
+        outputSchema: OBJECT_OUTPUT$a,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "write" },
         asyncMode: "sync",
@@ -2760,7 +2765,7 @@ function createConfigModule() {
           properties: { effective: { type: "boolean" } },
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$7,
+        outputSchema: OBJECT_OUTPUT$a,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -2875,6 +2880,81 @@ complete -F _buckyos_complete buckyos
 # ${commands}
 `;
 }
+function rpcOptions$2(ctx) {
+  return {
+    traceId: ctx.traceId,
+    timeoutMs: Math.max(1, (ctx.deadline ?? Date.now()) - Date.now()),
+    signal: ctx.signal
+  };
+}
+async function callService(ctx, service, method, params) {
+  try {
+    return await ctx.clients.call(service, method, params, rpcOptions$2(ctx));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const stable = message.match(/\b((?:TASK|AUDIT|DIAGNOSTIC|LOG)_[A-Z0-9_]+):/);
+    if (stable)
+      throw new ToolError(stable[1], message);
+    throw error;
+  }
+}
+function expectObject$4(value, label) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new ToolError("INVALID_SERVICE_RESPONSE", `${label} must be an object`, EXIT_INTERNAL);
+  }
+  return value;
+}
+function expectString$2(value, label) {
+  if (typeof value !== "string" || !value.trim()) {
+    throw new ToolError("INVALID_SERVICE_RESPONSE", `${label} must be a string`, EXIT_INTERNAL);
+  }
+  return value;
+}
+function inputString(input, key) {
+  const value = input[key];
+  return typeof value === "string" && value.trim() ? value.trim() : void 0;
+}
+function requiredInputString(input, key) {
+  const value = inputString(input, key);
+  if (!value)
+    throw new UsageError("INVALID_ARGUMENT", `${key} is required`);
+  return value;
+}
+function parseTimestamp(value, key) {
+  if (value === void 0)
+    return void 0;
+  if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0)
+    return value;
+  if (typeof value !== "string" || !value.trim()) {
+    throw new UsageError("INVALID_ARGUMENT", `${key} must be RFC 3339 or Unix milliseconds`);
+  }
+  if (/^\d+$/.test(value)) {
+    const milliseconds2 = Number(value);
+    if (Number.isSafeInteger(milliseconds2))
+      return milliseconds2;
+  }
+  const milliseconds = Date.parse(value);
+  if (!Number.isFinite(milliseconds)) {
+    throw new UsageError("INVALID_ARGUMENT", `${key} must be RFC 3339 or Unix milliseconds`);
+  }
+  return milliseconds;
+}
+function splitServices(value) {
+  const items = Array.isArray(value) ? value : typeof value === "string" ? value.split(",") : [];
+  return [...new Set(items.map((item) => String(item).trim()).filter(Boolean))];
+}
+const CONTROL_PANEL$4 = "control-panel";
+const EMPTY_INPUT$1 = { type: "object", properties: {}, additionalProperties: false };
+const BUCKYOS_INFO = {
+  type: "object",
+  properties: {
+    version: { type: "string" },
+    build_version: { type: "string" },
+    release_channel: { type: "string" },
+    target: { type: "string" }
+  },
+  additionalProperties: true
+};
 function createSystemModule() {
   return {
     name: "system",
@@ -2882,30 +2962,52 @@ function createSystemModule() {
     commands: [
       {
         verb: "status",
-        summary: "Get the Zone overview, health, services, and version",
-        inputSchema: { type: "object", properties: {}, additionalProperties: false },
-        outputSchema: { type: "object", additionalProperties: true },
+        summary: "Get host resource state, configured service keys, and the BuckyOS version",
+        description: "state and warnings come from CPU/memory/disk/swap of the Control Panel host; services lists the keys under services/ with status unknown (not a per-service health check); buckyos is the system.buckyos_info.get record.",
+        inputSchema: EMPTY_INPUT$1,
+        outputSchema: {
+          type: "object",
+          properties: { buckyos: BUCKYOS_INFO },
+          required: ["buckyos"],
+          additionalProperties: true
+        },
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
         requiresSession: true,
         examples: ["buckyos --profile production system status"],
-        handler: async (ctx) => await ctx.clients.call(
-          "control-panel",
-          "system.status",
-          {},
-          {
-            traceId: ctx.traceId,
-            timeoutMs: Math.max(1, (ctx.deadline ?? Date.now()) - Date.now()),
-            signal: ctx.signal
-          }
-        )
+        handler: async (ctx) => {
+          const [status, buckyos2] = await Promise.all([
+            callService(ctx, CONTROL_PANEL$4, "system.status", {}),
+            buckyosInfo(ctx)
+          ]);
+          return { ...expectObject$4(status, "system.status"), buckyos: buckyos2 };
+        }
+      },
+      {
+        verb: "info",
+        summary: "Get the installed BuckyOS version, build version, and release channel",
+        description: "build_version is build<YYMMDD>.<branch>.<commit12>[.dirty]; any authenticated identity may read it.",
+        inputSchema: EMPTY_INPUT$1,
+        outputSchema: BUCKYOS_INFO,
+        resultSchemaVersion: 1,
+        access: { mode: "fixed", level: "read" },
+        asyncMode: "sync",
+        requiresSession: true,
+        examples: ["buckyos system info"],
+        handler: async (ctx) => await buckyosInfo(ctx)
       }
     ]
   };
 }
+async function buckyosInfo(ctx) {
+  return expectObject$4(
+    await callService(ctx, CONTROL_PANEL$4, "system.buckyos_info.get", {}),
+    "system.buckyos_info.get"
+  );
+}
 const SERVICE_NAME = "system_config";
-const OBJECT_OUTPUT$6 = { type: "object", additionalProperties: false };
+const OBJECT_OUTPUT$9 = { type: "object", additionalProperties: false };
 const KEY_INPUT = {
   type: "object",
   properties: { key: { type: "string", minLength: 1 } },
@@ -2923,7 +3025,7 @@ function createSystemConfigModule() {
         positionals: [{ name: "key", description: "System-config key" }],
         inputSchema: KEY_INPUT,
         outputSchema: {
-          ...OBJECT_OUTPUT$6,
+          ...OBJECT_OUTPUT$9,
           properties: {
             key: { type: "string" },
             value: { type: "string" },
@@ -2950,7 +3052,7 @@ function createSystemConfigModule() {
             );
           }
           if (!isConfigValue(result))
-            invalidResponse$2("sys_config_get");
+            invalidResponse$3("sys_config_get");
           return { key, value: result.value, version: result.version, text: result.value };
         }
       },
@@ -2966,7 +3068,7 @@ function createSystemConfigModule() {
           additionalProperties: false
         },
         outputSchema: {
-          ...OBJECT_OUTPUT$6,
+          ...OBJECT_OUTPUT$9,
           properties: {
             key: { type: "string" },
             items: { type: "array", items: { type: "string" } }
@@ -2985,7 +3087,7 @@ function createSystemConfigModule() {
           const key = typeof input.key === "string" ? input.key : "";
           const result = await callSystemConfig(ctx, "sys_config_list", { key });
           if (!Array.isArray(result) || !result.every((item) => typeof item === "string")) {
-            invalidResponse$2("sys_config_list");
+            invalidResponse$3("sys_config_list");
           }
           return { key, items: result };
         }
@@ -3020,7 +3122,7 @@ function setCommand() {
       additionalProperties: false
     },
     outputSchema: {
-      ...OBJECT_OUTPUT$6,
+      ...OBJECT_OUTPUT$9,
       properties: { key: { type: "string" }, updated: { type: "boolean" } },
       required: ["key", "updated"]
     },
@@ -3059,7 +3161,7 @@ function setFileCommand() {
       additionalProperties: false
     },
     outputSchema: {
-      ...OBJECT_OUTPUT$6,
+      ...OBJECT_OUTPUT$9,
       properties: { key: { type: "string" }, updated: { type: "boolean" } },
       required: ["key", "updated"]
     },
@@ -3096,7 +3198,7 @@ function mutationCommand(options) {
       additionalProperties: false
     },
     outputSchema: {
-      ...OBJECT_OUTPUT$6,
+      ...OBJECT_OUTPUT$9,
       properties: {
         key: { type: "string" },
         [options.resultProperty]: { type: "boolean" }
@@ -3141,7 +3243,7 @@ function isConfigValue(value) {
   const object = value;
   return typeof object.value === "string" && Number.isSafeInteger(object.version) && Number(object.version) >= 0;
 }
-function invalidResponse$2(method) {
+function invalidResponse$3(method) {
   throw new ToolError(
     "INVALID_SERVICE_RESPONSE",
     `system-config returned an invalid response for ${method}`,
@@ -3227,6 +3329,80 @@ async function createDeterministicTarGz(sourceDir, destination) {
 }
 async function gzipFile(source, destination) {
   await getHost().gzipFile(source, destination);
+}
+async function readTarGz(bytes, limit) {
+  const tar = await gunzipBytes(bytes, limit);
+  const decoder = new TextDecoder("utf-8", { fatal: true });
+  const text = (offset2, length) => decoder.decode(tar.subarray(offset2, offset2 + length)).replace(/\0.*$/s, "");
+  const files = [];
+  const seen = /* @__PURE__ */ new Set();
+  let offset = 0;
+  while (offset + BLOCK_SIZE <= tar.length && tar.subarray(offset, offset + BLOCK_SIZE).some(Boolean)) {
+    let raw;
+    let size;
+    let mode;
+    try {
+      const prefix = text(offset + 257, 6) === "ustar" ? text(offset + 345, 155) : "";
+      raw = prefix ? `${prefix}/${text(offset, 100)}` : text(offset, 100);
+      size = Number.parseInt(text(offset + 124, 12).trim() || "0", 8);
+      mode = Number.parseInt(text(offset + 100, 8).trim() || "0", 8);
+    } catch {
+      throw invalidZip("payload", "tar header is not valid UTF-8");
+    }
+    const type = String.fromCharCode(tar[offset + 156] || 48);
+    const path = raw.replace(/^(?:\.\/)+/, "").replace(/\/$/, "");
+    const start = offset + BLOCK_SIZE;
+    if (!Number.isSafeInteger(size) || size < 0 || start + size > tar.length) {
+      throw invalidZip("payload", `tar entry is truncated: ${raw}`);
+    }
+    offset = start + Math.ceil(size / BLOCK_SIZE) * BLOCK_SIZE;
+    if (type === "5" && (path === "" || path === "."))
+      continue;
+    if (!path || path.startsWith("/") || /^[A-Za-z]:/.test(path) || path.includes("\\") || path.split("/").some((segment) => !segment || segment === "." || segment === "..")) {
+      throw invalidZip("payload", `unsafe tar entry path: ${JSON.stringify(raw)}`);
+    }
+    if (type === "5")
+      continue;
+    if (type !== "0") {
+      throw invalidZip("payload", `tar entry is not a regular file or directory: ${path}`);
+    }
+    if (seen.has(path))
+      throw invalidZip("payload", `duplicate tar entry: ${path}`);
+    seen.add(path);
+    files.push({ path, executable: (mode & 73) !== 0, bytes: tar.slice(start, start + size) });
+  }
+  return files;
+}
+async function gunzipBytes(bytes, limit) {
+  const stream = new ReadableStream({
+    start(controller) {
+      controller.enqueue(bytes);
+      controller.close();
+    }
+  }).pipeThrough(
+    new DecompressionStream("gzip")
+  );
+  const chunks = [];
+  let size = 0;
+  try {
+    for await (const chunk of stream) {
+      size += chunk.length;
+      if (size > limit)
+        throw invalidZip("limits", "payload expands beyond the size limit");
+      chunks.push(chunk);
+    }
+  } catch (error) {
+    if (error instanceof ToolError)
+      throw error;
+    throw invalidZip("compression", "payload is not a valid gzip stream");
+  }
+  const result = new Uint8Array(size);
+  let position = 0;
+  for (const chunk of chunks) {
+    result.set(chunk, position);
+    position += chunk.length;
+  }
+  return result;
 }
 async function writeStoredZip(destination, sources) {
   if (sources.length > MAX_PIKG_ENTRIES) {
@@ -4357,6 +4533,8 @@ async function inspectPikg(path) {
     app: {
       did: String(appDoc.did),
       app_id: appIdFromDid(String(appDoc.did)),
+      ...typeof appDoc.name === "string" ? { name: appDoc.name } : {},
+      app_type: String(appDoc.app_type),
       version: String(appDoc.version),
       owner: String(appDoc.owner),
       app_doc_object_id: validated.appDocObjectId
@@ -4617,7 +4795,7 @@ function validateAppDocShape(appDoc) {
   }
   if (appDoc.doc_type !== "app")
     throw invalid("appdoc", "APPDOC.doc_type must be app");
-  if (!["service", "dapp", "web", "agent"].includes(String(appDoc.app_type))) {
+  if (!["service", "dapp", "web", "agent", "agent_skills"].includes(String(appDoc.app_type))) {
     throw invalid("appdoc", "APPDOC.app_type is invalid");
   }
   if (appDoc.name !== void 0)
@@ -4668,6 +4846,12 @@ function validateAppDocShape(appDoc) {
   const pkgList = expectObject$3(appDoc.pkg_list, "APPDOC.pkg_list");
   if (Object.keys(pkgList).length === 0) {
     throw invalid("appdoc", "APPDOC.pkg_list must not be empty");
+  }
+  if (appDoc.app_type === "agent_skills") {
+    expectNonEmptyString(appDoc.name, "APPDOC.name");
+    if (Object.keys(pkgList).join() !== "agent_skills") {
+      throw invalid("appdoc", "an agent_skills App must contain only the agent_skills sub package");
+    }
   }
   deriveNamespaceForPackage(appDoc);
 }
@@ -4922,7 +5106,7 @@ function validateContentHandlers(value, permissions) {
   }
   return value;
 }
-const PACKAGE_VERSION = "0.7.131";
+const PACKAGE_VERSION = "0.7.132";
 const TOOL_VERSION = PACKAGE_VERSION;
 const SDK_VERSION = PACKAGE_VERSION;
 const PROTOCOL_VERSION = "1";
@@ -4939,7 +5123,13 @@ const VERSION$1 = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 const SHA256_ID = /^sha256:[0-9a-f]{64}$/;
 const OBJECT_ID = /^(?:appdoc|pkg):[0-9a-f]{64}$/;
 const SAFE_GENERATED_FILE = /^[A-Za-z0-9._-]+$/;
-const OBJECT_OUTPUT$5 = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$8 = { type: "object", additionalProperties: true };
+const APP_KINDS = ["static-web", "script", "docker", "agent-skills"];
+const PATH_KINDS = {
+  "static-web": { key: "web", category: "web", selectorType: "static" },
+  script: { key: "script", category: "dapp", selectorType: "single" },
+  "agent-skills": { key: "agent_skills", category: "agent_skills", selectorType: "single" }
+};
 function packageEnvironmentQualifier(key, selector) {
   const effective = selector ?? derivedSelector(key);
   const os = effective?.os;
@@ -4976,7 +5166,7 @@ function createPikgModule(dependencies = {}) {
           properties: { meta_dir: { type: "string", minLength: 1 } },
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$5,
+        outputSchema: OBJECT_OUTPUT$8,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -5000,7 +5190,7 @@ function createPikgModule(dependencies = {}) {
             name: "kind",
             description: "Initial App kind",
             type: "string",
-            enum: ["static-web", "script", "docker"]
+            enum: APP_KINDS
           },
           {
             name: "source",
@@ -5016,14 +5206,14 @@ function createPikgModule(dependencies = {}) {
             project_dir: { type: "string", minLength: 1 },
             name: { type: "string", minLength: 1 },
             owner: { type: "string", minLength: 1 },
-            kind: { type: "string", enum: ["static-web", "script", "docker"] },
+            kind: { type: "string", enum: APP_KINDS },
             source: { type: "string", minLength: 1 },
             version: { type: "string", minLength: 1 },
             app_did: { type: "string", minLength: 1 }
           },
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$5,
+        outputSchema: OBJECT_OUTPUT$8,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "write" },
         asyncMode: "sync",
@@ -5032,7 +5222,8 @@ function createPikgModule(dependencies = {}) {
         networkAccess: false,
         examples: [
           "buckyos pikg init .",
-          "buckyos --non-interactive pikg init . --owner did:bns:root --kind static-web --source ./web/dist"
+          "buckyos --non-interactive pikg init . --owner did:bns:root --kind static-web --source ./web/dist",
+          "buckyos --non-interactive pikg init . --owner did:bns:root --kind agent-skills --source ./skills"
         ],
         handler: async (ctx, input) => await initCommand(ctx, input, docker)
       },
@@ -5047,7 +5238,7 @@ function createPikgModule(dependencies = {}) {
           properties: { meta_dir: { type: "string", minLength: 1 } },
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$5,
+        outputSchema: OBJECT_OUTPUT$8,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "write" },
         asyncMode: "sync",
@@ -5068,7 +5259,7 @@ function createPikgModule(dependencies = {}) {
           properties: { dist_dir: { type: "string", minLength: 1 } },
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$5,
+        outputSchema: OBJECT_OUTPUT$8,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "write" },
         asyncMode: "sync",
@@ -5088,7 +5279,7 @@ function createPikgModule(dependencies = {}) {
           required: ["pikg_path"],
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$5,
+        outputSchema: OBJECT_OUTPUT$8,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -5109,7 +5300,7 @@ function createPikgModule(dependencies = {}) {
           properties: { meta_dir: { type: "string", minLength: 1 } },
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$5,
+        outputSchema: OBJECT_OUTPUT$8,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "destructive" },
         asyncMode: "sync",
@@ -5234,11 +5425,11 @@ async function initCommand(ctx, input, docker) {
     kind = await requiredPrompt(
       ctx,
       canPrompt,
-      "App kind (static-web/script/docker): ",
+      `App kind (${APP_KINDS.join("/")}): `,
       "kind"
     );
   }
-  if (!["static-web", "script", "docker"].includes(kind)) {
+  if (!APP_KINDS.includes(kind)) {
     throw new UsageError("INVALID_APP_KIND", `invalid App kind: ${kind}`);
   }
   let source = optionalInputString(input, "source");
@@ -5264,7 +5455,7 @@ async function initCommand(ctx, input, docker) {
     sourceValue = { type: "docker-image", image: source };
     sourceSummary2 = { type: "docker-image", image: image.canonicalName, image_id: image.id };
   } else {
-    subpackageKey = kind === "static-web" ? "web" : "script";
+    subpackageKey = PATH_KINDS[kind].key;
     const absoluteSource = resolve$1(projectDir, source);
     const persistedSource = isAbsolute$1(source) ? resolve$1(source) : toPortablePath(relative(join(projectDir, "dapp_meta"), absoluteSource));
     sourceValue = { type: "path", path: persistedSource };
@@ -5287,9 +5478,9 @@ async function initCommand(ctx, input, docker) {
     owner,
     author: owner,
     show_name: name,
-    categories: [kind === "static-web" ? "web" : "dapp"],
+    categories: [PATH_KINDS[kind]?.category ?? "dapp"],
     permissions: [],
-    selector_type: kind === "static-web" ? "static" : "single",
+    selector_type: PATH_KINDS[kind]?.selectorType ?? "single",
     service_config_tips: {}
   };
   const pikgMeta = {
@@ -6298,11 +6489,11 @@ async function observeTask(ctx, taskId) {
     TASK_MANAGER_SERVICE,
     "get_task",
     { task_id: taskId },
-    rpcOptions$2(ctx)
+    rpcOptions$1(ctx)
   );
   const envelope = expectObject$2(response, "TaskManager get_task response");
   const task = expectObject$2(envelope.task ?? envelope, "TaskManager task");
-  const phase = expectString$2(task.phase, "task.phase");
+  const phase = expectString$1(task.phase, "task.phase");
   const outcome = optionalString$2(task.outcome);
   const taskError = isObject$1(task.error) ? task.error : void 0;
   return {
@@ -6320,7 +6511,7 @@ async function observeTask(ctx, taskId) {
     data: task
   };
 }
-function rpcOptions$2(ctx) {
+function rpcOptions$1(ctx) {
   return {
     traceId: ctx.traceId,
     timeoutMs: Math.max(1, (ctx.deadline ?? Date.now()) - Date.now()),
@@ -6335,7 +6526,7 @@ function normalizeTaskErrorCode(code, outcome) {
 function optionalString$2(value) {
   return typeof value === "string" ? value : void 0;
 }
-function expectString$2(value, label) {
+function expectString$1(value, label) {
   if (typeof value !== "string" || !value) {
     throw new ToolError("INVALID_SERVICE_RESPONSE", `${label} must be a string`, 9);
   }
@@ -6372,7 +6563,7 @@ const CONTROL_PANEL_SERVICE = "control-panel";
 const PLAN_SCHEMA_VERSION = 4;
 const STAGING_RELEASE_TIMEOUT_MS = 5e3;
 const ZIP_LOCAL_MAGIC = [80, 75, 3, 4];
-const OBJECT_OUTPUT$4 = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$7 = { type: "object", additionalProperties: true };
 const INSTALL_POLICIES = [
   "strict-public",
   "normal",
@@ -6392,7 +6583,8 @@ function createAppModule(dependencies = {}) {
     lifecycleCommand("start", "Start an installed App"),
     lifecycleCommand("stop", "Stop an installed App"),
     restartCommand(),
-    statusCommand$1()
+    statusCommand$1(),
+    publishCommand()
   ];
   return {
     name: "app",
@@ -6422,14 +6614,14 @@ function cancelCommand$1() {
       required: ["task_id"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$4,
+    outputSchema: OBJECT_OUTPUT$7,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "sync",
     requiresSession: true,
     examples: ["buckyos app cancel t-0123456789abcdef0123456789abcdef --force"],
     handler: async (ctx, input) => await callControl(ctx, "apps.install.cancel", {
-      task_id: expectString$1(input, "task_id"),
+      task_id: expectString(input, "task_id"),
       force: input.force === true
     })
   };
@@ -6457,7 +6649,7 @@ function fetchCommand(dependencies) {
       target: { type: "object", additionalProperties: true },
       install_params: { type: "object", additionalProperties: true }
     }),
-    outputSchema: OBJECT_OUTPUT$4,
+    outputSchema: OBJECT_OUTPUT$7,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -6474,7 +6666,7 @@ function listCommand$1() {
     verb: "list",
     summary: "List visible installed Apps",
     inputSchema: emptyInputSchema(),
-    outputSchema: OBJECT_OUTPUT$4,
+    outputSchema: OBJECT_OUTPUT$7,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -6490,7 +6682,7 @@ function getCommand$1() {
     access: "read",
     asyncMode: "sync",
     handler: async (ctx, input) => {
-      const selector = normalizeAppSelector(expectString$1(input, "app_name"));
+      const selector = normalizeAppSelector(expectString(input, "app_name"));
       const [details, status] = await Promise.all([
         callControl(ctx, "apps.details", { selector }),
         callControl(ctx, "apps.status", { selector })
@@ -6532,7 +6724,7 @@ function installCommand(dependencies) {
       no_wait: { type: "boolean" },
       policy: { type: "string", enum: [...INSTALL_POLICIES] }
     }),
-    outputSchema: OBJECT_OUTPUT$4,
+    outputSchema: OBJECT_OUTPUT$7,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "either",
@@ -6576,7 +6768,7 @@ function upgradeCommand(dependencies) {
       },
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$4,
+    outputSchema: OBJECT_OUTPUT$7,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "either",
@@ -6705,7 +6897,7 @@ function statusCommand$1() {
       properties: { app_name: { type: "string", minLength: 1 } },
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$4,
+    outputSchema: OBJECT_OUTPUT$7,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -6729,7 +6921,7 @@ function statusCommand$1() {
       const apps = Array.isArray(listed.apps) ? listed.apps : [];
       const items = await Promise.all(apps.map(async (item) => {
         const app = expectObject$1(item, "apps.list item");
-        const selector = expectString$1(app, "app_instance_id");
+        const selector = expectString(app, "app_instance_id");
         return {
           ...expectObject$1(
             await callControl(ctx, "apps.status", { selector }),
@@ -6739,6 +6931,89 @@ function statusCommand$1() {
         };
       }));
       return { total: items.length, items };
+    }
+  };
+}
+function publishCommand() {
+  return {
+    verb: "publish",
+    summary: "Package a directory on the control-panel node into the Zone Repo as an App candidate",
+    description: "Calls control-panel app.publish: packages <local_dir> (a path on the control-panel node; nothing is uploaded) with the AppDoc template, stores PackageMeta and the AppDoc in the Zone Repo/NamedStore, and stages a self-checked PIKG there. The AppDoc is not Owner-signed and no BNS/App DID record is updated, so this is not an authoritative App release.",
+    positionals: [
+      { name: "local_dir", description: "Absolute source directory on the control-panel node" }
+    ],
+    options: [
+      {
+        name: "app-doc",
+        property: "app_doc",
+        description: "AppDoc template JSON file (pkg_list entries without pkg_objid)",
+        type: "string",
+        required: true
+      },
+      {
+        name: "app-type",
+        property: "app_type",
+        description: "App type; defaults to the template app_type",
+        type: "string",
+        enum: ["dapp", "web", "agent"]
+      }
+    ],
+    inputSchema: {
+      type: "object",
+      properties: {
+        local_dir: { type: "string", minLength: 1 },
+        app_doc: { type: "string", minLength: 1 },
+        app_type: { type: "string", enum: ["dapp", "web", "agent"] }
+      },
+      required: ["local_dir", "app_doc"],
+      additionalProperties: false
+    },
+    outputSchema: OBJECT_OUTPUT$7,
+    resultSchemaVersion: 1,
+    access: { mode: "fixed", level: "write" },
+    asyncMode: "sync",
+    requiresSession: true,
+    examples: [
+      "buckyos app publish /srv/build/demo-web --app-doc ./demo-web.appdoc.json",
+      "buckyos app publish /srv/build/demo-agent --app-doc ./demo-agent.appdoc.json --app-type agent"
+    ],
+    handler: async (ctx, input) => {
+      const localDir = expectString(input, "local_dir");
+      if (!isAbsolute(localDir)) {
+        throw new UsageError(
+          "INVALID_ARGUMENT",
+          "local_dir must be an absolute path on the control-panel node"
+        );
+      }
+      let appDoc;
+      try {
+        appDoc = JSON.parse(
+          await getHost().readTextFile(resolveFromCwd(ctx, expectString(input, "app_doc")))
+        );
+      } catch (error) {
+        throw new UsageError(
+          "INVALID_APP_DOC",
+          `failed to read AppDoc template: ${errorMessage(error)}`
+        );
+      }
+      if (!isObject(appDoc)) {
+        throw new UsageError("INVALID_APP_DOC", "AppDoc template must be a JSON object");
+      }
+      const result = expectObject$1(
+        await callControl(ctx, "app.publish", {
+          local_dir: localDir,
+          app_doc: appDoc,
+          ...typeof input.app_type === "string" ? { app_type: input.app_type } : {}
+        }),
+        "app.publish response"
+      );
+      const { ok: _ok, ...published } = result;
+      return {
+        ...published,
+        publish_status: expectString(result, "publish_status"),
+        app_doc_signature: "not-signed",
+        app_did_publication: "not-published"
+      };
     }
   };
 }
@@ -6777,8 +7052,8 @@ async function installApp(ctx, input, dependencies) {
     let inspection = submittedPlan ? await recomputePlan(ctx, source, input, submittedPlan) : await inspectSource(ctx, source, input);
     verifyPikgBinding(source, submittedPlan ?? inspection.plan);
     const app = expectObject$1(inspection.plan.app, "inspection.plan.app");
-    const appDid = expectString$1(app, "did");
-    const plannedOwner = submittedPlan ? expectString$1(submittedPlan, "owner_user_id") : void 0;
+    const appDid = expectString(app, "did");
+    const plannedOwner = submittedPlan ? expectString(submittedPlan, "owner_user_id") : void 0;
     const installed = await findInstalled(ctx, appDid, plannedOwner);
     if (submittedPlan && installed) {
       throw new ToolError(
@@ -6816,7 +7091,7 @@ async function installApp(ctx, input, dependencies) {
       ...planScopeAndOptions(inspection.plan),
       options: installOptions(input),
       plan: submittedPlan ?? inspection.plan,
-      approved_plan_fingerprint: expectString$1(inspection.plan, "plan_fingerprint"),
+      approved_plan_fingerprint: expectString(inspection.plan, "plan_fingerprint"),
       idempotency_key: idempotencyKey(ctx)
     };
     const submitted = expectObject$1(
@@ -6826,7 +7101,7 @@ async function installApp(ctx, input, dependencies) {
     if (submitted.action === "satisfied" || submitted.task_id === null) {
       return submitted;
     }
-    const taskId = expectString$1(submitted, "task_id");
+    const taskId = expectString(submitted, "task_id");
     keepStaging = true;
     if (input.no_wait === true)
       return submitted;
@@ -6869,7 +7144,7 @@ async function upgradeApps(ctx, input, dependencies) {
   let installTask = false;
   if (selector) {
     const item = expectObject$1(actionable[0], "upgrade item");
-    const appDid = expectString$1(item, "app_did");
+    const appDid = expectString(item, "app_did");
     const details = await findInstalled(ctx, appDid);
     if (!details)
       throw new ToolError("RESOURCE_NOT_FOUND", `App is not installed: ${appDid}`);
@@ -6888,7 +7163,7 @@ async function upgradeApps(ctx, input, dependencies) {
         ...planScopeAndOptions(inspection.plan),
         options: installOptions(input),
         plan: inspection.plan,
-        approved_plan_fingerprint: expectString$1(inspection.plan, "plan_fingerprint"),
+        approved_plan_fingerprint: expectString(inspection.plan, "plan_fingerprint"),
         idempotency_key: idempotencyKey(ctx)
       }),
       "apps.submit response"
@@ -6902,7 +7177,7 @@ async function upgradeApps(ctx, input, dependencies) {
   }
   if (submitted.task_id === null || submitted.action === "satisfied")
     return submitted;
-  const taskId = expectString$1(submitted, "task_id");
+  const taskId = expectString(submitted, "task_id");
   if (input.no_wait === true)
     return submitted;
   const status = await waitForTask(ctx, taskId, {
@@ -6913,7 +7188,7 @@ async function upgradeApps(ctx, input, dependencies) {
 }
 async function uninstallApp(ctx, input, dependencies) {
   rejectDryRunNoWait(input);
-  const selector = normalizeAppSelector(expectString$1(input, "app_name"));
+  const selector = normalizeAppSelector(expectString(input, "app_name"));
   const status = await callControl(ctx, "apps.status", { selector });
   const preflight = { action: "uninstall", data_disposition: input.data, status };
   if (input.dry_run === true)
@@ -6927,7 +7202,7 @@ async function uninstallApp(ctx, input, dependencies) {
     }),
     "apps.uninstall response"
   );
-  const taskId = expectString$1(submitted, "task_id");
+  const taskId = expectString(submitted, "task_id");
   if (input.no_wait === true)
     return submitted;
   const task = await waitForTask(ctx, taskId, { sleep: dependencies.sleep });
@@ -6940,7 +7215,7 @@ async function mutateLifecycle(ctx, input, verb) {
       "rolling restart is not supported by the current deployment strategy"
     );
   }
-  const selector = normalizeAppSelector(expectString$1(input, "app_name"));
+  const selector = normalizeAppSelector(expectString(input, "app_name"));
   const submitted = expectObject$1(
     await callControl(ctx, `apps.${verb}`, {
       selector,
@@ -6949,7 +7224,7 @@ async function mutateLifecycle(ctx, input, verb) {
     }),
     `apps.${verb} response`
   );
-  const taskId = expectString$1(submitted, "task_id");
+  const taskId = expectString(submitted, "task_id");
   if (input.no_wait === true)
     return submitted;
   const task = await waitForTask(ctx, taskId);
@@ -7266,10 +7541,10 @@ async function stagePikg(ctx, snapshot, purpose) {
 function parseStagingMetadata(value) {
   return {
     schema_version: expectNumber(value, "schema_version"),
-    handle: expectString$1(value, "handle"),
-    pikg_digest: expectString$1(value, "pikg_digest"),
+    handle: expectString(value, "handle"),
+    pikg_digest: expectString(value, "pikg_digest"),
     size: expectNumber(value, "size"),
-    purpose: expectString$1(value, "purpose"),
+    purpose: expectString(value, "purpose"),
     expires_at: optionalNumber(value.expires_at)
   };
 }
@@ -7362,7 +7637,7 @@ async function observeInstallTask(ctx, taskId) {
   const error = isObject(status.error) ? status.error : void 0;
   const sanitizedDetails = error && isObject(error.details) ? sanitizeAppOutput(error.details) : void 0;
   return {
-    phase: expectString$1(status, "task_phase"),
+    phase: expectString(status, "task_phase"),
     outcome: optionalString$1(status.task_outcome),
     message: installProgressMessage(status),
     error: error ? {
@@ -7393,7 +7668,7 @@ async function confirmChange(ctx, action, summary) {
 }
 async function callControl(ctx, method, params) {
   try {
-    return await ctx.clients.call(CONTROL_PANEL_SERVICE, method, params, rpcOptions$1(ctx));
+    return await ctx.clients.call(CONTROL_PANEL_SERVICE, method, params, rpcOptions(ctx));
   } catch (error) {
     throw normalizeAppServiceError(error);
   }
@@ -7454,14 +7729,14 @@ function scopeAndChoiceParams(input) {
 }
 function planScopeAndOptions(plan) {
   return {
-    owner_user_id: expectString$1(plan, "owner_user_id"),
+    owner_user_id: expectString(plan, "owner_user_id"),
     target: expectObject$1(plan.target, "plan.target"),
     install_params: expectObject$1(plan.install_params, "plan.install_params")
   };
 }
 function installedScope(details) {
   return {
-    owner_user_id: expectString$1(details, "owner_user_id")
+    owner_user_id: expectString(details, "owner_user_id")
   };
 }
 function installOptions(input) {
@@ -7502,7 +7777,7 @@ function satisfiedResult(inspection) {
   };
 }
 function assertPlanMatchesInspection(plan, inspection) {
-  const fingerprint = expectString$1(plan, "plan_fingerprint");
+  const fingerprint = expectString(plan, "plan_fingerprint");
   if (fingerprint !== inspection.plan.plan_fingerprint) {
     throw new ToolError(
       "PLAN_STALE",
@@ -7520,7 +7795,7 @@ function verifyPikgBinding(source, plan) {
   if (source.kind === "catalog")
     return;
   const identity = expectObject$1(plan.source_identity, "plan.source_identity");
-  const digest = expectString$1(identity, "pikg_digest");
+  const digest = expectString(identity, "pikg_digest");
   if (digest !== source.snapshot.digest) {
     throw new ToolError(
       "PLAN_STALE",
@@ -7538,8 +7813,8 @@ function assertPortablePlan(plan) {
       `InstallPlan schema must be v${PLAN_SCHEMA_VERSION}`
     );
   }
-  expectString$1(plan, "plan_fingerprint");
-  expectString$1(plan, "task_id");
+  expectString(plan, "plan_fingerprint");
+  expectString(plan, "task_id");
   const allowed = /* @__PURE__ */ new Set([
     "schema_version",
     "plan_use",
@@ -7819,7 +8094,7 @@ function selectorCommand(options) {
       required: ["app_name"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$4,
+    outputSchema: OBJECT_OUTPUT$7,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: options.access },
     asyncMode: options.asyncMode,
@@ -7871,7 +8146,7 @@ function policyOption() {
     enum: [...INSTALL_POLICIES]
   };
 }
-function rpcOptions$1(ctx) {
+function rpcOptions(ctx) {
   return {
     traceId: ctx.traceId,
     timeoutMs: Math.max(1, (ctx.deadline ?? Date.now()) - Date.now()),
@@ -7887,7 +8162,7 @@ function expectObject$1(value, label) {
 function isObject(value) {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
-function expectString$1(value, property) {
+function expectString(value, property) {
   const candidate = isObject(value) ? value[property] : value;
   if (typeof candidate !== "string" || !candidate.trim()) {
     throw new ToolError("INVALID_SERVICE_RESPONSE", `${property} must be a non-empty string`, 9);
@@ -7982,71 +8257,8 @@ async function defaultArtifactFetcher(url, ctx) {
 function toHex(bytes) {
   return [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
-function rpcOptions(ctx) {
-  return {
-    traceId: ctx.traceId,
-    timeoutMs: Math.max(1, (ctx.deadline ?? Date.now()) - Date.now()),
-    signal: ctx.signal
-  };
-}
-async function callService(ctx, service, method, params) {
-  try {
-    return await ctx.clients.call(service, method, params, rpcOptions(ctx));
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    const stable = message.match(/\b((?:TASK|AUDIT|DIAGNOSTIC|LOG)_[A-Z0-9_]+):/);
-    if (stable)
-      throw new ToolError(stable[1], message);
-    throw error;
-  }
-}
-function expectObject(value, label) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new ToolError("INVALID_SERVICE_RESPONSE", `${label} must be an object`, EXIT_INTERNAL);
-  }
-  return value;
-}
-function expectString(value, label) {
-  if (typeof value !== "string" || !value.trim()) {
-    throw new ToolError("INVALID_SERVICE_RESPONSE", `${label} must be a string`, EXIT_INTERNAL);
-  }
-  return value;
-}
-function inputString(input, key) {
-  const value = input[key];
-  return typeof value === "string" && value.trim() ? value.trim() : void 0;
-}
-function requiredInputString(input, key) {
-  const value = inputString(input, key);
-  if (!value)
-    throw new UsageError("INVALID_ARGUMENT", `${key} is required`);
-  return value;
-}
-function parseTimestamp(value, key) {
-  if (value === void 0)
-    return void 0;
-  if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0)
-    return value;
-  if (typeof value !== "string" || !value.trim()) {
-    throw new UsageError("INVALID_ARGUMENT", `${key} must be RFC 3339 or Unix milliseconds`);
-  }
-  if (/^\d+$/.test(value)) {
-    const milliseconds2 = Number(value);
-    if (Number.isSafeInteger(milliseconds2))
-      return milliseconds2;
-  }
-  const milliseconds = Date.parse(value);
-  if (!Number.isFinite(milliseconds)) {
-    throw new UsageError("INVALID_ARGUMENT", `${key} must be RFC 3339 or Unix milliseconds`);
-  }
-  return milliseconds;
-}
-function splitServices(value) {
-  const items = Array.isArray(value) ? value : typeof value === "string" ? value.split(",") : [];
-  return [...new Set(items.map((item) => String(item).trim()).filter(Boolean))];
-}
-const CONTROL_PANEL$2 = "control-panel";
-const OBJECT_OUTPUT$3 = { type: "object", additionalProperties: true };
+const CONTROL_PANEL$3 = "control-panel";
+const OBJECT_OUTPUT$6 = { type: "object", additionalProperties: true };
 function createDiagnosticModule(dependencies = {}) {
   return {
     name: "diagnostic",
@@ -8085,7 +8297,7 @@ function collectCommand() {
       required: ["services"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$3,
+    outputSchema: OBJECT_OUTPUT$6,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "privileged" },
     asyncMode: "task",
@@ -8098,10 +8310,10 @@ function collectCommand() {
       if (services.length === 0) {
         throw new UsageError("INVALID_ARGUMENT", "at least one diagnostic service is required");
       }
-      const response = expectObject(
+      const response = expectObject$4(
         await callService(
           ctx,
-          CONTROL_PANEL$2,
+          CONTROL_PANEL$3,
           "diagnostic.collect",
           compact$2({
             services,
@@ -8112,7 +8324,7 @@ function collectCommand() {
         ),
         "Control Panel diagnostic.collect response"
       );
-      const taskId = expectString(response.task_id, "diagnostic.collect.task_id");
+      const taskId = expectString$2(response.task_id, "diagnostic.collect.task_id");
       if (input.no_wait === true)
         return { task_id: taskId };
       return await waitForTask(ctx, taskId);
@@ -8139,7 +8351,7 @@ function exportCommand$1(dependencies) {
       required: ["bundle_id", "path"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$3,
+    outputSchema: OBJECT_OUTPUT$6,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "privileged" },
     asyncMode: "sync",
@@ -8149,16 +8361,16 @@ function exportCommand$1(dependencies) {
   };
 }
 async function exportDiagnostic(ctx, input, dependencies) {
-  const response = expectObject(
-    await callService(ctx, CONTROL_PANEL$2, "diagnostic.export", {
+  const response = expectObject$4(
+    await callService(ctx, CONTROL_PANEL$3, "diagnostic.export", {
       bundle_id: requiredInputString(input, "bundle_id")
     }),
     "Control Panel diagnostic.export response"
   );
   const downloaded = await downloadArtifact(
     ctx,
-    CONTROL_PANEL$2,
-    expectString(response.url, "diagnostic.export.url"),
+    CONTROL_PANEL$3,
+    expectString$2(response.url, "diagnostic.export.url"),
     requiredInputString(input, "path"),
     dependencies.download
   );
@@ -8180,13 +8392,46 @@ async function exportDiagnostic(ctx, input, dependencies) {
 function compact$2(value) {
   return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== void 0));
 }
-const CONTROL_PANEL$1 = "control-panel";
-const OBJECT_OUTPUT$2 = { type: "object", additionalProperties: true };
+const CONTROL_PANEL$2 = "control-panel";
+const OBJECT_OUTPUT$5 = { type: "object", additionalProperties: true };
+const LOG_LEVELS = ["error", "warning", "info", "debug", "trace"];
 function createLogModule(dependencies = {}) {
   return {
     name: "log",
-    summary: "Query, follow, and export redacted system logs",
-    commands: [queryCommand(), tailCommand(dependencies), exportCommand(dependencies)]
+    summary: "List services, query, follow, and export redacted system logs",
+    commands: [
+      servicesCommand(),
+      queryCommand(),
+      tailCommand(dependencies),
+      exportCommand(dependencies)
+    ]
+  };
+}
+function servicesCommand() {
+  return {
+    verb: "services",
+    summary: "List the service IDs that have system logs",
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    outputSchema: {
+      type: "object",
+      properties: { services: { type: "array", items: OBJECT_OUTPUT$5 } },
+      required: ["services"],
+      additionalProperties: false
+    },
+    resultSchemaVersion: 1,
+    access: { mode: "fixed", level: "read" },
+    asyncMode: "sync",
+    requiresSession: true,
+    examples: ["buckyos log services"],
+    handler: async (ctx) => {
+      const response = expectObject$4(
+        await callService(ctx, CONTROL_PANEL$2, "system.logs.list", {}),
+        "Control Panel log service list"
+      );
+      if (!Array.isArray(response.services))
+        invalidResponse$2("log service list");
+      return { services: response.services };
+    }
   };
 }
 function queryCommand() {
@@ -8217,12 +8462,12 @@ function queryCommand() {
     examples: ["buckyos log query --service scheduler --level error --limit 100"],
     handler: async (ctx, input) => {
       const params = normalizeFilter(input, true);
-      const response = expectObject(
-        await callService(ctx, CONTROL_PANEL$1, "system.logs.query", params),
+      const response = expectObject$4(
+        await callService(ctx, CONTROL_PANEL$2, "system.logs.query", params),
         "Control Panel log query response"
       );
       if (!Array.isArray(response.entries))
-        invalidResponse$1("log query entries");
+        invalidResponse$2("log query entries");
       return { items: response.entries, next_cursor: response.nextCursor ?? null };
     }
   };
@@ -8242,7 +8487,7 @@ function tailCommand(dependencies) {
       }
     ],
     inputSchema: filterSchema({ from: { type: "string", enum: ["start", "end"] } }),
-    outputSchema: OBJECT_OUTPUT$2,
+    outputSchema: OBJECT_OUTPUT$5,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "stream",
@@ -8258,8 +8503,8 @@ function tailCommand(dependencies) {
         const remaining = (ctx.deadline ?? Date.now()) - Date.now();
         if (remaining <= 0)
           throw timeoutError();
-        const response = expectObject(
-          await callService(ctx, CONTROL_PANEL$1, "system.logs.tail", {
+        const response = expectObject$4(
+          await callService(ctx, CONTROL_PANEL$2, "system.logs.tail", {
             ...params,
             cursor,
             from: inputString(input, "from") ?? "end",
@@ -8268,7 +8513,7 @@ function tailCommand(dependencies) {
           "Control Panel log tail response"
         );
         if (!Array.isArray(response.entries))
-          invalidResponse$1("log tail entries");
+          invalidResponse$2("log tail entries");
         for (const entry of response.entries) {
           await ctx.io.stdout(`${JSON.stringify({
             schema_version: 1,
@@ -8277,7 +8522,7 @@ function tailCommand(dependencies) {
           })}
 `);
         }
-        cursor = expectString(response.nextCursor, "log tail nextCursor");
+        cursor = expectString$2(response.nextCursor, "log tail nextCursor");
         await sleep(
           Math.min(500, Math.max(1, (ctx.deadline ?? Date.now()) - Date.now())),
           ctx.signal
@@ -8298,7 +8543,7 @@ function exportCommand(dependencies) {
       ...filterSchema({ path: { type: "string", minLength: 1 } }),
       required: ["path"]
     },
-    outputSchema: OBJECT_OUTPUT$2,
+    outputSchema: OBJECT_OUTPUT$5,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -8317,8 +8562,8 @@ function exportCommand(dependencies) {
           "log export requires a since or until time boundary"
         );
       }
-      const response = expectObject(
-        await callService(ctx, CONTROL_PANEL$1, "system.logs.download", {
+      const response = expectObject$4(
+        await callService(ctx, CONTROL_PANEL$2, "system.logs.download", {
           ...params,
           mode: "filtered"
         }),
@@ -8326,8 +8571,8 @@ function exportCommand(dependencies) {
       );
       const downloaded = await downloadArtifact(
         ctx,
-        CONTROL_PANEL$1,
-        expectString(response.url, "log export url"),
+        CONTROL_PANEL$2,
+        expectString$2(response.url, "log export url"),
         requiredInputString(input, "path"),
         dependencies.download
       );
@@ -8340,7 +8585,7 @@ function filterOptions(plural) {
     {
       name: plural ? "services" : "service",
       property: plural ? "services" : "service",
-      description: plural ? "Comma-separated service IDs" : "Service ID",
+      description: plural ? "Comma-separated service IDs (buckyos log services)" : "Service ID (buckyos log services)",
       type: "string",
       required: true
     },
@@ -8349,7 +8594,11 @@ function filterOptions(plural) {
       description: "Exact filename in the service log directory",
       type: "string"
     },
-    { name: "level", description: "Exact normalized log level", type: "string" },
+    {
+      name: "level",
+      description: `Log level: ${LOG_LEVELS.join(", ")} (warn = warning)`,
+      type: "string"
+    },
     { name: "keyword", description: "Case-insensitive content filter", type: "string" },
     { name: "since", description: "RFC 3339 lower time boundary", type: "string" },
     { name: "until", description: "RFC 3339 upper time boundary", type: "string" }
@@ -8382,7 +8631,7 @@ function normalizeFilter(input, withPage) {
   return compact$1({
     services,
     file: inputString(input, "file"),
-    level: inputString(input, "level")?.toLowerCase(),
+    level: normalizeLevel(inputString(input, "level")),
     keyword: inputString(input, "keyword"),
     since: normalizeLogTime(input, "since"),
     until: normalizeLogTime(input, "until"),
@@ -8390,6 +8639,18 @@ function normalizeFilter(input, withPage) {
     cursor: withPage ? inputString(input, "cursor") : void 0,
     limit: withPage ? limit : void 0
   });
+}
+function normalizeLevel(value) {
+  if (!value)
+    return void 0;
+  const level = value.toLowerCase() === "warn" ? "warning" : value.toLowerCase();
+  if (!LOG_LEVELS.includes(level)) {
+    throw new UsageError(
+      "INVALID_ARGUMENT",
+      `level must be one of ${LOG_LEVELS.join(", ")} (warn = warning)`
+    );
+  }
+  return level;
 }
 function normalizeLogTime(input, key) {
   const value = inputString(input, key);
@@ -8411,7 +8672,7 @@ function pageSchema$1() {
 function compact$1(value) {
   return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== void 0));
 }
-function invalidResponse$1(label) {
+function invalidResponse$2(label) {
   throw new ToolError("INVALID_SERVICE_RESPONSE", `${label} is invalid`);
 }
 function timeoutError() {
@@ -8433,8 +8694,8 @@ function abortableSleep(milliseconds, signal) {
   });
 }
 const TASK_MANAGER = "task-manager";
-const CONTROL_PANEL = "control-panel";
-const OBJECT_OUTPUT$1 = { type: "object", additionalProperties: true };
+const CONTROL_PANEL$1 = "control-panel";
+const OBJECT_OUTPUT$4 = { type: "object", additionalProperties: true };
 function createTaskModule() {
   return {
     name: "task",
@@ -8483,7 +8744,7 @@ function listCommand() {
     examples: ["buckyos task list --state running --limit 50"],
     handler: async (ctx, input) => {
       const limit = normalizeLimit(input.limit);
-      const response = expectObject(
+      const response = expectObject$4(
         await callService(
           ctx,
           TASK_MANAGER,
@@ -8503,7 +8764,7 @@ function listCommand() {
       );
       const items = response.tasks;
       if (!Array.isArray(items))
-        invalidResponse("list_tasks.tasks");
+        invalidResponse$1("list_tasks.tasks");
       return { items, next_cursor: response.next_cursor ?? null };
     }
   };
@@ -8537,7 +8798,7 @@ function getCommand() {
       required: ["task_id"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$1,
+    outputSchema: OBJECT_OUTPUT$4,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -8558,12 +8819,12 @@ function getCommand() {
           })
         )
       ]);
-      const taskEnvelope = expectObject(taskResponse, "TaskManager get_task response");
-      const childrenEnvelope = expectObject(childrenResponse, "TaskManager get_subtasks response");
+      const taskEnvelope = expectObject$4(taskResponse, "TaskManager get_task response");
+      const childrenEnvelope = expectObject$4(childrenResponse, "TaskManager get_subtasks response");
       if (!Array.isArray(childrenEnvelope.tasks))
-        invalidResponse("get_subtasks.tasks");
+        invalidResponse$1("get_subtasks.tasks");
       return {
-        task: expectObject(taskEnvelope.task ?? taskEnvelope, "TaskManager task"),
+        task: expectObject$4(taskEnvelope.task ?? taskEnvelope, "TaskManager task"),
         children: {
           items: childrenEnvelope.tasks,
           next_cursor: childrenEnvelope.next_cursor ?? null
@@ -8578,7 +8839,7 @@ function waitCommand() {
     summary: "Stream changes until a Task becomes terminal",
     positionals: [{ name: "task_id", description: "Opaque Task ID", required: true }],
     inputSchema: taskIdSchema(),
-    outputSchema: OBJECT_OUTPUT$1,
+    outputSchema: OBJECT_OUTPUT$4,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "stream",
@@ -8629,7 +8890,7 @@ function cancelCommand() {
       required: ["task_id"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$1,
+    outputSchema: OBJECT_OUTPUT$4,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "sync",
@@ -8672,7 +8933,7 @@ function retryCommand() {
       required: ["task_id"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$1,
+    outputSchema: OBJECT_OUTPUT$4,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "either",
@@ -8680,24 +8941,24 @@ function retryCommand() {
     examples: ["buckyos --idempotency-key retry-42 task retry t-0123456789abcdef0123456789abcdef"],
     handler: async (ctx, input) => {
       const taskId = requiredInputString(input, "task_id");
-      const oldEnvelope = expectObject(
+      const oldEnvelope = expectObject$4(
         await callService(ctx, TASK_MANAGER, "get_task", { task_id: taskId }),
         "TaskManager get_task response"
       );
-      const oldTask = expectObject(oldEnvelope.task ?? oldEnvelope, "TaskManager task");
+      const oldTask = expectObject$4(oldEnvelope.task ?? oldEnvelope, "TaskManager task");
       if (oldTask.phase !== "Terminal" || oldTask.outcome !== "Failed") {
         throw new UsageError("TASK_NOT_RETRYABLE", "only a terminal failed Task can be retried");
       }
-      const response = expectObject(
-        await callService(ctx, CONTROL_PANEL, "task.retry", {
+      const response = expectObject$4(
+        await callService(ctx, CONTROL_PANEL$1, "task.retry", {
           task_id: taskId,
           idempotency_key: ctx.idempotencyKey ?? `retry-${crypto.randomUUID()}`
         }),
         "Control Panel task.retry response"
       );
-      const retryTaskId = expectString(response.task_id, "task.retry.task_id");
+      const retryTaskId = expectString$2(response.task_id, "task.retry.task_id");
       if (retryTaskId === taskId || response.retry_of !== taskId) {
-        invalidResponse("task.retry identity");
+        invalidResponse$1("task.retry identity");
       }
       if (input.no_wait === true)
         return response;
@@ -8742,11 +9003,11 @@ function normalizeLimit(value) {
 function compact(value) {
   return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== void 0));
 }
-function invalidResponse(label) {
+function invalidResponse$1(label) {
   throw new ToolError("INVALID_SERVICE_RESPONSE", `${label} is invalid`, EXIT_INTERNAL);
 }
 const sdk = provisionSdk;
-const OBJECT_OUTPUT = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$3 = { type: "object", additionalProperties: true };
 const ROOT_OPTION = {
   name: "root",
   description: "Installed BuckyOS root on this machine (BUCKYOS_ROOT); read by status/check, written by activate",
@@ -8830,7 +9091,7 @@ function statusCommand(deps) {
       additionalProperties: false
     },
     outputSchema: {
-      ...OBJECT_OUTPUT,
+      ...OBJECT_OUTPUT$3,
       properties: {
         root: { type: "string" },
         state: {
@@ -8868,7 +9129,7 @@ function checkCommand(deps) {
       additionalProperties: false
     },
     outputSchema: {
-      ...OBJECT_OUTPUT,
+      ...OBJECT_OUTPUT$3,
       properties: {
         ready: { type: "boolean" },
         root: { type: "string" },
@@ -8916,7 +9177,7 @@ function activateCommand(deps) {
       additionalProperties: false
     },
     outputSchema: {
-      ...OBJECT_OUTPUT,
+      ...OBJECT_OUTPUT$3,
       properties: {
         root: { type: "string" },
         state: { type: "string", enum: ["configured"] },
@@ -9197,6 +9458,517 @@ function inputFingerprint(input) {
   const hash = getHost().createHash("sha256");
   hash.update(new TextEncoder().encode(JSON.stringify(material)));
   return hash.digestHex();
+}
+const OBJECT_OUTPUT$2 = { type: "object", additionalProperties: true };
+const SKILL_KINDS = ["cmd", "goal"];
+const SKILLS_SUB_PKG = "agent_skills";
+const SKILL_DIRS = ["cmd_skills", "goal_skills", "tools"];
+const MAX_SKILL_PAYLOAD_BYTES = 64 * 1024 * 1024;
+const AGENT_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+const AGENT_OPTION = {
+  name: "agent",
+  property: "agent_id",
+  description: "Agent ID; the Agent serves kRPC at /kapi/<agent_id>",
+  type: "string",
+  required: true
+};
+const KIND_OPTION = {
+  name: "kind",
+  description: "Skill kind",
+  type: "string",
+  enum: SKILL_KINDS
+};
+function createSkillModule() {
+  return {
+    name: "skill",
+    summary: "List, install, and remove the cmd/goal skills of an Agent",
+    commands: [
+      {
+        verb: "list",
+        summary: "List the skills of an Agent",
+        options: [AGENT_OPTION, KIND_OPTION],
+        inputSchema: {
+          type: "object",
+          properties: {
+            agent_id: { type: "string", minLength: 1 },
+            kind: { type: "string", enum: SKILL_KINDS }
+          },
+          required: ["agent_id"],
+          additionalProperties: false
+        },
+        outputSchema: OBJECT_OUTPUT$2,
+        resultSchemaVersion: 1,
+        access: { mode: "fixed", level: "read" },
+        asyncMode: "sync",
+        requiresSession: true,
+        examples: [
+          "buckyos skill list --agent jarvis.example.zone",
+          "buckyos skill list --agent jarvis.example.zone --kind cmd"
+        ],
+        handler: async (ctx, input) => {
+          const agentId = agentIdFrom(input);
+          const kind = typeof input.kind === "string" ? input.kind : void 0;
+          const skills = await listSkills(ctx, agentId, kind);
+          return { agent_id: agentId, ...kind ? { kind } : {}, total: skills.length, skills };
+        }
+      },
+      {
+        verb: "install",
+        summary: "Install the skills of a skill PIKG into an Agent",
+        description: "Verifies the PIKG offline, requires app_type agent_skills, and sends the files of its agent_skills sub package (cmd_skills/, goal_skills/, tools/) to the Agent. Sessions created before keep their frozen manuals.",
+        positionals: [{ name: "pikg_path", description: "Local skill .pikg file" }],
+        options: [
+          AGENT_OPTION,
+          {
+            name: "replace",
+            description: "Replace skills of the same names from another package",
+            type: "boolean"
+          }
+        ],
+        inputSchema: {
+          type: "object",
+          properties: {
+            pikg_path: { type: "string", minLength: 1 },
+            agent_id: { type: "string", minLength: 1 },
+            replace: { type: "boolean" }
+          },
+          required: ["pikg_path", "agent_id"],
+          additionalProperties: false
+        },
+        outputSchema: OBJECT_OUTPUT$2,
+        resultSchemaVersion: 1,
+        access: { mode: "fixed", level: "write" },
+        asyncMode: "sync",
+        requiresSession: true,
+        examples: [
+          "buckyos skill install ./dapp_dist/hello-skills-0.1.0.pikg --agent jarvis.example.zone",
+          "buckyos skill install ./hello-skills-0.2.0.pikg --agent jarvis.example.zone --replace"
+        ],
+        handler: async (ctx, input) => await installSkills(ctx, input)
+      },
+      {
+        verb: "remove",
+        summary: "Remove an installed skill from an Agent",
+        description: "Only installed skills can be removed. Without --kind the kind is looked up by name.",
+        positionals: [{ name: "name", description: "Skill name" }],
+        options: [AGENT_OPTION, KIND_OPTION],
+        inputSchema: {
+          type: "object",
+          properties: {
+            name: { type: "string", minLength: 1 },
+            agent_id: { type: "string", minLength: 1 },
+            kind: { type: "string", enum: SKILL_KINDS }
+          },
+          required: ["name", "agent_id"],
+          additionalProperties: false
+        },
+        outputSchema: OBJECT_OUTPUT$2,
+        resultSchemaVersion: 1,
+        access: { mode: "fixed", level: "destructive" },
+        asyncMode: "sync",
+        requiresSession: true,
+        examples: ["buckyos --yes skill remove hello --agent jarvis.example.zone --kind cmd"],
+        handler: async (ctx, input) => await removeSkill(ctx, input)
+      }
+    ]
+  };
+}
+async function installSkills(ctx, input) {
+  const agentId = agentIdFrom(input);
+  const raw = requiredInputString(input, "pikg_path");
+  const path = getHost().path.isAbsolute(raw) ? getHost().path.resolve(raw) : getHost().path.resolve(ctx.cwd, raw);
+  const inspection = await inspectPikg(path);
+  if (inspection.app.app_type !== SKILLS_SUB_PKG) {
+    throw new UsageError(
+      "NOT_A_SKILL_PACKAGE",
+      `PIKG app_type is ${inspection.app.app_type}; a skill package has app_type ${SKILLS_SUB_PKG} (buckyos pikg init --kind agent-skills)`
+    );
+  }
+  const payload = inspection.subpackages.find((item) => item.key === SKILLS_SUB_PKG)?.payload;
+  const archive = await openZip(path);
+  const bytes = await readZipEntry(
+    archive,
+    archive.byName.get(payload.path),
+    MAX_SKILL_PAYLOAD_BYTES
+  );
+  if (`sha256:${sha256Bytes(bytes)}` !== payload.digest) {
+    throw new ToolError("INVALID_PACKAGE", "PIKG changed after it was verified");
+  }
+  const files = {};
+  const ignored = [];
+  for (const entry of await readTarGz(bytes, MAX_SKILL_PAYLOAD_BYTES)) {
+    if (!SKILL_DIRS.includes(entry.path.split("/")[0])) {
+      ignored.push(entry.path);
+      continue;
+    }
+    files[entry.path] = { content: base64(entry.bytes), executable: entry.executable };
+  }
+  const result = await callService(ctx, agentId, "skills.install", {
+    package: {
+      package: inspection.app.name,
+      version: inspection.app.version,
+      pikg_digest: inspection.pikg_digest,
+      files
+    },
+    replace: input.replace === true
+  });
+  return {
+    agent_id: agentId,
+    pikg_path: inspection.pikg_path,
+    pikg_digest: inspection.pikg_digest,
+    ...expectObject(result, "skills.install"),
+    ...ignored.length ? { ignored_files: ignored } : {}
+  };
+}
+async function removeSkill(ctx, input) {
+  const agentId = agentIdFrom(input);
+  const name = requiredInputString(input, "name");
+  let kind = typeof input.kind === "string" ? input.kind : void 0;
+  if (!kind) {
+    const kinds = (await listSkills(ctx, agentId)).filter((skill) => skill.name === name).map((skill) => String(skill.kind));
+    if (kinds.length === 0) {
+      throw new ToolError("RESOURCE_NOT_FOUND", `Agent ${agentId} has no skill named ${name}`);
+    }
+    if (kinds.length > 1) {
+      throw new UsageError("AMBIGUOUS_SKILL", `${name} is both a cmd and a goal skill; use --kind`);
+    }
+    kind = kinds[0];
+  }
+  if (!ctx.confirmed) {
+    if (ctx.config.nonInteractive || !ctx.io.inputIsTerminal) {
+      throw new ToolError(
+        "CONFIRMATION_REQUIRED",
+        "skill remove requires --yes in non-interactive execution",
+        EXIT_PERMISSION
+      );
+    }
+    const answer = (await ctx.io.prompt(`Remove ${kind} skill ${name} from ${agentId}? [y/N] `))?.trim().toLowerCase();
+    if (answer !== "y" && answer !== "yes") {
+      throw new ToolError("CONFIRMATION_DECLINED", "skill remove was declined", EXIT_PERMISSION);
+    }
+  }
+  const removed = await callService(ctx, agentId, "skills.remove", { kind, name });
+  return { agent_id: agentId, removed: expectObject(removed, "skills.remove") };
+}
+async function listSkills(ctx, agentId, kind) {
+  const skills = await callService(ctx, agentId, "skills.list", kind ? { kind } : {});
+  if (!Array.isArray(skills))
+    invalidResponse("skills.list");
+  return skills.map((skill) => expectObject(skill, "skills.list"));
+}
+function agentIdFrom(input) {
+  const agentId = requiredInputString(input, "agent_id");
+  if (!AGENT_ID.test(agentId)) {
+    throw new UsageError("INVALID_AGENT_ID", `invalid Agent ID: ${agentId}`);
+  }
+  return agentId;
+}
+function expectObject(value, method) {
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    invalidResponse(method);
+  return value;
+}
+function invalidResponse(method) {
+  throw new ToolError(
+    "INVALID_SERVICE_RESPONSE",
+    `Agent returned an invalid response for ${method}`,
+    EXIT_INTERNAL
+  );
+}
+function base64(bytes) {
+  let binary = "";
+  for (let index = 0; index < bytes.length; index += 32768) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + 32768));
+  }
+  return btoa(binary);
+}
+const CONTROL_PANEL = "control-panel";
+const OBJECT_OUTPUT$1 = { type: "object", additionalProperties: true };
+const AGENT_POSITIONAL = {
+  name: "agent_id",
+  description: "Agent ID as `agent list` prints it (raw host name, e.g. jarvis.example.zone)"
+};
+const AGENT_INPUT = {
+  type: "object",
+  properties: { agent_id: { type: "string", minLength: 1 } },
+  required: ["agent_id"],
+  additionalProperties: false
+};
+const PROFILE_FIELDS = ["display_name", "bio"];
+function createAgentModule() {
+  return {
+    name: "agent",
+    summary: "List Agents and read or change their profiles",
+    commands: [
+      {
+        verb: "list",
+        summary: "List the Agents visible to the caller",
+        description: "Owners see their own Agents; admins see every Agent in the Zone.",
+        inputSchema: { type: "object", properties: {}, additionalProperties: false },
+        outputSchema: {
+          type: "object",
+          properties: { agents: { type: "array", items: OBJECT_OUTPUT$1 } },
+          required: ["agents"],
+          additionalProperties: false
+        },
+        resultSchemaVersion: 1,
+        access: { mode: "fixed", level: "read" },
+        asyncMode: "sync",
+        requiresSession: true,
+        examples: ["buckyos agent list"],
+        handler: async (ctx) => {
+          const response = await callAgent(ctx, "agent.list", {});
+          if (!Array.isArray(response.agents)) {
+            throw new ToolError(
+              "INVALID_SERVICE_RESPONSE",
+              "agent.list agents must be an array",
+              EXIT_INTERNAL
+            );
+          }
+          return { agents: response.agents };
+        }
+      },
+      {
+        verb: "get",
+        summary: "Get one Agent: profile, settings, install state, template, and runtime",
+        positionals: [AGENT_POSITIONAL],
+        inputSchema: AGENT_INPUT,
+        outputSchema: OBJECT_OUTPUT$1,
+        resultSchemaVersion: 1,
+        access: { mode: "fixed", level: "read" },
+        asyncMode: "sync",
+        requiresSession: true,
+        examples: ["buckyos agent get jarvis.example.zone"],
+        handler: async (ctx, input) => await callAgent(ctx, "agent.get", { agent_id: requiredInputString(input, "agent_id") })
+      },
+      {
+        verb: "profile-get",
+        summary: "Get the public profile (display name, bio, avatar) of an Agent",
+        positionals: [AGENT_POSITIONAL],
+        inputSchema: AGENT_INPUT,
+        outputSchema: OBJECT_OUTPUT$1,
+        resultSchemaVersion: 1,
+        access: { mode: "fixed", level: "read" },
+        asyncMode: "sync",
+        requiresSession: true,
+        examples: ["buckyos agent profile-get jarvis.example.zone"],
+        handler: async (ctx, input) => {
+          const agentId = requiredInputString(input, "agent_id");
+          return {
+            agent_id: agentId,
+            ...await callAgent(ctx, "agent.profile.get", { agent_id: agentId })
+          };
+        }
+      },
+      {
+        verb: "profile-set",
+        summary: "Change the display name or bio of an Agent",
+        description: "Only the given fields change; an empty value clears the field. Returns the profile before and after the change, and Message Center reloads the new name.",
+        positionals: [AGENT_POSITIONAL],
+        options: [
+          {
+            name: "display-name",
+            description: "New display name; empty clears it",
+            type: "string"
+          },
+          { name: "bio", description: "New bio; empty clears it", type: "string" }
+        ],
+        inputSchema: {
+          type: "object",
+          properties: {
+            agent_id: { type: "string", minLength: 1 },
+            display_name: { type: "string" },
+            bio: { type: "string" }
+          },
+          required: ["agent_id"],
+          additionalProperties: false
+        },
+        outputSchema: {
+          type: "object",
+          properties: {
+            agent_id: { type: "string" },
+            before: OBJECT_OUTPUT$1,
+            profile: OBJECT_OUTPUT$1
+          },
+          required: ["agent_id", "before", "profile"],
+          additionalProperties: false
+        },
+        resultSchemaVersion: 1,
+        access: { mode: "fixed", level: "write" },
+        asyncMode: "sync",
+        requiresSession: true,
+        examples: [
+          "buckyos agent profile-set jarvis.example.zone --display-name 'Jarvis'",
+          "buckyos agent profile-set jarvis.example.zone --bio ''"
+        ],
+        handler: async (ctx, input) => {
+          const agentId = requiredInputString(input, "agent_id");
+          const changes = Object.fromEntries(
+            PROFILE_FIELDS.filter((field) => typeof input[field] === "string").map((field) => [field, input[field]])
+          );
+          if (Object.keys(changes).length === 0) {
+            throw new UsageError("INVALID_ARGUMENT", "give --display-name or --bio");
+          }
+          const before = await callAgent(ctx, "agent.profile.get", { agent_id: agentId });
+          const after = await callAgent(ctx, "agent.profile.set", { agent_id: agentId, ...changes });
+          return {
+            agent_id: agentId,
+            before: expectObject$4(before.profile, "agent.profile.get profile"),
+            profile: expectObject$4(after.profile, "agent.profile.set profile")
+          };
+        }
+      }
+    ]
+  };
+}
+async function callAgent(ctx, method, params) {
+  try {
+    return expectObject$4(await callService(ctx, CONTROL_PANEL, method, params), method);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes("agent_not_found")) {
+      throw new ToolError("RESOURCE_NOT_FOUND", `Agent not found or not yours: ${params.agent_id}`);
+    }
+    throw error;
+  }
+}
+const AICC = "aicc";
+const OBJECT_OUTPUT = { type: "object", additionalProperties: true };
+const EMPTY_INPUT = { type: "object", properties: {}, additionalProperties: false };
+const RANGES = ["last1d", "last7d", "last30d"];
+const GROUPS = [
+  "provider_instance_name",
+  "provider_model",
+  "request_model",
+  "method",
+  "capability",
+  "caller_app_id",
+  "user_id",
+  "tenant_id"
+];
+function createAiModule() {
+  return {
+    name: "ai",
+    summary: "Read AI provider, routing, and usage state of the AICC service",
+    commands: [
+      readCommand({
+        verb: "providers",
+        summary: "List configured AI provider instances with auth, health, and model inventory",
+        method: "provider.list",
+        description: "Credentials are reported only as configured/kind; secrets are never returned."
+      }),
+      readCommand({
+        verb: "routing",
+        summary: "Get the AICC routing overlay and its settings revision",
+        method: "routing.get",
+        description: "An empty routing object means the default routing of the model catalog."
+      }),
+      usageCommand()
+    ]
+  };
+}
+function readCommand(options) {
+  return {
+    verb: options.verb,
+    summary: options.summary,
+    description: options.description,
+    inputSchema: EMPTY_INPUT,
+    outputSchema: OBJECT_OUTPUT,
+    resultSchemaVersion: 1,
+    access: { mode: "fixed", level: "read" },
+    asyncMode: "sync",
+    requiresSession: true,
+    examples: [`buckyos ai ${options.verb}`],
+    handler: async (ctx) => expectObject$4(await callService(ctx, AICC, options.method, {}), options.method)
+  };
+}
+function usageCommand() {
+  return {
+    verb: "usage",
+    summary: "Aggregate the caller's AI usage: requests, tokens, and cost",
+    description: "Scoped to the caller's own user (a device identity sees only its own calls, not the Zone total). Without --since the range defaults to last7d; --until defaults to now.",
+    options: [
+      {
+        name: "range",
+        description: "last1d, last7d (default), or last30d",
+        type: "string",
+        enum: RANGES
+      },
+      { name: "since", description: "RFC 3339 or Unix ms lower bound", type: "string" },
+      { name: "until", description: "RFC 3339 or Unix ms upper bound", type: "string" },
+      {
+        name: "group-by",
+        description: `Comma-separated: ${GROUPS.join(", ")}`,
+        type: "string"
+      },
+      {
+        name: "bucket",
+        description: "Time buckets: hour or day",
+        type: "string",
+        enum: ["hour", "day"]
+      },
+      { name: "events", description: "Also return the individual usage events", type: "boolean" },
+      { name: "limit", description: "Event page size", type: "integer" },
+      { name: "cursor", description: "Opaque event page cursor", type: "string" }
+    ],
+    inputSchema: {
+      type: "object",
+      properties: {
+        range: { type: "string", enum: RANGES },
+        since: { type: "string", minLength: 1 },
+        until: { type: "string", minLength: 1 },
+        group_by: { type: "string", minLength: 1 },
+        bucket: { type: "string", enum: ["hour", "day"] },
+        events: { type: "boolean" },
+        limit: { type: "integer", minimum: 1 },
+        cursor: { type: "string", minLength: 1 }
+      },
+      additionalProperties: false
+    },
+    outputSchema: OBJECT_OUTPUT,
+    resultSchemaVersion: 1,
+    access: { mode: "fixed", level: "read" },
+    asyncMode: "sync",
+    requiresSession: true,
+    examples: [
+      "buckyos ai usage --range last1d --group-by provider_instance_name,provider_model",
+      "buckyos ai usage --since 2026-10-01T00:00:00Z --bucket day"
+    ],
+    handler: async (ctx, input) => {
+      const groupBy = splitServices(input.group_by);
+      const unknown = groupBy.filter((group) => !GROUPS.includes(group));
+      if (unknown.length > 0) {
+        throw new UsageError(
+          "INVALID_ARGUMENT",
+          `unknown group-by ${unknown.join(", ")}; use ${GROUPS.join(", ")}`
+        );
+      }
+      return expectObject$4(
+        await callService(ctx, AICC, "usage.query", {
+          time_range: timeRange(input),
+          ...groupBy.length > 0 ? { group_by: groupBy } : {},
+          ...input.bucket ? { time_bucket: input.bucket } : {},
+          output_mode: input.events === true ? "summary_and_events" : "summary",
+          ...input.limit !== void 0 ? { limit: input.limit } : {},
+          ...inputString(input, "cursor") ? { cursor: inputString(input, "cursor") } : {}
+        }),
+        "usage.query"
+      );
+    }
+  };
+}
+function timeRange(input) {
+  const since = parseTimestamp(input.since, "since");
+  const until = parseTimestamp(input.until, "until");
+  if (since === void 0) {
+    if (until !== void 0)
+      throw new UsageError("INVALID_ARGUMENT", "--until requires --since");
+    return { kind: inputString(input, "range") ?? "last7d" };
+  }
+  if (input.range !== void 0) {
+    throw new UsageError("ARGUMENT_CONFLICT", "--range cannot be combined with --since");
+  }
+  return { kind: "explicit", start_time_ms: since, end_time_ms: until ?? Date.now() };
 }
 const VERSION = TOOL_VERSION;
 class BuckyOSToolApplication {
@@ -9561,6 +10333,9 @@ function createRegistry(pikgDependencies, appDependencies, logDependencies, diag
   registry.register(createLogModule(logDependencies));
   registry.register(createDiagnosticModule(diagnosticDependencies));
   registry.register(createProvisionModule(provisionDependencies));
+  registry.register(createSkillModule());
+  registry.register(createAgentModule());
+  registry.register(createAiModule());
   return registry;
 }
 function assertNoSessionOptions(global, command) {
