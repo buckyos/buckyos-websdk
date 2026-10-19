@@ -6,16 +6,20 @@ Node.js，不需要安装 Deno，也不需要 checkout BuckyOS 或本仓库：
 ```bash
 npm install buckyos
 npx buckyos --version
-npx buckyos pikg init . --owner did:bns:alice --kind static-web --source ./dist
+npx buckyos pikg init . --name example --owner did:bns:alice --kind static-web --source ./dist
 npm run build
 npx buckyos pikg build ./dapp_meta
 npx buckyos pikg pack ./dapp_dist
 npx buckyos pikg info ./dapp_dist/example-0.1.0.pikg
-npx buckyos app install ./dapp_dist/example-0.1.0.pikg --policy local-developer
-npx buckyos task wait <task-id>
-npx buckyos app status example
-npx buckyos log tail --app example
+npx buckyos --non-interactive app fetch ./dapp_dist/example-0.1.0.pikg --plan ./example.install-plan.json --policy local-developer
+npx buckyos --non-interactive --yes --timeout 10m app install ./dapp_dist/example-0.1.0.pikg --plan ./example.install-plan.json --policy local-developer
+npx buckyos app status did:bns:example.alice
+npx buckyos log tail --app example.alice.bns.did
 ```
+
+本地 `pikg build/pack/info` 不要求运行 BuckyOS；安装步骤需要已配置并接受当前身份的 Zone。
+完整打包说明见 [PIKG 模块](doc/modules/pikg.md)，首装与升级见 [App 模块](doc/modules/app.md)，
+跨仓库资料见 [PIKG 文档总览](https://github.com/buckyos/buckyos/blob/main/doc/pikg/README.md)。
 
 当命令需要读取项目目录和 Tool 包目录之外的源码时，通过可重复的全局参数显式授权：
 

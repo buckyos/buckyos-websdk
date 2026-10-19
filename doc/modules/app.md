@@ -1,5 +1,7 @@
 # App 模块需求
 
+> 当前权威：App CLI 的来源、首次计划、本地/Catalog 升级与 Repo candidate。PIKG 输入 schema 见 [PIKG CLI](pikg.md)，包内格式见 [格式规范](https://github.com/buckyos/buckyos/blob/main/doc/pikg/format.md)。
+
 > 状态：Frozen（beta 2.2 服务契约已落地）
 > 对应 module：`app`
 
