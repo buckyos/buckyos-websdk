@@ -262,6 +262,209 @@ export interface GrantResult {
   expires_at?: number
 }
 
+// ---------- shares (`share.*`, nfs-server share module) ----------
+
+export type ShareAccess = 'holder' | 'password'
+export type ShareStatus = 'active' | 'stopping' | 'stopped' | 'expired' | 'failed'
+export type ShareKind = 'link' | 'app_delivery'
+export type ShareTargetApp = 'messagehub' | 'homestation'
+export type ShareContentKind = 'image' | 'video' | 'audio' | 'file' | 'folder'
+export type ShareDeliveryState = 'handed_off' | 'confirmed' | 'canceled' | 'failed' | 'unknown'
+export type ShareOperationState = 'preparing' | 'running' | 'completed' | 'failed' | 'canceled'
+
+export interface ShareStatsTotals {
+  views: number
+  downloads: number
+  bytes: number
+  visitors: number
+  last_access_at?: number | null
+}
+
+export interface ShareInfo {
+  share_id: string
+  kind: ShareKind
+  title: string
+  status: ShareStatus
+  status_reason?: string | null
+  hidden: boolean
+  revision: number
+  created_at: number
+  updated_at: number
+  stopped_at?: number | null
+  owner_user_id: string
+  created_by_app?: string | null
+  related_share_id?: string | null
+  obj_id: string
+  obj_type?: string
+  name?: string
+  mime?: string | null
+  total_size?: number
+  item_count?: number
+  content_kind?: ShareContentKind
+  excluded?: { path: string; reason: string }[]
+  prepared_at?: number
+  source_path: string
+  retained: boolean
+  /** Link shares. `url` is only returned to the owner. */
+  access?: ShareAccess
+  has_password?: boolean
+  allow_download?: boolean
+  expires_at?: number | null
+  url?: string | null
+  /** App deliveries. */
+  target_app?: ShareTargetApp
+  delivery_state?: ShareDeliveryState
+  business_ref?: Record<string, unknown> | null
+  handoff_at?: number
+  reported_at?: number | null
+  delivery_error?: string | null
+  stats: ShareStatsTotals
+}
+
+export interface ShareAuditEntry {
+  action: string
+  revision_before?: number | null
+  revision_after?: number | null
+  actor_user_id: string
+  actor_app_id?: string | null
+  source: string
+  reason?: string | null
+  outcome: string
+  at: number
+}
+
+export interface ShareDetail extends ShareInfo {
+  retention: { obj_id: string; pin_owner: string; pinned_at: number; released_at?: number | null }[]
+  audit: ShareAuditEntry[]
+  related?: ShareInfo
+}
+
+export interface ShareCapabilities {
+  actions: string[]
+  access: ShareAccess[]
+  expiry_presets: (number | null)[]
+  default_expiry: number
+  limits: { sync_threshold: number; max_total_size: number; max_items: number }
+  targets: { app: ShareTargetApp; accepts: string | string[]; max_item_size: number; fallback: 'link' }[]
+  blocked: { action: string; reason: string }[]
+  share_base_url?: string | null
+  public: { dir: string; base_url?: string | null }
+}
+
+export interface ShareTargetFit {
+  app: ShareTargetApp
+  mode: 'attachment' | 'link'
+  reason?: 'folder' | 'not_media' | 'too_large' | null
+  kind: ShareContentKind
+}
+
+export interface SharePlan {
+  plan_fingerprint: string
+  source: { path: string; name: string; kind: 'file' | 'dir'; mime?: string | null }
+  estimate: { total_size: number; item_count: number; excluded: { path: string; reason: string }[] }
+  warnings: string[]
+  requires_task: boolean
+  existing: ShareInfo[]
+  source_public: { in_publish_dir: boolean; public_acl: boolean; public_url?: string | null }
+  /** Folders with an index.html may be websites (going live is App Service's job). */
+  site: { has_index_html: boolean }
+  target_fit?: ShareTargetFit
+}
+
+export interface SharePolicyInput {
+  access: ShareAccess
+  password?: string
+  /** Unix seconds; `null` = does not expire; omitted = seven days. */
+  expires_at?: number | null
+  allow_download?: boolean
+}
+
+export interface ShareHandoff {
+  share_id: string
+  obj_id: string
+  name: string
+  size: number
+  mime?: string | null
+  kind: ShareContentKind
+  mode: 'attachment' | 'link'
+  link_share_id?: string | null
+  url?: string | null
+  launch: { appId: ShareTargetApp; payload: Record<string, unknown> }
+}
+
+export interface ShareOperation {
+  operation_id: string
+  intent: 'create_link' | 'app_handoff'
+  state: ShareOperationState
+  share_id?: string | null
+  task_id?: string | null
+  error?: NfspErrorBody | null
+  progress: { done_bytes?: number; total_bytes?: number }
+  created_at: number
+  updated_at: number
+  source_changed?: boolean
+  obj_id?: string
+  url?: string | null
+  share?: ShareInfo
+  handoff?: ShareHandoff | null
+}
+
+export interface ShareListFilter {
+  kind?: ShareKind
+  status?: ShareStatus
+  source?: string | Locator
+  objId?: string
+  q?: string
+  includeHidden?: boolean
+  limit?: number
+  cursor?: string
+}
+
+export interface ShareStatsPoint {
+  t: number
+  views: number
+  downloads: number
+  bytes: number
+  visitors: number
+}
+
+export interface ShareStatsResult {
+  granularity: 'hour' | 'day'
+  from: number
+  to: number
+  series: ShareStatsPoint[]
+  totals: Omit<ShareStatsTotals, 'last_access_at'>
+  /** `expiring_soon`: active links ending within `expiring_within` seconds. */
+  summary: { active: number; expiring_soon: number; expiring_within: number }
+  unavailable: string[]
+}
+
+export interface PublicEntry {
+  rel_path: string
+  entry_kind: 'file' | 'dir' | 'symlink'
+  link_target?: string | null
+  link_ok?: boolean | null
+  size?: number | null
+  mtime?: number | null
+  first_seen_at: number
+  last_seen_at: number
+  missing_since?: number | null
+  url?: string | null
+}
+
+export interface PublicListing {
+  entries: PublicEntry[]
+  last_scan_at: number
+  scan_ok: boolean
+  dir: string
+  base_url?: string | null
+}
+
+const newIdempotencyKey = (): string =>
+  typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
+
 export type CollectionPatchOp =
   | {
       add_ref: {
@@ -741,6 +944,146 @@ export class NfspClient {
   /** Every ACL record the caller may manage (all of them for the zone owner). */
   async listAcls(): Promise<{ records: AclRecordInfo[]; zone_owner: string | null; is_admin: boolean }> {
     return (await this.call('list_acls', {})) as { records: AclRecordInfo[]; zone_owner: string | null; is_admin: boolean }
+  }
+
+  // ---------- shares (`share.*`) ----------
+
+  async shareCapabilities(): Promise<ShareCapabilities> {
+    return (await this.call('share.capabilities', {})) as ShareCapabilities
+  }
+
+  /** Side-effect free: size, exclusions, existing links, Public state, target fit. */
+  async sharePlan(
+    source: LocatorLike,
+    opts?: { intent?: 'create_link' | 'app_handoff'; target?: ShareTargetApp },
+  ): Promise<SharePlan> {
+    return (await this.call('share.plan', {
+      args: { source: toLocator(source), intent: opts?.intent, target: opts?.target },
+    })) as SharePlan
+  }
+
+  /** Snapshots the source and creates a link. Large sources return `state: 'running'`. */
+  async shareCreate(
+    source: LocatorLike,
+    policy: SharePolicyInput,
+    opts?: { title?: string; idempotencyKey?: string; planFingerprint?: string; sourceHint?: 'gui' | 'cli' | 'agent' },
+  ): Promise<ShareOperation> {
+    return (await this.write('share.create', {
+      args: {
+        source: toLocator(source),
+        policy,
+        title: opts?.title,
+        idempotency_key: opts?.idempotencyKey ?? newIdempotencyKey(),
+        plan_fingerprint: opts?.planFingerprint,
+        source_hint: opts?.sourceHint,
+      },
+    })) as ShareOperation
+  }
+
+  async shareOperation(operationId: string, opts?: { cancel?: boolean }): Promise<ShareOperation> {
+    return (await this.call('share.operation', {
+      args: { operation_id: operationId, cancel: opts?.cancel },
+    })) as ShareOperation
+  }
+
+  /** Polls a running operation until it settles. */
+  async waitShareOperation(
+    op: ShareOperation,
+    opts?: { intervalMs?: number; signal?: AbortSignal; onProgress?: (op: ShareOperation) => void },
+  ): Promise<ShareOperation> {
+    let cur = op
+    while (cur.state === 'running' || cur.state === 'preparing') {
+      if (opts?.signal?.aborted) throw new DOMException('aborted', 'AbortError')
+      await new Promise((r) => setTimeout(r, opts?.intervalMs ?? 1000))
+      cur = await this.shareOperation(cur.operation_id)
+      opts?.onProgress?.(cur)
+    }
+    return cur
+  }
+
+  async shareGet(shareId: string): Promise<ShareDetail> {
+    return (await this.call('share.get', { args: { share_id: shareId } })) as ShareDetail
+  }
+
+  async shareList(filter?: ShareListFilter): Promise<{ items: ShareInfo[]; next_cursor?: string | null }> {
+    const source = filter?.source === undefined || typeof filter.source === 'string' ? filter?.source : toLocator(filter.source)
+    return (await this.call('share.list', {
+      args: {
+        kind: filter?.kind,
+        status: filter?.status,
+        source,
+        obj_id: filter?.objId,
+        q: filter?.q,
+        include_hidden: filter?.includeHidden,
+        limit: filter?.limit,
+        cursor: filter?.cursor,
+      },
+    })) as { items: ShareInfo[]; next_cursor?: string | null }
+  }
+
+  /** `password: null` removes it, `expires_at: null` = no expiry. REVISION_CONFLICT carries `current`. */
+  async shareUpdate(
+    shareId: string,
+    revision: number,
+    changes: { title?: string; expires_at?: number | null; password?: string | null; allow_download?: boolean; access?: ShareAccess },
+    reason?: string,
+  ): Promise<{ revision: number; share: ShareInfo }> {
+    return (await this.write('share.update', {
+      args: { share_id: shareId, revision, changes, reason },
+    })) as { revision: number; share: ShareInfo }
+  }
+
+  async shareStop(shareId: string, revision: number, reason?: string): Promise<{ status: ShareStatus; revision: number }> {
+    return (await this.write('share.stop', {
+      args: { share_id: shareId, revision, reason },
+    })) as { status: ShareStatus; revision: number }
+  }
+
+  async shareHide(shareId: string, hidden: boolean): Promise<{ hidden: boolean; revision: number }> {
+    return (await this.write('share.hide', { args: { share_id: shareId, hidden } })) as { hidden: boolean; revision: number }
+  }
+
+  /** Snapshot for an app target; the result's `handoff.launch` opens the app. */
+  async shareAppHandoff(
+    source: LocatorLike,
+    targetApp: ShareTargetApp,
+    opts?: { title?: string; idempotencyKey?: string },
+  ): Promise<ShareOperation> {
+    return (await this.write('share.app.handoff', {
+      args: {
+        source: toLocator(source),
+        target_app: targetApp,
+        title: opts?.title,
+        idempotency_key: opts?.idempotencyKey ?? newIdempotencyKey(),
+      },
+    })) as ShareOperation
+  }
+
+  /** What the target app did; older facts (by `observedAt`, ms) are refused. */
+  async shareAppReport(
+    shareId: string,
+    deliveryState: Exclude<ShareDeliveryState, 'handed_off'>,
+    opts?: { businessRef?: Record<string, unknown>; error?: string; observedAt?: number },
+  ): Promise<{ accepted: boolean; delivery_state: string }> {
+    return (await this.write('share.app.report', {
+      args: {
+        share_id: shareId,
+        delivery_state: deliveryState,
+        business_ref: opts?.businessRef,
+        error: opts?.error,
+        observed_at: opts?.observedAt ?? Date.now(),
+      },
+    })) as { accepted: boolean; delivery_state: string }
+  }
+
+  async sharePublicList(opts?: { refresh?: boolean }): Promise<PublicListing> {
+    return (await this.call('share.public.list', { args: { refresh: opts?.refresh } })) as PublicListing
+  }
+
+  async shareStats(opts?: { shareId?: string; from?: number; to?: number; granularity?: 'hour' | 'day' }): Promise<ShareStatsResult> {
+    return (await this.call('share.stats', {
+      args: { share_id: opts?.shareId, from: opts?.from, to: opts?.to, granularity: opts?.granularity },
+    })) as ShareStatsResult
   }
 
   // ---------- watch (SSE) ----------

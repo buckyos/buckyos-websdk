@@ -37,6 +37,7 @@ import { createProvisionModule, type ProvisionModuleDependencies } from '../modu
 import { createSkillModule } from '../modules/skill.ts'
 import { createAgentModule } from '../modules/agent.ts'
 import { createAiModule } from '../modules/ai.ts'
+import { createShareModule } from '../modules/share.ts'
 import {
   distributionManifestView,
   getHost,
@@ -479,6 +480,7 @@ export function createRegistry(
   registry.register(createSkillModule())
   registry.register(createAgentModule())
   registry.register(createAiModule())
+  registry.register(createShareModule())
   return registry
 }
 

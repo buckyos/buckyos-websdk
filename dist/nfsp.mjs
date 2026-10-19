@@ -14,6 +14,7 @@ const toLocator = (at) => {
     return { ref: at };
   return at;
 };
+const newIdempotencyKey = () => typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 class NfspError extends Error {
   constructor(body, httpStatus) {
     super(`${body.code}: ${body.message}`);
@@ -321,6 +322,110 @@ class NfspClient {
   /** Every ACL record the caller may manage (all of them for the zone owner). */
   async listAcls() {
     return await this.call("list_acls", {});
+  }
+  // ---------- shares (`share.*`) ----------
+  async shareCapabilities() {
+    return await this.call("share.capabilities", {});
+  }
+  /** Side-effect free: size, exclusions, existing links, Public state, target fit. */
+  async sharePlan(source, opts) {
+    return await this.call("share.plan", {
+      args: { source: toLocator(source), intent: opts == null ? void 0 : opts.intent, target: opts == null ? void 0 : opts.target }
+    });
+  }
+  /** Snapshots the source and creates a link. Large sources return `state: 'running'`. */
+  async shareCreate(source, policy, opts) {
+    return await this.write("share.create", {
+      args: {
+        source: toLocator(source),
+        policy,
+        title: opts == null ? void 0 : opts.title,
+        idempotency_key: (opts == null ? void 0 : opts.idempotencyKey) ?? newIdempotencyKey(),
+        plan_fingerprint: opts == null ? void 0 : opts.planFingerprint,
+        source_hint: opts == null ? void 0 : opts.sourceHint
+      }
+    });
+  }
+  async shareOperation(operationId, opts) {
+    return await this.call("share.operation", {
+      args: { operation_id: operationId, cancel: opts == null ? void 0 : opts.cancel }
+    });
+  }
+  /** Polls a running operation until it settles. */
+  async waitShareOperation(op, opts) {
+    var _a, _b;
+    let cur = op;
+    while (cur.state === "running" || cur.state === "preparing") {
+      if ((_a = opts == null ? void 0 : opts.signal) == null ? void 0 : _a.aborted)
+        throw new DOMException("aborted", "AbortError");
+      await new Promise((r) => setTimeout(r, (opts == null ? void 0 : opts.intervalMs) ?? 1e3));
+      cur = await this.shareOperation(cur.operation_id);
+      (_b = opts == null ? void 0 : opts.onProgress) == null ? void 0 : _b.call(opts, cur);
+    }
+    return cur;
+  }
+  async shareGet(shareId) {
+    return await this.call("share.get", { args: { share_id: shareId } });
+  }
+  async shareList(filter) {
+    const source = (filter == null ? void 0 : filter.source) === void 0 || typeof filter.source === "string" ? filter == null ? void 0 : filter.source : toLocator(filter.source);
+    return await this.call("share.list", {
+      args: {
+        kind: filter == null ? void 0 : filter.kind,
+        status: filter == null ? void 0 : filter.status,
+        source,
+        obj_id: filter == null ? void 0 : filter.objId,
+        q: filter == null ? void 0 : filter.q,
+        include_hidden: filter == null ? void 0 : filter.includeHidden,
+        limit: filter == null ? void 0 : filter.limit,
+        cursor: filter == null ? void 0 : filter.cursor
+      }
+    });
+  }
+  /** `password: null` removes it, `expires_at: null` = no expiry. REVISION_CONFLICT carries `current`. */
+  async shareUpdate(shareId, revision, changes, reason) {
+    return await this.write("share.update", {
+      args: { share_id: shareId, revision, changes, reason }
+    });
+  }
+  async shareStop(shareId, revision, reason) {
+    return await this.write("share.stop", {
+      args: { share_id: shareId, revision, reason }
+    });
+  }
+  async shareHide(shareId, hidden) {
+    return await this.write("share.hide", { args: { share_id: shareId, hidden } });
+  }
+  /** Snapshot for an app target; the result's `handoff.launch` opens the app. */
+  async shareAppHandoff(source, targetApp, opts) {
+    return await this.write("share.app.handoff", {
+      args: {
+        source: toLocator(source),
+        target_app: targetApp,
+        title: opts == null ? void 0 : opts.title,
+        idempotency_key: (opts == null ? void 0 : opts.idempotencyKey) ?? newIdempotencyKey()
+      }
+    });
+  }
+  /** What the target app did; older facts (by `observedAt`, ms) are refused. */
+  async shareAppReport(shareId, deliveryState, opts) {
+    return await this.write("share.app.report", {
+      args: {
+        share_id: shareId,
+        delivery_state: deliveryState,
+        business_ref: opts == null ? void 0 : opts.businessRef,
+        error: opts == null ? void 0 : opts.error,
+        observed_at: (opts == null ? void 0 : opts.observedAt) ?? Date.now()
+      }
+    });
+  }
+  async sharePublicList(opts) {
+    return await this.call("share.public.list", { args: { refresh: opts == null ? void 0 : opts.refresh } });
+  }
+  async shareStats(opts) {
+    return await this.call("share.stats", {
+      args: { share_id: opts == null ? void 0 : opts.shareId, from: opts == null ? void 0 : opts.from, to: opts == null ? void 0 : opts.to, granularity: opts == null ? void 0 : opts.granularity }
+    });
   }
   // ---------- watch (SSE) ----------
   /**

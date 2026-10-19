@@ -686,9 +686,9 @@ async function readDistributionManifest(host2 = getHost()) {
 function distributionManifestView(manifest) {
   if (!manifest)
     return null;
-  const { npm_files: files, ...summary } = manifest;
+  const { npm_files: files, ...summary2 } = manifest;
   return {
-    ...summary,
+    ...summary2,
     npm_file_count: Array.isArray(files) ? files.length : null
   };
 }
@@ -2499,7 +2499,7 @@ function replPrompt(config) {
   return `buckyos[${profile}|${zone}|${identity}]> `;
 }
 const EMPTY_INPUT$3 = { type: "object", properties: {}, additionalProperties: false };
-const OBJECT_OUTPUT$b = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$c = { type: "object", additionalProperties: true };
 function createAuthModule() {
   return {
     name: "auth",
@@ -2509,7 +2509,7 @@ function createAuthModule() {
         verb: "whoami",
         summary: "Show the effective principal and application identity",
         inputSchema: EMPTY_INPUT$3,
-        outputSchema: OBJECT_OUTPUT$b,
+        outputSchema: OBJECT_OUTPUT$c,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -2527,7 +2527,7 @@ function createAuthModule() {
         verb: "session-status",
         summary: "Show the in-memory session state without exposing credentials",
         inputSchema: EMPTY_INPUT$3,
-        outputSchema: OBJECT_OUTPUT$b,
+        outputSchema: OBJECT_OUTPUT$c,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -2548,7 +2548,7 @@ const EMPTY_INPUT$2 = {
   properties: {},
   additionalProperties: false
 };
-const OBJECT_OUTPUT$a = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$b = { type: "object", additionalProperties: true };
 function createCoreModules(registry) {
   return [createCommandModule(registry), createConfigModule(), createCompletionModule(registry)];
 }
@@ -2561,7 +2561,7 @@ function createCommandModule(registry) {
         verb: "list",
         summary: "List registered modules and commands",
         inputSchema: EMPTY_INPUT$2,
-        outputSchema: OBJECT_OUTPUT$a,
+        outputSchema: OBJECT_OUTPUT$b,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -2594,7 +2594,7 @@ function createCommandModule(registry) {
           required: ["target_module", "target_verb"],
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$a,
+        outputSchema: OBJECT_OUTPUT$b,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -2616,7 +2616,7 @@ function createConfigModule() {
         verb: "list",
         summary: "List the global configuration and available profiles",
         inputSchema: EMPTY_INPUT$2,
-        outputSchema: OBJECT_OUTPUT$a,
+        outputSchema: OBJECT_OUTPUT$b,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -2647,7 +2647,7 @@ function createConfigModule() {
           },
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$a,
+        outputSchema: OBJECT_OUTPUT$b,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -2693,7 +2693,7 @@ function createConfigModule() {
           required: ["key", "value"],
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$a,
+        outputSchema: OBJECT_OUTPUT$b,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "write" },
         asyncMode: "sync",
@@ -2733,7 +2733,7 @@ function createConfigModule() {
           required: ["profile_name"],
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$a,
+        outputSchema: OBJECT_OUTPUT$b,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "write" },
         asyncMode: "sync",
@@ -2765,7 +2765,7 @@ function createConfigModule() {
           properties: { effective: { type: "boolean" } },
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$a,
+        outputSchema: OBJECT_OUTPUT$b,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -3007,7 +3007,7 @@ async function buckyosInfo(ctx) {
   );
 }
 const SERVICE_NAME = "system_config";
-const OBJECT_OUTPUT$9 = { type: "object", additionalProperties: false };
+const OBJECT_OUTPUT$a = { type: "object", additionalProperties: false };
 const KEY_INPUT = {
   type: "object",
   properties: { key: { type: "string", minLength: 1 } },
@@ -3025,7 +3025,7 @@ function createSystemConfigModule() {
         positionals: [{ name: "key", description: "System-config key" }],
         inputSchema: KEY_INPUT,
         outputSchema: {
-          ...OBJECT_OUTPUT$9,
+          ...OBJECT_OUTPUT$a,
           properties: {
             key: { type: "string" },
             value: { type: "string" },
@@ -3068,7 +3068,7 @@ function createSystemConfigModule() {
           additionalProperties: false
         },
         outputSchema: {
-          ...OBJECT_OUTPUT$9,
+          ...OBJECT_OUTPUT$a,
           properties: {
             key: { type: "string" },
             items: { type: "array", items: { type: "string" } }
@@ -3122,7 +3122,7 @@ function setCommand() {
       additionalProperties: false
     },
     outputSchema: {
-      ...OBJECT_OUTPUT$9,
+      ...OBJECT_OUTPUT$a,
       properties: { key: { type: "string" }, updated: { type: "boolean" } },
       required: ["key", "updated"]
     },
@@ -3161,7 +3161,7 @@ function setFileCommand() {
       additionalProperties: false
     },
     outputSchema: {
-      ...OBJECT_OUTPUT$9,
+      ...OBJECT_OUTPUT$a,
       properties: { key: { type: "string" }, updated: { type: "boolean" } },
       required: ["key", "updated"]
     },
@@ -3198,7 +3198,7 @@ function mutationCommand(options) {
       additionalProperties: false
     },
     outputSchema: {
-      ...OBJECT_OUTPUT$9,
+      ...OBJECT_OUTPUT$a,
       properties: {
         key: { type: "string" },
         [options.resultProperty]: { type: "boolean" }
@@ -5106,7 +5106,7 @@ function validateContentHandlers(value, permissions) {
   }
   return value;
 }
-const PACKAGE_VERSION = "0.7.132";
+const PACKAGE_VERSION = "0.7.133";
 const TOOL_VERSION = PACKAGE_VERSION;
 const SDK_VERSION = PACKAGE_VERSION;
 const PROTOCOL_VERSION = "1";
@@ -5123,7 +5123,7 @@ const VERSION$1 = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 const SHA256_ID = /^sha256:[0-9a-f]{64}$/;
 const OBJECT_ID = /^(?:appdoc|pkg):[0-9a-f]{64}$/;
 const SAFE_GENERATED_FILE = /^[A-Za-z0-9._-]+$/;
-const OBJECT_OUTPUT$8 = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$9 = { type: "object", additionalProperties: true };
 const APP_KINDS = ["static-web", "script", "docker", "agent-skills"];
 const PATH_KINDS = {
   "static-web": { key: "web", category: "web", selectorType: "static" },
@@ -5166,7 +5166,7 @@ function createPikgModule(dependencies = {}) {
           properties: { meta_dir: { type: "string", minLength: 1 } },
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$8,
+        outputSchema: OBJECT_OUTPUT$9,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -5213,7 +5213,7 @@ function createPikgModule(dependencies = {}) {
           },
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$8,
+        outputSchema: OBJECT_OUTPUT$9,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "write" },
         asyncMode: "sync",
@@ -5238,7 +5238,7 @@ function createPikgModule(dependencies = {}) {
           properties: { meta_dir: { type: "string", minLength: 1 } },
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$8,
+        outputSchema: OBJECT_OUTPUT$9,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "write" },
         asyncMode: "sync",
@@ -5259,7 +5259,7 @@ function createPikgModule(dependencies = {}) {
           properties: { dist_dir: { type: "string", minLength: 1 } },
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$8,
+        outputSchema: OBJECT_OUTPUT$9,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "write" },
         asyncMode: "sync",
@@ -5279,7 +5279,7 @@ function createPikgModule(dependencies = {}) {
           required: ["pikg_path"],
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$8,
+        outputSchema: OBJECT_OUTPUT$9,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -5300,7 +5300,7 @@ function createPikgModule(dependencies = {}) {
           properties: { meta_dir: { type: "string", minLength: 1 } },
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$8,
+        outputSchema: OBJECT_OUTPUT$9,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "destructive" },
         asyncMode: "sync",
@@ -6563,7 +6563,7 @@ const CONTROL_PANEL_SERVICE = "control-panel";
 const PLAN_SCHEMA_VERSION = 4;
 const STAGING_RELEASE_TIMEOUT_MS = 5e3;
 const ZIP_LOCAL_MAGIC = [80, 75, 3, 4];
-const OBJECT_OUTPUT$7 = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$8 = { type: "object", additionalProperties: true };
 const INSTALL_POLICIES = [
   "strict-public",
   "normal",
@@ -6574,8 +6574,8 @@ const INSTALL_POLICIES = [
 function createAppModule(dependencies = {}) {
   const commands = [
     fetchCommand(dependencies),
-    listCommand$1(),
-    getCommand$1(),
+    listCommand$2(),
+    getCommand$2(),
     installCommand(dependencies),
     upgradeCommand(dependencies),
     uninstallCommand(dependencies),
@@ -6614,7 +6614,7 @@ function cancelCommand$1() {
       required: ["task_id"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$7,
+    outputSchema: OBJECT_OUTPUT$8,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "sync",
@@ -6649,7 +6649,7 @@ function fetchCommand(dependencies) {
       target: { type: "object", additionalProperties: true },
       install_params: { type: "object", additionalProperties: true }
     }),
-    outputSchema: OBJECT_OUTPUT$7,
+    outputSchema: OBJECT_OUTPUT$8,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -6661,12 +6661,12 @@ function fetchCommand(dependencies) {
     handler: async (ctx, input) => await fetchApp(ctx, input, dependencies)
   };
 }
-function listCommand$1() {
+function listCommand$2() {
   return {
     verb: "list",
     summary: "List visible installed Apps",
     inputSchema: emptyInputSchema(),
-    outputSchema: OBJECT_OUTPUT$7,
+    outputSchema: OBJECT_OUTPUT$8,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -6675,7 +6675,7 @@ function listCommand$1() {
     handler: async (ctx) => await callControl(ctx, "apps.list", {})
   };
 }
-function getCommand$1() {
+function getCommand$2() {
   return selectorCommand({
     verb: "get",
     summary: "Get installation and runtime details for one App",
@@ -6724,7 +6724,7 @@ function installCommand(dependencies) {
       no_wait: { type: "boolean" },
       policy: { type: "string", enum: [...INSTALL_POLICIES] }
     }),
-    outputSchema: OBJECT_OUTPUT$7,
+    outputSchema: OBJECT_OUTPUT$8,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "either",
@@ -6768,7 +6768,7 @@ function upgradeCommand(dependencies) {
       },
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$7,
+    outputSchema: OBJECT_OUTPUT$8,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "either",
@@ -6821,11 +6821,11 @@ function uninstallCommand(dependencies) {
     examples: ["buckyos app uninstall app1 --data retain"]
   };
 }
-function lifecycleCommand(verb, summary) {
+function lifecycleCommand(verb, summary2) {
   return {
     ...selectorCommand({
       verb,
-      summary,
+      summary: summary2,
       access: "write",
       asyncMode: verb === "start" ? "task" : "either",
       handler: async (ctx, input) => await mutateLifecycle(ctx, input, verb)
@@ -6897,7 +6897,7 @@ function statusCommand$1() {
       properties: { app_name: { type: "string", minLength: 1 } },
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$7,
+    outputSchema: OBJECT_OUTPUT$8,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -6911,10 +6911,10 @@ function statusCommand$1() {
           callControl(ctx, "apps.details", { selector })
         ]);
         const detailObject = expectObject$1(details, "apps.details response");
-        const summary = expectObject$1(detailObject.summary, "apps.details summary");
+        const summary2 = expectObject$1(detailObject.summary, "apps.details summary");
         return {
           ...expectObject$1(status, "apps.status response"),
-          web_hosts: Array.isArray(summary.web_hosts) ? summary.web_hosts : []
+          web_hosts: Array.isArray(summary2.web_hosts) ? summary2.web_hosts : []
         };
       }
       const listed = expectObject$1(await callControl(ctx, "apps.list", {}), "apps.list response");
@@ -6968,7 +6968,7 @@ function publishCommand() {
       required: ["local_dir", "app_doc"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$7,
+    outputSchema: OBJECT_OUTPUT$8,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "sync",
@@ -7485,7 +7485,7 @@ async function stagePikg(ctx, snapshot, purpose) {
     throw new ToolError("AUTH_REQUIRED", "authenticated session is required", 3);
   const token = (await session.ensureValid()).token;
   const proxy = ndm_proxy.createNdmProxyClient({
-    endpoint: gatewayOrigin(ctx.connection.endpoint),
+    endpoint: gatewayOrigin$1(ctx.connection.endpoint),
     sessionToken: token,
     fetcher: (request, init) => fetch(normalizeNdmRequestUrl(request), { ...init, signal: ctx.signal })
   });
@@ -7649,8 +7649,8 @@ async function observeInstallTask(ctx, taskId) {
     data: status
   };
 }
-async function confirmChange(ctx, action, summary) {
-  await ctx.io.stderr(`${JSON.stringify({ action, preflight: summary }, null, 2)}
+async function confirmChange(ctx, action, summary2) {
+  await ctx.io.stderr(`${JSON.stringify({ action, preflight: summary2 }, null, 2)}
 `);
   if (ctx.confirmed)
     return;
@@ -8022,7 +8022,7 @@ function validatePikgSnapshot(bytes) {
     throw new UsageError("INVALID_PIKG", "PIKG magic mismatch: expected a ZIP container");
   }
 }
-function gatewayOrigin(endpoint) {
+function gatewayOrigin$1(endpoint) {
   const url = new URL(endpoint);
   const marker = url.pathname.indexOf("/kapi");
   url.pathname = marker >= 0 ? url.pathname.slice(0, marker) || "/" : "/";
@@ -8094,7 +8094,7 @@ function selectorCommand(options) {
       required: ["app_name"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$7,
+    outputSchema: OBJECT_OUTPUT$8,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: options.access },
     asyncMode: options.asyncMode,
@@ -8258,7 +8258,7 @@ function toHex(bytes) {
   return [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 const CONTROL_PANEL$3 = "control-panel";
-const OBJECT_OUTPUT$6 = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$7 = { type: "object", additionalProperties: true };
 function createDiagnosticModule(dependencies = {}) {
   return {
     name: "diagnostic",
@@ -8297,7 +8297,7 @@ function collectCommand() {
       required: ["services"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$6,
+    outputSchema: OBJECT_OUTPUT$7,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "privileged" },
     asyncMode: "task",
@@ -8351,7 +8351,7 @@ function exportCommand$1(dependencies) {
       required: ["bundle_id", "path"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$6,
+    outputSchema: OBJECT_OUTPUT$7,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "privileged" },
     asyncMode: "sync",
@@ -8393,7 +8393,7 @@ function compact$2(value) {
   return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== void 0));
 }
 const CONTROL_PANEL$2 = "control-panel";
-const OBJECT_OUTPUT$5 = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$6 = { type: "object", additionalProperties: true };
 const LOG_LEVELS = ["error", "warning", "info", "debug", "trace"];
 function createLogModule(dependencies = {}) {
   return {
@@ -8414,7 +8414,7 @@ function servicesCommand() {
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
     outputSchema: {
       type: "object",
-      properties: { services: { type: "array", items: OBJECT_OUTPUT$5 } },
+      properties: { services: { type: "array", items: OBJECT_OUTPUT$6 } },
       required: ["services"],
       additionalProperties: false
     },
@@ -8487,7 +8487,7 @@ function tailCommand(dependencies) {
       }
     ],
     inputSchema: filterSchema({ from: { type: "string", enum: ["start", "end"] } }),
-    outputSchema: OBJECT_OUTPUT$5,
+    outputSchema: OBJECT_OUTPUT$6,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "stream",
@@ -8543,7 +8543,7 @@ function exportCommand(dependencies) {
       ...filterSchema({ path: { type: "string", minLength: 1 } }),
       required: ["path"]
     },
-    outputSchema: OBJECT_OUTPUT$5,
+    outputSchema: OBJECT_OUTPUT$6,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -8695,15 +8695,15 @@ function abortableSleep(milliseconds, signal) {
 }
 const TASK_MANAGER = "task-manager";
 const CONTROL_PANEL$1 = "control-panel";
-const OBJECT_OUTPUT$4 = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$5 = { type: "object", additionalProperties: true };
 function createTaskModule() {
   return {
     name: "task",
     summary: "Inspect, wait for, cancel, and retry durable Tasks",
-    commands: [listCommand(), getCommand(), waitCommand(), cancelCommand(), retryCommand()]
+    commands: [listCommand$1(), getCommand$1(), waitCommand(), cancelCommand(), retryCommand()]
   };
 }
-function listCommand() {
+function listCommand$1() {
   return {
     verb: "list",
     summary: "List visible Tasks",
@@ -8769,7 +8769,7 @@ function listCommand() {
     }
   };
 }
-function getCommand() {
+function getCommand$1() {
   return {
     verb: "get",
     summary: "Get one Task snapshot and its direct children",
@@ -8798,7 +8798,7 @@ function getCommand() {
       required: ["task_id"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$4,
+    outputSchema: OBJECT_OUTPUT$5,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -8839,7 +8839,7 @@ function waitCommand() {
     summary: "Stream changes until a Task becomes terminal",
     positionals: [{ name: "task_id", description: "Opaque Task ID", required: true }],
     inputSchema: taskIdSchema(),
-    outputSchema: OBJECT_OUTPUT$4,
+    outputSchema: OBJECT_OUTPUT$5,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "stream",
@@ -8890,7 +8890,7 @@ function cancelCommand() {
       required: ["task_id"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$4,
+    outputSchema: OBJECT_OUTPUT$5,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "sync",
@@ -8933,7 +8933,7 @@ function retryCommand() {
       required: ["task_id"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$4,
+    outputSchema: OBJECT_OUTPUT$5,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "either",
@@ -9007,7 +9007,7 @@ function invalidResponse$1(label) {
   throw new ToolError("INVALID_SERVICE_RESPONSE", `${label} is invalid`, EXIT_INTERNAL);
 }
 const sdk = provisionSdk;
-const OBJECT_OUTPUT$3 = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$4 = { type: "object", additionalProperties: true };
 const ROOT_OPTION = {
   name: "root",
   description: "Installed BuckyOS root on this machine (BUCKYOS_ROOT); read by status/check, written by activate",
@@ -9091,7 +9091,7 @@ function statusCommand(deps) {
       additionalProperties: false
     },
     outputSchema: {
-      ...OBJECT_OUTPUT$3,
+      ...OBJECT_OUTPUT$4,
       properties: {
         root: { type: "string" },
         state: {
@@ -9129,7 +9129,7 @@ function checkCommand(deps) {
       additionalProperties: false
     },
     outputSchema: {
-      ...OBJECT_OUTPUT$3,
+      ...OBJECT_OUTPUT$4,
       properties: {
         ready: { type: "boolean" },
         root: { type: "string" },
@@ -9177,7 +9177,7 @@ function activateCommand(deps) {
       additionalProperties: false
     },
     outputSchema: {
-      ...OBJECT_OUTPUT$3,
+      ...OBJECT_OUTPUT$4,
       properties: {
         root: { type: "string" },
         state: { type: "string", enum: ["configured"] },
@@ -9459,7 +9459,7 @@ function inputFingerprint(input) {
   hash.update(new TextEncoder().encode(JSON.stringify(material)));
   return hash.digestHex();
 }
-const OBJECT_OUTPUT$2 = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$3 = { type: "object", additionalProperties: true };
 const SKILL_KINDS = ["cmd", "goal"];
 const SKILLS_SUB_PKG = "agent_skills";
 const SKILL_DIRS = ["cmd_skills", "goal_skills", "tools"];
@@ -9496,7 +9496,7 @@ function createSkillModule() {
           required: ["agent_id"],
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$2,
+        outputSchema: OBJECT_OUTPUT$3,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -9535,7 +9535,7 @@ function createSkillModule() {
           required: ["pikg_path", "agent_id"],
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$2,
+        outputSchema: OBJECT_OUTPUT$3,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "write" },
         asyncMode: "sync",
@@ -9562,7 +9562,7 @@ function createSkillModule() {
           required: ["name", "agent_id"],
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$2,
+        outputSchema: OBJECT_OUTPUT$3,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "destructive" },
         asyncMode: "sync",
@@ -9683,7 +9683,7 @@ function base64(bytes) {
   return btoa(binary);
 }
 const CONTROL_PANEL = "control-panel";
-const OBJECT_OUTPUT$1 = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$2 = { type: "object", additionalProperties: true };
 const AGENT_POSITIONAL = {
   name: "agent_id",
   description: "Agent ID as `agent list` prints it (raw host name, e.g. jarvis.example.zone)"
@@ -9707,7 +9707,7 @@ function createAgentModule() {
         inputSchema: { type: "object", properties: {}, additionalProperties: false },
         outputSchema: {
           type: "object",
-          properties: { agents: { type: "array", items: OBJECT_OUTPUT$1 } },
+          properties: { agents: { type: "array", items: OBJECT_OUTPUT$2 } },
           required: ["agents"],
           additionalProperties: false
         },
@@ -9733,7 +9733,7 @@ function createAgentModule() {
         summary: "Get one Agent: profile, settings, install state, template, and runtime",
         positionals: [AGENT_POSITIONAL],
         inputSchema: AGENT_INPUT,
-        outputSchema: OBJECT_OUTPUT$1,
+        outputSchema: OBJECT_OUTPUT$2,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -9746,7 +9746,7 @@ function createAgentModule() {
         summary: "Get the public profile (display name, bio, avatar) of an Agent",
         positionals: [AGENT_POSITIONAL],
         inputSchema: AGENT_INPUT,
-        outputSchema: OBJECT_OUTPUT$1,
+        outputSchema: OBJECT_OUTPUT$2,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -9787,8 +9787,8 @@ function createAgentModule() {
           type: "object",
           properties: {
             agent_id: { type: "string" },
-            before: OBJECT_OUTPUT$1,
-            profile: OBJECT_OUTPUT$1
+            before: OBJECT_OUTPUT$2,
+            profile: OBJECT_OUTPUT$2
           },
           required: ["agent_id", "before", "profile"],
           additionalProperties: false
@@ -9833,7 +9833,7 @@ async function callAgent(ctx, method, params) {
   }
 }
 const AICC = "aicc";
-const OBJECT_OUTPUT = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$1 = { type: "object", additionalProperties: true };
 const EMPTY_INPUT = { type: "object", properties: {}, additionalProperties: false };
 const RANGES = ["last1d", "last7d", "last30d"];
 const GROUPS = [
@@ -9873,7 +9873,7 @@ function readCommand(options) {
     summary: options.summary,
     description: options.description,
     inputSchema: EMPTY_INPUT,
-    outputSchema: OBJECT_OUTPUT,
+    outputSchema: OBJECT_OUTPUT$1,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -9925,7 +9925,7 @@ function usageCommand() {
       },
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT,
+    outputSchema: OBJECT_OUTPUT$1,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -9969,6 +9969,350 @@ function timeRange(input) {
     throw new UsageError("ARGUMENT_CONFLICT", "--range cannot be combined with --since");
   }
   return { kind: "explicit", start_time_ms: since, end_time_ms: until ?? Date.now() };
+}
+const OBJECT_OUTPUT = { type: "object", additionalProperties: true };
+const DAY_MS = 864e5;
+const EXPIRES_HELP = "1d, 7d (default), 30d, none, or an RFC 3339 time";
+function createShareModule() {
+  return {
+    name: "share",
+    summary: "Share files and folders as links, and manage what you have shared",
+    commands: [
+      createCommand(),
+      listCommand(),
+      getCommand(),
+      updateCommand(),
+      stopCommand(),
+      statsCommand()
+    ]
+  };
+}
+async function openNfsp(ctx) {
+  const session = ctx.session;
+  if (!session)
+    throw new ToolError("AUTH_REQUIRED", "authenticated session is required", 3);
+  const token = (await session.ensureValid()).token;
+  const base = gatewayOrigin(ctx.connection.endpoint);
+  let seq = 0;
+  const post = async (method, body) => {
+    const response = await fetch(`${base}/nfs/v1/${method}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify(body),
+      signal: ctx.signal
+    });
+    let parsed;
+    try {
+      parsed = await response.json();
+    } catch {
+      throw new ToolError("INVALID_SERVICE_RESPONSE", `file service answered HTTP ${response.status}`, EXIT_INTERNAL);
+    }
+    if (parsed.ok !== true) {
+      const error = parsed.error ?? {};
+      const reason = typeof error.reason === "string" ? error.reason.toUpperCase() : String(error.code ?? "INTERNAL");
+      throw new ToolError(`SHARE_${reason}`, String(error.message ?? "share request failed"));
+    }
+    return expectObject$4(parsed.result, `${method} result`);
+  };
+  const hello = await post("hello", { args: { versions: ["nfsp/0"] } });
+  const sessionId = String(hello.session ?? "");
+  if (!Array.isArray(hello.features) || !hello.features.includes("share")) {
+    throw new ToolError("SHARE_UNSUPPORTED", "the file service of this Zone does not support sharing");
+  }
+  return {
+    call: (method, args, write = false) => post(method, { session: sessionId, args: { ...args, source_hint: "cli" }, ...write ? { seq: ++seq } : {} })
+  };
+}
+function gatewayOrigin(endpoint) {
+  const url = new URL(endpoint);
+  const marker = url.pathname.indexOf("/kapi");
+  url.pathname = marker >= 0 ? url.pathname.slice(0, marker) || "/" : "/";
+  url.search = "";
+  url.hash = "";
+  return url.toString().replace(/\/$/, "");
+}
+function parseExpires(value) {
+  if (value === void 0)
+    return void 0;
+  const text = String(value).trim().toLowerCase();
+  if (text === "none" || text === "never")
+    return null;
+  const days = text.match(/^(\d+)d$/);
+  if (days)
+    return Math.floor((Date.now() + Number(days[1]) * DAY_MS) / 1e3);
+  const at = parseTimestamp(value, "expires");
+  if (at === void 0)
+    return void 0;
+  if (at <= Date.now())
+    throw new UsageError("INVALID_ARGUMENT", "expires must be in the future");
+  return Math.floor(at / 1e3);
+}
+function sourceLocator(path) {
+  if (path.startsWith("cyfs://"))
+    return { uri: path };
+  return { path: path.startsWith("/") ? path : `/${path}` };
+}
+function summary(share) {
+  const keep = ["share_id", "kind", "title", "status", "access", "expires_at", "url", "target_app", "delivery_state", "source_path", "revision", "created_at", "stats"];
+  return Object.fromEntries(keep.filter((key) => share[key] !== void 0).map((key) => [key, share[key]]));
+}
+function createCommand() {
+  return {
+    verb: "create",
+    summary: "Share a file or folder as a link (a snapshot of its current content)",
+    positionals: [{ name: "path", description: "File or folder, e.g. /home/alice/report.pdf or cyfs:///home/alice/report.pdf", required: true }],
+    options: [
+      { name: "expires", description: `Link expiry: ${EXPIRES_HELP}`, type: "string" },
+      { name: "password", description: "Require this password to open the link", type: "string" },
+      { name: "title", description: "Title shown to visitors", type: "string" },
+      { name: "no-download", property: "no_download", description: "Preview only, no download button", type: "boolean" },
+      { name: "wait", description: "Wait for a large snapshot to finish", type: "boolean" }
+    ],
+    inputSchema: {
+      type: "object",
+      properties: {
+        path: { type: "string", minLength: 1 },
+        expires: { type: "string", minLength: 1 },
+        password: { type: "string", minLength: 1 },
+        title: { type: "string", minLength: 1 },
+        no_download: { type: "boolean" },
+        wait: { type: "boolean" }
+      },
+      required: ["path"],
+      additionalProperties: false
+    },
+    outputSchema: OBJECT_OUTPUT,
+    resultSchemaVersion: 1,
+    access: { mode: "fixed", level: "write" },
+    asyncMode: "either",
+    requiresSession: true,
+    examples: [
+      "buckyos share create /home/alice/report.pdf",
+      "buckyos share create /home/alice/photos --expires 30d --password s3cret"
+    ],
+    handler: async (ctx, input) => {
+      const nfsp = await openNfsp(ctx);
+      const expires = parseExpires(input.expires);
+      const password = inputString(input, "password");
+      const policy2 = {
+        access: password ? "password" : "holder",
+        allow_download: input.no_download !== true,
+        ...password ? { password } : {},
+        ...expires !== void 0 ? { expires_at: expires } : {}
+      };
+      let op = await nfsp.call("share.create", {
+        source: sourceLocator(requiredInputString(input, "path")),
+        policy: policy2,
+        title: inputString(input, "title"),
+        idempotency_key: ctx.idempotencyKey ?? crypto.randomUUID()
+      }, true);
+      while (input.wait === true && (op.state === "running" || op.state === "preparing")) {
+        await new Promise((resolve2) => setTimeout(resolve2, 1e3));
+        ctx.signal.throwIfAborted();
+        op = await nfsp.call("share.operation", { operation_id: op.operation_id });
+      }
+      if (op.state === "failed" || op.state === "canceled") {
+        const error = op.error ?? {};
+        throw new ToolError(`SHARE_${String(error.reason ?? op.state).toUpperCase()}`, String(error.message ?? `share ${op.state}`));
+      }
+      return {
+        operation_id: op.operation_id,
+        state: op.state,
+        share_id: op.share_id ?? null,
+        url: op.url ?? null,
+        source_changed: op.source_changed ?? false,
+        ...op.share ? { share: summary(op.share) } : {}
+      };
+    }
+  };
+}
+function listCommand() {
+  return {
+    verb: "list",
+    summary: "List your shares",
+    options: [
+      { name: "kind", description: "link or app_delivery", type: "string", enum: ["link", "app_delivery"] },
+      { name: "status", description: "active, stopped, expired, ...", type: "string" },
+      { name: "q", description: "Search title and path", type: "string" },
+      { name: "include-hidden", property: "include_hidden", description: "Include hidden shares", type: "boolean" },
+      { name: "cursor", description: "Page cursor", type: "string" },
+      { name: "limit", description: "Page size, at most 200", type: "integer" }
+    ],
+    inputSchema: {
+      type: "object",
+      properties: {
+        kind: { type: "string", enum: ["link", "app_delivery"] },
+        status: { type: "string", minLength: 1 },
+        q: { type: "string", minLength: 1 },
+        include_hidden: { type: "boolean" },
+        cursor: { type: "string", minLength: 1 },
+        limit: { type: "integer", minimum: 1 }
+      },
+      additionalProperties: false
+    },
+    outputSchema: OBJECT_OUTPUT,
+    resultSchemaVersion: 1,
+    access: { mode: "fixed", level: "read" },
+    asyncMode: "sync",
+    requiresSession: true,
+    examples: ["buckyos share list --kind link --status active"],
+    handler: async (ctx, input) => {
+      const nfsp = await openNfsp(ctx);
+      const page = await nfsp.call("share.list", {
+        kind: input.kind,
+        status: input.status,
+        q: input.q,
+        include_hidden: input.include_hidden === true,
+        cursor: input.cursor,
+        limit: input.limit
+      });
+      const items = Array.isArray(page.items) ? page.items : [];
+      return { items: items.map(summary), next_cursor: page.next_cursor ?? null };
+    }
+  };
+}
+function getCommand() {
+  return {
+    verb: "get",
+    summary: "Show one share: link, policy, snapshot, delivery, statistics and history",
+    positionals: [{ name: "share_id", description: "Share ID (sh_…)", required: true }],
+    inputSchema: {
+      type: "object",
+      properties: { share_id: { type: "string", minLength: 1 } },
+      required: ["share_id"],
+      additionalProperties: false
+    },
+    outputSchema: OBJECT_OUTPUT,
+    resultSchemaVersion: 1,
+    access: { mode: "fixed", level: "read" },
+    asyncMode: "sync",
+    requiresSession: true,
+    examples: ["buckyos share get sh_0123456789abcdef"],
+    handler: async (ctx, input) => {
+      const nfsp = await openNfsp(ctx);
+      return await nfsp.call("share.get", { share_id: requiredInputString(input, "share_id") });
+    }
+  };
+}
+function updateCommand() {
+  return {
+    verb: "update",
+    summary: "Change a link's expiry, password, title or download setting",
+    positionals: [{ name: "share_id", description: "Share ID (sh_…)", required: true }],
+    options: [
+      { name: "expires", description: `New expiry: ${EXPIRES_HELP}`, type: "string" },
+      { name: "password", description: "Set or change the password", type: "string" },
+      { name: "no-password", property: "no_password", description: "Remove the password", type: "boolean" },
+      { name: "title", description: "New title", type: "string" },
+      { name: "download", description: "Allow (true) or forbid (false) downloading", type: "boolean" }
+    ],
+    inputSchema: {
+      type: "object",
+      properties: {
+        share_id: { type: "string", minLength: 1 },
+        expires: { type: "string", minLength: 1 },
+        password: { type: "string", minLength: 1 },
+        no_password: { type: "boolean" },
+        title: { type: "string", minLength: 1 },
+        download: { type: "boolean" }
+      },
+      required: ["share_id"],
+      additionalProperties: false
+    },
+    outputSchema: OBJECT_OUTPUT,
+    resultSchemaVersion: 1,
+    access: { mode: "fixed", level: "write" },
+    asyncMode: "sync",
+    requiresSession: true,
+    examples: ["buckyos share update sh_0123456789abcdef --expires none", "buckyos share update sh_0123456789abcdef --password n3w"],
+    handler: async (ctx, input) => {
+      if (input.password !== void 0 && input.no_password === true) {
+        throw new UsageError("INVALID_ARGUMENT", "use either --password or --no-password");
+      }
+      const changes = {};
+      const expires = parseExpires(input.expires);
+      if (expires !== void 0)
+        changes.expires_at = expires;
+      if (input.password !== void 0)
+        changes.password = String(input.password);
+      if (input.no_password === true)
+        changes.password = null;
+      if (input.title !== void 0)
+        changes.title = String(input.title);
+      if (input.download !== void 0)
+        changes.allow_download = input.download === true;
+      if (!Object.keys(changes).length)
+        throw new UsageError("INVALID_ARGUMENT", "nothing to change");
+      const nfsp = await openNfsp(ctx);
+      const shareId = requiredInputString(input, "share_id");
+      const current = await nfsp.call("share.get", { share_id: shareId });
+      const result = await nfsp.call("share.update", { share_id: shareId, revision: current.revision, changes }, true);
+      return { revision: result.revision, share: summary(expectObject$4(result.share, "share.update share")) };
+    }
+  };
+}
+function stopCommand() {
+  return {
+    verb: "stop",
+    summary: "Stop a share: the link stops working and the kept snapshot is released",
+    positionals: [{ name: "share_id", description: "Share ID (sh_…)", required: true }],
+    options: [{ name: "reason", description: "Recorded in the share history", type: "string" }],
+    inputSchema: {
+      type: "object",
+      properties: { share_id: { type: "string", minLength: 1 }, reason: { type: "string", minLength: 1 } },
+      required: ["share_id"],
+      additionalProperties: false
+    },
+    outputSchema: OBJECT_OUTPUT,
+    resultSchemaVersion: 1,
+    access: { mode: "fixed", level: "destructive" },
+    asyncMode: "sync",
+    requiresSession: true,
+    examples: ['buckyos share stop sh_0123456789abcdef --reason "sent by mistake"'],
+    handler: async (ctx, input) => {
+      const nfsp = await openNfsp(ctx);
+      const shareId = requiredInputString(input, "share_id");
+      const current = await nfsp.call("share.get", { share_id: shareId });
+      return await nfsp.call("share.stop", { share_id: shareId, revision: current.revision, reason: inputString(input, "reason") }, true);
+    }
+  };
+}
+function statsCommand() {
+  return {
+    verb: "stats",
+    summary: "Views, downloads, traffic and visitors of one share or all of yours",
+    options: [
+      { name: "share-id", property: "share_id", description: "One share instead of all", type: "string" },
+      { name: "days", description: "How many days back (default 30)", type: "integer" },
+      { name: "granularity", description: "day or hour", type: "string", enum: ["day", "hour"] }
+    ],
+    inputSchema: {
+      type: "object",
+      properties: {
+        share_id: { type: "string", minLength: 1 },
+        days: { type: "integer", minimum: 1 },
+        granularity: { type: "string", enum: ["day", "hour"] }
+      },
+      additionalProperties: false
+    },
+    outputSchema: OBJECT_OUTPUT,
+    resultSchemaVersion: 1,
+    access: { mode: "fixed", level: "read" },
+    asyncMode: "sync",
+    requiresSession: true,
+    examples: ["buckyos share stats --days 7", "buckyos share stats --share-id sh_0123456789abcdef --granularity hour --days 2"],
+    handler: async (ctx, input) => {
+      const nfsp = await openNfsp(ctx);
+      const to = Math.floor(Date.now() / 1e3) + 1;
+      const days = typeof input.days === "number" ? input.days : 30;
+      return await nfsp.call("share.stats", {
+        share_id: inputString(input, "share_id"),
+        from: to - days * 86400,
+        to,
+        granularity: input.granularity ?? "day"
+      });
+    }
+  };
 }
 const VERSION = TOOL_VERSION;
 class BuckyOSToolApplication {
@@ -10336,6 +10680,7 @@ function createRegistry(pikgDependencies, appDependencies, logDependencies, diag
   registry.register(createSkillModule());
   registry.register(createAgentModule());
   registry.register(createAiModule());
+  registry.register(createShareModule());
   return registry;
 }
 function assertNoSessionOptions(global, command) {

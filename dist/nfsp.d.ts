@@ -287,6 +287,237 @@ export interface GrantResult {
     ops: string[];
     expires_at?: number;
 }
+export type ShareAccess = 'holder' | 'password';
+export type ShareStatus = 'active' | 'stopping' | 'stopped' | 'expired' | 'failed';
+export type ShareKind = 'link' | 'app_delivery';
+export type ShareTargetApp = 'messagehub' | 'homestation';
+export type ShareContentKind = 'image' | 'video' | 'audio' | 'file' | 'folder';
+export type ShareDeliveryState = 'handed_off' | 'confirmed' | 'canceled' | 'failed' | 'unknown';
+export type ShareOperationState = 'preparing' | 'running' | 'completed' | 'failed' | 'canceled';
+export interface ShareStatsTotals {
+    views: number;
+    downloads: number;
+    bytes: number;
+    visitors: number;
+    last_access_at?: number | null;
+}
+export interface ShareInfo {
+    share_id: string;
+    kind: ShareKind;
+    title: string;
+    status: ShareStatus;
+    status_reason?: string | null;
+    hidden: boolean;
+    revision: number;
+    created_at: number;
+    updated_at: number;
+    stopped_at?: number | null;
+    owner_user_id: string;
+    created_by_app?: string | null;
+    related_share_id?: string | null;
+    obj_id: string;
+    obj_type?: string;
+    name?: string;
+    mime?: string | null;
+    total_size?: number;
+    item_count?: number;
+    content_kind?: ShareContentKind;
+    excluded?: {
+        path: string;
+        reason: string;
+    }[];
+    prepared_at?: number;
+    source_path: string;
+    retained: boolean;
+    /** Link shares. `url` is only returned to the owner. */
+    access?: ShareAccess;
+    has_password?: boolean;
+    allow_download?: boolean;
+    expires_at?: number | null;
+    url?: string | null;
+    /** App deliveries. */
+    target_app?: ShareTargetApp;
+    delivery_state?: ShareDeliveryState;
+    business_ref?: Record<string, unknown> | null;
+    handoff_at?: number;
+    reported_at?: number | null;
+    delivery_error?: string | null;
+    stats: ShareStatsTotals;
+}
+export interface ShareAuditEntry {
+    action: string;
+    revision_before?: number | null;
+    revision_after?: number | null;
+    actor_user_id: string;
+    actor_app_id?: string | null;
+    source: string;
+    reason?: string | null;
+    outcome: string;
+    at: number;
+}
+export interface ShareDetail extends ShareInfo {
+    retention: {
+        obj_id: string;
+        pin_owner: string;
+        pinned_at: number;
+        released_at?: number | null;
+    }[];
+    audit: ShareAuditEntry[];
+    related?: ShareInfo;
+}
+export interface ShareCapabilities {
+    actions: string[];
+    access: ShareAccess[];
+    expiry_presets: (number | null)[];
+    default_expiry: number;
+    limits: {
+        sync_threshold: number;
+        max_total_size: number;
+        max_items: number;
+    };
+    targets: {
+        app: ShareTargetApp;
+        accepts: string | string[];
+        max_item_size: number;
+        fallback: 'link';
+    }[];
+    blocked: {
+        action: string;
+        reason: string;
+    }[];
+    share_base_url?: string | null;
+    public: {
+        dir: string;
+        base_url?: string | null;
+    };
+}
+export interface ShareTargetFit {
+    app: ShareTargetApp;
+    mode: 'attachment' | 'link';
+    reason?: 'folder' | 'not_media' | 'too_large' | null;
+    kind: ShareContentKind;
+}
+export interface SharePlan {
+    plan_fingerprint: string;
+    source: {
+        path: string;
+        name: string;
+        kind: 'file' | 'dir';
+        mime?: string | null;
+    };
+    estimate: {
+        total_size: number;
+        item_count: number;
+        excluded: {
+            path: string;
+            reason: string;
+        }[];
+    };
+    warnings: string[];
+    requires_task: boolean;
+    existing: ShareInfo[];
+    source_public: {
+        in_publish_dir: boolean;
+        public_acl: boolean;
+        public_url?: string | null;
+    };
+    /** Folders with an index.html may be websites (going live is App Service's job). */
+    site: {
+        has_index_html: boolean;
+    };
+    target_fit?: ShareTargetFit;
+}
+export interface SharePolicyInput {
+    access: ShareAccess;
+    password?: string;
+    /** Unix seconds; `null` = does not expire; omitted = seven days. */
+    expires_at?: number | null;
+    allow_download?: boolean;
+}
+export interface ShareHandoff {
+    share_id: string;
+    obj_id: string;
+    name: string;
+    size: number;
+    mime?: string | null;
+    kind: ShareContentKind;
+    mode: 'attachment' | 'link';
+    link_share_id?: string | null;
+    url?: string | null;
+    launch: {
+        appId: ShareTargetApp;
+        payload: Record<string, unknown>;
+    };
+}
+export interface ShareOperation {
+    operation_id: string;
+    intent: 'create_link' | 'app_handoff';
+    state: ShareOperationState;
+    share_id?: string | null;
+    task_id?: string | null;
+    error?: NfspErrorBody | null;
+    progress: {
+        done_bytes?: number;
+        total_bytes?: number;
+    };
+    created_at: number;
+    updated_at: number;
+    source_changed?: boolean;
+    obj_id?: string;
+    url?: string | null;
+    share?: ShareInfo;
+    handoff?: ShareHandoff | null;
+}
+export interface ShareListFilter {
+    kind?: ShareKind;
+    status?: ShareStatus;
+    source?: string | Locator;
+    objId?: string;
+    q?: string;
+    includeHidden?: boolean;
+    limit?: number;
+    cursor?: string;
+}
+export interface ShareStatsPoint {
+    t: number;
+    views: number;
+    downloads: number;
+    bytes: number;
+    visitors: number;
+}
+export interface ShareStatsResult {
+    granularity: 'hour' | 'day';
+    from: number;
+    to: number;
+    series: ShareStatsPoint[];
+    totals: Omit<ShareStatsTotals, 'last_access_at'>;
+    /** `expiring_soon`: active links ending within `expiring_within` seconds. */
+    summary: {
+        active: number;
+        expiring_soon: number;
+        expiring_within: number;
+    };
+    unavailable: string[];
+}
+export interface PublicEntry {
+    rel_path: string;
+    entry_kind: 'file' | 'dir' | 'symlink';
+    link_target?: string | null;
+    link_ok?: boolean | null;
+    size?: number | null;
+    mtime?: number | null;
+    first_seen_at: number;
+    last_seen_at: number;
+    missing_since?: number | null;
+    url?: string | null;
+}
+export interface PublicListing {
+    entries: PublicEntry[];
+    last_scan_at: number;
+    scan_ok: boolean;
+    dir: string;
+    base_url?: string | null;
+}
 export type CollectionPatchOp = {
     add_ref: {
         target_ref: WireRef;
@@ -527,6 +758,75 @@ export declare class NfspClient {
         zone_owner: string | null;
         is_admin: boolean;
     }>;
+    shareCapabilities(): Promise<ShareCapabilities>;
+    /** Side-effect free: size, exclusions, existing links, Public state, target fit. */
+    sharePlan(source: LocatorLike, opts?: {
+        intent?: 'create_link' | 'app_handoff';
+        target?: ShareTargetApp;
+    }): Promise<SharePlan>;
+    /** Snapshots the source and creates a link. Large sources return `state: 'running'`. */
+    shareCreate(source: LocatorLike, policy: SharePolicyInput, opts?: {
+        title?: string;
+        idempotencyKey?: string;
+        planFingerprint?: string;
+        sourceHint?: 'gui' | 'cli' | 'agent';
+    }): Promise<ShareOperation>;
+    shareOperation(operationId: string, opts?: {
+        cancel?: boolean;
+    }): Promise<ShareOperation>;
+    /** Polls a running operation until it settles. */
+    waitShareOperation(op: ShareOperation, opts?: {
+        intervalMs?: number;
+        signal?: AbortSignal;
+        onProgress?: (op: ShareOperation) => void;
+    }): Promise<ShareOperation>;
+    shareGet(shareId: string): Promise<ShareDetail>;
+    shareList(filter?: ShareListFilter): Promise<{
+        items: ShareInfo[];
+        next_cursor?: string | null;
+    }>;
+    /** `password: null` removes it, `expires_at: null` = no expiry. REVISION_CONFLICT carries `current`. */
+    shareUpdate(shareId: string, revision: number, changes: {
+        title?: string;
+        expires_at?: number | null;
+        password?: string | null;
+        allow_download?: boolean;
+        access?: ShareAccess;
+    }, reason?: string): Promise<{
+        revision: number;
+        share: ShareInfo;
+    }>;
+    shareStop(shareId: string, revision: number, reason?: string): Promise<{
+        status: ShareStatus;
+        revision: number;
+    }>;
+    shareHide(shareId: string, hidden: boolean): Promise<{
+        hidden: boolean;
+        revision: number;
+    }>;
+    /** Snapshot for an app target; the result's `handoff.launch` opens the app. */
+    shareAppHandoff(source: LocatorLike, targetApp: ShareTargetApp, opts?: {
+        title?: string;
+        idempotencyKey?: string;
+    }): Promise<ShareOperation>;
+    /** What the target app did; older facts (by `observedAt`, ms) are refused. */
+    shareAppReport(shareId: string, deliveryState: Exclude<ShareDeliveryState, 'handed_off'>, opts?: {
+        businessRef?: Record<string, unknown>;
+        error?: string;
+        observedAt?: number;
+    }): Promise<{
+        accepted: boolean;
+        delivery_state: string;
+    }>;
+    sharePublicList(opts?: {
+        refresh?: boolean;
+    }): Promise<PublicListing>;
+    shareStats(opts?: {
+        shareId?: string;
+        from?: number;
+        to?: number;
+        granularity?: 'hour' | 'day';
+    }): Promise<ShareStatsResult>;
     /**
      * Opens the watch stream. `tokens` filters to specific containers using the
      * `watch_token` returned by list. The stream is lossy by contract: on any
