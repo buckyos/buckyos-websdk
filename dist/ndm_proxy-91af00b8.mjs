@@ -27983,7 +27983,7 @@ async function getUploadProgress(sessionId) {
   }
   return result;
 }
-async function uploadChunkViaTus(endpoint, file, chunkInfo, chunkIndex, appId, fileHash, onProgress, signal) {
+async function uploadChunkViaTus(endpoint, file, chunkInfo, chunkIndex, appId, fileHash, sessionToken, onProgress, signal) {
   const slice = file.slice(chunkInfo.offset, chunkInfo.offset + chunkInfo.length);
   const chunkData = new Uint8Array(await slice.arrayBuffer());
   const logicalPath = `${appId}/${chunkInfo.chunkId}`;
@@ -28002,6 +28002,7 @@ async function uploadChunkViaTus(endpoint, file, chunkInfo, chunkIndex, appId, f
     const blob = new Blob([chunkData]);
     const upload = new tusModule.Upload(blob, {
       endpoint: `${endpoint}/ndm/v1/uploads`,
+      headers: sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {},
       chunkSize: chunkData.length,
       retryDelays: [0, 1e3, 3e3, 5e3],
       storeFingerprintForResuming: false,
@@ -28060,11 +28061,12 @@ async function startUpload(sessionId, options) {
   } else {
     endpoint = typeof window !== "undefined" ? window.location.origin : "";
   }
-  doUpload(session, endpoint, concurrency).catch(() => {
+  const sessionToken = (options == null ? void 0 : options.sessionToken) !== void 0 ? async () => options.sessionToken ?? null : async () => getActiveSessionToken().catch(() => null);
+  doUpload(session, endpoint, concurrency, sessionToken).catch(() => {
   });
   return getImportSessionStatus(sessionId);
 }
-async function doUpload(session, endpoint, concurrency) {
+async function doUpload(session, endpoint, concurrency, sessionToken) {
   const states = Array.from(session.objectStates.values()).filter((s) => s.state !== "completed");
   let running = 0;
   let idx = 0;
@@ -28082,7 +28084,7 @@ async function doUpload(session, endpoint, concurrency) {
       while (running < concurrency && idx < states.length) {
         const state = states[idx++];
         running++;
-        uploadSingleObject(session, endpoint, state).then(() => {
+        uploadSingleObject(session, endpoint, state, sessionToken).then(() => {
           running--;
           next();
         }).catch(() => {
@@ -28098,7 +28100,7 @@ async function doUpload(session, endpoint, concurrency) {
     next();
   });
 }
-async function uploadSingleObject(session, endpoint, state) {
+async function uploadSingleObject(session, endpoint, state, sessionToken) {
   var _a2;
   state.state = "uploading";
   for (const [chunkIndex, chunk] of state.chunks.entries()) {
@@ -28111,6 +28113,7 @@ async function uploadSingleObject(session, endpoint, state) {
       chunkIndex,
       "default",
       state.objectId,
+      await sessionToken(),
       (uploaded) => {
         const prevChunkBytes = state.chunks.filter((c) => c !== chunk && c.uploaded).reduce((sum, c) => sum + c.length, 0);
         state.uploadedBytes = prevChunkBytes + uploaded;
@@ -28872,4 +28875,4 @@ export {
   NOTIFY_LINK_PATH as y,
   isNotifyClosed as z
 };
-//# sourceMappingURL=ndm_proxy-501cb1e8.mjs.map
+//# sourceMappingURL=ndm_proxy-91af00b8.mjs.map

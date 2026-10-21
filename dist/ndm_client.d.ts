@@ -123,6 +123,12 @@ export interface StartUploadOptions {
      * is `${endpoint}/ndm/v1/uploads`.
      */
     endpoint?: string;
+    /**
+     * Session token sent as `Authorization: Bearer` with every TUS request.
+     * Defaults to the active runtime's session (renewed per chunk); `null`
+     * sends cookies only.
+     */
+    sessionToken?: string | null;
     extra?: Record<string, unknown>;
 }
 export interface UploadProgress {

@@ -179,6 +179,7 @@ describe('ndm_client (jest-only)', () => {
         expect(firstMetadata.logical_path).toBe(`default/${firstMetadata.chunk_hash}`)
         expect(secondMetadata.logical_path).toBe(`default/${secondMetadata.chunk_hash}`)
         expect(firstMetadata.chunk_hash).not.toBe(secondMetadata.chunk_hash)
+        expect(mockTusUpload.mock.calls[0][1].headers.Authorization).toMatch(/^Bearer \S+/)
     })
 
     it('pickupAndImport reuses lookup hit resolved by QCID before local materialization', async () => {

@@ -5106,7 +5106,7 @@ function validateContentHandlers(value, permissions) {
   }
   return value;
 }
-const PACKAGE_VERSION = "0.7.133";
+const PACKAGE_VERSION = "0.7.134";
 const TOOL_VERSION = PACKAGE_VERSION;
 const SDK_VERSION = PACKAGE_VERSION;
 const PROTOCOL_VERSION = "1";

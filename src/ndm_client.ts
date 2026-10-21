@@ -194,6 +194,12 @@ export interface StartUploadOptions {
      * is `${endpoint}/ndm/v1/uploads`.
      */
     endpoint?: string
+    /**
+     * Session token sent as `Authorization: Bearer` with every TUS request.
+     * Defaults to the active runtime's session (renewed per chunk); `null`
+     * sends cookies only.
+     */
+    sessionToken?: string | null
     extra?: Record<string, unknown>
 }
 
@@ -1589,6 +1595,7 @@ async function uploadChunkViaTus(
     chunkIndex: number,
     appId: string,
     fileHash: string,
+    sessionToken: string | null,
     onProgress: (uploaded: number) => void,
     signal?: AbortSignal,
 ): Promise<string> {
@@ -1612,6 +1619,7 @@ async function uploadChunkViaTus(
         const blob = new Blob([chunkData])
         const upload = new tusModule.Upload(blob, {
             endpoint: `${endpoint}/ndm/v1/uploads`,
+            headers: sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {},
             chunkSize: chunkData.length,
             retryDelays: [0, 1000, 3000, 5000],
             storeFingerprintForResuming: false,
@@ -1692,18 +1700,26 @@ export async function startUpload(
         endpoint = typeof window !== 'undefined' ? window.location.origin : ''
     }
 
+    // The gateway authenticates every TUS request; a runtime session is renewed per chunk.
+    const sessionToken: UploadTokenSource = options?.sessionToken !== undefined
+        ? async () => options.sessionToken ?? null
+        : async () => getActiveSessionToken().catch(() => null)
+
     // Start upload in background
-    doUpload(session, endpoint, concurrency).catch(() => {
+    doUpload(session, endpoint, concurrency, sessionToken).catch(() => {
         // Error state is already tracked in session
     })
 
     return getImportSessionStatus(sessionId)
 }
 
+type UploadTokenSource = () => Promise<string | null>
+
 async function doUpload(
     session: ImportSession,
     endpoint: string,
     concurrency: number,
+    sessionToken: UploadTokenSource,
 ): Promise<void> {
     const states = Array.from(session.objectStates.values())
         .filter((s) => s.state !== 'completed')
@@ -1727,7 +1743,7 @@ async function doUpload(
             while (running < concurrency && idx < states.length) {
                 const state = states[idx++]
                 running++
-                uploadSingleObject(session, endpoint, state)
+                uploadSingleObject(session, endpoint, state, sessionToken)
                     .then(() => {
                         running--
                         next()
@@ -1750,6 +1766,7 @@ async function uploadSingleObject(
     session: ImportSession,
     endpoint: string,
     state: ObjectUploadState,
+    sessionToken: UploadTokenSource,
 ): Promise<void> {
     state.state = 'uploading'
 
@@ -1763,6 +1780,7 @@ async function uploadSingleObject(
             chunkIndex,
             'default',
             state.objectId,
+            await sessionToken(),
             (uploaded) => {
                 // Update byte-level progress
                 const prevChunkBytes = state.chunks
