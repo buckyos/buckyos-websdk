@@ -13,6 +13,8 @@ interface KRPCSuccessResponse<TResult> {
 }
 interface KRPCErrorResponse {
     error: string;
+    code?: string;
+    data?: unknown;
     sys?: KRPCResponseSys;
     result?: undefined;
 }
@@ -21,7 +23,11 @@ declare enum RPCProtocolType {
     HttpPostJson = "HttpPostJson"
 }
 declare class RPCError extends Error {
-    constructor(message: string);
+    /** Wire error code of a detailed failure (e.g. `access_denied`). */
+    readonly code?: string;
+    /** Typed payload of `code`. */
+    readonly data?: unknown;
+    constructor(message: string, code?: string, data?: unknown);
 }
 type Fetcher = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 type SessionTokenProvider = () => Promise<string | null | undefined> | string | null | undefined;

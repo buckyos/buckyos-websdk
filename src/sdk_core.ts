@@ -1,5 +1,7 @@
 import { kRPCClient } from './krpc_client'
 import { AuthClient } from './auth_client'
+import { ANONYMOUS_IDENTITY } from './hybrid_sso'
+import type { CurrentIdentity } from './hybrid_sso'
 import {
   hashPassword,
   AccountInfo,
@@ -386,6 +388,23 @@ export class BuckyOSSDK {
     options: KEventSubscribeOptions = {},
   ): Promise<KEventSubscription> {
     return this.getKEventClient().subscribe(patterns, callback, options)
+  }
+
+  /**
+   * Whom the current session speaks for: an account of this Zone, an External
+   * DID (no account here) or an anonymous visitor. `getAccountInfo` stays
+   * account-only and returns `null` for External sessions.
+   */
+  async getCurrentIdentity(): Promise<CurrentIdentity> {
+    if (this.currentRuntime == null) {
+      console.error('BuckyOS WebSDK is not initialized,call initBuckyOS first')
+      return ANONYMOUS_IDENTITY
+    }
+    const runtimeType = this.currentRuntime.getConfig().runtimeType
+    if (runtimeType !== RuntimeType.Browser && runtimeType !== RuntimeType.AppRuntime) {
+      return ANONYMOUS_IDENTITY
+    }
+    return this.currentRuntime.getCurrentIdentity()
   }
 
   async getAccountInfo(): Promise<AccountInfo | null> {
@@ -923,6 +942,7 @@ export function createSDKModule(target: SDKTarget) {
     getAppSetting: sdk.getAppSetting.bind(sdk),
     setAppSetting: sdk.setAppSetting.bind(sdk),
     getCurrentWalletUser: sdk.getCurrentWalletUser.bind(sdk),
+    getCurrentIdentity: sdk.getCurrentIdentity.bind(sdk),
     resolve_did: sdk.resolve_did.bind(sdk),
     walletSignWithActiveDid: sdk.walletSignWithActiveDid.bind(sdk),
     openExternalUrl: sdk.openExternalUrl.bind(sdk),
@@ -953,7 +973,16 @@ export function createSDKModule(target: SDKTarget) {
 export type { BuckyOSConfig }
 export { RuntimeType }
 export { parseSessionTokenClaims }
+export {
+  ZONE_USER_TYPES,
+  EXTERNAL_PRINCIPAL_CLAIM,
+  parseZoneUserType,
+  isExternalPrincipal,
+} from './runtime'
+export type { ZoneUserType, TokenPrincipalKind } from './runtime'
 export { VerifyHubClient }
+export { RPCError } from './krpc_client'
+export * from './hybrid_sso'
 export type {
   AppAuthTarget,
   AuthTarget,
@@ -1003,8 +1032,11 @@ export {
   CONTACT_TAG_HOMESTATION_FOLLOWING,
   CONTACT_CHANGED_EVENT_BOX,
   WELL_KNOWN_CONTACT_TAGS,
+  USER_TYPE_GROUP_REF_PREFIX,
+  USER_GROUP_REF_PREFIX,
   contactTagApp,
   contactTagKind,
+  isUserGroupRefTag,
 } from './msg_center_client'
 export type {
   AccessGroupLevel,

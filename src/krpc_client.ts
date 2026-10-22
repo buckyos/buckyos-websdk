@@ -29,6 +29,10 @@ interface KRPCSuccessResponse<TResult> {
 
 interface KRPCErrorResponse {
   error: string
+  // Machine-readable error class and payload (RPCErrorDetail on the Rust
+  // side); branch on these, never on the `error` text.
+  code?: string
+  data?: unknown
   sys?: KRPCResponseSys
   result?: undefined
 }
@@ -40,9 +44,16 @@ enum RPCProtocolType {
 }
 
 class RPCError extends Error {
-  constructor(message: string) {
+  /** Wire error code of a detailed failure (e.g. `access_denied`). */
+  readonly code?: string
+  /** Typed payload of `code`. */
+  readonly data?: unknown
+
+  constructor(message: string, code?: string, data?: unknown) {
     super(message)
     this.name = 'RPCError'
+    this.code = code
+    this.data = data
   }
 }
 
@@ -253,7 +264,11 @@ class kRPCClient {
       this.parseResponseSys(rpcResponse.sys, currentSeq)
 
       if ('error' in rpcResponse && rpcResponse.error) {
-        throw new RPCError(`RPC call error: ${rpcResponse.error}`)
+        throw new RPCError(
+          `RPC call error: ${rpcResponse.error}`,
+          typeof rpcResponse.code === 'string' ? rpcResponse.code : undefined,
+          rpcResponse.data,
+        )
       }
 
       if (!('result' in rpcResponse) || rpcResponse.result === undefined) {

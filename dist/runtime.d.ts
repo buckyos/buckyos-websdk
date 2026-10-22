@@ -8,6 +8,7 @@ import { MsgQueueClient } from './msg_queue_client';
 import { MsgCenterClient } from './msg_center_client';
 import { RepoClient } from './repo_client';
 import { BrowserUserInfo } from './account';
+import { CurrentIdentity } from './hybrid_sso';
 import { AppDID, AppId, AppInstanceId } from './app_identity';
 export declare const BUCKYOS_APP_DID_ENV = "BUCKYOS_APP_DID";
 export declare const BUCKYOS_APP_ID_ENV = "BUCKYOS_APP_ID";
@@ -23,7 +24,29 @@ export declare enum RuntimeType {
     AppService = "AppService",
     Unknown = "Unknown"
 }
+/**
+ * Account type of a Zone account record (`UserType` in buckyos-api
+ * control_panel.rs). `root` marks the Zone owner record and never logs in;
+ * `limited` accounts carry no business permission until an admin adds them to
+ * system user groups. Anonymous visitors and External users have no record.
+ */
+export type ZoneUserType = 'admin' | 'user' | 'limited' | 'root';
+export declare const ZONE_USER_TYPES: readonly ZoneUserType[];
+/** A known account type, or null for anything else (callers decide; never throws). */
+export declare function parseZoneUserType(value: unknown): ZoneUserType | null;
+/** `principal_kind` claim of verify-hub tokens. */
+export type TokenPrincipalKind = 'user' | 'device' | 'app' | 'system' | 'agent';
+/**
+ * Boolean claim of a `user` token whose subject is an External user: an
+ * authenticated DID without an account record in this Zone (`sub` is that DID).
+ */
+export declare const EXTERNAL_PRINCIPAL_CLAIM = "external";
+export declare function isExternalPrincipal(claims: SessionTokenClaims | null | undefined): boolean;
 export interface SessionTokenClaims {
+    /** See {@link TokenPrincipalKind}; absent in tokens not issued by verify-hub. */
+    principal_kind?: string;
+    /** `true` on a `user` token of an External user (no account record here); see {@link isExternalPrincipal}. */
+    external?: boolean;
     appid?: string;
     aud?: string;
     sub?: string;
@@ -112,7 +135,13 @@ export declare class BuckyOSRuntime {
     resolveZoneHostFromLocalConfig(): Promise<void>;
     private validateSessionToken;
     private ensureBrowserSessionToken;
-    private normalizeBrowserUserInfo;
+    private storeBrowserIdentity;
+    /**
+     * Whom the browser session speaks for; `anonymous` without a session.
+     * Account, External and anonymous visitors are told apart here, never by
+     * guessing from a cached user record.
+     */
+    getCurrentIdentity(): Promise<CurrentIdentity>;
     refreshBrowserSession(): Promise<BrowserUserInfo | null>;
     logoutBrowserSSO(): Promise<void>;
     private refreshBrowserSessionToken;

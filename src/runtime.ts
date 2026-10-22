@@ -7,7 +7,15 @@ import { AiccClient } from './aicc_client'
 import { MsgQueueClient } from './msg_queue_client'
 import { MsgCenterClient } from './msg_center_client'
 import { RepoClient } from './repo_client'
-import { BrowserUserInfo, getBrowserUserInfo, saveBrowserUserInfo } from './account'
+import {
+  BrowserUserInfo,
+  clearBrowserUserInfo,
+  getBrowserIdentityRaw,
+  getBrowserUserInfo,
+  saveBrowserIdentity,
+  saveBrowserUserInfo,
+} from './account'
+import { ANONYMOUS_IDENTITY, CurrentIdentity, identityKey, parseCurrentIdentity } from './hybrid_sso'
 import { parseBuckyOSOwnerDocument } from './types'
 import { DID } from './namelib'
 import {
@@ -37,9 +45,8 @@ export const BUCKYOS_DATA_DIR_ENV = 'BUCKYOS_DATA_DIR'
 export const BUCKYOS_APP_TOKEN_ENV = 'BUCKYOS_APP_TOKEN'
 
 interface BrowserSSORefreshResponse {
-  access_token?: unknown
   session_token?: unknown
-  user_info?: unknown
+  identity?: unknown
 }
 
 export enum RuntimeType {
@@ -51,7 +58,39 @@ export enum RuntimeType {
   Unknown = 'Unknown',
 }
 
+/**
+ * Account type of a Zone account record (`UserType` in buckyos-api
+ * control_panel.rs). `root` marks the Zone owner record and never logs in;
+ * `limited` accounts carry no business permission until an admin adds them to
+ * system user groups. Anonymous visitors and External users have no record.
+ */
+export type ZoneUserType = 'admin' | 'user' | 'limited' | 'root'
+export const ZONE_USER_TYPES: readonly ZoneUserType[] = ['admin', 'user', 'limited', 'root']
+
+/** A known account type, or null for anything else (callers decide; never throws). */
+export function parseZoneUserType(value: unknown): ZoneUserType | null {
+  const normalized = typeof value === 'string' ? value.trim().toLowerCase() : ''
+  return (ZONE_USER_TYPES as readonly string[]).includes(normalized) ? normalized as ZoneUserType : null
+}
+
+/** `principal_kind` claim of verify-hub tokens. */
+export type TokenPrincipalKind = 'user' | 'device' | 'app' | 'system' | 'agent'
+
+/**
+ * Boolean claim of a `user` token whose subject is an External user: an
+ * authenticated DID without an account record in this Zone (`sub` is that DID).
+ */
+export const EXTERNAL_PRINCIPAL_CLAIM = 'external'
+
+export function isExternalPrincipal(claims: SessionTokenClaims | null | undefined): boolean {
+  return claims?.principal_kind === 'user' && claims[EXTERNAL_PRINCIPAL_CLAIM] === true
+}
+
 export interface SessionTokenClaims {
+  /** See {@link TokenPrincipalKind}; absent in tokens not issued by verify-hub. */
+  principal_kind?: string
+  /** `true` on a `user` token of an External user (no account record here); see {@link isExternalPrincipal}. */
+  external?: boolean
   appid?: string
   aud?: string
   sub?: string
@@ -858,34 +897,37 @@ export class BuckyOSRuntime {
     return this.refreshBrowserSessionToken()
   }
 
-  private normalizeBrowserUserInfo(raw: unknown): BrowserUserInfo | null {
-    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
-      return null
+  private storeBrowserIdentity(identity: CurrentIdentity): void {
+    if (!hasBrowserStorage()) {
+      return
     }
+    const previous = parseCurrentIdentity(getBrowserIdentityRaw())
+    if (previous && identityKey(previous) !== identityKey(identity)) {
+      clearBrowserUserInfo()
+    }
+    saveBrowserIdentity(identity)
+    if (identity.kind === 'account') {
+      saveBrowserUserInfo({
+        user_name: identity.show_name || identity.user_id,
+        user_id: identity.user_id,
+        user_type: identity.user_type,
+      })
+    } else {
+      clearBrowserUserInfo()
+    }
+  }
 
-    const parsed = raw as {
-      show_name?: unknown
-      user_name?: unknown
-      user_id?: unknown
-      user_type?: unknown
+  /**
+   * Whom the browser session speaks for; `anonymous` without a session.
+   * Account, External and anonymous visitors are told apart here, never by
+   * guessing from a cached user record.
+   */
+  async getCurrentIdentity(): Promise<CurrentIdentity> {
+    const sessionToken = await this.ensureSessionTokenReady()
+    if (!sessionToken || !hasBrowserStorage()) {
+      return ANONYMOUS_IDENTITY
     }
-    const userId = typeof parsed.user_id === 'string' ? parsed.user_id.trim() : ''
-    const userType = typeof parsed.user_type === 'string' ? parsed.user_type.trim() : ''
-    const userName = typeof parsed.user_name === 'string'
-      ? parsed.user_name.trim()
-      : typeof parsed.show_name === 'string'
-        ? parsed.show_name.trim()
-        : ''
-
-    if (!userId || !userType) {
-      return null
-    }
-
-    return {
-      user_name: userName || userId,
-      user_id: userId,
-      user_type: userType,
-    }
+    return parseCurrentIdentity(getBrowserIdentityRaw()) ?? ANONYMOUS_IDENTITY
   }
 
   async refreshBrowserSession(): Promise<BrowserUserInfo | null> {
@@ -947,10 +989,6 @@ export class BuckyOSRuntime {
       return this.sessionToken
     }
 
-    const cachedUserInfo = hasBrowserStorage()
-      ? getBrowserUserInfo()
-      : null
-
     try {
       const response = await fetch('/sso_refresh', {
         method: 'POST',
@@ -967,14 +1005,12 @@ export class BuckyOSRuntime {
 
       const payload = await response.json() as BrowserSSORefreshResponse
       const sessionToken = trimToNull(
-        typeof payload.access_token === 'string'
-          ? payload.access_token
-          : typeof payload.session_token === 'string'
-            ? payload.session_token
-            : null,
+        typeof payload.session_token === 'string' ? payload.session_token : null,
       )
-      const userInfo = this.normalizeBrowserUserInfo(payload.user_info) ?? cachedUserInfo
-      if (!sessionToken || !userInfo) {
+      // The identity always comes with the token; a missing one never falls
+      // back to a cached identity of possibly another subject.
+      const identity = parseCurrentIdentity(payload.identity)
+      if (!sessionToken || !identity || identity.kind === 'anonymous') {
         if (authStateRevision === this.authStateRevision) {
           this.sessionToken = null
         }
@@ -987,7 +1023,7 @@ export class BuckyOSRuntime {
 
       this.sessionToken = sessionToken
       this.refreshToken = null
-      saveBrowserUserInfo(userInfo)
+      this.storeBrowserIdentity(identity)
       this.validateSessionToken()
       return this.sessionToken
     } catch (error) {

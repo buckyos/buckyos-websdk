@@ -23,6 +23,7 @@ export declare const buckyos: {
     getAppSetting: (settingName?: string | null) => Promise<unknown>;
     setAppSetting: (settingName: string | null | undefined, settingValue: string) => Promise<void>;
     getCurrentWalletUser: () => Promise<any>;
+    getCurrentIdentity: () => Promise<import("./hybrid_sso").CurrentIdentity>;
     resolve_did: (did: string, docType?: import("./types").DidDocType | null) => Promise<import("./namelib").EncodedDocument | null>;
     walletSignWithActiveDid: (payloads: Record<string, unknown>[]) => Promise<import("./sdk_core").WalletSignWithActiveDidResult | null>;
     openExternalUrl: (url: string) => Promise<void>;
@@ -54,6 +55,7 @@ export declare const subscribeKEvent: (patterns: import("./kevent_client").KEven
 export declare const attachEvent: (eventName: string, callback: Function) => void;
 export declare const removeEvent: (cookieId: string) => void;
 export declare const getAccountInfo: () => Promise<import("./account").AccountInfo | null>;
+export declare const getCurrentIdentity: () => Promise<import("./hybrid_sso").CurrentIdentity>;
 export declare const loginByPassword: (username: string, password: string, target?: import("./verify-hub-client").AuthTarget | undefined) => Promise<import("./account").AccountInfo | null>;
 export declare const loginByBrowserSSO: () => Promise<void>;
 export declare const loginByRuntimeSession: () => Promise<import("./account").AccountInfo | null>;

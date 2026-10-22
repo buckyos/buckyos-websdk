@@ -215,6 +215,13 @@ export interface Contact {
     temp_grants?: TemporaryGrant[];
     friend_state?: FriendState;
     tags?: string[];
+    /**
+     * Source groups (`type:<user type>` / `group:<id>`) that put this Zone account
+     * into the owner's address book. Non-empty means a system projection entry:
+     * read-only (no delete or tag change), a note may still be added. The same
+     * references appear in `tags` as system tags.
+     */
+    projected_from?: string[];
     created_at: number;
     updated_at: number;
 }
@@ -290,7 +297,12 @@ export interface WellKnownContactTag {
 export declare const WELL_KNOWN_CONTACT_TAGS: readonly WellKnownContactTag[];
 /** The app namespace of an app tag (`<app>.<name>`, lowercase ASCII). */
 export declare function contactTagApp(tag: string): string | null;
-/** `zone_user` / `zone_agent` are system tags, `<app>.<name>` app tags, anything else a user tag. */
+/** Prefixes of user group references (`type:admin`, `group:customer`), the system tags of projection entries. */
+export declare const USER_TYPE_GROUP_REF_PREFIX = "type:";
+export declare const USER_GROUP_REF_PREFIX = "group:";
+/** Whether a tag names a UserType group or a system user group (a contact projection source). */
+export declare function isUserGroupRefTag(tag: string): boolean;
+/** `zone_user` / `zone_agent` and group references are system tags, `<app>.<name>` app tags, anything else a user tag. */
 export declare function contactTagKind(tag: string): ContactTagKind;
 export type FriendRequestDirection = 'incoming' | 'outgoing';
 export type FriendRequestState = 'pending' | 'accepted' | 'rejected' | 'cancelled' | 'expired' | 'ignored';

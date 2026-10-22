@@ -3,6 +3,11 @@ import jsSHA from 'jssha';
 export interface AccountInfo {
     user_name: string;
     user_id: string;
+    /**
+     * A Zone account type (`admin` | `user` | `limited` | `root`, see
+     * `ZoneUserType`) for user sessions, `service` for an AppService runtime.
+     * Kept as a string: an unknown value must not break the session.
+     */
     user_type?: string;
     session_token: string;
     refresh_token?: string;
@@ -10,10 +15,12 @@ export interface AccountInfo {
 
 const LEGACY_ACCOUNT_STORAGE_KEY = "buckyos.account_info";
 const BROWSER_USER_INFO_STORAGE_KEY = "user_info";
+const BROWSER_IDENTITY_STORAGE_KEY = "buckyos.identity";
 
 export interface BrowserUserInfo {
     user_name: string;
     user_id: string;
+    /** Zone account type as verify-hub returned it; see `ZoneUserType`. */
     user_type: string;
 }
 
@@ -107,6 +114,7 @@ export function hashPassword(username:string,password:string,nonce:number|null=n
 export function cleanLocalAccountInfo(appId:string) {
     localStorage.removeItem(getAccountStorageKey(appId));
     localStorage.removeItem(BROWSER_USER_INFO_STORAGE_KEY);
+    localStorage.removeItem(BROWSER_IDENTITY_STORAGE_KEY);
     const legacy = parseAccountInfo(localStorage.getItem(LEGACY_ACCOUNT_STORAGE_KEY));
     if(legacy?.session_token && parseTokenAppId(legacy.session_token) === appId) {
         localStorage.removeItem(LEGACY_ACCOUNT_STORAGE_KEY);
@@ -145,6 +153,31 @@ export function saveBrowserUserInfo(userInfo:BrowserUserInfo) {
 
 export function getBrowserUserInfo():BrowserUserInfo|null {
     return parseBrowserUserInfo(localStorage.getItem(BROWSER_USER_INFO_STORAGE_KEY));
+}
+
+export function clearBrowserUserInfo() {
+    localStorage.removeItem(BROWSER_USER_INFO_STORAGE_KEY);
+}
+
+/** The last current identity `/sso_refresh` returned (raw JSON, parse with `parseCurrentIdentity`). */
+export function saveBrowserIdentity(identity:unknown) {
+    localStorage.setItem(BROWSER_IDENTITY_STORAGE_KEY, JSON.stringify(identity));
+}
+
+export function getBrowserIdentityRaw():unknown {
+    const raw = localStorage.getItem(BROWSER_IDENTITY_STORAGE_KEY);
+    if (!raw) {
+        return null;
+    }
+    try {
+        return JSON.parse(raw);
+    } catch {
+        return null;
+    }
+}
+
+export function clearBrowserIdentity() {
+    localStorage.removeItem(BROWSER_IDENTITY_STORAGE_KEY);
 }
 
 export function getLocalAccountInfo(appId:string):AccountInfo|null {

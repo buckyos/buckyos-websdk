@@ -8,6 +8,7 @@ export interface TokenPair {
 export interface VerifyHubUserInfo {
   show_name: string
   user_id: string
+  /** `admin` | `user` | `limited` (Root never logs in); see `ZoneUserType`. */
   user_type: string
   state?: string
 }

@@ -18,6 +18,7 @@ export const subscribeKEvent = sdkModule.subscribeKEvent
 export const attachEvent = sdkModule.attachEvent
 export const removeEvent = sdkModule.removeEvent
 export const getAccountInfo = sdkModule.getAccountInfo
+export const getCurrentIdentity = sdkModule.getCurrentIdentity
 export const loginByPassword = sdkModule.loginByPassword
 export const loginByBrowserSSO = sdkModule.loginByBrowserSSO
 export const loginByRuntimeSession = sdkModule.loginByRuntimeSession

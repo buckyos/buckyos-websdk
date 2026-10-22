@@ -59,11 +59,33 @@ function installGlobal<K extends keyof typeof globalThis>(key: K, value: (typeof
   }
 }
 
-function ssoRefreshResponse(sessionToken: string): Response {
+const ALICE_IDENTITY = {
+  kind: 'account',
+  user_id: 'alice',
+  did: 'did:bns:alice.test',
+  user_type: 'user',
+  show_name: 'Alice',
+  zone_host: 'test.buckyos.io',
+  auth_method: 'password',
+  restricted: false,
+  password_set: true,
+}
+
+const EXTERNAL_IDENTITY = {
+  kind: 'external',
+  did: 'did:bns:bob',
+  show_name: 'Bob',
+  zone_host: 'test.buckyos.io',
+  auth_method: 'did_federation',
+  restricted: true,
+  scopes: ['msg_group', 'aiworkspace', 'homestation'],
+}
+
+function ssoRefreshResponse(sessionToken: string, identity: unknown = ALICE_IDENTITY): Response {
   return {
     ok: true,
     status: 200,
-    json: async () => ({ access_token: sessionToken }),
+    json: async () => ({ session_token: sessionToken, identity }),
   } as Response
 }
 
@@ -80,7 +102,7 @@ describe('web runtime session refresh', () => {
   })
 
   it.each([RuntimeType.Browser, RuntimeType.AppRuntime])(
-    '%s getAccountInfo refreshes the in-memory token before returning cached user info',
+    '%s getAccountInfo refreshes the in-memory token and stores the returned identity',
     async (runtimeType) => {
       const localStorage = new MemoryStorage()
       const sessionToken = makeJwt({
@@ -94,9 +116,9 @@ describe('web runtime session refresh', () => {
       restoreCallbacks.push(installGlobal('localStorage', localStorage))
       restoreCallbacks.push(installGlobal('fetch', fetchMock))
       localStorage.setItem('user_info', JSON.stringify({
-        user_id: 'alice',
-        user_name: 'Alice',
-        user_type: 'people',
+        user_id: 'mallory',
+        user_name: 'Mallory',
+        user_type: 'admin',
       }))
 
       const sdk = createSDKModule('universal')
@@ -111,10 +133,11 @@ describe('web runtime session refresh', () => {
       await expect(sdk.getAccountInfo()).resolves.toEqual({
         user_id: 'alice',
         user_name: 'Alice',
-        user_type: 'people',
+        user_type: 'user',
         session_token: sessionToken,
         refresh_token: undefined,
       })
+      await expect(sdk.getCurrentIdentity()).resolves.toEqual(ALICE_IDENTITY)
       expect(fetchMock).toHaveBeenCalledTimes(1)
       expect(fetchMock).toHaveBeenCalledWith('/sso_refresh', {
         method: 'POST',
@@ -123,6 +146,60 @@ describe('web runtime session refresh', () => {
       })
     },
   )
+
+  it('reports an External session as an identity without account info', async () => {
+    const localStorage = new MemoryStorage()
+    const sessionToken = makeJwt({
+      appid: 'control-panel',
+      iss: 'verify-hub',
+      sub: 'did:bns:bob',
+      external: true,
+      exp: Math.floor(Date.now() / 1000) + 3600,
+    })
+    const fetchMock = jest.fn(async () => ssoRefreshResponse(sessionToken, EXTERNAL_IDENTITY)) as unknown as typeof fetch
+    restoreCallbacks.push(installGlobal('localStorage', localStorage))
+    restoreCallbacks.push(installGlobal('fetch', fetchMock))
+    localStorage.setItem('user_info', JSON.stringify({ user_id: 'alice', user_name: 'Alice', user_type: 'user' }))
+
+    const sdk = createSDKModule('universal')
+    await sdk.initBuckyOS('control-panel', {
+      appId: 'control-panel',
+      runtimeType: RuntimeType.Browser,
+      zoneHost: 'test.buckyos.io',
+      defaultProtocol: 'https://',
+      autoRenew: false,
+    })
+
+    await expect(sdk.getCurrentIdentity()).resolves.toEqual(EXTERNAL_IDENTITY)
+    await expect(sdk.getAccountInfo()).resolves.toBeNull()
+    expect(localStorage.getItem('user_info')).toBeNull()
+  })
+
+  it('never falls back to a cached identity when the refresh response has none', async () => {
+    const localStorage = new MemoryStorage()
+    const sessionToken = makeJwt({ appid: 'demo-app', iss: 'verify-hub', sub: 'alice', exp: Math.floor(Date.now() / 1000) + 3600 })
+    const fetchMock = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ session_token: sessionToken }),
+    } as Response)) as unknown as typeof fetch
+    restoreCallbacks.push(installGlobal('localStorage', localStorage))
+    restoreCallbacks.push(installGlobal('fetch', fetchMock))
+    localStorage.setItem('user_info', JSON.stringify({ user_id: 'alice', user_name: 'Alice', user_type: 'user' }))
+    localStorage.setItem('buckyos.identity', JSON.stringify(ALICE_IDENTITY))
+
+    const sdk = createSDKModule('universal')
+    await sdk.initBuckyOS('demo-app', {
+      appId: 'demo-app',
+      runtimeType: RuntimeType.Browser,
+      zoneHost: 'test.buckyos.io',
+      defaultProtocol: 'https://',
+      autoRenew: false,
+    })
+
+    await expect(sdk.getAccountInfo()).resolves.toBeNull()
+    await expect(sdk.getCurrentIdentity()).resolves.toEqual({ kind: 'anonymous' })
+  })
 
   it('does not report a cached browser user as logged in when sso_refresh fails', async () => {
     const localStorage = new MemoryStorage()

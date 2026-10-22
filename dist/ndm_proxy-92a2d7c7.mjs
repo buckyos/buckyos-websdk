@@ -35,11 +35,13 @@ var __privateMethod = (obj, member, method) => {
   return method;
 };
 var _listener, _listeners, _cancelled, _allowInsecure, _gzip, _headers, _method, _timeout, _url, _body, _bodyType, _creds, _preflight, _process, _retry, _signal, _throttle, _getUrlFunc, _send, send_fn, _statusCode, _statusMessage, _headers2, _body2, _request, _error, _names, _data, _dataLength, _writeData, writeData_fn, _data2, _offset, _bytesRead, _parent, _maxInflation, _incrementBytesRead, incrementBytesRead_fn, _peekBytes, peekBytes_fn, _r, _s, _v, _networkV, _privateKey, _options, _type, _to, _data3, _nonce, _gasLimit, _gasPrice, _maxPriorityFeePerGas, _maxFeePerGas, _value, _chainId, _sig, _accessList, _maxFeePerBlobGas, _blobVersionedHashes, _kzg, _blobs, _auths, _blobWrapperVersion, _getSerialized, getSerialized_fn, _types, _fullTypes, _encoderCache, _getEncoder, getEncoder_fn, _offset2, _tokens, _subTokenString, subTokenString_fn, _walkAsync, walkAsync_fn, _getCoder, getCoder_fn, _errors, _events, _functions, _abiCoder, _getFunction, getFunction_fn, _getEvent, getEvent_fn, _transactions, _logs, _startBlock, _iface, _iface2, _filter, _a, _supports2544, _resolver, _fetch, fetch_fn, _getResolver, getResolver_fn, _url2, _processFunc, _name, _chainId2, _plugins, _provider, _poller, _interval, _blockNumber, _poll, poll_fn, _provider2, _poll2, _running, _tag, _lastBlock, _filter2, _hash, _provider3, _filter3, _poller2, _running2, _blockNumber2, _poll3, poll_fn2, _subs, _plugins2, _pausedState, _destroyed, _networkPromise, _anyNetwork, _performCache, _lastBlockNumber, _nextTimer, _timers, _disableCcipRead, _requestRate, _requestTimes, _options2, _getDelay, getDelay_fn, _perform, perform_fn, _call, call_fn, _checkNetwork, checkNetwork_fn, _getAccountValue, getAccountValue_fn, _getBlock, getBlock_fn, _hasSub, hasSub_fn, _getSub, getSub_fn, _throwUnsupported, throwUnsupported_fn, _provider4, _filterIdPromise, _poller3, _running3, _network, _hault, _poll4, poll_fn3, _teardown, teardown_fn, _event, _options3, _nextId, _payloads, _drainTimer, _notReady, _network2, _pendingDetectNetwork, _scheduleDrain, scheduleDrain_fn, _pollingInterval, _connect, _signingKey, _data4, _checksum, _words, _loadWords, loadWords_fn, _account, account_fn, _fromSeed, fromSeed_fn, _fromAccount, fromAccount_fn;
-import { v as DID, w as getBrowserUserInfo, x as saveBrowserUserInfo, q as parseBuckyOSOwnerDocument, h as hashPassword, y as saveLocalAccountInfo, z as cleanLocalAccountInfo, A as canonicalize, B as signJwtEdDSA, O as ObjId, C as ChunkId, F as FileObject, E as sha256Bytes, G as DirObject, S as SimpleChunkList } from "./ndn_types-d768245f.mjs";
+import { v as DID, w as getBrowserIdentityRaw, x as clearBrowserUserInfo, y as saveBrowserIdentity, z as saveBrowserUserInfo, A as getBrowserUserInfo, q as parseBuckyOSOwnerDocument, h as hashPassword, B as saveLocalAccountInfo, C as cleanLocalAccountInfo, E as canonicalize, F as signJwtEdDSA, O as ObjId, G as ChunkId, H as FileObject, I as sha256Bytes, J as DirObject, S as SimpleChunkList } from "./ndn_types-395be6e1.mjs";
 class RPCError extends Error {
-  constructor(message) {
+  constructor(message, code, data) {
     super(message);
     this.name = "RPCError";
+    this.code = code;
+    this.data = data;
   }
 }
 const defaultFetcher$1 = async (input, init2) => {
@@ -174,7 +176,11 @@ class kRPCClient {
       const rpcResponse = await response.json();
       this.parseResponseSys(rpcResponse.sys, currentSeq);
       if ("error" in rpcResponse && rpcResponse.error) {
-        throw new RPCError(`RPC call error: ${rpcResponse.error}`);
+        throw new RPCError(
+          `RPC call error: ${rpcResponse.error}`,
+          typeof rpcResponse.code === "string" ? rpcResponse.code : void 0,
+          rpcResponse.data
+        );
       }
       if (!("result" in rpcResponse) || rpcResponse.result === void 0) {
         throw new RPCError("RPC response missing result");
@@ -212,6 +218,110 @@ class AuthClient {
     const authURL = this.buildLoginURL(redirectUri);
     this.navigate(authURL);
   }
+}
+const DENY_REASONS = [
+  "session_kind_not_allowed",
+  "session_ceiling_exceeded",
+  "resource_grant_missing",
+  "entry_unavailable",
+  "zone_method_disabled",
+  "account_state",
+  "credential_state",
+  "source_revoked",
+  "authorization_unavailable"
+];
+const ACCESS_DENIED_ERROR_CODE = "access_denied";
+function isRecord(value) {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+function parseAccessDenial(value) {
+  if (!isRecord(value) || typeof value.reason !== "string")
+    return null;
+  if (!DENY_REASONS.includes(value.reason))
+    return null;
+  const adjust = isRecord(value.adjust) && typeof value.adjust.party === "string" ? value.adjust : null;
+  if (!adjust)
+    return null;
+  return value;
+}
+function accessDenialOf(error) {
+  if (!(error instanceof RPCError) || error.code !== ACCESS_DENIED_ERROR_CODE)
+    return null;
+  return parseAccessDenial(error.data);
+}
+const ANONYMOUS_IDENTITY = { kind: "anonymous" };
+function parseCurrentIdentity(value) {
+  if (!isRecord(value))
+    return null;
+  if (value.kind === "anonymous")
+    return ANONYMOUS_IDENTITY;
+  const str = (key) => typeof value[key] === "string" ? value[key] : null;
+  if (value.kind === "account") {
+    const userId = str("user_id");
+    const did = str("did");
+    const userType = str("user_type");
+    if (!userId || !did || !userType || typeof value.restricted !== "boolean")
+      return null;
+    return value;
+  }
+  if (value.kind === "external") {
+    if (!str("did") || typeof value.restricted !== "boolean")
+      return null;
+    return value;
+  }
+  return null;
+}
+function identityKey(identity) {
+  switch (identity.kind) {
+    case "account":
+      return `${identity.zone_host}|account|${identity.user_id}`;
+    case "external":
+      return `${identity.zone_host}|external|${identity.did}`;
+    default:
+      return "anonymous";
+  }
+}
+function identityAllows(identity, scope) {
+  if (identity.kind === "anonymous")
+    return false;
+  return !identity.restricted || (identity.scopes ?? []).includes(scope);
+}
+const DEFAULT_JUMP_BASE_URL = "https://jump.buckyos.org";
+const JUMP_ACTION_PATHS = {
+  app_installer: "/sysdlg/app_installer"
+};
+function normalizeZoneHostname(input) {
+  const value = input.trim().toLowerCase().replace(/\.$/, "");
+  if (!value || value.length > 253)
+    return null;
+  if (/[^a-z0-9.-]/.test(value))
+    return null;
+  const labels = value.split(".");
+  if (labels.length < 2)
+    return null;
+  for (const label of labels) {
+    if (!label || label.length > 63 || label.startsWith("-") || label.endsWith("-"))
+      return null;
+  }
+  return value;
+}
+function zoneActionUrl(hostname, action) {
+  const host = normalizeZoneHostname(hostname);
+  const path = JUMP_ACTION_PATHS[action];
+  if (!host || !path)
+    return null;
+  return `https://${host}${path}`;
+}
+function buildJumpUrl(action, params, jumpBase = DEFAULT_JUMP_BASE_URL) {
+  const path = JUMP_ACTION_PATHS[action];
+  if (!path)
+    throw new Error(`unregistered jump action: ${action}`);
+  const base = new URL(jumpBase || DEFAULT_JUMP_BASE_URL);
+  if (base.protocol !== "https:" && base.hostname !== "localhost") {
+    throw new Error("jump base must be https");
+  }
+  const fragment = new URLSearchParams(params).toString();
+  return `${base.origin}${path}${fragment ? `#${fragment}` : ""}`;
 }
 function serializeAuthTarget(target) {
   if (!target || typeof target !== "object") {
@@ -1779,8 +1889,13 @@ function contactTagApp(tag) {
   const match = /^([a-z][a-z0-9_-]*)\.([a-z0-9_.-]+)$/.exec(tag);
   return match ? match[1] : null;
 }
+const USER_TYPE_GROUP_REF_PREFIX = "type:";
+const USER_GROUP_REF_PREFIX = "group:";
+function isUserGroupRefTag(tag) {
+  return tag.startsWith(USER_TYPE_GROUP_REF_PREFIX) || tag.startsWith(USER_GROUP_REF_PREFIX);
+}
 function contactTagKind(tag) {
-  if (tag === CONTACT_TAG_ZONE_USER || tag === CONTACT_TAG_ZONE_AGENT)
+  if (tag === CONTACT_TAG_ZONE_USER || tag === CONTACT_TAG_ZONE_AGENT || isUserGroupRefTag(tag))
     return "system";
   return contactTagApp(tag) ? "app" : "user";
 }
@@ -2659,6 +2774,15 @@ var RuntimeType = /* @__PURE__ */ ((RuntimeType2) => {
   RuntimeType2["Unknown"] = "Unknown";
   return RuntimeType2;
 })(RuntimeType || {});
+const ZONE_USER_TYPES = ["admin", "user", "limited", "root"];
+function parseZoneUserType(value) {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  return ZONE_USER_TYPES.includes(normalized) ? normalized : null;
+}
+const EXTERNAL_PRINCIPAL_CLAIM = "external";
+function isExternalPrincipal(claims) {
+  return (claims == null ? void 0 : claims.principal_kind) === "user" && claims[EXTERNAL_PRINCIPAL_CLAIM] === true;
+}
 const DEFAULT_CONFIG = {
   zoneHost: "",
   appId: "",
@@ -3256,22 +3380,36 @@ class BuckyOSRuntime {
     }
     return this.refreshBrowserSessionToken();
   }
-  normalizeBrowserUserInfo(raw) {
-    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-      return null;
+  storeBrowserIdentity(identity) {
+    if (!hasBrowserStorage()) {
+      return;
     }
-    const parsed = raw;
-    const userId = typeof parsed.user_id === "string" ? parsed.user_id.trim() : "";
-    const userType = typeof parsed.user_type === "string" ? parsed.user_type.trim() : "";
-    const userName = typeof parsed.user_name === "string" ? parsed.user_name.trim() : typeof parsed.show_name === "string" ? parsed.show_name.trim() : "";
-    if (!userId || !userType) {
-      return null;
+    const previous = parseCurrentIdentity(getBrowserIdentityRaw());
+    if (previous && identityKey(previous) !== identityKey(identity)) {
+      clearBrowserUserInfo();
     }
-    return {
-      user_name: userName || userId,
-      user_id: userId,
-      user_type: userType
-    };
+    saveBrowserIdentity(identity);
+    if (identity.kind === "account") {
+      saveBrowserUserInfo({
+        user_name: identity.show_name || identity.user_id,
+        user_id: identity.user_id,
+        user_type: identity.user_type
+      });
+    } else {
+      clearBrowserUserInfo();
+    }
+  }
+  /**
+   * Whom the browser session speaks for; `anonymous` without a session.
+   * Account, External and anonymous visitors are told apart here, never by
+   * guessing from a cached user record.
+   */
+  async getCurrentIdentity() {
+    const sessionToken = await this.ensureSessionTokenReady();
+    if (!sessionToken || !hasBrowserStorage()) {
+      return ANONYMOUS_IDENTITY;
+    }
+    return parseCurrentIdentity(getBrowserIdentityRaw()) ?? ANONYMOUS_IDENTITY;
   }
   async refreshBrowserSession() {
     const sessionToken = await this.refreshBrowserSessionToken();
@@ -3320,7 +3458,6 @@ class BuckyOSRuntime {
     if (!hasFetchRuntime()) {
       return this.sessionToken;
     }
-    const cachedUserInfo = hasBrowserStorage() ? getBrowserUserInfo() : null;
     try {
       const response = await fetch("/sso_refresh", {
         method: "POST",
@@ -3335,10 +3472,10 @@ class BuckyOSRuntime {
       }
       const payload = await response.json();
       const sessionToken = trimToNull$2(
-        typeof payload.access_token === "string" ? payload.access_token : typeof payload.session_token === "string" ? payload.session_token : null
+        typeof payload.session_token === "string" ? payload.session_token : null
       );
-      const userInfo = this.normalizeBrowserUserInfo(payload.user_info) ?? cachedUserInfo;
-      if (!sessionToken || !userInfo) {
+      const identity = parseCurrentIdentity(payload.identity);
+      if (!sessionToken || !identity || identity.kind === "anonymous") {
         if (authStateRevision === this.authStateRevision) {
           this.sessionToken = null;
         }
@@ -3349,7 +3486,7 @@ class BuckyOSRuntime {
       }
       this.sessionToken = sessionToken;
       this.refreshToken = null;
-      saveBrowserUserInfo(userInfo);
+      this.storeBrowserIdentity(identity);
       this.validateSessionToken();
       return this.sessionToken;
     } catch (error) {
@@ -4713,6 +4850,22 @@ class BuckyOSSDK {
   async subscribeKEvent(patterns, callback, options = {}) {
     return this.getKEventClient().subscribe(patterns, callback, options);
   }
+  /**
+   * Whom the current session speaks for: an account of this Zone, an External
+   * DID (no account here) or an anonymous visitor. `getAccountInfo` stays
+   * account-only and returns `null` for External sessions.
+   */
+  async getCurrentIdentity() {
+    if (this.currentRuntime == null) {
+      console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
+      return ANONYMOUS_IDENTITY;
+    }
+    const runtimeType = this.currentRuntime.getConfig().runtimeType;
+    if (runtimeType !== RuntimeType.Browser && runtimeType !== RuntimeType.AppRuntime) {
+      return ANONYMOUS_IDENTITY;
+    }
+    return this.currentRuntime.getCurrentIdentity();
+  }
   async getAccountInfo() {
     if (this.currentRuntime == null) {
       console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
@@ -5151,6 +5304,7 @@ function createSDKModule(target) {
     getAppSetting: sdk.getAppSetting.bind(sdk),
     setAppSetting: sdk.setAppSetting.bind(sdk),
     getCurrentWalletUser: sdk.getCurrentWalletUser.bind(sdk),
+    getCurrentIdentity: sdk.getCurrentIdentity.bind(sdk),
     resolve_did: sdk.resolve_did.bind(sdk),
     walletSignWithActiveDid: sdk.walletSignWithActiveDid.bind(sdk),
     openExternalUrl: sdk.openExternalUrl.bind(sdk),
@@ -27989,7 +28143,7 @@ async function uploadChunkViaTus(endpoint, file, chunkInfo, chunkIndex, appId, f
   const logicalPath = `${appId}/${chunkInfo.chunkId}`;
   let tusModule;
   try {
-    tusModule = await import("./tus_client-b1c35e8c.mjs");
+    tusModule = await import("./tus_client-cf69daf4.mjs");
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new NdmError("UPLOAD_FAILED", `Failed to load tus-js-client: ${message}`);
@@ -28713,143 +28867,164 @@ const ndm_proxy = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.definePro
   unpinOwner
 }, Symbol.toStringTag, { value: "Module" }));
 export {
-  TASK_MANAGER_SERVICE_UNIQUE_ID as $,
-  notifyCategorySessionId as A,
+  CONTACT_TAG_HOMESTATION_FOLLOWING as $,
+  NOTIFY_ACTION_DISMISS as A,
   BS_SERVICE_VERIFY_HUB as B,
-  notifyCategoryFromSessionId as C,
-  inputPrompt as D,
-  promptOptions as E,
-  notifyAnswerToTaskResult as F,
-  validateNotifyAnswer as G,
-  notifyUrl as H,
-  msgMachineData as I,
-  notifyMessageData as J,
-  commitNotifyAnswer as K,
-  answerNotify as L,
+  NOTIFY_LINK_PATH as C,
+  isNotifyClosed as D,
+  EXTERNAL_PRINCIPAL_CLAIM as E,
+  notifyCategorySessionId as F,
+  notifyCategoryFromSessionId as G,
+  inputPrompt as H,
+  promptOptions as I,
+  notifyAnswerToTaskResult as J,
+  validateNotifyAnswer as K,
+  notifyUrl as L,
   MsgQueueClient as M,
   NOTIFY_INTENT as N,
-  waitNotify as O,
-  FRIEND_INTENT as P,
-  CONTACT_TAG_ZONE_USER as Q,
+  msgMachineData as O,
+  notifyMessageData as P,
+  commitNotifyAnswer as Q,
   RuntimeType as R,
   SystemConfigClient as S,
-  CONTACT_TAG_ZONE_AGENT as T,
-  CONTACT_TAG_HOMESTATION_FOLLOWING as U,
+  answerNotify as T,
+  waitNotify as U,
   VerifyHubClient as V,
   WEB3_BRIDGE_HOST as W,
-  CONTACT_CHANGED_EVENT_BOX as X,
-  WELL_KNOWN_CONTACT_TAGS as Y,
-  contactTagApp as Z,
-  contactTagKind as _,
+  FRIEND_INTENT as X,
+  CONTACT_TAG_ZONE_USER as Y,
+  ZONE_USER_TYPES as Z,
+  CONTACT_TAG_ZONE_AGENT as _,
   ndm_proxy as a,
-  WorkflowNodeRunState as a$,
-  TASK_MANAGER_SERVICE_NAME as a0,
-  TASK_MANAGER_SERVICE_PORT as a1,
-  TASK_POLICY_PRESET_COLLABORATIVE_TREE_V1 as a2,
-  RAW_TASK_SCHEMA_ID as a3,
-  HUMAN_APPROVAL_SCHEMA_ID as a4,
-  DOWNLOAD_TASK_SCHEMA_ID as a5,
-  SCHEDULER_DISPATCH_THUNK_TASK_SCHEMA_ID as a6,
-  WORKFLOW_RUN_TREE_TASK_SCHEMA_ID as a7,
-  WORKFLOW_STEP_TASK_SCHEMA_ID as a8,
-  WORKFLOW_MAP_SHARD_TASK_SCHEMA_ID as a9,
-  TASK_ERR_IDEMPOTENCY_CONFLICT as aA,
-  TASK_ERR_SCHEMA_NOT_FOUND as aB,
-  TASK_MGR_ERROR_CODES as aC,
-  taskMgrTaskEventPath as aD,
-  taskMgrTreeEventPath as aE,
-  taskMgrErrorCode as aF,
-  TaskExecutorKind as aG,
-  TaskPhase as aH,
-  isTerminalTaskPhase as aI,
-  TaskWaitReasonKind as aJ,
-  TaskOutcome as aK,
-  TaskControlAction as aL,
-  baselineTaskControlProfile as aM,
-  DEFAULT_CHILD_CONTROL_POLICY as aN,
-  TaskAction as aO,
-  TaskGrantScope as aP,
-  TaskDataScope as aQ,
-  StorageDomain as aR,
-  TaskEventType as aS,
-  TaskManagerClient as aT,
-  WORKFLOW_SERVICE_NAME as aU,
-  WorkflowStepType as aV,
-  WorkflowOutputMode as aW,
-  WorkflowJoinMode as aX,
-  WorkflowRetryFallback as aY,
-  WorkflowDefinitionStatus as aZ,
-  WorkflowRunStatus as a_,
-  WORKFLOW_THUNK_TASK_SCHEMA_ID as aa,
-  WORKFLOW_SCHEDULE_TASK_SCHEMA_ID as ab,
-  WORKFLOW_SEND_MESSAGE_TASK_SCHEMA_ID as ac,
-  WORKFLOW_EXECUTE_RPC_TASK_SCHEMA_ID as ad,
-  WORKFLOW_RUN_TARGET_TASK_SCHEMA_ID as ae,
-  AGENT_DELEGATE_TASK_SCHEMA_ID as af,
-  HUMAN_INPUT_TASK_SCHEMA_ID as ag,
-  OPENDAN_ASYNC_TOOL_TASK_SCHEMA_ID as ah,
-  OPENDAN_COMMAND_TASK_SCHEMA_ID as ai,
-  TOOL_EXEC_BASH_TASK_SCHEMA_ID as aj,
-  AICC_COMPUTE_TASK_SCHEMA_ID as ak,
-  APP_INSTALL_TASK_SCHEMA_ID as al,
-  APP_UNINSTALL_TASK_SCHEMA_ID as am,
-  APP_START_TASK_SCHEMA_ID as an,
-  APP_UPDATE_TASK_SCHEMA_ID as ao,
-  APP_UPDATE_BATCH_TASK_SCHEMA_ID as ap,
-  TASK_ERR_NOT_FOUND as aq,
-  TASK_ERR_PERMISSION_DENIED as ar,
-  TASK_ERR_REVISION_CONFLICT as as,
-  TASK_ERR_STALE_RUNNER_EPOCH as at,
-  TASK_ERR_INVALID_PHASE as au,
-  TASK_ERR_CONTROL_NOT_AVAILABLE as av,
-  TASK_ERR_CONTROL_ALREADY_PENDING as aw,
-  TASK_ERR_ALREADY_COMPLETED as ax,
-  TASK_ERR_INPUT_SCHEMA_MISMATCH as ay,
-  TASK_ERR_RESULT_SCHEMA_MISMATCH as az,
+  TaskExecutorKind as a$,
+  CONTACT_CHANGED_EVENT_BOX as a0,
+  WELL_KNOWN_CONTACT_TAGS as a1,
+  USER_TYPE_GROUP_REF_PREFIX as a2,
+  USER_GROUP_REF_PREFIX as a3,
+  contactTagApp as a4,
+  contactTagKind as a5,
+  isUserGroupRefTag as a6,
+  DENY_REASONS as a7,
+  ACCESS_DENIED_ERROR_CODE as a8,
+  parseAccessDenial as a9,
+  AGENT_DELEGATE_TASK_SCHEMA_ID as aA,
+  HUMAN_INPUT_TASK_SCHEMA_ID as aB,
+  OPENDAN_ASYNC_TOOL_TASK_SCHEMA_ID as aC,
+  OPENDAN_COMMAND_TASK_SCHEMA_ID as aD,
+  TOOL_EXEC_BASH_TASK_SCHEMA_ID as aE,
+  AICC_COMPUTE_TASK_SCHEMA_ID as aF,
+  APP_INSTALL_TASK_SCHEMA_ID as aG,
+  APP_UNINSTALL_TASK_SCHEMA_ID as aH,
+  APP_START_TASK_SCHEMA_ID as aI,
+  APP_UPDATE_TASK_SCHEMA_ID as aJ,
+  APP_UPDATE_BATCH_TASK_SCHEMA_ID as aK,
+  TASK_ERR_NOT_FOUND as aL,
+  TASK_ERR_PERMISSION_DENIED as aM,
+  TASK_ERR_REVISION_CONFLICT as aN,
+  TASK_ERR_STALE_RUNNER_EPOCH as aO,
+  TASK_ERR_INVALID_PHASE as aP,
+  TASK_ERR_CONTROL_NOT_AVAILABLE as aQ,
+  TASK_ERR_CONTROL_ALREADY_PENDING as aR,
+  TASK_ERR_ALREADY_COMPLETED as aS,
+  TASK_ERR_INPUT_SCHEMA_MISMATCH as aT,
+  TASK_ERR_RESULT_SCHEMA_MISMATCH as aU,
+  TASK_ERR_IDEMPOTENCY_CONFLICT as aV,
+  TASK_ERR_SCHEMA_NOT_FOUND as aW,
+  TASK_MGR_ERROR_CODES as aX,
+  taskMgrTaskEventPath as aY,
+  taskMgrTreeEventPath as aZ,
+  taskMgrErrorCode as a_,
+  accessDenialOf as aa,
+  ANONYMOUS_IDENTITY as ab,
+  parseCurrentIdentity as ac,
+  identityKey as ad,
+  identityAllows as ae,
+  DEFAULT_JUMP_BASE_URL as af,
+  JUMP_ACTION_PATHS as ag,
+  normalizeZoneHostname as ah,
+  zoneActionUrl as ai,
+  buildJumpUrl as aj,
+  TASK_MANAGER_SERVICE_UNIQUE_ID as ak,
+  TASK_MANAGER_SERVICE_NAME as al,
+  TASK_MANAGER_SERVICE_PORT as am,
+  TASK_POLICY_PRESET_COLLABORATIVE_TREE_V1 as an,
+  RAW_TASK_SCHEMA_ID as ao,
+  HUMAN_APPROVAL_SCHEMA_ID as ap,
+  DOWNLOAD_TASK_SCHEMA_ID as aq,
+  SCHEDULER_DISPATCH_THUNK_TASK_SCHEMA_ID as ar,
+  WORKFLOW_RUN_TREE_TASK_SCHEMA_ID as as,
+  WORKFLOW_STEP_TASK_SCHEMA_ID as at,
+  WORKFLOW_MAP_SHARD_TASK_SCHEMA_ID as au,
+  WORKFLOW_THUNK_TASK_SCHEMA_ID as av,
+  WORKFLOW_SCHEDULE_TASK_SCHEMA_ID as aw,
+  WORKFLOW_SEND_MESSAGE_TASK_SCHEMA_ID as ax,
+  WORKFLOW_EXECUTE_RPC_TASK_SCHEMA_ID as ay,
+  WORKFLOW_RUN_TARGET_TASK_SCHEMA_ID as az,
   bns_client as b,
-  WorkflowHumanActionKind as b0,
-  WorkflowScheduledTaskStatus as b1,
-  WorkflowScheduledTaskMisfirePolicy as b2,
-  WorkflowScheduledTaskFireStatus as b3,
-  WorkflowClient as b4,
-  AICC_SERVICE_UNIQUE_ID as b5,
-  AICC_SERVICE_SERVICE_NAME as b6,
-  AICC_SERVICE_SERVICE_PORT as b7,
-  AICC_AI_METHODS as b8,
-  AICC_CORE_METHODS as b9,
-  BNS_PUBLISH_DOCUMENT_ABI as bA,
-  BnsEvmTxError as bB,
-  BnsEvmTxBuilder as bC,
-  decodeBnsPublishDocumentCalldata as bD,
-  BnsTxExecutorError as bE,
-  walletUserHasSnAccount as bF,
-  BnsTxExecutor as bG,
-  AICC_MANAGEMENT_METHODS as ba,
-  AICC_METHODS as bb,
-  AICC_FEATURES as bc,
-  AICC_EXECUTION_MODES as bd,
-  isAiccAiMethod as be,
-  aiccTextMessage as bf,
-  aiccMessageTextContent as bg,
-  aiccMessageFirstText as bh,
-  validateAiccMessage as bi,
-  AiccClient as bj,
-  decisionRequirements as bk,
-  validateDecisionRequest as bl,
-  validateDecisionAnswers as bm,
-  KEventReader as bn,
-  KEventClient as bo,
-  appIdFromDid as bp,
-  parseAppId as bq,
-  appDidFromId as br,
-  createAppInstanceId as bs,
-  parseAppInstanceId as bt,
-  BNS_EVM_DEFAULT_GAS_LIMIT as bu,
-  BNS_EVM_DEFAULT_MAX_FEE_PER_GAS as bv,
-  BNS_EVM_DEFAULT_MAX_PRIORITY_FEE_PER_GAS as bw,
-  BNS_MAX_INLINE_DOCUMENT_BYTES as bx,
-  BNS_DNS_TXT_DEFAULT_TTL as by,
-  BNS_DNS_TXT_DOC_TYPE as bz,
+  BnsTxExecutor as b$,
+  TaskPhase as b0,
+  isTerminalTaskPhase as b1,
+  TaskWaitReasonKind as b2,
+  TaskOutcome as b3,
+  TaskControlAction as b4,
+  baselineTaskControlProfile as b5,
+  DEFAULT_CHILD_CONTROL_POLICY as b6,
+  TaskAction as b7,
+  TaskGrantScope as b8,
+  TaskDataScope as b9,
+  aiccTextMessage as bA,
+  aiccMessageTextContent as bB,
+  aiccMessageFirstText as bC,
+  validateAiccMessage as bD,
+  AiccClient as bE,
+  decisionRequirements as bF,
+  validateDecisionRequest as bG,
+  validateDecisionAnswers as bH,
+  KEventReader as bI,
+  KEventClient as bJ,
+  appIdFromDid as bK,
+  parseAppId as bL,
+  appDidFromId as bM,
+  createAppInstanceId as bN,
+  parseAppInstanceId as bO,
+  BNS_EVM_DEFAULT_GAS_LIMIT as bP,
+  BNS_EVM_DEFAULT_MAX_FEE_PER_GAS as bQ,
+  BNS_EVM_DEFAULT_MAX_PRIORITY_FEE_PER_GAS as bR,
+  BNS_MAX_INLINE_DOCUMENT_BYTES as bS,
+  BNS_DNS_TXT_DEFAULT_TTL as bT,
+  BNS_DNS_TXT_DOC_TYPE as bU,
+  BNS_PUBLISH_DOCUMENT_ABI as bV,
+  BnsEvmTxError as bW,
+  BnsEvmTxBuilder as bX,
+  decodeBnsPublishDocumentCalldata as bY,
+  BnsTxExecutorError as bZ,
+  walletUserHasSnAccount as b_,
+  StorageDomain as ba,
+  TaskEventType as bb,
+  TaskManagerClient as bc,
+  WORKFLOW_SERVICE_NAME as bd,
+  WorkflowStepType as be,
+  WorkflowOutputMode as bf,
+  WorkflowJoinMode as bg,
+  WorkflowRetryFallback as bh,
+  WorkflowDefinitionStatus as bi,
+  WorkflowRunStatus as bj,
+  WorkflowNodeRunState as bk,
+  WorkflowHumanActionKind as bl,
+  WorkflowScheduledTaskStatus as bm,
+  WorkflowScheduledTaskMisfirePolicy as bn,
+  WorkflowScheduledTaskFireStatus as bo,
+  WorkflowClient as bp,
+  AICC_SERVICE_UNIQUE_ID as bq,
+  AICC_SERVICE_SERVICE_NAME as br,
+  AICC_SERVICE_SERVICE_PORT as bs,
+  AICC_AI_METHODS as bt,
+  AICC_CORE_METHODS as bu,
+  AICC_MANAGEMENT_METHODS as bv,
+  AICC_METHODS as bw,
+  AICC_FEATURES as bx,
+  AICC_EXECUTION_MODES as by,
+  isAiccAiMethod as bz,
   createSDKModule as c,
   BS_SERVICE_TASK_MANAGER as d,
   getActiveRuntimeType as e,
@@ -28858,21 +29033,21 @@ export {
   getActiveSessionToken as h,
   BuckyOSSDK as i,
   RepoClient as j,
-  MsgCenterClient as k,
-  mailboxResource as l,
-  mailboxAddress as m,
+  parseZoneUserType as k,
+  isExternalPrincipal as l,
+  RPCError as m,
   ndm_client as n,
-  NOTIFY_DELIVERED_INTENT as o,
+  MsgCenterClient as o,
   parseSessionTokenClaims as p,
-  NOTIFY_DATA_VERSION as q,
+  mailboxAddress as q,
   resolveDidFromHost as r,
   sn_client as s,
-  NOTIFY_SESSION_PREFIX as t,
-  NOTIFY_CHOICE_CONTROL_ID as u,
-  NOTIFY_TEXT_CONTROL_ID as v,
-  NOTIFY_ACTION_ANSWER as w,
-  NOTIFY_ACTION_DISMISS as x,
-  NOTIFY_LINK_PATH as y,
-  isNotifyClosed as z
+  mailboxResource as t,
+  NOTIFY_DELIVERED_INTENT as u,
+  NOTIFY_DATA_VERSION as v,
+  NOTIFY_SESSION_PREFIX as w,
+  NOTIFY_CHOICE_CONTROL_ID as x,
+  NOTIFY_TEXT_CONTROL_ID as y,
+  NOTIFY_ACTION_ANSWER as z
 };
-//# sourceMappingURL=ndm_proxy-91af00b8.mjs.map
+//# sourceMappingURL=ndm_proxy-92a2d7c7.mjs.map

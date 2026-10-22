@@ -655,6 +655,7 @@ class ht {
 }
 const LEGACY_ACCOUNT_STORAGE_KEY = "buckyos.account_info";
 const BROWSER_USER_INFO_STORAGE_KEY = "user_info";
+const BROWSER_IDENTITY_STORAGE_KEY = "buckyos.identity";
 function getAccountStorageKey(appId) {
   return `buckyos.account_info.${appId}`;
 }
@@ -722,6 +723,7 @@ function hashPassword(username, password, nonce = null) {
 function cleanLocalAccountInfo(appId) {
   localStorage.removeItem(getAccountStorageKey(appId));
   localStorage.removeItem(BROWSER_USER_INFO_STORAGE_KEY);
+  localStorage.removeItem(BROWSER_IDENTITY_STORAGE_KEY);
   const legacy = parseAccountInfo(localStorage.getItem(LEGACY_ACCOUNT_STORAGE_KEY));
   if ((legacy == null ? void 0 : legacy.session_token) && parseTokenAppId(legacy.session_token) === appId) {
     localStorage.removeItem(LEGACY_ACCOUNT_STORAGE_KEY);
@@ -754,6 +756,23 @@ function saveBrowserUserInfo(userInfo) {
 }
 function getBrowserUserInfo() {
   return parseBrowserUserInfo(localStorage.getItem(BROWSER_USER_INFO_STORAGE_KEY));
+}
+function clearBrowserUserInfo() {
+  localStorage.removeItem(BROWSER_USER_INFO_STORAGE_KEY);
+}
+function saveBrowserIdentity(identity) {
+  localStorage.setItem(BROWSER_IDENTITY_STORAGE_KEY, JSON.stringify(identity));
+}
+function getBrowserIdentityRaw() {
+  const raw = localStorage.getItem(BROWSER_IDENTITY_STORAGE_KEY);
+  if (!raw) {
+    return null;
+  }
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
 }
 const DID_OBJECT_SERVICE_TYPE = "DIDObjectService";
 const DID_OBJECT_SERVICE_ID = "#did-object";
@@ -3741,44 +3760,47 @@ const ndn_types = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.definePro
   verifyNamedObjectFromStr
 }, Symbol.toStringTag, { value: "Module" }));
 export {
-  encodeDeviceDocument as $,
-  canonicalize$1 as A,
-  signJwtEdDSA as B,
-  ChunkId as C,
+  parseOODDescription as $,
+  getBrowserUserInfo as A,
+  saveLocalAccountInfo as B,
+  cleanLocalAccountInfo as C,
   DID_OBJECT_SERVICE_TYPE as D,
-  sha256Bytes as E,
-  FileObject as F,
-  DirObject as G,
-  newDeviceDocumentByJwk as H,
-  verifyJwtEdDSA as I,
-  deviceDocumentToOrderedJson as J,
-  decodeJwtClaimWithoutVerify as K,
-  commonjsGlobal as L,
-  DEFAULT_EXPIRE_TIME as M,
+  canonicalize$1 as E,
+  signJwtEdDSA as F,
+  ChunkId as G,
+  FileObject as H,
+  sha256Bytes as I,
+  DirObject as J,
+  newDeviceDocumentByJwk as K,
+  verifyJwtEdDSA as L,
+  deviceDocumentToOrderedJson as M,
   NODE_IDENTITY_SCHEMA_V2 as N,
   ObjId as O,
-  buckyosGetUnixTimestamp as P,
-  getPublicKeyXFromPrivatePem as Q,
-  getXFromJwk as R,
+  decodeJwtClaimWithoutVerify as P,
+  commonjsGlobal as Q,
+  DEFAULT_EXPIRE_TIME as R,
   SimpleChunkList as S,
-  createJwkByX as T,
-  newOwnerDocument as U,
-  ownerDocumentSetDefaultZoneDid as V,
-  ownerDocumentToOrderedJson as W,
-  oodDescriptionToString as X,
-  parseOODDescription as Y,
-  encodeZoneBootDocument as Z,
-  newZoneBootDocument as _,
+  buckyosGetUnixTimestamp as T,
+  getPublicKeyXFromPrivatePem as U,
+  getXFromJwk as V,
+  createJwkByX as W,
+  newOwnerDocument as X,
+  ownerDocumentSetDefaultZoneDid as Y,
+  ownerDocumentToOrderedJson as Z,
+  oodDescriptionToString as _,
   ndn_types as a,
-  newDeviceMiniDocumentByDeviceDocument as a0,
-  deviceMiniDocumentToJwt as a1,
-  newZoneDocument as a2,
-  encodeZoneDocument as a3,
-  zoneDocumentToOrderedJson as a4,
-  newDeviceMiniDocument as a5,
-  newDeviceDocumentByMiniDocument as a6,
-  buildNamedObjectByJson as a7,
-  getDefaultExportFromCjs as a8,
+  encodeZoneBootDocument as a0,
+  newZoneBootDocument as a1,
+  encodeDeviceDocument as a2,
+  newDeviceMiniDocumentByDeviceDocument as a3,
+  deviceMiniDocumentToJwt as a4,
+  newZoneDocument as a5,
+  encodeZoneDocument as a6,
+  zoneDocumentToOrderedJson as a7,
+  newDeviceMiniDocument as a8,
+  newDeviceDocumentByMiniDocument as a9,
+  buildNamedObjectByJson as aa,
+  getDefaultExportFromCjs as ab,
   DID_OBJECT_SERVICE_ID as b,
   isBuckyOSOwnerDocument as c,
   isBuckyOSDeviceMiniDocument as d,
@@ -3800,9 +3822,9 @@ export {
   getDidMethod as t,
   getDidIdentifier as u,
   DID as v,
-  getBrowserUserInfo as w,
-  saveBrowserUserInfo as x,
-  saveLocalAccountInfo as y,
-  cleanLocalAccountInfo as z
+  getBrowserIdentityRaw as w,
+  clearBrowserUserInfo as x,
+  saveBrowserIdentity as y,
+  saveBrowserUserInfo as z
 };
-//# sourceMappingURL=ndn_types-d768245f.mjs.map
+//# sourceMappingURL=ndn_types-395be6e1.mjs.map

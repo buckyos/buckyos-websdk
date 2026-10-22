@@ -261,6 +261,13 @@ export interface Contact {
   temp_grants?: TemporaryGrant[]
   friend_state?: FriendState
   tags?: string[]
+  /**
+   * Source groups (`type:<user type>` / `group:<id>`) that put this Zone account
+   * into the owner's address book. Non-empty means a system projection entry:
+   * read-only (no delete or tag change), a note may still be added. The same
+   * references appear in `tags` as system tags.
+   */
+  projected_from?: string[]
   created_at: number
   updated_at: number
 }
@@ -359,9 +366,18 @@ export function contactTagApp(tag: string): string | null {
   return match ? match[1] : null
 }
 
-/** `zone_user` / `zone_agent` are system tags, `<app>.<name>` app tags, anything else a user tag. */
+/** Prefixes of user group references (`type:admin`, `group:customer`), the system tags of projection entries. */
+export const USER_TYPE_GROUP_REF_PREFIX = 'type:'
+export const USER_GROUP_REF_PREFIX = 'group:'
+
+/** Whether a tag names a UserType group or a system user group (a contact projection source). */
+export function isUserGroupRefTag(tag: string): boolean {
+  return tag.startsWith(USER_TYPE_GROUP_REF_PREFIX) || tag.startsWith(USER_GROUP_REF_PREFIX)
+}
+
+/** `zone_user` / `zone_agent` and group references are system tags, `<app>.<name>` app tags, anything else a user tag. */
 export function contactTagKind(tag: string): ContactTagKind {
-  if (tag === CONTACT_TAG_ZONE_USER || tag === CONTACT_TAG_ZONE_AGENT) return 'system'
+  if (tag === CONTACT_TAG_ZONE_USER || tag === CONTACT_TAG_ZONE_AGENT || isUserGroupRefTag(tag)) return 'system'
   return contactTagApp(tag) ? 'app' : 'user'
 }
 

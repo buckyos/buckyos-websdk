@@ -1,5 +1,6 @@
 import { kRPCClient } from './krpc_client';
 import { AuthClient } from './auth_client';
+import type { CurrentIdentity } from './hybrid_sso';
 import { hashPassword, AccountInfo } from './account';
 import { BuckyOSConfig, RuntimeType, parseSessionTokenClaims } from './runtime';
 import { AuthTarget, VerifyHubClient } from './verify-hub-client';
@@ -45,6 +46,12 @@ export declare class BuckyOSSDK {
     createEventReader(patterns: KEventPatternInput, options?: KEventReaderOptions): Promise<KEventReader>;
     create_event_reader(patterns: KEventPatternInput, options?: KEventReaderOptions): Promise<KEventReader>;
     subscribeKEvent(patterns: KEventPatternInput, callback: (event: KEvent) => void | Promise<void>, options?: KEventSubscribeOptions): Promise<KEventSubscription>;
+    /**
+     * Whom the current session speaks for: an account of this Zone, an External
+     * DID (no account here) or an anonymous visitor. `getAccountInfo` stays
+     * account-only and returns `null` for External sessions.
+     */
+    getCurrentIdentity(): Promise<CurrentIdentity>;
     getAccountInfo(): Promise<AccountInfo | null>;
     loginByPassword(username: string, password: string, target?: AuthTarget): Promise<AccountInfo | null>;
     loginByRuntimeSession(): Promise<AccountInfo | null>;
@@ -100,6 +107,7 @@ export declare function createSDKModule(target: SDKTarget): {
         getAppSetting: (settingName?: string | null) => Promise<unknown>;
         setAppSetting: (settingName: string | null | undefined, settingValue: string) => Promise<void>;
         getCurrentWalletUser: () => Promise<any>;
+        getCurrentIdentity: () => Promise<CurrentIdentity>;
         resolve_did: (did: string, docType?: DidDocType | null) => Promise<EncodedDocument | null>;
         walletSignWithActiveDid: (payloads: Record<string, unknown>[]) => Promise<WalletSignWithActiveDidResult | null>;
         openExternalUrl: (url: string) => Promise<void>;
@@ -139,6 +147,7 @@ export declare function createSDKModule(target: SDKTarget): {
     getAppSetting: (settingName?: string | null) => Promise<unknown>;
     setAppSetting: (settingName: string | null | undefined, settingValue: string) => Promise<void>;
     getCurrentWalletUser: () => Promise<any>;
+    getCurrentIdentity: () => Promise<CurrentIdentity>;
     resolve_did: (did: string, docType?: DidDocType | null) => Promise<EncodedDocument | null>;
     walletSignWithActiveDid: (payloads: Record<string, unknown>[]) => Promise<WalletSignWithActiveDidResult | null>;
     openExternalUrl: (url: string) => Promise<void>;
@@ -157,14 +166,18 @@ export declare function createSDKModule(target: SDKTarget): {
 export type { BuckyOSConfig };
 export { RuntimeType };
 export { parseSessionTokenClaims };
+export { ZONE_USER_TYPES, EXTERNAL_PRINCIPAL_CLAIM, parseZoneUserType, isExternalPrincipal, } from './runtime';
+export type { ZoneUserType, TokenPrincipalKind } from './runtime';
 export { VerifyHubClient };
+export { RPCError } from './krpc_client';
+export * from './hybrid_sso';
 export type { AppAuthTarget, AuthTarget, LoginByJwtParams, LoginByPasswordParams, RefreshTokenParams, SudoByPasswordParams, SudoByPasswordResponse, SystemAuthTarget, TokenPair, VerifyTokenParams, } from './verify-hub-client';
 export { SystemConfigClient };
 export * from './task_mgr_client';
 export * from './workflow_client';
 export * from './aicc_client';
 export { MsgQueueClient };
-export { MsgCenterClient, mailboxAddress, mailboxResource, NOTIFY_INTENT, NOTIFY_DELIVERED_INTENT, NOTIFY_DATA_VERSION, NOTIFY_SESSION_PREFIX, NOTIFY_CHOICE_CONTROL_ID, NOTIFY_TEXT_CONTROL_ID, NOTIFY_ACTION_ANSWER, NOTIFY_ACTION_DISMISS, NOTIFY_LINK_PATH, isNotifyClosed, notifyCategorySessionId, notifyCategoryFromSessionId, inputPrompt, promptOptions, notifyAnswerToTaskResult, validateNotifyAnswer, notifyUrl, msgMachineData, notifyMessageData, commitNotifyAnswer, answerNotify, waitNotify, FRIEND_INTENT, CONTACT_TAG_ZONE_USER, CONTACT_TAG_ZONE_AGENT, CONTACT_TAG_HOMESTATION_FOLLOWING, CONTACT_CHANGED_EVENT_BOX, WELL_KNOWN_CONTACT_TAGS, contactTagApp, contactTagKind, } from './msg_center_client';
+export { MsgCenterClient, mailboxAddress, mailboxResource, NOTIFY_INTENT, NOTIFY_DELIVERED_INTENT, NOTIFY_DATA_VERSION, NOTIFY_SESSION_PREFIX, NOTIFY_CHOICE_CONTROL_ID, NOTIFY_TEXT_CONTROL_ID, NOTIFY_ACTION_ANSWER, NOTIFY_ACTION_DISMISS, NOTIFY_LINK_PATH, isNotifyClosed, notifyCategorySessionId, notifyCategoryFromSessionId, inputPrompt, promptOptions, notifyAnswerToTaskResult, validateNotifyAnswer, notifyUrl, msgMachineData, notifyMessageData, commitNotifyAnswer, answerNotify, waitNotify, FRIEND_INTENT, CONTACT_TAG_ZONE_USER, CONTACT_TAG_ZONE_AGENT, CONTACT_TAG_HOMESTATION_FOLLOWING, CONTACT_CHANGED_EVENT_BOX, WELL_KNOWN_CONTACT_TAGS, USER_TYPE_GROUP_REF_PREFIX, USER_GROUP_REF_PREFIX, contactTagApp, contactTagKind, isUserGroupRefTag, } from './msg_center_client';
 export type { AccessGroupLevel, Contact, ContactPatch, ContactQuery, ContactSource, FriendState, ContactTagKind, WellKnownContactTag, FriendRequestDirection, FriendRequestState, FriendRequestDecision, FriendDeliveryState, FriendDelivery, FriendRequest, FriendRequestResult, FriendMessageData, LookupKind, LookupSection, LookupInputKind, ReachabilityState, LookupErrorCode, Reachability, LookupRelation, LookupGroupInfo, LookupCandidate, LookupResult, ContactLookupReq, ListFriendRequestsReq, ContactChangedEvent, MailboxAddress, GetNextParams, PeekBoxParams, ListBoxByTimeParams, NotifyKind, NotifyCategory, NotifyLevel, NotifyStatus, NotifyConversation, NotifySource, NotifySendReq, NotifyRecordRef, NotifyDelivery, NotifyResult, NotifyView, NotifyListReq, NotifyListResult, NotifyMessageData, NotifyDeliveredData, NotifyAnswer, NotifyTaskAccess, NotifyCommit, WaitNotifyOptions, } from './msg_center_client';
 export { RepoClient };
 export * from './kevent_client';
