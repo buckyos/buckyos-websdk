@@ -8,6 +8,7 @@ import {
   cleanLocalAccountInfo,
   getBrowserUserInfo,
   saveBrowserUserInfo,
+  clearBrowserIdentity,
   saveLocalAccountInfo,
 } from './account'
 import {
@@ -482,6 +483,7 @@ export class BuckyOSSDK {
 
       if (isBrowserStorageAvailable()) {
         saveLocalAccountInfo(appId, accountInfo)
+        clearBrowserIdentity()
         saveBrowserUserInfo({
           user_name: accountInfo.user_name,
           user_id: accountInfo.user_id,

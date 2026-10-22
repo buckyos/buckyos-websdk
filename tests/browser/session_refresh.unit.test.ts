@@ -175,6 +175,25 @@ describe('web runtime session refresh', () => {
     expect(localStorage.getItem('user_info')).toBeNull()
   })
 
+  it('does not report an identity that belongs to another subject than the token', async () => {
+    const localStorage = new MemoryStorage()
+    const sessionToken = makeJwt({ appid: 'demo-app', iss: 'verify-hub', sub: 'bob', exp: Math.floor(Date.now() / 1000) + 3600 })
+    const fetchMock = jest.fn(async () => ssoRefreshResponse(sessionToken, ALICE_IDENTITY)) as unknown as typeof fetch
+    restoreCallbacks.push(installGlobal('localStorage', localStorage))
+    restoreCallbacks.push(installGlobal('fetch', fetchMock))
+
+    const sdk = createSDKModule('universal')
+    await sdk.initBuckyOS('demo-app', {
+      appId: 'demo-app',
+      runtimeType: RuntimeType.Browser,
+      zoneHost: 'test.buckyos.io',
+      defaultProtocol: 'https://',
+      autoRenew: false,
+    })
+
+    await expect(sdk.getCurrentIdentity()).resolves.toEqual({ kind: 'anonymous' })
+  })
+
   it('never falls back to a cached identity when the refresh response has none', async () => {
     const localStorage = new MemoryStorage()
     const sessionToken = makeJwt({ appid: 'demo-app', iss: 'verify-hub', sub: 'alice', exp: Math.floor(Date.now() / 1000) + 3600 })

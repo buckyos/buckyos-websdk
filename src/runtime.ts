@@ -9,6 +9,7 @@ import { MsgCenterClient } from './msg_center_client'
 import { RepoClient } from './repo_client'
 import {
   BrowserUserInfo,
+  clearBrowserIdentity,
   clearBrowserUserInfo,
   getBrowserIdentityRaw,
   getBrowserUserInfo,
@@ -927,7 +928,17 @@ export class BuckyOSRuntime {
     if (!sessionToken || !hasBrowserStorage()) {
       return ANONYMOUS_IDENTITY
     }
-    return parseCurrentIdentity(getBrowserIdentityRaw()) ?? ANONYMOUS_IDENTITY
+    const identity = parseCurrentIdentity(getBrowserIdentityRaw())
+    // The cached identity only describes the token `/sso_refresh` returned it with; a token
+    // obtained another way (e.g. loginByPassword) for another subject never inherits it.
+    const subject = parseSessionTokenClaims(sessionToken)?.sub
+    const identitySubject = identity?.kind === 'account'
+      ? identity.user_id
+      : identity?.kind === 'external' ? identity.did : null
+    if (!identity || !subject || identitySubject !== subject) {
+      return ANONYMOUS_IDENTITY
+    }
+    return identity
   }
 
   async refreshBrowserSession(): Promise<BrowserUserInfo | null> {
@@ -999,6 +1010,11 @@ export class BuckyOSRuntime {
       if (!response.ok) {
         if (authStateRevision === this.authStateRevision) {
           this.sessionToken = null
+          // The server says there is no session (as opposed to a failure to tell).
+          if (response.status === 401 && hasBrowserStorage()) {
+            clearBrowserIdentity()
+            clearBrowserUserInfo()
+          }
         }
         return null
       }

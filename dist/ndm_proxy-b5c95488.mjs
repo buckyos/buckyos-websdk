@@ -35,7 +35,7 @@ var __privateMethod = (obj, member, method) => {
   return method;
 };
 var _listener, _listeners, _cancelled, _allowInsecure, _gzip, _headers, _method, _timeout, _url, _body, _bodyType, _creds, _preflight, _process, _retry, _signal, _throttle, _getUrlFunc, _send, send_fn, _statusCode, _statusMessage, _headers2, _body2, _request, _error, _names, _data, _dataLength, _writeData, writeData_fn, _data2, _offset, _bytesRead, _parent, _maxInflation, _incrementBytesRead, incrementBytesRead_fn, _peekBytes, peekBytes_fn, _r, _s, _v, _networkV, _privateKey, _options, _type, _to, _data3, _nonce, _gasLimit, _gasPrice, _maxPriorityFeePerGas, _maxFeePerGas, _value, _chainId, _sig, _accessList, _maxFeePerBlobGas, _blobVersionedHashes, _kzg, _blobs, _auths, _blobWrapperVersion, _getSerialized, getSerialized_fn, _types, _fullTypes, _encoderCache, _getEncoder, getEncoder_fn, _offset2, _tokens, _subTokenString, subTokenString_fn, _walkAsync, walkAsync_fn, _getCoder, getCoder_fn, _errors, _events, _functions, _abiCoder, _getFunction, getFunction_fn, _getEvent, getEvent_fn, _transactions, _logs, _startBlock, _iface, _iface2, _filter, _a, _supports2544, _resolver, _fetch, fetch_fn, _getResolver, getResolver_fn, _url2, _processFunc, _name, _chainId2, _plugins, _provider, _poller, _interval, _blockNumber, _poll, poll_fn, _provider2, _poll2, _running, _tag, _lastBlock, _filter2, _hash, _provider3, _filter3, _poller2, _running2, _blockNumber2, _poll3, poll_fn2, _subs, _plugins2, _pausedState, _destroyed, _networkPromise, _anyNetwork, _performCache, _lastBlockNumber, _nextTimer, _timers, _disableCcipRead, _requestRate, _requestTimes, _options2, _getDelay, getDelay_fn, _perform, perform_fn, _call, call_fn, _checkNetwork, checkNetwork_fn, _getAccountValue, getAccountValue_fn, _getBlock, getBlock_fn, _hasSub, hasSub_fn, _getSub, getSub_fn, _throwUnsupported, throwUnsupported_fn, _provider4, _filterIdPromise, _poller3, _running3, _network, _hault, _poll4, poll_fn3, _teardown, teardown_fn, _event, _options3, _nextId, _payloads, _drainTimer, _notReady, _network2, _pendingDetectNetwork, _scheduleDrain, scheduleDrain_fn, _pollingInterval, _connect, _signingKey, _data4, _checksum, _words, _loadWords, loadWords_fn, _account, account_fn, _fromSeed, fromSeed_fn, _fromAccount, fromAccount_fn;
-import { v as DID, w as getBrowserIdentityRaw, x as clearBrowserUserInfo, y as saveBrowserIdentity, z as saveBrowserUserInfo, A as getBrowserUserInfo, q as parseBuckyOSOwnerDocument, h as hashPassword, B as saveLocalAccountInfo, C as cleanLocalAccountInfo, E as canonicalize, F as signJwtEdDSA, O as ObjId, G as ChunkId, H as FileObject, I as sha256Bytes, J as DirObject, S as SimpleChunkList } from "./ndn_types-395be6e1.mjs";
+import { v as DID, w as getBrowserIdentityRaw, x as clearBrowserUserInfo, y as saveBrowserIdentity, z as saveBrowserUserInfo, A as getBrowserUserInfo, B as clearBrowserIdentity, q as parseBuckyOSOwnerDocument, h as hashPassword, C as saveLocalAccountInfo, E as cleanLocalAccountInfo, F as canonicalize, G as signJwtEdDSA, O as ObjId, H as ChunkId, I as FileObject, J as sha256Bytes, K as DirObject, S as SimpleChunkList } from "./ndn_types-ac9c1e48.mjs";
 class RPCError extends Error {
   constructor(message, code, data) {
     super(message);
@@ -3405,11 +3405,18 @@ class BuckyOSRuntime {
    * guessing from a cached user record.
    */
   async getCurrentIdentity() {
+    var _a2;
     const sessionToken = await this.ensureSessionTokenReady();
     if (!sessionToken || !hasBrowserStorage()) {
       return ANONYMOUS_IDENTITY;
     }
-    return parseCurrentIdentity(getBrowserIdentityRaw()) ?? ANONYMOUS_IDENTITY;
+    const identity = parseCurrentIdentity(getBrowserIdentityRaw());
+    const subject = (_a2 = parseSessionTokenClaims(sessionToken)) == null ? void 0 : _a2.sub;
+    const identitySubject = (identity == null ? void 0 : identity.kind) === "account" ? identity.user_id : (identity == null ? void 0 : identity.kind) === "external" ? identity.did : null;
+    if (!identity || !subject || identitySubject !== subject) {
+      return ANONYMOUS_IDENTITY;
+    }
+    return identity;
   }
   async refreshBrowserSession() {
     const sessionToken = await this.refreshBrowserSessionToken();
@@ -3467,6 +3474,10 @@ class BuckyOSRuntime {
       if (!response.ok) {
         if (authStateRevision === this.authStateRevision) {
           this.sessionToken = null;
+          if (response.status === 401 && hasBrowserStorage()) {
+            clearBrowserIdentity();
+            clearBrowserUserInfo();
+          }
         }
         return null;
       }
@@ -4931,6 +4942,7 @@ class BuckyOSSDK {
       };
       if (isBrowserStorageAvailable()) {
         saveLocalAccountInfo(appId, accountInfo);
+        clearBrowserIdentity();
         saveBrowserUserInfo({
           user_name: accountInfo.user_name,
           user_id: accountInfo.user_id,
@@ -28143,7 +28155,7 @@ async function uploadChunkViaTus(endpoint, file, chunkInfo, chunkIndex, appId, f
   const logicalPath = `${appId}/${chunkInfo.chunkId}`;
   let tusModule;
   try {
-    tusModule = await import("./tus_client-cf69daf4.mjs");
+    tusModule = await import("./tus_client-19baa342.mjs");
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new NdmError("UPLOAD_FAILED", `Failed to load tus-js-client: ${message}`);
@@ -29050,4 +29062,4 @@ export {
   NOTIFY_TEXT_CONTROL_ID as y,
   NOTIFY_ACTION_ANSWER as z
 };
-//# sourceMappingURL=ndm_proxy-92a2d7c7.mjs.map
+//# sourceMappingURL=ndm_proxy-b5c95488.mjs.map
