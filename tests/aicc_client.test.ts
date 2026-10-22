@@ -4,6 +4,8 @@ import {
   AICC_CORE_METHODS,
   AICC_EXECUTION_MODES,
   AICC_MANAGEMENT_METHODS,
+  AICC_QUOTA_METHODS,
+  aiccRefusalOf,
   AICC_METHODS,
   AiccError,
   AiccClient,
@@ -186,8 +188,23 @@ describe('canonical AICC contract', () => {
       [AICC_MANAGEMENT_METHODS.DRIVER_METADATA_UPDATE_GET, () => client.getDriverMetadataUpdate()],
       [AICC_MANAGEMENT_METHODS.DRIVER_METADATA_UPDATE_SET, () => client.setDriverMetadataUpdate({ enabled: true })],
     ]
+    const draft = { object: { type: 'user_app', user_id: 'bob', app_id: 'writer' }, resource: { type: 'all' }, kind: 'periodic', period: '4h', limit_tokens: 1000 } as const
+    coreAndManagementCases.push(
+      [AICC_QUOTA_METHODS.RULE_LIST, () => client.listQuotaRules({ scope: 'mine' })],
+      [AICC_QUOTA_METHODS.RULE_GET, () => client.getQuotaRule('qr_1')],
+      [AICC_QUOTA_METHODS.RULE_PREVIEW, () => client.previewQuotaRule(draft)],
+      [AICC_QUOTA_METHODS.RULE_CREATE, () => client.createQuotaRule(draft)],
+      [AICC_QUOTA_METHODS.RULE_UPDATE, () => client.updateQuotaRule({ rule_id: 'qr_1', expected_version: 1, enabled: false })],
+      [AICC_QUOTA_METHODS.RULE_DELETE, () => client.deleteQuotaRule('qr_1', 2)],
+      [AICC_QUOTA_METHODS.ACCOUNT_GET, () => client.getQuotaAccount('qa_1')],
+      [AICC_QUOTA_METHODS.ACCOUNT_RECHARGE, () => client.rechargeQuotaAccount({ account_id: 'qa_1', recharge_id: 'r1', amount_tokens: 10 })],
+      [AICC_QUOTA_METHODS.RECHARGE_GET, () => client.getQuotaRecharge('r1')],
+      [AICC_QUOTA_METHODS.VISIBILITY_GET, () => client.getVisibility()],
+      [AICC_QUOTA_METHODS.VISIBILITY_UPDATE, () => client.updateVisibility({ expected_revision: 1, subject: 'type:limited', entries: [{ type: 'all_providers' }] })],
+      [AICC_QUOTA_METHODS.VISIBILITY_PREVIEW, () => client.previewVisibility({ user_id: 'bob' })],
+    )
     expect(coreAndManagementCases.map(([method]) => method)).toEqual([
-      ...Object.values(AICC_CORE_METHODS), ...Object.values(AICC_MANAGEMENT_METHODS),
+      ...Object.values(AICC_CORE_METHODS), ...Object.values(AICC_MANAGEMENT_METHODS), ...Object.values(AICC_QUOTA_METHODS),
     ])
     for (const [method, invoke] of coreAndManagementCases) {
       await invoke()
@@ -197,6 +214,20 @@ describe('canonical AICC contract', () => {
       }
     }
     expect(new Set(Object.values(AICC_METHODS)).size).toBe(Object.values(AICC_METHODS).length)
+  })
+
+  it('exposes quota refusals by their wire code', async () => {
+    const fetcher = jest.fn(async () => new Response(JSON.stringify({
+      error: 'token quota is exhausted', code: 'quota_exhausted',
+      data: { code: 'quota_exhausted', message: 'token quota is exhausted', details: { required_tokens: 10, reset_at_ms: null } },
+      sys: [1],
+    })))
+    const client = new AiccClient(new kRPCClient('/kapi/aicc/', null, 1, { fetcher }))
+    const error = await client.chatCompletionsCreate({ exact_model: 'm@p', messages: [] }).catch((e: unknown) => e)
+    const refusal = aiccRefusalOf(error)
+    expect(refusal?.code).toBe('quota_exhausted')
+    expect((refusal?.details as { required_tokens: number }).required_tokens).toBe(10)
+    expect(aiccRefusalOf(new Error('quota_exhausted'))).toBeUndefined()
   })
 
   it('rejects unknown fields and invalid exact/logical model names before dispatch', async () => {

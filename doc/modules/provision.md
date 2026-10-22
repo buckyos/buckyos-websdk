@@ -71,7 +71,7 @@
 | `etc/zone_document.jwt` | zone_document_jwt | Owner 签名，< 4096 字节 |
 | `etc/zone_dns_records.json` | dns_records | 可选说明文件，不作激活标记 |
 | `etc/start_config.json` | start_config | 首次启动配置，含 admin_password_hash，不含任何私钥 |
-| `etc/node_gateway_params.json` | gateway_params | `did:bns:unactivated.local` 占位不算激活标记 |
+| `etc/node_gateway_params.json` | gateway_params | `device_did` 和从设备文档生成的字符串 `rtcp_port`（默认 `2980`）；`did:bns:unactivated.local` 占位不算激活标记 |
 | `etc/node_identity.json` | node_identity | node-daemon 的激活开关，最后提交 |
 
 Owner 恢复私钥另存到用户明确指定的路径（`wx` 独占创建，0600），不写入 start_config 或 Tool profile。

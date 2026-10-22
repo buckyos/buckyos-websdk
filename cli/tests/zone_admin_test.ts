@@ -32,6 +32,7 @@ Deno.test('admin verbs are registered and describable', () => {
       ['ai', 'providers', 'read'],
       ['ai', 'routing', 'read'],
       ['ai', 'usage', 'read'],
+      ['ai', 'quota', 'read'],
     ]
   ) {
     const described = registry.describe(module, verb)
@@ -140,8 +141,11 @@ Deno.test('ai read views call aicc and usage maps its range options', async () =
     }
     if (method === 'routing.get') return { routing: {}, settings_revision: 1 }
     if (method === 'usage.query') return { total: { total_requests: 0 } }
+    if (method === 'quota.query') return { user_id: 'alice', rules: [], near_limit_count: 0, exhausted_count: 0 }
     throw new Error(`unexpected method ${method}`)
   })
+  assertEquals((await run('ai', 'quota', { app: 'aiworkspace' }, clients)).user_id, 'alice')
+  assertEquals(calls.pop()?.params, { app_id: 'aiworkspace' })
   assertEquals((await run('ai', 'providers', {}, clients)).settings_revision, 1)
   assertEquals((await run('ai', 'routing', {}, clients)).routing, {})
   await run('ai', 'usage', {}, clients)

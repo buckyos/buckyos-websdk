@@ -27,7 +27,7 @@ const GROUPS = [
 export function createAiModule(): CommandModule {
   return {
     name: 'ai',
-    summary: 'Read AI provider, routing, and usage state of the AICC service',
+    summary: 'Read AI provider, routing, usage and token quota state of the AICC service',
     commands: [
       readCommand({
         verb: 'providers',
@@ -43,7 +43,36 @@ export function createAiModule(): CommandModule {
         description: 'An empty routing object means the default routing of the model catalog.',
       }),
       usageCommand(),
+      quotaCommand(),
     ],
+  }
+}
+
+function quotaCommand(): CommandDefinition {
+  return {
+    verb: 'quota',
+    summary: "Show the token quota rules that limit the caller's AI calls and what is left",
+    description:
+      'Admin rules on the caller and the caller\'s Apps, shared App rules, and the caller\'s own App limits, each with its current window or total account. A refused call returns quota_exhausted / quota_budget_exceeded with the blocking rules.',
+    options: [
+      { name: 'app', description: 'Only the rules that apply to calls of this App (an AppId or AgentId)', type: 'string' },
+    ],
+    inputSchema: {
+      type: 'object',
+      properties: { app: { type: 'string', minLength: 1 } },
+      additionalProperties: false,
+    },
+    outputSchema: OBJECT_OUTPUT,
+    resultSchemaVersion: 1,
+    access: { mode: 'fixed', level: 'read' },
+    asyncMode: 'sync',
+    requiresSession: true,
+    examples: ['buckyos ai quota', 'buckyos ai quota --app aiworkspace'],
+    handler: async (ctx, input) =>
+      expectObject(
+        await callService(ctx, AICC, 'quota.query', inputString(input, 'app') ? { app_id: inputString(input, 'app') } : {}),
+        'quota.query',
+      ),
   }
 }
 

@@ -31,7 +31,7 @@ export declare function newDeviceDocumentByJwkWithDid(name: string, publicKeyJwk
 export declare function loadDeviceDocJwtForRoots(roots: IdentityRoots, deviceDid: DID | DIDString): string;
 export declare function loadDeviceMiniDocJwtForRoots(roots: IdentityRoots, deviceDid: DID | DIDString): string;
 export declare function loadLocalDeviceDocumentForRoots(roots: IdentityRoots, nodeIdentity: BuckyOSLocalNodeIdentityConfig, verify: boolean): Promise<[string, BuckyOSDeviceDocument]>;
-export declare function saveNodeGatewayParams(etcDir: string, deviceDid: DID | DIDString): void;
+export declare function saveNodeGatewayParams(etcDir: string, deviceDid: DID | DIDString, rtcpPort?: number): void;
 export declare function saveLocalDeviceIdentityForRoots(etcDir: string, roots: IdentityRoots, nodeIdentity: BuckyOSLocalNodeIdentityConfig, deviceDoc: BuckyOSDeviceDocument, deviceDocJwt: string, deviceMiniDocJwt: string, devicePrivateKeyPem: string): DeviceIdentityPaths;
 export declare function decodeDeviceDocumentWithoutVerify(deviceDocJwt: string): BuckyOSDeviceDocument;
 //# sourceMappingURL=device_identity.d.ts.map

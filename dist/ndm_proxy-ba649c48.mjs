@@ -1326,7 +1326,21 @@ const AICC_MANAGEMENT_METHODS = {
   DRIVER_METADATA_UPDATE_GET: "driver_metadata_update.get",
   DRIVER_METADATA_UPDATE_SET: "driver_metadata_update.set"
 };
-const AICC_METHODS = { ...AICC_AI_METHODS, ...AICC_CORE_METHODS, ...AICC_MANAGEMENT_METHODS };
+const AICC_QUOTA_METHODS = {
+  RULE_LIST: "quota.rule.list",
+  RULE_GET: "quota.rule.get",
+  RULE_PREVIEW: "quota.rule.preview",
+  RULE_CREATE: "quota.rule.create",
+  RULE_UPDATE: "quota.rule.update",
+  RULE_DELETE: "quota.rule.delete",
+  ACCOUNT_GET: "quota.account.get",
+  ACCOUNT_RECHARGE: "quota.account.recharge",
+  RECHARGE_GET: "quota.recharge.get",
+  VISIBILITY_GET: "visibility.get",
+  VISIBILITY_UPDATE: "visibility.update",
+  VISIBILITY_PREVIEW: "visibility.preview"
+};
+const AICC_METHODS = { ...AICC_AI_METHODS, ...AICC_CORE_METHODS, ...AICC_MANAGEMENT_METHODS, ...AICC_QUOTA_METHODS };
 const AICC_FEATURES = {
   PLAN: "plan",
   TOOL_CALL: "tool_call",
@@ -1338,6 +1352,13 @@ const AICC_FEATURES = {
   VIDEO_UNDERSTAND: "video_understand"
 };
 const AICC_EXECUTION_MODES = { IMMEDIATE: "immediate", STREAM: "stream" };
+const AICC_POLICY_REFUSAL_CODES = ["quota_exhausted", "quota_budget_exceeded", "quota_unavailable", "resource_not_permitted", "attribution_unavailable"];
+function aiccRefusalOf(error) {
+  if (!(error instanceof RPCError) || !AICC_POLICY_REFUSAL_CODES.includes(error.code))
+    return void 0;
+  const data = error.data;
+  return { code: error.code, message: (data == null ? void 0 : data.message) ?? error.message, retriable: data == null ? void 0 : data.retriable, details: data == null ? void 0 : data.details };
+}
 const AI_METHOD_SET = new Set(Object.values(AICC_AI_METHODS));
 function isAiccAiMethod(method) {
   return AI_METHOD_SET.has(method);
@@ -1427,8 +1448,8 @@ const schemas = {
   [AICC_CORE_METHODS.HELPER_TEXT_TO_IMAGE]: ["logical_model", "trace_id", "execution_mode", "requirements", "disable", "policy", "prompt", "negative_prompt", "n", "aspect_ratio", "size", "quality", "style", "seed", "output", "idempotency_key", "task_options", "session_overlay", "session_id"],
   [AICC_CORE_METHODS.CANCEL]: ["task_id"],
   [AICC_MANAGEMENT_METHODS.SERVICE_RELOAD_SETTINGS]: [],
-  [AICC_MANAGEMENT_METHODS.QUOTA_QUERY]: ["capability", "method"],
-  [AICC_MANAGEMENT_METHODS.USAGE_QUERY]: ["time_range", "filters", "group_by", "time_bucket", "output_mode", "limit", "cursor"],
+  [AICC_MANAGEMENT_METHODS.QUOTA_QUERY]: ["app_id"],
+  [AICC_MANAGEMENT_METHODS.USAGE_QUERY]: ["time_range", "filters", "group_by", "time_bucket", "output_mode", "limit", "cursor", "zone_wide"],
   [AICC_MANAGEMENT_METHODS.TRACE_QUERY]: ["limit", "cursor", "start_time_ms", "end_time_ms", "task_ids", "request_ids", "api_types", "provider_instance_names", "selected_exact_models", "scheduler_profiles", "query", "outcome"],
   [AICC_MANAGEMENT_METHODS.ROUTING_GET]: [],
   [AICC_MANAGEMENT_METHODS.ROUTING_PREVIEW]: ["paths", "explain", "requirements"],
@@ -1437,12 +1458,12 @@ const schemas = {
   [AICC_MANAGEMENT_METHODS.PROTOCOL_ADAPTER_LIST]: [],
   [AICC_MANAGEMENT_METHODS.PROVIDER_VALIDATE]: ["provider_instance_name", "provider_type", "provider_profile_id", "protocol_family_id", "protocol_adapter_id", "base_url", "credentials", "region", "workspace", "account", "provider_rules_id", "auth", "discovery", "instance_rules", "timeout_ms", "auto_sync_models"],
   [AICC_MANAGEMENT_METHODS.PROVIDER_ADD]: ["provider_instance_name", "provider_type", "provider_profile_id", "protocol_family_id", "protocol_adapter_id", "base_url", "credentials", "region", "workspace", "account", "provider_rules_id", "auth", "discovery", "instance_rules", "timeout_ms", "auto_sync_models"],
-  [AICC_MANAGEMENT_METHODS.PROVIDER_LIST]: ["method"],
+  [AICC_MANAGEMENT_METHODS.PROVIDER_LIST]: ["method", "view"],
   [AICC_MANAGEMENT_METHODS.PROVIDER_HEALTH]: ["exact_model"],
   [AICC_MANAGEMENT_METHODS.PROVIDER_UPDATE]: ["provider_instance_name", "settings_revision", "enabled", "base_url", "credential", "provider_profile_id", "protocol_adapter_id", "discovery", "instance_rules"],
   [AICC_MANAGEMENT_METHODS.PROVIDER_DELETE]: ["provider_instance_name"],
   [AICC_MANAGEMENT_METHODS.PROVIDER_REFRESH_MODELS]: ["provider_instance_name"],
-  [AICC_MANAGEMENT_METHODS.MODELS_LIST]: [],
+  [AICC_MANAGEMENT_METHODS.MODELS_LIST]: ["view"],
   [AICC_MANAGEMENT_METHODS.DRIVER_METADATA_UPDATE_GET]: [],
   [AICC_MANAGEMENT_METHODS.DRIVER_METADATA_UPDATE_SET]: ["enabled", "source_url", "interval_secs"]
 };
@@ -1608,8 +1629,44 @@ class AiccClient {
   refreshProviderModels(r) {
     return this.call(AICC_MANAGEMENT_METHODS.PROVIDER_REFRESH_MODELS, r);
   }
-  listModels() {
-    return this.call(AICC_MANAGEMENT_METHODS.MODELS_LIST, {});
+  listModels(r = {}) {
+    return this.call(AICC_MANAGEMENT_METHODS.MODELS_LIST, r);
+  }
+  listQuotaRules(r = {}) {
+    return this.call(AICC_QUOTA_METHODS.RULE_LIST, r);
+  }
+  getQuotaRule(ruleId) {
+    return this.call(AICC_QUOTA_METHODS.RULE_GET, { rule_id: ruleId });
+  }
+  previewQuotaRule(draft) {
+    return this.call(AICC_QUOTA_METHODS.RULE_PREVIEW, { draft });
+  }
+  createQuotaRule(draft) {
+    return this.call(AICC_QUOTA_METHODS.RULE_CREATE, { draft });
+  }
+  updateQuotaRule(r) {
+    return this.call(AICC_QUOTA_METHODS.RULE_UPDATE, r);
+  }
+  deleteQuotaRule(ruleId, expectedVersion) {
+    return this.call(AICC_QUOTA_METHODS.RULE_DELETE, { rule_id: ruleId, expected_version: expectedVersion });
+  }
+  getQuotaAccount(accountId) {
+    return this.call(AICC_QUOTA_METHODS.ACCOUNT_GET, { account_id: accountId });
+  }
+  rechargeQuotaAccount(r) {
+    return this.call(AICC_QUOTA_METHODS.ACCOUNT_RECHARGE, r);
+  }
+  getQuotaRecharge(rechargeId) {
+    return this.call(AICC_QUOTA_METHODS.RECHARGE_GET, { recharge_id: rechargeId });
+  }
+  getVisibility() {
+    return this.call(AICC_QUOTA_METHODS.VISIBILITY_GET, {});
+  }
+  updateVisibility(r) {
+    return this.call(AICC_QUOTA_METHODS.VISIBILITY_UPDATE, r);
+  }
+  previewVisibility(r = {}) {
+    return this.call(AICC_QUOTA_METHODS.VISIBILITY_PREVIEW, r);
   }
   getDriverMetadataUpdate() {
     return this.call(AICC_MANAGEMENT_METHODS.DRIVER_METADATA_UPDATE_GET, {});
@@ -28973,7 +29030,7 @@ export {
   WORKFLOW_EXECUTE_RPC_TASK_SCHEMA_ID as ay,
   WORKFLOW_RUN_TARGET_TASK_SCHEMA_ID as az,
   bns_client as b,
-  BnsTxExecutor as b$,
+  decodeBnsPublishDocumentCalldata as b$,
   TaskPhase as b0,
   isTerminalTaskPhase as b1,
   TaskWaitReasonKind as b2,
@@ -28984,33 +29041,33 @@ export {
   TaskAction as b7,
   TaskGrantScope as b8,
   TaskDataScope as b9,
-  aiccTextMessage as bA,
-  aiccMessageTextContent as bB,
-  aiccMessageFirstText as bC,
-  validateAiccMessage as bD,
-  AiccClient as bE,
-  decisionRequirements as bF,
-  validateDecisionRequest as bG,
-  validateDecisionAnswers as bH,
-  KEventReader as bI,
-  KEventClient as bJ,
-  appIdFromDid as bK,
-  parseAppId as bL,
-  appDidFromId as bM,
-  createAppInstanceId as bN,
-  parseAppInstanceId as bO,
-  BNS_EVM_DEFAULT_GAS_LIMIT as bP,
-  BNS_EVM_DEFAULT_MAX_FEE_PER_GAS as bQ,
-  BNS_EVM_DEFAULT_MAX_PRIORITY_FEE_PER_GAS as bR,
-  BNS_MAX_INLINE_DOCUMENT_BYTES as bS,
-  BNS_DNS_TXT_DEFAULT_TTL as bT,
-  BNS_DNS_TXT_DOC_TYPE as bU,
-  BNS_PUBLISH_DOCUMENT_ABI as bV,
-  BnsEvmTxError as bW,
-  BnsEvmTxBuilder as bX,
-  decodeBnsPublishDocumentCalldata as bY,
-  BnsTxExecutorError as bZ,
-  walletUserHasSnAccount as b_,
+  AICC_POLICY_REFUSAL_CODES as bA,
+  aiccRefusalOf as bB,
+  isAiccAiMethod as bC,
+  aiccTextMessage as bD,
+  aiccMessageTextContent as bE,
+  aiccMessageFirstText as bF,
+  validateAiccMessage as bG,
+  AiccClient as bH,
+  decisionRequirements as bI,
+  validateDecisionRequest as bJ,
+  validateDecisionAnswers as bK,
+  KEventReader as bL,
+  KEventClient as bM,
+  appIdFromDid as bN,
+  parseAppId as bO,
+  appDidFromId as bP,
+  createAppInstanceId as bQ,
+  parseAppInstanceId as bR,
+  BNS_EVM_DEFAULT_GAS_LIMIT as bS,
+  BNS_EVM_DEFAULT_MAX_FEE_PER_GAS as bT,
+  BNS_EVM_DEFAULT_MAX_PRIORITY_FEE_PER_GAS as bU,
+  BNS_MAX_INLINE_DOCUMENT_BYTES as bV,
+  BNS_DNS_TXT_DEFAULT_TTL as bW,
+  BNS_DNS_TXT_DOC_TYPE as bX,
+  BNS_PUBLISH_DOCUMENT_ABI as bY,
+  BnsEvmTxError as bZ,
+  BnsEvmTxBuilder as b_,
   StorageDomain as ba,
   TaskEventType as bb,
   TaskManagerClient as bc,
@@ -29033,11 +29090,14 @@ export {
   AICC_AI_METHODS as bt,
   AICC_CORE_METHODS as bu,
   AICC_MANAGEMENT_METHODS as bv,
-  AICC_METHODS as bw,
-  AICC_FEATURES as bx,
-  AICC_EXECUTION_MODES as by,
-  isAiccAiMethod as bz,
+  AICC_QUOTA_METHODS as bw,
+  AICC_METHODS as bx,
+  AICC_FEATURES as by,
+  AICC_EXECUTION_MODES as bz,
   createSDKModule as c,
+  BnsTxExecutorError as c0,
+  walletUserHasSnAccount as c1,
+  BnsTxExecutor as c2,
   BS_SERVICE_TASK_MANAGER as d,
   getActiveRuntimeType as e,
   getActiveZoneGatewayOrigin as f,
@@ -29062,4 +29122,4 @@ export {
   NOTIFY_TEXT_CONTROL_ID as y,
   NOTIFY_ACTION_ANSWER as z
 };
-//# sourceMappingURL=ndm_proxy-b5c95488.mjs.map
+//# sourceMappingURL=ndm_proxy-ba649c48.mjs.map

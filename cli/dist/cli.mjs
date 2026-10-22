@@ -5106,7 +5106,7 @@ function validateContentHandlers(value, permissions) {
   }
   return value;
 }
-const PACKAGE_VERSION = "0.7.136";
+const PACKAGE_VERSION = "0.7.137";
 const TOOL_VERSION = PACKAGE_VERSION;
 const SDK_VERSION = PACKAGE_VERSION;
 const PROTOCOL_VERSION = "1";
@@ -9849,7 +9849,7 @@ const GROUPS = [
 function createAiModule() {
   return {
     name: "ai",
-    summary: "Read AI provider, routing, and usage state of the AICC service",
+    summary: "Read AI provider, routing, usage and token quota state of the AICC service",
     commands: [
       readCommand({
         verb: "providers",
@@ -9863,8 +9863,34 @@ function createAiModule() {
         method: "routing.get",
         description: "An empty routing object means the default routing of the model catalog."
       }),
-      usageCommand()
+      usageCommand(),
+      quotaCommand()
     ]
+  };
+}
+function quotaCommand() {
+  return {
+    verb: "quota",
+    summary: "Show the token quota rules that limit the caller's AI calls and what is left",
+    description: "Admin rules on the caller and the caller's Apps, shared App rules, and the caller's own App limits, each with its current window or total account. A refused call returns quota_exhausted / quota_budget_exceeded with the blocking rules.",
+    options: [
+      { name: "app", description: "Only the rules that apply to calls of this App (an AppId or AgentId)", type: "string" }
+    ],
+    inputSchema: {
+      type: "object",
+      properties: { app: { type: "string", minLength: 1 } },
+      additionalProperties: false
+    },
+    outputSchema: OBJECT_OUTPUT$1,
+    resultSchemaVersion: 1,
+    access: { mode: "fixed", level: "read" },
+    asyncMode: "sync",
+    requiresSession: true,
+    examples: ["buckyos ai quota", "buckyos ai quota --app aiworkspace"],
+    handler: async (ctx, input) => expectObject$4(
+      await callService(ctx, AICC, "quota.query", inputString(input, "app") ? { app_id: inputString(input, "app") } : {}),
+      "quota.query"
+    )
   };
 }
 function readCommand(options) {

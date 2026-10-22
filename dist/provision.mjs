@@ -111,11 +111,15 @@ async function loadLocalDeviceDocumentForRoots(roots, nodeIdentity, verify) {
   }
   return [deviceDocJwt, deviceDoc];
 }
-function saveNodeGatewayParams(etcDir, deviceDid) {
+function saveNodeGatewayParams(etcDir, deviceDid, rtcpPort = 2980) {
+  if (!Number.isInteger(rtcpPort) || rtcpPort < 1 || rtcpPort > 65535) {
+    throw new Error(`invalid device RTCP port: ${rtcpPort}`);
+  }
   const path = requireNode$3("node:path");
   writeJsonPretty(path.join(etcDir, NODE_GATEWAY_PARAMS_FILE_NAME), {
     params: {
-      device_did: asDid(deviceDid).toString()
+      device_did: asDid(deviceDid).toString(),
+      rtcp_port: String(rtcpPort)
     }
   });
 }
@@ -126,7 +130,7 @@ function saveLocalDeviceIdentityForRoots(etcDir, roots, nodeIdentity, deviceDoc,
   fs.mkdirSync(paths.publicDir, { recursive: true });
   fs.mkdirSync(paths.securityDir, { recursive: true });
   writeJsonPretty(path.join(etcDir, "node_identity.json"), nodeIdentity);
-  saveNodeGatewayParams(etcDir, nodeIdentity.device_did);
+  saveNodeGatewayParams(etcDir, nodeIdentity.device_did, deviceDoc.rtcp_port);
   writeJsonPretty(paths.didJson, deviceDocumentToOrderedJson(deviceDoc));
   fs.writeFileSync(paths.deviceDocJwt, deviceDocJwt);
   fs.writeFileSync(paths.deviceMiniDocJwt, deviceMiniDocJwt);
@@ -14967,7 +14971,7 @@ async function generateMaterial(params, adminPassword, ownerKeyPair, deviceKeyPa
     zoneDocumentJwt,
     nodeIdentity,
     startConfig,
-    gatewayParams: { params: { device_did: deviceDidStr } },
+    gatewayParams: { params: { device_did: deviceDidStr, rtcp_port: String(params.rtcpPort) } },
     dnsRecords: buildActivationDnsRecords(params.domain, params.publicIp)
   };
 }

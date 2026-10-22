@@ -55,7 +55,34 @@ export declare const AICC_MANAGEMENT_METHODS: {
     readonly DRIVER_METADATA_UPDATE_GET: "driver_metadata_update.get";
     readonly DRIVER_METADATA_UPDATE_SET: "driver_metadata_update.set";
 };
+/** Token quota and resource visibility (product/ai_center/AI_Center_Quota_PRD.md). */
+export declare const AICC_QUOTA_METHODS: {
+    readonly RULE_LIST: "quota.rule.list";
+    readonly RULE_GET: "quota.rule.get";
+    readonly RULE_PREVIEW: "quota.rule.preview";
+    readonly RULE_CREATE: "quota.rule.create";
+    readonly RULE_UPDATE: "quota.rule.update";
+    readonly RULE_DELETE: "quota.rule.delete";
+    readonly ACCOUNT_GET: "quota.account.get";
+    readonly ACCOUNT_RECHARGE: "quota.account.recharge";
+    readonly RECHARGE_GET: "quota.recharge.get";
+    readonly VISIBILITY_GET: "visibility.get";
+    readonly VISIBILITY_UPDATE: "visibility.update";
+    readonly VISIBILITY_PREVIEW: "visibility.preview";
+};
 export declare const AICC_METHODS: {
+    readonly RULE_LIST: "quota.rule.list";
+    readonly RULE_GET: "quota.rule.get";
+    readonly RULE_PREVIEW: "quota.rule.preview";
+    readonly RULE_CREATE: "quota.rule.create";
+    readonly RULE_UPDATE: "quota.rule.update";
+    readonly RULE_DELETE: "quota.rule.delete";
+    readonly ACCOUNT_GET: "quota.account.get";
+    readonly ACCOUNT_RECHARGE: "quota.account.recharge";
+    readonly RECHARGE_GET: "quota.recharge.get";
+    readonly VISIBILITY_GET: "visibility.get";
+    readonly VISIBILITY_UPDATE: "visibility.update";
+    readonly VISIBILITY_PREVIEW: "visibility.preview";
     readonly SERVICE_RELOAD_SETTINGS: "service.reload_settings";
     readonly QUOTA_QUERY: "quota.query";
     readonly USAGE_QUERY: "usage.query";
@@ -208,7 +235,17 @@ export interface AiArtifact {
     mime?: string;
     metadata?: JsonValue;
 }
-export type AiccErrorCode = 'invalid_request' | 'invalid_method' | 'schema_validation_failed' | 'invalid_model_name' | 'resource_invalid' | 'no_provider_available' | 'no_candidate_model' | 'fallback_not_allowed' | 'provider_start_failed' | 'provider_error' | 'unsupported_execution_mode' | 'timeout' | 'budget_exceeded' | 'policy_denied' | 'idempotency_conflict' | 'settings_revision_conflict' | 'cancelled' | 'internal_error';
+export type AiccErrorCode = 'invalid_request' | 'invalid_method' | 'schema_validation_failed' | 'invalid_model_name' | 'resource_invalid' | 'no_provider_available' | 'no_candidate_model' | 'fallback_not_allowed' | 'provider_start_failed' | 'provider_error' | 'unsupported_execution_mode' | 'timeout' | 'budget_exceeded' | 'policy_denied' | 'idempotency_conflict' | 'settings_revision_conflict' | 'cancelled' | 'internal_error' | 
+/** An enabled token quota rule has nothing left (`details`: QuotaDenialDetails). */
+'quota_exhausted' | 
+/** Tokens are left but fewer than the call reserves; lower the budget (`details`: QuotaDenialDetails). */
+'quota_budget_exceeded' | 
+/** A configured rule could not be read or reserved; retry later, never treat it as unlimited. */
+'quota_unavailable' | 
+/** The Provider / model is not permitted to the caller (hidden identities are not disclosed). */
+'resource_not_permitted' | 
+/** The AICC user of a delegated run cannot be determined. */
+'attribution_unavailable';
 export interface AiccError {
     code: AiccErrorCode;
     message: string;
@@ -216,6 +253,10 @@ export interface AiccError {
     retriable?: boolean;
     details?: JsonValue;
 }
+/** Token quota and resource policy refusals: they reach the client as a detailed kRPC error. */
+export declare const AICC_POLICY_REFUSAL_CODES: readonly AiccErrorCode[];
+/** The AICC error of a refused call (its `code` and `details`), read from the structured kRPC error. */
+export declare function aiccRefusalOf(error: unknown): AiccError | undefined;
 export interface SettingsRevisionConflictDetails {
     expected_revision: number;
     actual_revision: number;
@@ -898,7 +939,11 @@ export interface ComputerUseResponse extends InferenceResponse {
 export type EmptyRequest = Record<string, never>;
 export type ServiceReloadSettingsRequest = EmptyRequest;
 export type RoutingGetRequest = EmptyRequest;
-export type ListModelsRequest = EmptyRequest;
+/** `use` (default): what the caller may use; `manage` (admin): the whole inventory, each model marked `accessible`. */
+export type AiccListView = 'use' | 'manage';
+export interface ListModelsRequest {
+    view?: AiccListView;
+}
 export type ProviderCatalogRequest = EmptyRequest;
 export type ProtocolAdapterListRequest = EmptyRequest;
 export type DriverMetadataUpdateGetReq = EmptyRequest;
@@ -909,18 +954,235 @@ export interface ServiceReloadSettingsResponse {
     ok: boolean;
     settings_revision: number;
 }
-export interface QuotaQueryRequest {
-    capability?: Capability;
-    method?: string;
+export type QuotaRuleSource = 'admin' | 'user';
+export type QuotaObject = {
+    type: 'user';
+    user_id: string;
+} | {
+    type: 'app';
+    app_id: string;
+} | {
+    type: 'user_app';
+    user_id: string;
+    app_id: string;
+};
+export type QuotaResource = {
+    type: 'all';
+} | {
+    type: 'provider';
+    provider_instance_name: string;
+} | {
+    type: 'model';
+    exact_model: string;
+} | {
+    type: 'hidden';
+};
+export type QuotaPeriod = '4h' | '24h' | '72h' | 'week';
+export type QuotaKind = 'periodic' | 'total';
+export type QuotaStatus = 'normal' | 'near_limit' | 'exhausted' | 'forbidden' | 'disabled' | 'resource_unavailable';
+export interface QuotaPendingPeriod {
+    period: QuotaPeriod;
+    effective_at_ms: number;
+    conflict?: boolean;
 }
-export interface QuotaView {
-    state: 'normal' | 'near_limit' | 'exhausted';
-    remaining_request_units?: number;
-    remaining_cost?: Money;
-    reset_at?: string;
+export interface QuotaRule {
+    rule_id: string;
+    source: QuotaRuleSource;
+    object: QuotaObject;
+    resource: QuotaResource;
+    kind: QuotaKind;
+    period?: QuotaPeriod;
+    limit_tokens?: number;
+    account_id?: string;
+    enabled: boolean;
+    deleted?: boolean;
+    pending_period?: QuotaPendingPeriod;
+    version: number;
+    created_by: string;
+    created_at_ms: number;
+    updated_by: string;
+    updated_at_ms: number;
+}
+export interface QuotaUsageState {
+    status: QuotaStatus;
+    window_start_ms?: number;
+    window_end_ms?: number;
+    reset_at_ms: number | null;
+    limit_tokens?: number;
+    granted_tokens?: number;
+    account_start_ms?: number;
+    settled_tokens: number;
+    reserved_tokens: number;
+    pending_tokens: number;
+    available_tokens: number;
+    debt_tokens: number;
+    updated_at_ms: number;
+}
+export interface QuotaRuleView {
+    rule: QuotaRule;
+    state: QuotaUsageState;
+    editable: boolean;
+}
+export interface QuotaQueryRequest {
+    app_id?: string;
 }
 export interface QuotaQueryResponse {
-    quota: QuotaView;
+    user_id: string;
+    rules: QuotaRuleView[];
+    near_limit_count: number;
+    exhausted_count: number;
+}
+export interface QuotaRuleListRequest {
+    scope?: 'mine' | 'manage';
+    include_deleted?: boolean;
+}
+export interface QuotaRuleListResponse {
+    rules: QuotaRuleView[];
+}
+export interface QuotaAuditRecord {
+    audit_id: string;
+    target_type: string;
+    target_id: string;
+    action: string;
+    operator: string;
+    before?: JsonValue;
+    after?: JsonValue;
+    created_at_ms: number;
+}
+export interface QuotaGrantRecord {
+    grant_id: string;
+    account_id: string;
+    kind: 'initial' | 'recharge';
+    amount_tokens: number;
+    operator: string;
+    note?: string;
+    created_at_ms: number;
+}
+export interface QuotaAccountView {
+    account_id: string;
+    object: QuotaObject;
+    resource: QuotaResource;
+    granted_tokens: number;
+    settled_tokens: number;
+    reserved_tokens: number;
+    pending_tokens: number;
+    available_tokens: number;
+    debt_tokens: number;
+    start_at_ms: number;
+    version: number;
+    updated_at_ms: number;
+    enforced: boolean;
+}
+export interface QuotaRuleDetail {
+    rule: QuotaRuleView;
+    constraints: QuotaRuleView[];
+    blocking_rule_ids: string[];
+    account?: QuotaAccountView;
+    grants?: QuotaGrantRecord[];
+    audit?: QuotaAuditRecord[];
+}
+export interface QuotaRuleDraft {
+    source?: QuotaRuleSource;
+    object: QuotaObject;
+    resource: QuotaResource;
+    kind: QuotaKind;
+    period?: QuotaPeriod;
+    limit_tokens?: number;
+    initial_tokens?: number;
+}
+export interface QuotaRulePreviewResponse {
+    state: QuotaUsageState;
+    existing_account?: QuotaAccountView;
+    conflict_rule_id?: string;
+    other_constraints: QuotaRuleView[];
+}
+export interface QuotaRuleUpdateRequest {
+    rule_id: string;
+    expected_version: number;
+    limit_tokens?: number;
+    period?: QuotaPeriod;
+    enabled?: boolean;
+    cancel_pending_period?: boolean;
+}
+export interface QuotaRechargeRequest {
+    account_id: string;
+    recharge_id: string;
+    amount_tokens: number;
+    note?: string;
+}
+export interface QuotaRechargeResponse {
+    recharge: QuotaGrantRecord;
+    account: QuotaAccountView;
+    replayed: boolean;
+}
+export interface QuotaBlockingRule {
+    rule_id: string;
+    source: QuotaRuleSource;
+    object: QuotaObject;
+    resource: QuotaResource;
+    kind: QuotaKind;
+    period?: QuotaPeriod;
+    state: QuotaUsageState;
+    recoverable: boolean;
+}
+/** `details` of `quota_exhausted` / `quota_budget_exceeded`. */
+export interface QuotaDenialDetails {
+    required_tokens: number;
+    max_allowed_tokens: number;
+    provider_instance_name: string;
+    exact_model: string;
+    blocking: QuotaBlockingRule[];
+    reset_at_ms: number | null;
+}
+export type VisibilityEntry = {
+    type: 'all_providers';
+} | {
+    type: 'provider_all_models';
+    provider_instance_name: string;
+} | {
+    type: 'provider_models';
+    provider_instance_name: string;
+    exact_models: string[];
+};
+export interface VisibilitySubjectPolicy {
+    subject: string;
+    entries: VisibilityEntry[];
+    updated_by: string;
+    updated_at_ms: number;
+}
+export interface VisibilityGetResponse {
+    revision: number;
+    subjects: VisibilitySubjectPolicy[];
+    providers: {
+        provider_instance_name: string;
+        enabled: boolean;
+        exact_models: string[];
+    }[];
+    unexposed_models: string[];
+}
+export interface VisibilityUpdateRequest {
+    expected_revision: number;
+    subject: string;
+    entries: VisibilityEntry[];
+}
+export interface VisibilityPreviewRequest {
+    user_id?: string;
+    draft?: {
+        subject: string;
+        entries: VisibilityEntry[];
+    };
+}
+export interface VisibilityPreviewResponse {
+    user_id: string;
+    grants: {
+        provider_instance_name: string;
+        exact_model?: string;
+        sources: string[];
+    }[];
+    added?: string[];
+    removed?: string[];
+    affected_users?: string[];
+    caller_loses?: string[];
 }
 export interface ProviderCatalogEntry {
     provider_profile_id: string;
@@ -1024,6 +1286,7 @@ export interface ProviderRefreshModelsResponse {
 }
 export interface ProviderListRequest {
     method?: string;
+    view?: AiccListView;
 }
 export type ProviderInstanceAuthMode = 'api_key' | 'dynamic_login';
 export interface ProviderInstanceAuthView {
@@ -1116,6 +1379,8 @@ export interface QueryUsageRequest {
     output_mode?: 'summary' | 'events' | 'summary_and_events';
     limit?: number;
     cursor?: string;
+    /** Admins only: every user of the Zone instead of the caller alone. */
+    zone_wide?: boolean;
 }
 export interface UsageAggregate {
     total_requests: number;
@@ -1145,6 +1410,8 @@ export interface AiccUsageEvent {
     request_units?: number;
     usage_json: AiUsage;
     finance_snapshot_json?: JsonValue;
+    operator_id?: string;
+    attribution?: JsonValue;
     created_at_ms: number;
 }
 export interface UsageGroupedRow {
@@ -1315,7 +1582,28 @@ export declare class AiccClient {
     updateProvider(r: ProviderUpdateRequest): Promise<ProviderUpdateResponse>;
     deleteProvider(r: ProviderDeleteRequest): Promise<ProviderDeleteResponse>;
     refreshProviderModels(r: ProviderRefreshModelsRequest): Promise<ProviderRefreshModelsResponse>;
-    listModels(): Promise<JsonValue>;
+    listModels(r?: ListModelsRequest): Promise<JsonValue>;
+    listQuotaRules(r?: QuotaRuleListRequest): Promise<QuotaRuleListResponse>;
+    getQuotaRule(ruleId: string): Promise<QuotaRuleDetail>;
+    previewQuotaRule(draft: QuotaRuleDraft): Promise<QuotaRulePreviewResponse>;
+    createQuotaRule(draft: QuotaRuleDraft): Promise<QuotaRuleView>;
+    updateQuotaRule(r: QuotaRuleUpdateRequest): Promise<QuotaRuleView>;
+    deleteQuotaRule(ruleId: string, expectedVersion: number): Promise<{
+        ok: boolean;
+        rule_id: string;
+    }>;
+    getQuotaAccount(accountId: string): Promise<{
+        account: QuotaAccountView;
+        grants: QuotaGrantRecord[];
+    }>;
+    rechargeQuotaAccount(r: QuotaRechargeRequest): Promise<QuotaRechargeResponse>;
+    getQuotaRecharge(rechargeId: string): Promise<{
+        recharge?: QuotaGrantRecord | undefined;
+        account?: QuotaAccountView | undefined;
+    }>;
+    getVisibility(): Promise<VisibilityGetResponse>;
+    updateVisibility(r: VisibilityUpdateRequest): Promise<VisibilityGetResponse>;
+    previewVisibility(r?: VisibilityPreviewRequest): Promise<VisibilityPreviewResponse>;
     getDriverMetadataUpdate(): Promise<DriverMetadataUpdateView>;
     setDriverMetadataUpdate(r: DriverMetadataUpdateSetReq): Promise<DriverMetadataUpdateSetResponse>;
 }

@@ -197,11 +197,15 @@ export async function loadLocalDeviceDocumentForRoots(
 }
 
 // Mirrors Rust save_node_gateway_params.
-export function saveNodeGatewayParams(etcDir: string, deviceDid: DID | DIDString): void {
+export function saveNodeGatewayParams(etcDir: string, deviceDid: DID | DIDString, rtcpPort = 2980): void {
+  if (!Number.isInteger(rtcpPort) || rtcpPort < 1 || rtcpPort > 65535) {
+    throw new Error(`invalid device RTCP port: ${rtcpPort}`)
+  }
   const path = requireNode('node:path')
   writeJsonPretty(path.join(etcDir, NODE_GATEWAY_PARAMS_FILE_NAME), {
     params: {
       device_did: asDid(deviceDid).toString(),
+      rtcp_port: String(rtcpPort),
     },
   })
 }
@@ -229,7 +233,7 @@ export function saveLocalDeviceIdentityForRoots(
   fs.mkdirSync(paths.securityDir, { recursive: true })
 
   writeJsonPretty(path.join(etcDir, 'node_identity.json'), nodeIdentity)
-  saveNodeGatewayParams(etcDir, nodeIdentity.device_did)
+  saveNodeGatewayParams(etcDir, nodeIdentity.device_did, deviceDoc.rtcp_port)
   writeJsonPretty(paths.didJson, deviceDocumentToOrderedJson(deviceDoc))
   fs.writeFileSync(paths.deviceDocJwt, deviceDocJwt)
   fs.writeFileSync(paths.deviceMiniDocJwt, deviceMiniDocJwt)

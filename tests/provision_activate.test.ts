@@ -10,6 +10,7 @@ import {
   checkOfflineActivation,
   hashAdminPassword,
   inspectActivationRoot,
+  saveNodeGatewayParams,
   validateOwnerName,
   validateZoneDomain,
 } from '../src/provision'
@@ -70,6 +71,19 @@ describe('offline activation API', () => {
   })
   afterEach(() => {
     fs.rmSync(sandbox, { recursive: true, force: true })
+  })
+
+  test('gateway parameters use the device RTCP port and reject invalid ports before writing', () => {
+    const deviceDid = 'did:web:ood1.charlie.me'
+    const gatewayPath = path.join(sandbox, 'node_gateway_params.json')
+    saveNodeGatewayParams(sandbox, deviceDid)
+    expect(readJson(gatewayPath).params.rtcp_port).toBe('2980')
+    saveNodeGatewayParams(sandbox, deviceDid, 2981)
+    expect(readJson(gatewayPath)).toEqual({ params: { device_did: deviceDid, rtcp_port: '2981' } })
+    for (const port of [0, 65536, 1.5, NaN]) {
+      expect(() => saveNodeGatewayParams(sandbox, deviceDid, port)).toThrow('invalid device RTCP port')
+    }
+    expect(readJson(gatewayPath).params.rtcp_port).toBe('2981')
   })
 
   test('status reports not_installed and unactivated roots', async () => {
@@ -296,7 +310,7 @@ describe('offline activation API', () => {
       zone_iat: zone.iat,
     })
     expect(readJson(path.join(rootDir, 'etc', 'node_gateway_params.json'))).toEqual({
-      params: { device_did: result.deviceDid },
+      params: { device_did: result.deviceDid, rtcp_port: '2981' },
     })
     const identityDir = path.join(rootDir, 'local', 'identity', 'ood1.home.example.com')
     expect(readJson(path.join(identityDir, 'did.json')).id).toBe(result.deviceDid)

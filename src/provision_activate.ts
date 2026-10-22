@@ -1272,7 +1272,7 @@ async function generateMaterial(
     zoneDocumentJwt,
     nodeIdentity,
     startConfig,
-    gatewayParams: { params: { device_did: deviceDidStr } },
+    gatewayParams: { params: { device_did: deviceDidStr, rtcp_port: String(params.rtcpPort) } },
     dnsRecords: buildActivationDnsRecords(params.domain, params.publicIp),
   }
 }

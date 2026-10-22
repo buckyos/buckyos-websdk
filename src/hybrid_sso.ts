@@ -7,7 +7,7 @@ import type { ZoneUserType } from './runtime'
 
 export type AuthMethod = 'password' | 'exclusive_invite' | 'did_federation' | 'assertion'
 
-export type SessionScope = 'account_self' | 'msg_group' | 'aiworkspace' | 'homestation'
+export type SessionScope = 'account_self' | 'msg_group' | 'aiworkspace' | 'homestation' | 'aicc'
 
 export type DenyReason =
   | 'session_kind_not_allowed'
