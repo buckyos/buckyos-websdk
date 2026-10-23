@@ -16,7 +16,6 @@ export interface BrowserUserInfo {
     /** Zone account type as verify-hub returned it; see `ZoneUserType`. */
     user_type: string;
 }
-export declare const LOGIN_EVENT = "onLogin";
 export declare function hashPassword(username: string, password: string, nonce?: number | null): string;
 export declare function cleanLocalAccountInfo(appId: string): void;
 export declare function saveLocalAccountInfo(appId: string, account_info: AccountInfo): void;
@@ -27,5 +26,4 @@ export declare function clearBrowserUserInfo(): void;
 export declare function saveBrowserIdentity(identity: unknown): void;
 export declare function getBrowserIdentityRaw(): unknown;
 export declare function clearBrowserIdentity(): void;
-export declare function getLocalAccountInfo(appId: string): AccountInfo | null;
 //# sourceMappingURL=account.d.ts.map

@@ -160,12 +160,9 @@ export declare class BuckyOSRuntime {
     private getBuckyOSEtcDir;
     private readPemFile;
     private readNodeIdentityMetadata;
-    private extractDeviceNameFromIdentityPayload;
-    private readDeviceNameFromNodeIdentityPath;
     private tryLoadDeviceSigningMaterial;
-    private deviceKeyPathCandidates;
+    private loadDeviceSigningMaterial;
     private tryLoadUserSigningMaterial;
-    private tryResolveDeviceNameFromSearchRoots;
     private tryResolveZoneHostFromSearchRoots;
     private getMySettingsPath;
     private getConfiguredSystemConfigServiceUrl;

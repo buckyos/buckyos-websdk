@@ -35,7 +35,7 @@ var __privateMethod = (obj, member, method) => {
   return method;
 };
 var _listener, _listeners, _cancelled, _allowInsecure, _gzip, _headers, _method, _timeout, _url, _body, _bodyType, _creds, _preflight, _process, _retry, _signal, _throttle, _getUrlFunc, _send, send_fn, _statusCode, _statusMessage, _headers2, _body2, _request, _error, _names, _data, _dataLength, _writeData, writeData_fn, _data2, _offset, _bytesRead, _parent, _maxInflation, _incrementBytesRead, incrementBytesRead_fn, _peekBytes, peekBytes_fn, _r, _s, _v, _networkV, _privateKey, _options, _type, _to, _data3, _nonce, _gasLimit, _gasPrice, _maxPriorityFeePerGas, _maxFeePerGas, _value, _chainId, _sig, _accessList, _maxFeePerBlobGas, _blobVersionedHashes, _kzg, _blobs, _auths, _blobWrapperVersion, _getSerialized, getSerialized_fn, _types, _fullTypes, _encoderCache, _getEncoder, getEncoder_fn, _offset2, _tokens, _subTokenString, subTokenString_fn, _walkAsync, walkAsync_fn, _getCoder, getCoder_fn, _errors, _events, _functions, _abiCoder, _getFunction, getFunction_fn, _getEvent, getEvent_fn, _transactions, _logs, _startBlock, _iface, _iface2, _filter, _a, _supports2544, _resolver, _fetch, fetch_fn, _getResolver, getResolver_fn, _url2, _processFunc, _name, _chainId2, _plugins, _provider, _poller, _interval, _blockNumber, _poll, poll_fn, _provider2, _poll2, _running, _tag, _lastBlock, _filter2, _hash, _provider3, _filter3, _poller2, _running2, _blockNumber2, _poll3, poll_fn2, _subs, _plugins2, _pausedState, _destroyed, _networkPromise, _anyNetwork, _performCache, _lastBlockNumber, _nextTimer, _timers, _disableCcipRead, _requestRate, _requestTimes, _options2, _getDelay, getDelay_fn, _perform, perform_fn, _call, call_fn, _checkNetwork, checkNetwork_fn, _getAccountValue, getAccountValue_fn, _getBlock, getBlock_fn, _hasSub, hasSub_fn, _getSub, getSub_fn, _throwUnsupported, throwUnsupported_fn, _provider4, _filterIdPromise, _poller3, _running3, _network, _hault, _poll4, poll_fn3, _teardown, teardown_fn, _event, _options3, _nextId, _payloads, _drainTimer, _notReady, _network2, _pendingDetectNetwork, _scheduleDrain, scheduleDrain_fn, _pollingInterval, _connect, _signingKey, _data4, _checksum, _words, _loadWords, loadWords_fn, _account, account_fn, _fromSeed, fromSeed_fn, _fromAccount, fromAccount_fn;
-import { v as DID, w as getBrowserIdentityRaw, x as clearBrowserUserInfo, y as saveBrowserIdentity, z as saveBrowserUserInfo, A as getBrowserUserInfo, B as clearBrowserIdentity, q as parseBuckyOSOwnerDocument, h as hashPassword, C as saveLocalAccountInfo, E as cleanLocalAccountInfo, F as canonicalize, G as signJwtEdDSA, H as ChunkId, I as sha256Bytes, J as FileObject, O as ObjId, K as DirObject, S as SimpleChunkList } from "./ndn_types-dcb74613.mjs";
+import { u as DID, v as getBrowserIdentityRaw, w as clearBrowserUserInfo, x as saveBrowserIdentity, y as saveBrowserUserInfo, z as getBrowserUserInfo, A as clearBrowserIdentity, N as NODE_IDENTITY_SCHEMA_V2, f as isBuckyOSLocalNodeIdentityConfig, o as parseBuckyOSOwnerDocument, h as hashPassword, B as saveLocalAccountInfo, C as cleanLocalAccountInfo, E as canonicalize, F as signJwtEdDSA, G as ChunkId, H as sha256Bytes, I as FileObject, O as ObjId, J as DirObject, S as SimpleChunkList } from "./ndn_types-bbb1f6a6.mjs";
 class RPCError extends Error {
   constructor(message, code, data) {
     super(message);
@@ -496,21 +496,6 @@ class VerifyHubClient {
       payload.expected_target = serializeAuthTarget(params.expected_target);
     }
     return this.rpcClient.call("verify_token", payload);
-  }
-  static normalizeLoginResponse(response) {
-    if ("user_info" in response) {
-      return {
-        user_name: response.user_info.show_name,
-        user_id: response.user_info.user_id,
-        user_type: response.user_info.user_type,
-        session_token: response.session_token,
-        refresh_token: response.refresh_token
-      };
-    }
-    if (!response.session_token) {
-      throw new RPCError("login_by_password response missing session_token");
-    }
-    return response;
   }
 }
 const TASK_MANAGER_SERVICE_UNIQUE_ID = "task-manager";
@@ -3926,27 +3911,22 @@ class BuckyOSRuntime {
     }, claims, material.keyPem);
   }
   async loadLocalSigningMaterial() {
-    await importNodeModule$1("node:fs/promises");
     const path = await importNodeModule$1("node:path");
     const configuredUserId = this.getOwnerUserId();
     if (!configuredUserId) {
       const etcDir = await this.getBuckyOSEtcDir();
-      const deviceName = await this.readDeviceNameFromNodeIdentityPath(path.join(etcDir, "node_identity.json"));
-      if (!deviceName) {
-        throw new Error(`failed to resolve userid from ${path.join(etcDir, "node_identity.json")} device_mini_doc_jwt`);
+      const nodeIdentityPath = path.join(etcDir, "node_identity.json");
+      const metadata = await this.readNodeIdentityMetadata(nodeIdentityPath);
+      if (!metadata) {
+        throw new Error(`failed to load ${NODE_IDENTITY_SCHEMA_V2} node identity from ${nodeIdentityPath}`);
       }
-      const keyPem = await this.readPemFile(path.join(etcDir, "node_private_key.pem"));
-      if (!keyPem) {
-        throw new Error(`failed to load node_private_key.pem from ${etcDir}`);
+      const material = await this.loadDeviceSigningMaterial(etcDir, metadata);
+      if (!material) {
+        throw new Error(`failed to load authentication private key of ${metadata.deviceDid}`);
       }
-      this.config.userid = deviceName;
-      this.config.ownerUserId = deviceName;
-      return {
-        keyPem,
-        issuer: deviceName,
-        subject: deviceName,
-        sourcePath: path.join(etcDir, "node_private_key.pem")
-      };
+      this.config.userid = metadata.deviceName;
+      this.config.ownerUserId = metadata.deviceName;
+      return material;
     }
     const roots = await this.getPrivateKeySearchRoots();
     const deviceMaterial = await this.tryLoadDeviceSigningMaterial(configuredUserId, roots);
@@ -4005,44 +3985,18 @@ class BuckyOSRuntime {
   async readNodeIdentityMetadata(nodeIdentityPath) {
     const fs = await importNodeModule$1("node:fs/promises");
     try {
-      const raw = await fs.readFile(nodeIdentityPath, "utf8");
-      const parsed = JSON.parse(raw);
-      const deviceName = this.extractDeviceNameFromIdentityPayload(parsed);
+      const parsed = JSON.parse(await fs.readFile(nodeIdentityPath, "utf8"));
+      if (!isBuckyOSLocalNodeIdentityConfig(parsed)) {
+        return null;
+      }
       return {
-        deviceName,
-        deviceDid: typeof parsed.device_did === "string" ? parsed.device_did.trim() || null : null,
-        zoneDid: typeof parsed.zone_did === "string" ? parsed.zone_did.trim() || null : null,
-        zoneName: typeof parsed.zone_name === "string" ? parsed.zone_name.trim() || null : null
+        deviceName: parsed.device_name,
+        deviceDid: parsed.device_did,
+        zoneDid: parsed.zone_did
       };
     } catch {
       return null;
     }
-  }
-  extractDeviceNameFromIdentityPayload(payload) {
-    const directName = typeof payload.device_name === "string" ? payload.device_name.trim() : "";
-    if (directName) {
-      return directName;
-    }
-    const miniDocJwt = typeof payload.device_mini_doc_jwt === "string" ? payload.device_mini_doc_jwt : null;
-    const miniDocClaims = parseSessionTokenClaims(miniDocJwt);
-    const miniDocName = typeof (miniDocClaims == null ? void 0 : miniDocClaims.n) === "string" ? miniDocClaims.n.trim() : "";
-    if (miniDocName) {
-      return miniDocName;
-    }
-    const deviceDocJwt = typeof payload.device_doc_jwt === "string" ? payload.device_doc_jwt : null;
-    const deviceDocClaims = parseSessionTokenClaims(deviceDocJwt);
-    for (const claimKey of ["name", "sub"]) {
-      const claimValue = deviceDocClaims == null ? void 0 : deviceDocClaims[claimKey];
-      const candidate = typeof claimValue === "string" ? claimValue.trim() : "";
-      if (candidate) {
-        return candidate;
-      }
-    }
-    return null;
-  }
-  async readDeviceNameFromNodeIdentityPath(nodeIdentityPath) {
-    const metadata = await this.readNodeIdentityMetadata(nodeIdentityPath);
-    return (metadata == null ? void 0 : metadata.deviceName) ?? null;
   }
   async tryLoadDeviceSigningMaterial(userId, roots) {
     const path = await importNodeModule$1("node:path");
@@ -4052,44 +4006,41 @@ class BuckyOSRuntime {
     ];
     for (const dir of Array.from(new Set(candidateDirs))) {
       const metadata = await this.readNodeIdentityMetadata(path.join(dir, "node_identity.json"));
-      const deviceName = (metadata == null ? void 0 : metadata.deviceName) ?? null;
-      if (!deviceName || deviceName !== userId) {
+      if (!metadata || metadata.deviceName !== userId) {
         continue;
       }
-      for (const keyPath of await this.deviceKeyPathCandidates(dir, (metadata == null ? void 0 : metadata.deviceDid) ?? null)) {
-        const keyPem = await this.readPemFile(keyPath);
-        if (!keyPem) {
-          continue;
-        }
+      const material = await this.loadDeviceSigningMaterial(dir, metadata);
+      if (material) {
+        return material;
+      }
+    }
+    return null;
+  }
+  // The device authentication key lives in the identity-roots security dir,
+  // keyed by the device DID.
+  async loadDeviceSigningMaterial(identityDir, metadata) {
+    const path = await importNodeModule$1("node:path");
+    const dirName = DID.fromStr(metadata.deviceDid).toFilename();
+    const keyFileName = "authentication.private.pem";
+    const securityRoot = trimToNull$2(getProcessEnv().BUCKYOS_SECURITY_ROOT) ?? path.join(await this.getBuckyOSRootDir(), "security");
+    const keyPaths = [
+      // dev/test layout: security root under the node dir itself
+      path.join(identityDir, "security", dirName, keyFileName),
+      // deployed layout: $BUCKYOS_SECURITY_ROOT or $BUCKYOS_ROOT/security
+      path.join(securityRoot, dirName, keyFileName)
+    ];
+    for (const keyPath of keyPaths) {
+      const keyPem = await this.readPemFile(keyPath);
+      if (keyPem) {
         return {
           keyPem,
-          issuer: deviceName,
-          subject: deviceName,
+          issuer: metadata.deviceName,
+          subject: metadata.deviceName,
           sourcePath: keyPath
         };
       }
     }
     return null;
-  }
-  // node_identity schema v2 stores the device authentication key in the
-  // identity-roots security dir (keyed by the device DID); v1 layouts keep a
-  // node_private_key.pem next to node_identity.json.
-  async deviceKeyPathCandidates(identityDir, deviceDid) {
-    const path = await importNodeModule$1("node:path");
-    const candidates = [];
-    if (deviceDid) {
-      try {
-        const dirName = DID.fromStr(deviceDid).toFilename();
-        const keyFileName = "authentication.private.pem";
-        candidates.push(path.join(identityDir, "security", dirName, keyFileName));
-        const env = getProcessEnv();
-        const securityRoot = trimToNull$2(env.BUCKYOS_SECURITY_ROOT) ?? path.join(trimToNull$2(env.BUCKYOS_ROOT) ?? "/opt/buckyos", "security");
-        candidates.push(path.join(securityRoot, dirName, keyFileName));
-      } catch {
-      }
-    }
-    candidates.push(path.join(identityDir, "node_private_key.pem"));
-    return candidates;
   }
   async tryLoadUserSigningMaterial(userId, roots) {
     var _a2;
@@ -4121,35 +4072,6 @@ class BuckyOSRuntime {
     }
     return null;
   }
-  async tryResolveDeviceNameFromSearchRoots(roots) {
-    const path = await importNodeModule$1("node:path");
-    const env = getProcessEnv();
-    const fromEnv = trimToNull$2(env.BUCKYOS_THIS_DEVICE_NAME);
-    if (fromEnv) {
-      return fromEnv;
-    }
-    for (const key of ["BUCKYOS_THIS_DEVICE", "BUCKYOS_THIS_DEVICE_INFO"]) {
-      const raw = trimToNull$2(env[key]);
-      if (!raw) {
-        continue;
-      }
-      try {
-        const parsed = JSON.parse(raw);
-        if (typeof parsed.name === "string" && parsed.name.trim().length > 0) {
-          return parsed.name.trim();
-        }
-      } catch {
-      }
-    }
-    for (const root of roots) {
-      const nodeIdentityPath = path.join(root, "node_identity.json");
-      const deviceName = await this.readDeviceNameFromNodeIdentityPath(nodeIdentityPath);
-      if (deviceName) {
-        return deviceName;
-      }
-    }
-    return null;
-  }
   async tryResolveZoneHostFromSearchRoots(roots) {
     var _a2;
     const fs = await importNodeModule$1("node:fs/promises");
@@ -4162,16 +4084,9 @@ class BuckyOSRuntime {
     for (const root of roots) {
       const nodeIdentityPath = path.join(root, "node_identity.json");
       const metadata = await this.readNodeIdentityMetadata(nodeIdentityPath);
-      if (!metadata) {
-        continue;
+      if (metadata) {
+        return resolveZoneHostFromDid(metadata.zoneDid);
       }
-      if (metadata.zoneName) {
-        return metadata.zoneName;
-      }
-      if (!metadata.zoneDid) {
-        continue;
-      }
-      return resolveZoneHostFromDid(metadata.zoneDid);
     }
     for (const root of roots) {
       const userConfigPath = path.join(root, "user_config.json");
@@ -5129,7 +5044,6 @@ class BuckyOSSDK {
     var _a2;
     const finalConfig = this.buildRuntimeConfig(appid, config);
     if (this.target !== "node" && isBrowserRuntime() && !config) {
-      localStorage.removeItem("zone_host_name");
       let zoneHostName = localStorage.getItem("zone_host_name_v2");
       if (zoneHostName) {
         finalConfig.zoneHost = zoneHostName;
@@ -5269,20 +5183,19 @@ class BuckyOSSDK {
     try {
       const verifyHubClient = this.getVerifyHubClient();
       verifyHubClient.setSeq(loginNonce);
-      const accountResponse = await verifyHubClient.loginByPassword({
+      const response = await verifyHubClient.loginByPassword({
         username,
         password: passwordHash,
         target: resolvedTarget,
         login_nonce: loginNonce,
         source_url: typeof window !== "undefined" ? window.location.href : void 0
       });
-      const normalized = VerifyHubClient.normalizeLoginResponse(accountResponse);
       const accountInfo = {
-        user_name: normalized.user_name,
-        user_id: normalized.user_id,
-        user_type: normalized.user_type,
-        session_token: normalized.session_token,
-        refresh_token: normalized.refresh_token
+        user_name: response.user_info.show_name,
+        user_id: response.user_info.user_id,
+        user_type: response.user_info.user_type,
+        session_token: response.session_token,
+        refresh_token: response.refresh_token
       };
       if (isBrowserStorageAvailable()) {
         saveLocalAccountInfo(appId, accountInfo);
@@ -5290,7 +5203,7 @@ class BuckyOSSDK {
         saveBrowserUserInfo({
           user_name: accountInfo.user_name,
           user_id: accountInfo.user_id,
-          user_type: normalized.user_type
+          user_type: response.user_info.user_type
         });
       }
       this.currentAccountInfo = accountInfo;
@@ -5573,16 +5486,7 @@ class BuckyOSSDK {
       }
       const doc = await response.json();
       const hostname = typeof doc.hostname === "string" ? doc.hostname.trim() : "";
-      if (hostname.length > 0) {
-        return hostname;
-      }
-      if (typeof doc.id === "string") {
-        const match = doc.id.match(/^did:web:([^/?#]+)/);
-        if (match && match[1]) {
-          return match[1];
-        }
-      }
-      return null;
+      return hostname.length > 0 ? hostname : null;
     } catch {
       return null;
     }
@@ -28627,7 +28531,7 @@ async function uploadChunkViaTus(endpoint, file, chunkInfo, chunkIndex, fileHash
   const logicalPath = chunkInfo.chunkId;
   let tusModule;
   try {
-    tusModule = await import("./tus_client-8fd4d937.mjs");
+    tusModule = await import("./tus_client-d313689e.mjs");
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new NdmError("UPLOAD_FAILED", `Failed to load tus-js-client: ${message}`);
@@ -29927,4 +29831,4 @@ export {
   NOTIFY_TEXT_CONTROL_ID as y,
   NOTIFY_ACTION_ANSWER as z
 };
-//# sourceMappingURL=executor_client-d2c9e854.mjs.map
+//# sourceMappingURL=executor_client-eb372968.mjs.map

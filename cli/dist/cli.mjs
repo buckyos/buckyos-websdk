@@ -1874,10 +1874,9 @@ class SdkAuthenticationTransport {
       }),
       timeoutMs
     );
-    const normalized = VerifyHubClient.normalizeLoginResponse(response);
-    if (!normalized.session_token)
+    if (!response.session_token)
       throw new Error("verify-hub returned no session token");
-    return normalized.session_token;
+    return response.session_token;
   }
 }
 function identityAuthTarget(principalKind, subject) {
@@ -5106,7 +5105,7 @@ function validateContentHandlers(value, permissions) {
   }
   return value;
 }
-const PACKAGE_VERSION = "0.7.141";
+const PACKAGE_VERSION = "0.7.142";
 const TOOL_VERSION = PACKAGE_VERSION;
 const SDK_VERSION = PACKAGE_VERSION;
 const PROTOCOL_VERSION = "1";

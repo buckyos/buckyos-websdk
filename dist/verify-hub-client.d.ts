@@ -15,13 +15,6 @@ export interface LoginByPasswordResponse {
     session_token: string;
     refresh_token: string;
 }
-export interface LegacyLoginByPasswordResponse {
-    user_name: string;
-    user_id: string;
-    user_type: string;
-    session_token: string;
-    refresh_token?: string;
-}
 export interface AppAuthTarget {
     kind: 'app';
     app_instance_id: string;
@@ -65,11 +58,10 @@ export declare class VerifyHubClient {
     constructor(rpcClient: kRPCClient);
     setSeq(seq: number): void;
     loginByJwt(params: LoginByJwtParams): Promise<TokenPair>;
-    loginByPassword(params: LoginByPasswordParams): Promise<LoginByPasswordResponse | LegacyLoginByPasswordResponse>;
+    loginByPassword(params: LoginByPasswordParams): Promise<LoginByPasswordResponse>;
     sudoByPassword(params: SudoByPasswordParams): Promise<SudoByPasswordResponse>;
     refreshToken(params: RefreshTokenParams): Promise<TokenPair>;
     verifyToken(params: VerifyTokenParams): Promise<boolean>;
-    static normalizeLoginResponse(response: LoginByPasswordResponse | LegacyLoginByPasswordResponse): LegacyLoginByPasswordResponse;
 }
 export type { KRPCResponse } from './krpc_client';
 //# sourceMappingURL=verify-hub-client.d.ts.map

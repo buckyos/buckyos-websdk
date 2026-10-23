@@ -141,14 +141,6 @@ export interface BuckyOSDIDObjectCard {
     keyScope?: Record<string, string[]>;
     [key: string]: unknown;
 }
-export interface BuckyOSNodeIdentityConfig {
-    zone_did: DID;
-    owner_public_key: Ed25519Jwk;
-    owner_did: DID;
-    device_doc_jwt: string;
-    device_mini_doc_jwt: string;
-    zone_iat: number;
-}
 export declare const NODE_IDENTITY_SCHEMA_V2 = "buckyos.node_identity.v2";
 export interface BuckyOSLocalNodeIdentityConfig {
     schema: string;
@@ -169,7 +161,6 @@ export declare function isW3CDIDDocumentBase(value: unknown): value is W3CDIDDoc
 export declare function isBuckyOSOwnerDocument(value: unknown): value is BuckyOSOwnerDocument;
 export declare function isBuckyOSDeviceMiniDocument(value: unknown): value is BuckyOSDeviceMiniDocument;
 export declare function isBuckyOSZoneBootDocument(value: unknown): value is BuckyOSZoneBootDocument;
-export declare function isBuckyOSNodeIdentityConfig(value: unknown): value is BuckyOSNodeIdentityConfig;
 export declare function isBuckyOSLocalNodeIdentityConfig(value: unknown): value is BuckyOSLocalNodeIdentityConfig;
 export declare function isBuckyOSDeviceDocument(value: unknown): value is BuckyOSDeviceDocument;
 export declare function isBuckyOSAgentDocument(value: unknown): value is BuckyOSAgentDocument;

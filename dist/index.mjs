@@ -1,6 +1,6 @@
-import { c as createSDKModule } from "./executor_client-d2c9e854.mjs";
-import { a8, aA, bt, aF, bu, bz, by, bv, bx, bA, bw, br, bs, bq, cc, ab, aG, aI, aH, aK, aJ, ce, bH, cd, b$, c0, bX, bY, bZ, b_, c1, d, B, c3, c2, c7, c5, i, a0, $, _, Y, b6, af, a7, aq, E, c8, cb, c9, X, ap, aB, ag, bR, bQ, o, M, z, A, x, v, u, N, C, w, y, aC, aD, ao, m, j, R, ar, ba, S, aS, aR, aQ, aV, aT, aP, aL, aM, aU, aN, aW, aO, al, am, ak, aX, an, aE, b7, b4, b9, bb, a$, b8, bc, b3, b0, b2, a3, a2, V, W, a1, ay, au, az, as, aw, ax, bd, at, av, bp, bi, bl, bg, bk, bf, bh, bj, bo, bn, bm, be, Z, aa, bF, bE, bB, bD, T, bU, bS, b5, b, aj, Q, a4, a5, bV, bI, c4, ca, e, h, f, g, ae, ad, H, bC, l, D, b1, a6, q, t, O, n, a, ah, J, G, F, P, L, a9, bT, bW, ac, p, bL, k, I, r, s, a_, aY, aZ, bG, bK, bJ, K, bO, bN, bM, bP, U, c6, ai } from "./executor_client-d2c9e854.mjs";
-import { b as b10, D as D2, N as N2, u as u2, t as t2, h as h2, k as k2, m as m2, j as j2, d as d2, g as g2, f as f2, c, e as e2, o as o2, l as l2, i as i2, n as n2, a as a10, s as s2, r as r2, q as q2, p as p2 } from "./ndn_types-dcb74613.mjs";
+import { c as createSDKModule } from "./executor_client-eb372968.mjs";
+import { a8, aA, bt, aF, bu, bz, by, bv, bx, bA, bw, br, bs, bq, cc, ab, aG, aI, aH, aK, aJ, ce, bH, cd, b$, c0, bX, bY, bZ, b_, c1, d, B, c3, c2, c7, c5, i, a0, $, _, Y, b6, af, a7, aq, E, c8, cb, c9, X, ap, aB, ag, bR, bQ, o, M, z, A, x, v, u, N, C, w, y, aC, aD, ao, m, j, R, ar, ba, S, aS, aR, aQ, aV, aT, aP, aL, aM, aU, aN, aW, aO, al, am, ak, aX, an, aE, b7, b4, b9, bb, a$, b8, bc, b3, b0, b2, a3, a2, V, W, a1, ay, au, az, as, aw, ax, bd, at, av, bp, bi, bl, bg, bk, bf, bh, bj, bo, bn, bm, be, Z, aa, bF, bE, bB, bD, T, bU, bS, b5, b, aj, Q, a4, a5, bV, bI, c4, ca, e, h, f, g, ae, ad, H, bC, l, D, b1, a6, q, t, O, n, a, ah, J, G, F, P, L, a9, bT, bW, ac, p, bL, k, I, r, s, a_, aY, aZ, bG, bK, bJ, K, bO, bN, bM, bP, U, c6, ai } from "./executor_client-eb372968.mjs";
+import { b as b10, D as D2, N as N2, t as t2, s as s2, h as h2, j as j2, l as l2, g as g2, d as d2, f as f2, c, e as e2, m as m2, k as k2, i as i2, n as n2, a as a10, r as r2, q as q2, o as o2, p as p2 } from "./ndn_types-bbb1f6a6.mjs";
 const sdkModule = createSDKModule("universal");
 const buckyos = sdkModule.buckyos;
 const initBuckyOS = sdkModule.initBuckyOS;
@@ -214,8 +214,8 @@ export {
   getCurrentIdentity,
   getCurrentWalletUser,
   g as getCurrentWalletUserFromHost,
-  u2 as getDidIdentifier,
-  t2 as getDidMethod,
+  t2 as getDidIdentifier,
+  s2 as getDidMethod,
   getKEventClient,
   getMsgCenterClient,
   getMsgQueueClient,
@@ -234,16 +234,15 @@ export {
   initBuckyOS,
   H as inputPrompt,
   bC as isAiccAiMethod,
-  k2 as isBuckyOSAgentDocument,
-  m2 as isBuckyOSDIDObjectCard,
-  j2 as isBuckyOSDeviceDocument,
+  j2 as isBuckyOSAgentDocument,
+  l2 as isBuckyOSDIDObjectCard,
+  g2 as isBuckyOSDeviceDocument,
   d2 as isBuckyOSDeviceMiniDocument,
-  g2 as isBuckyOSLocalNodeIdentityConfig,
-  f2 as isBuckyOSNodeIdentityConfig,
+  f2 as isBuckyOSLocalNodeIdentityConfig,
   c as isBuckyOSOwnerDocument,
   e2 as isBuckyOSZoneBootDocument,
-  o2 as isBuckyOSZoneConfig,
-  l2 as isBuckyOSZoneDocument,
+  m2 as isBuckyOSZoneConfig,
+  k2 as isBuckyOSZoneDocument,
   l as isExternalPrincipal,
   D as isNotifyClosed,
   b1 as isTerminalTaskPhase,
@@ -271,9 +270,9 @@ export {
   a9 as parseAccessDenial,
   bT as parseAppId,
   bW as parseAppInstanceId,
-  s2 as parseBuckyOSDIDDocument,
-  r2 as parseBuckyOSDeviceMiniDocument,
-  q2 as parseBuckyOSOwnerDocument,
+  r2 as parseBuckyOSDIDDocument,
+  q2 as parseBuckyOSDeviceMiniDocument,
+  o2 as parseBuckyOSOwnerDocument,
   ac as parseCurrentIdentity,
   p as parseSessionTokenClaims,
   bL as parseVideoPrompt,

@@ -1,4 +1,4 @@
-import { BuckyOSAgentDocument, BuckyOSDeviceDocument, BuckyOSDeviceMiniDocument, BuckyOSDIDDocument, BuckyOSDIDObjectCard, BuckyOSNodeIdentityConfig, BuckyOSOwnerDocument, BuckyOSZoneBootDocument, BuckyOSZoneDocument, DidDocType, DIDContext, Ed25519Jwk, W3CDIDDocumentBase, DID as DIDString } from './types';
+import { BuckyOSAgentDocument, BuckyOSDeviceDocument, BuckyOSDeviceMiniDocument, BuckyOSDIDDocument, BuckyOSDIDObjectCard, BuckyOSOwnerDocument, BuckyOSZoneBootDocument, BuckyOSZoneDocument, DidDocType, DIDContext, Ed25519Jwk, W3CDIDDocumentBase, DID as DIDString } from './types';
 export declare const DID_CORE_CONTEXT = "https://www.w3.org/ns/did/v1";
 export declare const BUCKYOS_CONTEXT_BASE = "https://buckyos.org/ns";
 export declare const DID_DOC_AUTHKEY = "#auth-key";
@@ -133,15 +133,6 @@ export declare function newDeviceMiniDocument(params: NewDeviceMiniDocumentParam
 export declare function newDeviceMiniDocumentByDeviceDocument(deviceDoc: BuckyOSDeviceDocument): BuckyOSDeviceMiniDocument;
 export declare function deviceMiniDocumentToJwt(miniDoc: BuckyOSDeviceMiniDocument, ownerPrivateKeyPem: string): Promise<string>;
 export declare function deviceMiniDocumentFromJwt(jwt: string, publicKeyJwk?: Ed25519Jwk): Promise<BuckyOSDeviceMiniDocument>;
-export interface NewNodeIdentityConfigParams {
-    zoneDid: DID | DIDString;
-    ownerPublicKey: Ed25519Jwk;
-    ownerDid: DID | DIDString;
-    deviceDocJwt: string;
-    deviceMiniDocJwt: string;
-    zoneIat: number;
-}
-export declare function newNodeIdentityConfig(params: NewNodeIdentityConfigParams): BuckyOSNodeIdentityConfig;
 export declare function encodeOwnerDocument(ownerDoc: BuckyOSOwnerDocument, privateKeyPem: string): Promise<string>;
 export declare function encodeZoneDocument(zoneDoc: BuckyOSZoneDocument, ownerPrivateKeyPem: string): Promise<string>;
 export declare function ownerDocumentToOrderedJson(doc: BuckyOSOwnerDocument): Record<string, unknown>;

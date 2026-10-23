@@ -1,4 +1,4 @@
-import { ac as getDefaultExportFromCjs, R as commonjsGlobal } from "./ndn_types-dcb74613.mjs";
+import { ab as getDefaultExportFromCjs, Q as commonjsGlobal } from "./ndn_types-bbb1f6a6.mjs";
 function _typeof$8(o) {
   "@babel/helpers - typeof";
   return _typeof$8 = "function" == typeof Symbol && "symbol" == typeof Symbol.iterator ? function(o2) {
@@ -3214,4 +3214,4 @@ export {
   fetchHttpStack,
   isSupported
 };
-//# sourceMappingURL=tus_client-8fd4d937.mjs.map
+//# sourceMappingURL=tus_client-d313689e.mjs.map

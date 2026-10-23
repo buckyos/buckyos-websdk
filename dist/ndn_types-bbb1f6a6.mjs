@@ -653,21 +653,10 @@ class ht {
     return this.P.getHMAC(t2, n2);
   }
 }
-const LEGACY_ACCOUNT_STORAGE_KEY = "buckyos.account_info";
 const BROWSER_USER_INFO_STORAGE_KEY = "user_info";
 const BROWSER_IDENTITY_STORAGE_KEY = "buckyos.identity";
 function getAccountStorageKey(appId) {
   return `buckyos.account_info.${appId}`;
-}
-function parseAccountInfo(raw) {
-  if (raw == null) {
-    return null;
-  }
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
 }
 function parseBrowserUserInfo(raw) {
   if (raw == null) {
@@ -690,23 +679,6 @@ function parseBrowserUserInfo(raw) {
     return null;
   }
 }
-function parseTokenAppId(sessionToken) {
-  const parts = sessionToken.split(".");
-  if (parts.length < 2) {
-    return null;
-  }
-  try {
-    const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-    const padded = base64 + "=".repeat((4 - base64.length % 4) % 4);
-    const payload = JSON.parse(atob(padded));
-    if (typeof payload.appid === "string" && payload.appid.trim().length > 0) {
-      return payload.appid;
-    }
-  } catch {
-    return null;
-  }
-  return null;
-}
 function hashPassword(username, password, nonce = null) {
   const shaObj = new ht("SHA-256", "TEXT", { encoding: "UTF8" });
   shaObj.update(password + username + ".buckyos");
@@ -724,10 +696,6 @@ function cleanLocalAccountInfo(appId) {
   localStorage.removeItem(getAccountStorageKey(appId));
   localStorage.removeItem(BROWSER_USER_INFO_STORAGE_KEY);
   localStorage.removeItem(BROWSER_IDENTITY_STORAGE_KEY);
-  const legacy = parseAccountInfo(localStorage.getItem(LEGACY_ACCOUNT_STORAGE_KEY));
-  if ((legacy == null ? void 0 : legacy.session_token) && parseTokenAppId(legacy.session_token) === appId) {
-    localStorage.removeItem(LEGACY_ACCOUNT_STORAGE_KEY);
-  }
   let cookie_options = {
     path: "/",
     expires: /* @__PURE__ */ new Date(0),
@@ -809,9 +777,6 @@ function isBuckyOSDeviceMiniDocument(value) {
 }
 function isBuckyOSZoneBootDocument(value) {
   return isRecord(value) && Array.isArray(value.oods) && value.oods.every((item) => typeof item === "string") && typeof value.exp === "number";
-}
-function isBuckyOSNodeIdentityConfig(value) {
-  return isRecord(value) && typeof value.zone_did === "string" && isRecord(value.owner_public_key) && typeof value.owner_did === "string" && typeof value.device_doc_jwt === "string" && typeof value.device_mini_doc_jwt === "string" && typeof value.zone_iat === "number";
 }
 function isBuckyOSLocalNodeIdentityConfig(value) {
   return isRecord(value) && value.schema === NODE_IDENTITY_SCHEMA_V2 && typeof value.zone_did === "string" && typeof value.owner_did === "string" && isRecord(value.owner_public_key) && typeof value.device_name === "string" && typeof value.device_did === "string" && typeof value.zone_iat === "number";
@@ -1865,16 +1830,6 @@ async function deviceMiniDocumentFromJwt(jwt, publicKeyJwk) {
   const payload = publicKeyJwk ? await verifyJwtEdDSA(jwt, publicKeyJwk) : decodeJwtClaimWithoutVerify(jwt);
   return payload;
 }
-function newNodeIdentityConfig(params) {
-  return {
-    zone_did: asDid(params.zoneDid).toString(),
-    owner_public_key: params.ownerPublicKey,
-    owner_did: asDid(params.ownerDid).toString(),
-    device_doc_jwt: params.deviceDocJwt,
-    device_mini_doc_jwt: params.deviceMiniDocJwt,
-    zone_iat: params.zoneIat
-  };
-}
 async function encodeOwnerDocument(ownerDoc, privateKeyPem) {
   if (ownerDoc.version_seq === void 0) {
     throw new Error("namelib: OwnerDocument version_seq is required when encoding as JWT");
@@ -2205,7 +2160,6 @@ const namelib = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.definePrope
   newDeviceDocumentByMiniDocument,
   newDeviceMiniDocument,
   newDeviceMiniDocumentByDeviceDocument,
-  newNodeIdentityConfig,
   newOwnerDocument,
   newOwnerDocumentByPkx,
   newZoneBootDocument,
@@ -3763,72 +3717,71 @@ const ndn_types = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.definePro
   verifyNamedObjectFromStr
 }, Symbol.toStringTag, { value: "Module" }));
 export {
-  oodDescriptionToString as $,
-  getBrowserUserInfo as A,
-  clearBrowserIdentity as B,
-  saveLocalAccountInfo as C,
+  parseOODDescription as $,
+  clearBrowserIdentity as A,
+  saveLocalAccountInfo as B,
+  cleanLocalAccountInfo as C,
   DID_OBJECT_SERVICE_TYPE as D,
-  cleanLocalAccountInfo as E,
-  canonicalize$1 as F,
-  signJwtEdDSA as G,
-  ChunkId as H,
-  sha256Bytes as I,
-  FileObject as J,
-  DirObject as K,
-  newDeviceDocumentByJwk as L,
-  verifyJwtEdDSA as M,
+  canonicalize$1 as E,
+  signJwtEdDSA as F,
+  ChunkId as G,
+  sha256Bytes as H,
+  FileObject as I,
+  DirObject as J,
+  newDeviceDocumentByJwk as K,
+  verifyJwtEdDSA as L,
+  deviceDocumentToOrderedJson as M,
   NODE_IDENTITY_SCHEMA_V2 as N,
   ObjId as O,
-  deviceDocumentToOrderedJson as P,
-  decodeJwtClaimWithoutVerify as Q,
-  commonjsGlobal as R,
+  decodeJwtClaimWithoutVerify as P,
+  commonjsGlobal as Q,
+  DEFAULT_EXPIRE_TIME as R,
   SimpleChunkList as S,
-  DEFAULT_EXPIRE_TIME as T,
-  buckyosGetUnixTimestamp as U,
-  getPublicKeyXFromPrivatePem as V,
-  getXFromJwk as W,
-  createJwkByX as X,
-  newOwnerDocument as Y,
-  ownerDocumentSetDefaultZoneDid as Z,
-  ownerDocumentToOrderedJson as _,
+  buckyosGetUnixTimestamp as T,
+  getPublicKeyXFromPrivatePem as U,
+  getXFromJwk as V,
+  createJwkByX as W,
+  newOwnerDocument as X,
+  ownerDocumentSetDefaultZoneDid as Y,
+  ownerDocumentToOrderedJson as Z,
+  oodDescriptionToString as _,
   ndn_types as a,
-  parseOODDescription as a0,
-  encodeZoneBootDocument as a1,
-  newZoneBootDocument as a2,
-  encodeDeviceDocument as a3,
-  newDeviceMiniDocumentByDeviceDocument as a4,
-  deviceMiniDocumentToJwt as a5,
-  newZoneDocument as a6,
-  encodeZoneDocument as a7,
-  zoneDocumentToOrderedJson as a8,
-  newDeviceMiniDocument as a9,
-  newDeviceDocumentByMiniDocument as aa,
-  buildNamedObjectByJson as ab,
-  getDefaultExportFromCjs as ac,
+  encodeZoneBootDocument as a0,
+  newZoneBootDocument as a1,
+  encodeDeviceDocument as a2,
+  newDeviceMiniDocumentByDeviceDocument as a3,
+  deviceMiniDocumentToJwt as a4,
+  newZoneDocument as a5,
+  encodeZoneDocument as a6,
+  zoneDocumentToOrderedJson as a7,
+  newDeviceMiniDocument as a8,
+  newDeviceDocumentByMiniDocument as a9,
+  buildNamedObjectByJson as aa,
+  getDefaultExportFromCjs as ab,
   DID_OBJECT_SERVICE_ID as b,
   isBuckyOSOwnerDocument as c,
   isBuckyOSDeviceMiniDocument as d,
   isBuckyOSZoneBootDocument as e,
-  isBuckyOSNodeIdentityConfig as f,
-  isBuckyOSLocalNodeIdentityConfig as g,
+  isBuckyOSLocalNodeIdentityConfig as f,
+  isBuckyOSDeviceDocument as g,
   hashPassword as h,
   isW3CDIDDocumentBase as i,
-  isBuckyOSDeviceDocument as j,
-  isBuckyOSAgentDocument as k,
-  isBuckyOSZoneDocument as l,
-  isBuckyOSDIDObjectCard as m,
+  isBuckyOSAgentDocument as j,
+  isBuckyOSZoneDocument as k,
+  isBuckyOSDIDObjectCard as l,
+  isBuckyOSZoneConfig as m,
   namelib as n,
-  isBuckyOSZoneConfig as o,
+  parseBuckyOSOwnerDocument as o,
   parseW3CDIDDocumentBase as p,
-  parseBuckyOSOwnerDocument as q,
-  parseBuckyOSDeviceMiniDocument as r,
-  parseBuckyOSDIDDocument as s,
-  getDidMethod as t,
-  getDidIdentifier as u,
-  DID as v,
-  getBrowserIdentityRaw as w,
-  clearBrowserUserInfo as x,
-  saveBrowserIdentity as y,
-  saveBrowserUserInfo as z
+  parseBuckyOSDeviceMiniDocument as q,
+  parseBuckyOSDIDDocument as r,
+  getDidMethod as s,
+  getDidIdentifier as t,
+  DID as u,
+  getBrowserIdentityRaw as v,
+  clearBrowserUserInfo as w,
+  saveBrowserIdentity as x,
+  saveBrowserUserInfo as y,
+  getBrowserUserInfo as z
 };
-//# sourceMappingURL=ndn_types-dcb74613.mjs.map
+//# sourceMappingURL=ndn_types-bbb1f6a6.mjs.map
