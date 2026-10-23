@@ -3,9 +3,11 @@
 import { generateKeyPairSync } from 'node:crypto'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 
 import { BuckyOSRuntime, parseSessionTokenClaims, RuntimeType } from '../../src/runtime'
+import { IdentityRoots } from '../../src/cert'
+import { buildDeviceDid, deviceIdentityPathsForRoots, newLocalNodeIdentityConfig } from '../../src/device_identity'
 
 function makeJwt(payload: Record<string, unknown>): string {
   const encode = (value: Record<string, unknown>) => Buffer.from(JSON.stringify(value))
@@ -15,7 +17,6 @@ function makeJwt(payload: Record<string, unknown>): string {
 
 async function createAppClientRoot(options: {
   zoneDid?: string
-  zoneName?: string
   userConfigZoneDid?: string
   userId?: string
   deviceName?: string
@@ -24,8 +25,7 @@ async function createAppClientRoot(options: {
 } = {}): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), 'buckyos-websdk-appclient-'))
   const {
-    zoneDid,
-    zoneName,
+    zoneDid = 'did:web:test.buckyos.io',
     userConfigZoneDid,
     userId,
     deviceName,
@@ -42,29 +42,35 @@ async function createAppClientRoot(options: {
     )
   }
 
-  if (withDeviceKey) {
-    const { privateKey } = generateKeyPairSync('ed25519')
-    await mkdir(join(root, 'etc'), { recursive: true })
-    await writeFile(
-      join(root, 'etc', 'node_private_key.pem'),
-      privateKey.export({ format: 'pem', type: 'pkcs8' }).toString(),
-      'utf8',
-    )
-  }
-
-  if (zoneDid || zoneName || deviceName) {
+  if (deviceName) {
+    const deviceDid = buildDeviceDid(deviceName, zoneDid)
     await mkdir(join(root, 'etc'), { recursive: true })
     await writeFile(
       join(root, 'etc', 'node_identity.json'),
-      JSON.stringify({
-        zone_did: zoneDid,
-        zone_name: zoneName,
-        device_mini_doc_jwt: deviceName
-          ? makeJwt({ n: deviceName, sub: deviceName })
-          : undefined,
-      }),
+      JSON.stringify(newLocalNodeIdentityConfig({
+        zoneDid,
+        ownerDid: zoneDid,
+        ownerPublicKey: { kty: 'OKP', crv: 'Ed25519', x: 'owner' },
+        deviceName,
+        deviceDid,
+        zoneIat: 1700000000,
+      })),
       'utf8',
     )
+
+    if (withDeviceKey) {
+      const { privateKey } = generateKeyPairSync('ed25519')
+      const keyPath = deviceIdentityPathsForRoots(
+        new IdentityRoots(join(root, 'local', 'identity'), join(root, 'security')),
+        deviceDid,
+      ).authenticationPrivateKey
+      await mkdir(dirname(keyPath), { recursive: true })
+      await writeFile(
+        keyPath,
+        privateKey.export({ format: 'pem', type: 'pkcs8' }).toString(),
+        'utf8',
+      )
+    }
   }
 
   if (userConfigZoneDid || userId) {
@@ -227,9 +233,8 @@ describe('runtime unit behavior', () => {
     }))
   })
 
-  it('AppClient without ownerUserId falls back to BUCKYOS_ROOT/etc node key and device name', async () => {
+  it('AppClient without ownerUserId signs with the BUCKYOS_ROOT device identity', async () => {
     const root = await createAppClientRoot({
-      zoneName: 'test.buckyos.io',
       deviceName: 'ood1',
       withDeviceKey: true,
     })
@@ -255,9 +260,47 @@ describe('runtime unit behavior', () => {
     }))
   })
 
+  it('AppClient without ownerUserId rejects a node identity that is not schema v2', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'buckyos-websdk-appclient-v1-'))
+    rootsToCleanup.push(root)
+    const { privateKey } = generateKeyPairSync('ed25519')
+    await mkdir(join(root, 'etc'), { recursive: true })
+    await writeFile(
+      join(root, 'etc', 'node_private_key.pem'),
+      privateKey.export({ format: 'pem', type: 'pkcs8' }).toString(),
+      'utf8',
+    )
+    await writeFile(
+      join(root, 'etc', 'node_identity.json'),
+      JSON.stringify({
+        zone_did: 'did:web:test.buckyos.io',
+        owner_public_key: { kty: 'OKP', crv: 'Ed25519', x: 'owner' },
+        owner_did: 'did:web:test.buckyos.io',
+        device_doc_jwt: makeJwt({ name: 'ood1', sub: 'ood1' }),
+        device_mini_doc_jwt: makeJwt({ n: 'ood1' }),
+        zone_iat: 1700000000,
+      }),
+      'utf8',
+    )
+
+    const runtime = new BuckyOSRuntime({
+      appId: 'buckycli',
+      runtimeType: RuntimeType.AppClient,
+      rootDir: root,
+      zoneHost: 'test.buckyos.io',
+      defaultProtocol: 'https://',
+      autoRenew: false,
+    })
+
+    await expect(runtime.initialize()).rejects.toThrow(
+      `failed to load buckyos.node_identity.v2 node identity from ${join(root, 'etc', 'node_identity.json')}`,
+    )
+  })
+
   it('AppClient explicit zone host takes precedence over local config fallback', async () => {
     const root = await createAppClientRoot({
-      zoneName: 'ignored.test.buckyos.io',
+      zoneDid: 'did:web:ignored.test.buckyos.io',
+      deviceName: 'ood1',
       userId: 'alice',
       withUserKey: true,
     })

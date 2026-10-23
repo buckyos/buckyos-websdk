@@ -19,7 +19,6 @@ import {
   BuckyOSDeviceMiniDocument,
   BuckyOSDIDDocument,
   BuckyOSDIDObjectCard,
-  BuckyOSNodeIdentityConfig,
   BuckyOSOwnerDocument,
   BuckyOSZoneBootDocument,
   BuckyOSZoneDocument,
@@ -1252,27 +1251,6 @@ export async function deviceMiniDocumentToJwt(miniDoc: BuckyOSDeviceMiniDocument
 export async function deviceMiniDocumentFromJwt(jwt: string, publicKeyJwk?: Ed25519Jwk): Promise<BuckyOSDeviceMiniDocument> {
   const payload = publicKeyJwk ? await verifyJwtEdDSA(jwt, publicKeyJwk) : decodeJwtClaimWithoutVerify(jwt)
   return payload as BuckyOSDeviceMiniDocument
-}
-
-export interface NewNodeIdentityConfigParams {
-  zoneDid: DID | DIDString
-  ownerPublicKey: Ed25519Jwk
-  ownerDid: DID | DIDString
-  deviceDocJwt: string
-  deviceMiniDocJwt: string
-  zoneIat: number
-}
-
-// Mirrors Rust NodeIdentityConfig (field order follows the Rust struct).
-export function newNodeIdentityConfig(params: NewNodeIdentityConfigParams): BuckyOSNodeIdentityConfig {
-  return {
-    zone_did: asDid(params.zoneDid).toString(),
-    owner_public_key: params.ownerPublicKey,
-    owner_did: asDid(params.ownerDid).toString(),
-    device_doc_jwt: params.deviceDocJwt,
-    device_mini_doc_jwt: params.deviceMiniDocJwt,
-    zone_iat: params.zoneIat,
-  }
 }
 
 // Serialize an OwnerDocument payload in Rust struct order and sign it.

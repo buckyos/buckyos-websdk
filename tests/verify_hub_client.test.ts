@@ -176,46 +176,4 @@ describe('VerifyHubClient', () => {
       sys: [31, 'init-token'],
     })
   })
-
-  it('normalizeLoginResponse converts current response shape', () => {
-    const normalized = VerifyHubClient.normalizeLoginResponse({
-      user_info: {
-        show_name: 'Alice',
-        user_id: 'did:example:alice',
-        user_type: 'admin',
-      },
-      session_token: 'session',
-      refresh_token: 'refresh',
-    })
-
-    expect(normalized).toEqual({
-      user_name: 'Alice',
-      user_id: 'did:example:alice',
-      user_type: 'admin',
-      session_token: 'session',
-      refresh_token: 'refresh',
-    })
-  })
-
-  it('normalizeLoginResponse keeps legacy response shape and validates session token', () => {
-    expect(VerifyHubClient.normalizeLoginResponse({
-      user_name: 'Alice',
-      user_id: 'did:example:alice',
-      user_type: 'admin',
-      session_token: 'session',
-      refresh_token: 'refresh',
-    })).toEqual({
-      user_name: 'Alice',
-      user_id: 'did:example:alice',
-      user_type: 'admin',
-      session_token: 'session',
-      refresh_token: 'refresh',
-    })
-
-    expect(() => VerifyHubClient.normalizeLoginResponse({
-      user_name: 'Alice',
-      user_id: 'did:example:alice',
-      user_type: 'admin',
-    } as never)).toThrow('login_by_password response missing session_token')
-  })
 })

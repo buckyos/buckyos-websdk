@@ -198,21 +198,8 @@ export interface BuckyOSDIDObjectCard {
   [key: string]: unknown
 }
 
-// Mirrors Rust name-lib NodeIdentityConfig (lib.rs). Legacy v1 shape kept for
-// reading old node_identity.json files; new deployments use
-// BuckyOSLocalNodeIdentityConfig (schema v2).
-export interface BuckyOSNodeIdentityConfig {
-  zone_did: DID
-  owner_public_key: Ed25519Jwk
-  owner_did: DID
-  device_doc_jwt: string
-  device_mini_doc_jwt: string
-  zone_iat: number
-}
-
 // Mirrors Rust buckyos-api LocalNodeIdentityConfig (device_identity.rs).
-// The device jwts / private key now live in the identity-roots layout and are
-// no longer embedded in node_identity.json.
+// The device jwts / private key live in the identity-roots layout.
 export const NODE_IDENTITY_SCHEMA_V2 = 'buckyos.node_identity.v2'
 
 export interface BuckyOSLocalNodeIdentityConfig {
@@ -294,17 +281,6 @@ export function isBuckyOSZoneBootDocument(value: unknown): value is BuckyOSZoneB
     && Array.isArray(value.oods)
     && value.oods.every(item => typeof item === 'string')
     && typeof value.exp === 'number'
-}
-
-// Legacy v1 node_identity.json (embedded jwts).
-export function isBuckyOSNodeIdentityConfig(value: unknown): value is BuckyOSNodeIdentityConfig {
-  return isRecord(value)
-    && typeof value.zone_did === 'string'
-    && isRecord(value.owner_public_key)
-    && typeof value.owner_did === 'string'
-    && typeof value.device_doc_jwt === 'string'
-    && typeof value.device_mini_doc_jwt === 'string'
-    && typeof value.zone_iat === 'number'
 }
 
 export function isBuckyOSLocalNodeIdentityConfig(value: unknown): value is BuckyOSLocalNodeIdentityConfig {

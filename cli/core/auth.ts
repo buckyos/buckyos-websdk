@@ -386,9 +386,8 @@ export class SdkAuthenticationTransport implements AuthenticationTransport {
       }),
       timeoutMs,
     )
-    const normalized = VerifyHubClient.normalizeLoginResponse(response)
-    if (!normalized.session_token) throw new Error('verify-hub returned no session token')
-    return normalized.session_token
+    if (!response.session_token) throw new Error('verify-hub returned no session token')
+    return response.session_token
   }
 }
 

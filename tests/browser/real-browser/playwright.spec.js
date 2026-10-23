@@ -135,7 +135,6 @@ test('config-less init derives the zone host, caches it under the v2 key and reu
   }, null, { timeout: 30000 });
 
   const derived = await page.evaluate(async () => {
-    window.localStorage.removeItem('zone_host_name');
     window.localStorage.removeItem('zone_host_name_v2');
 
     const sdk = await import('./browser.mjs?case=zone-host-derive');
@@ -145,7 +144,6 @@ test('config-less init derives the zone host, caches it under the v2 key and reu
       zoneHostName: sdk.getZoneHostName(),
       verifyHubUrl: sdk.getZoneServiceURL('verify-hub'),
       cachedValue: window.localStorage.getItem('zone_host_name_v2'),
-      legacyValue: window.localStorage.getItem('zone_host_name'),
     };
   });
 
@@ -153,7 +151,6 @@ test('config-less init derives the zone host, caches it under the v2 key and reu
   expect(derived.zoneHostName).toBe('test.buckyos.io');
   expect(derived.verifyHubUrl).toBe('/kapi/verify-hub/');
   expect(derived.cachedValue).toBe('test.buckyos.io');
-  expect(derived.legacyValue).toBe(null);
 
   const cached = await page.evaluate(async () => {
     window.localStorage.setItem('zone_host_name_v2', 'cached-zone.buckyos.io');

@@ -13,7 +13,6 @@ export interface AccountInfo {
     refresh_token?: string;
 }
 
-const LEGACY_ACCOUNT_STORAGE_KEY = "buckyos.account_info";
 const BROWSER_USER_INFO_STORAGE_KEY = "user_info";
 const BROWSER_IDENTITY_STORAGE_KEY = "buckyos.identity";
 
@@ -26,18 +25,6 @@ export interface BrowserUserInfo {
 
 function getAccountStorageKey(appId:string):string {
     return `buckyos.account_info.${appId}`;
-}
-
-function parseAccountInfo(raw:string|null):AccountInfo|null {
-    if(raw == null) {
-        return null;
-    }
-
-    try {
-        return JSON.parse(raw) as AccountInfo;
-    } catch {
-        return null;
-    }
 }
 
 function parseBrowserUserInfo(raw:string|null):BrowserUserInfo|null {
@@ -74,29 +61,6 @@ function parseBrowserUserInfo(raw:string|null):BrowserUserInfo|null {
     }
 }
 
-function parseTokenAppId(sessionToken:string):string|null {
-    const parts = sessionToken.split('.');
-    if(parts.length < 2) {
-        return null;
-    }
-
-    try {
-        const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
-        const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4);
-        const payload = JSON.parse(atob(padded)) as { appid?: unknown };
-        if(typeof payload.appid === 'string' && payload.appid.trim().length > 0) {
-            return payload.appid;
-        }
-    } catch {
-        return null;
-    }
-
-    return null;
-}
-  
-// 定义自定义事件
-export const LOGIN_EVENT = 'onLogin';
-
 export function hashPassword(username:string,password:string,nonce:number|null=null):string {
     const shaObj = new jsSHA("SHA-256", "TEXT", { encoding: "UTF8" });
     shaObj.update(password+username+".buckyos");
@@ -115,10 +79,6 @@ export function cleanLocalAccountInfo(appId:string) {
     localStorage.removeItem(getAccountStorageKey(appId));
     localStorage.removeItem(BROWSER_USER_INFO_STORAGE_KEY);
     localStorage.removeItem(BROWSER_IDENTITY_STORAGE_KEY);
-    const legacy = parseAccountInfo(localStorage.getItem(LEGACY_ACCOUNT_STORAGE_KEY));
-    if(legacy?.session_token && parseTokenAppId(legacy.session_token) === appId) {
-        localStorage.removeItem(LEGACY_ACCOUNT_STORAGE_KEY);
-    }
     //删除cookie
     let cookie_options = {
         path: "/",
@@ -180,17 +140,3 @@ export function clearBrowserIdentity() {
     localStorage.removeItem(BROWSER_IDENTITY_STORAGE_KEY);
 }
 
-export function getLocalAccountInfo(appId:string):AccountInfo|null {
-    const scoped = parseAccountInfo(localStorage.getItem(getAccountStorageKey(appId)));
-    if(scoped != null) {
-        return scoped;
-    }
-
-    const legacy = parseAccountInfo(localStorage.getItem(LEGACY_ACCOUNT_STORAGE_KEY));
-    if(legacy?.session_token && parseTokenAppId(legacy.session_token) === appId) {
-        localStorage.setItem(getAccountStorageKey(appId), JSON.stringify(legacy));
-        return legacy;
-    }
-
-    return null;
-}

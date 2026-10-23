@@ -277,13 +277,6 @@ export class BuckyOSSDK {
     const finalConfig = this.buildRuntimeConfig(appid, config)
 
     if (this.target !== 'node' && isBrowserRuntime() && !config) {
-      // Cache key is versioned: pre-v2 entries were filled by a buggy
-      // tryGetZoneHostName that always pinned the zone host to whatever
-      // app subdomain the user happened to load (e.g. `sys-test.test.buckyos.io`
-      // instead of `test.buckyos.io`). Bumping the key forces a re-probe
-      // through the new identifier-doc-aware logic on first load and also
-      // clears the stale entry so it doesn't keep wasting localStorage space.
-      localStorage.removeItem('zone_host_name')
       let zoneHostName = localStorage.getItem('zone_host_name_v2')
       if (zoneHostName) {
         finalConfig.zoneHost = zoneHostName
@@ -465,7 +458,7 @@ export class BuckyOSSDK {
     try {
       const verifyHubClient = this.getVerifyHubClient()
       verifyHubClient.setSeq(loginNonce)
-      const accountResponse = await verifyHubClient.loginByPassword({
+      const response = await verifyHubClient.loginByPassword({
         username,
         password: passwordHash,
         target: resolvedTarget,
@@ -473,13 +466,12 @@ export class BuckyOSSDK {
         source_url: typeof window !== 'undefined' ? window.location.href : undefined,
       })
 
-      const normalized = VerifyHubClient.normalizeLoginResponse(accountResponse)
       const accountInfo: AccountInfo = {
-        user_name: normalized.user_name,
-        user_id: normalized.user_id,
-        user_type: normalized.user_type,
-        session_token: normalized.session_token,
-        refresh_token: normalized.refresh_token,
+        user_name: response.user_info.show_name,
+        user_id: response.user_info.user_id,
+        user_type: response.user_info.user_type,
+        session_token: response.session_token,
+        refresh_token: response.refresh_token,
       }
 
       if (isBrowserStorageAvailable()) {
@@ -488,7 +480,7 @@ export class BuckyOSSDK {
         saveBrowserUserInfo({
           user_name: accountInfo.user_name,
           user_id: accountInfo.user_id,
-          user_type: normalized.user_type,
+          user_type: response.user_info.user_type,
         })
       }
       this.currentAccountInfo = accountInfo
@@ -808,10 +800,9 @@ export class BuckyOSSDK {
     // currently visiting, and AuthClient would then build SSO URLs like
     // `sys.<app>.<zone>/login` (wrong) instead of `sys.<zone>/login`.
     //
-    // The DID document itself carries the canonical zone host in either the
-    // `hostname` field or the `did:web:<host>` form of `id`. Use that as the
-    // primary signal, and only fall back to the walk-up-the-DNS-tree probe
-    // when the document does not contain a hostname.
+    // The ZoneDocument itself carries the canonical zone host in its
+    // `hostname` field. Use that as the primary signal, and only fall back to
+    // the walk-up-the-DNS-tree probe when this host serves no ZoneDocument.
     const zoneFromDoc = await this.fetchZoneHostFromIdentifierDoc(defaultProtocol + host + '/1.0/identifiers/self')
     if (zoneFromDoc) {
       return zoneFromDoc
@@ -836,19 +827,9 @@ export class BuckyOSSDK {
       if (response.status !== 200) {
         return null
       }
-      const doc = await response.json() as { hostname?: unknown; id?: unknown }
+      const doc = await response.json() as { hostname?: unknown }
       const hostname = typeof doc.hostname === 'string' ? doc.hostname.trim() : ''
-      if (hostname.length > 0) {
-        return hostname
-      }
-      // Fallback: derive from `did:web:<host>` style id if `hostname` is missing.
-      if (typeof doc.id === 'string') {
-        const match = doc.id.match(/^did:web:([^/?#]+)/)
-        if (match && match[1]) {
-          return match[1]
-        }
-      }
-      return null
+      return hostname.length > 0 ? hostname : null
     } catch {
       return null
     }

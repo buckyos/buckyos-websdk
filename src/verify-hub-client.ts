@@ -19,14 +19,6 @@ export interface LoginByPasswordResponse {
   refresh_token: string
 }
 
-export interface LegacyLoginByPasswordResponse {
-  user_name: string
-  user_id: string
-  user_type: string
-  session_token: string
-  refresh_token?: string
-}
-
 export interface AppAuthTarget {
   kind: 'app'
   app_instance_id: string
@@ -125,7 +117,7 @@ export class VerifyHubClient {
     })
   }
 
-  async loginByPassword(params: LoginByPasswordParams): Promise<LoginByPasswordResponse | LegacyLoginByPasswordResponse> {
+  async loginByPassword(params: LoginByPasswordParams): Promise<LoginByPasswordResponse> {
     this.rpcClient.resetSessionToken()
     const payload: Record<string, unknown> = {
       type: 'password',
@@ -139,7 +131,7 @@ export class VerifyHubClient {
     if (params.source_url) {
       payload.source_url = params.source_url
     }
-    return this.rpcClient.call<LoginByPasswordResponse | LegacyLoginByPasswordResponse, Record<string, unknown>>('login_by_password', payload)
+    return this.rpcClient.call<LoginByPasswordResponse, Record<string, unknown>>('login_by_password', payload)
   }
 
   async sudoByPassword(params: SudoByPasswordParams): Promise<SudoByPasswordResponse> {
@@ -172,24 +164,6 @@ export class VerifyHubClient {
       payload.expected_target = serializeAuthTarget(params.expected_target)
     }
     return this.rpcClient.call<boolean, VerifyTokenParams>('verify_token', payload)
-  }
-
-  static normalizeLoginResponse(response: LoginByPasswordResponse | LegacyLoginByPasswordResponse): LegacyLoginByPasswordResponse {
-    if ('user_info' in response) {
-      return {
-        user_name: response.user_info.show_name,
-        user_id: response.user_info.user_id,
-        user_type: response.user_info.user_type,
-        session_token: response.session_token,
-        refresh_token: response.refresh_token,
-      }
-    }
-
-    if (!response.session_token) {
-      throw new RPCError('login_by_password response missing session_token')
-    }
-
-    return response
   }
 }
 

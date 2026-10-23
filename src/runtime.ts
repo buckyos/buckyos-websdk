@@ -18,7 +18,7 @@ import {
   saveBrowserUserInfo,
 } from './account'
 import { ANONYMOUS_IDENTITY, CurrentIdentity, identityKey, parseCurrentIdentity } from './hybrid_sso'
-import { parseBuckyOSOwnerDocument } from './types'
+import { isBuckyOSLocalNodeIdentityConfig, NODE_IDENTITY_SCHEMA_V2, parseBuckyOSOwnerDocument } from './types'
 import { DID } from './namelib'
 import {
   AppDID,
@@ -158,10 +158,9 @@ interface LocalSigningMaterial {
 }
 
 interface NodeIdentityMetadata {
-  deviceName: string | null
-  deviceDid: string | null
-  zoneDid: string | null
-  zoneName: string | null
+  deviceName: string
+  deviceDid: string
+  zoneDid: string
 }
 
 function getProcessEnv(): Record<string, string | undefined> {
@@ -1147,29 +1146,24 @@ export class BuckyOSRuntime {
   }
 
   private async loadLocalSigningMaterial(): Promise<LocalSigningMaterial> {
-    const fs = await importNodeModule('node:fs/promises')
     const path = await importNodeModule('node:path')
     const configuredUserId = this.getOwnerUserId()
     if (!configuredUserId) {
       const etcDir = await this.getBuckyOSEtcDir()
-      const deviceName = await this.readDeviceNameFromNodeIdentityPath(path.join(etcDir, 'node_identity.json'))
-      if (!deviceName) {
-        throw new Error(`failed to resolve userid from ${path.join(etcDir, 'node_identity.json')} device_mini_doc_jwt`)
+      const nodeIdentityPath = path.join(etcDir, 'node_identity.json')
+      const metadata = await this.readNodeIdentityMetadata(nodeIdentityPath)
+      if (!metadata) {
+        throw new Error(`failed to load ${NODE_IDENTITY_SCHEMA_V2} node identity from ${nodeIdentityPath}`)
       }
 
-      const keyPem = await this.readPemFile(path.join(etcDir, 'node_private_key.pem'))
-      if (!keyPem) {
-        throw new Error(`failed to load node_private_key.pem from ${etcDir}`)
+      const material = await this.loadDeviceSigningMaterial(etcDir, metadata)
+      if (!material) {
+        throw new Error(`failed to load authentication private key of ${metadata.deviceDid}`)
       }
 
-      this.config.userid = deviceName
-      this.config.ownerUserId = deviceName
-      return {
-        keyPem,
-        issuer: deviceName,
-        subject: deviceName,
-        sourcePath: path.join(etcDir, 'node_private_key.pem'),
-      }
+      this.config.userid = metadata.deviceName
+      this.config.ownerUserId = metadata.deviceName
+      return material
     }
 
     const roots = await this.getPrivateKeySearchRoots()
@@ -1240,66 +1234,18 @@ export class BuckyOSRuntime {
   private async readNodeIdentityMetadata(nodeIdentityPath: string): Promise<NodeIdentityMetadata | null> {
     const fs = await importNodeModule('node:fs/promises')
     try {
-      const raw = await fs.readFile(nodeIdentityPath, 'utf8')
-      const parsed = JSON.parse(raw) as {
-        device_name?: unknown
-        device_did?: unknown
-        zone_did?: unknown
-        zone_name?: unknown
-        device_mini_doc_jwt?: unknown
-        device_doc_jwt?: unknown
+      const parsed: unknown = JSON.parse(await fs.readFile(nodeIdentityPath, 'utf8'))
+      if (!isBuckyOSLocalNodeIdentityConfig(parsed)) {
+        return null
       }
-
-      const deviceName = this.extractDeviceNameFromIdentityPayload(parsed)
       return {
-        deviceName,
-        deviceDid: typeof parsed.device_did === 'string' ? parsed.device_did.trim() || null : null,
-        zoneDid: typeof parsed.zone_did === 'string' ? parsed.zone_did.trim() || null : null,
-        zoneName: typeof parsed.zone_name === 'string' ? parsed.zone_name.trim() || null : null,
+        deviceName: parsed.device_name,
+        deviceDid: parsed.device_did,
+        zoneDid: parsed.zone_did,
       }
     } catch {
       return null
     }
-  }
-
-  private extractDeviceNameFromIdentityPayload(payload: {
-    device_name?: unknown
-    device_mini_doc_jwt?: unknown
-    device_doc_jwt?: unknown
-  }): string | null {
-    // node_identity schema v2 (buckyos.node_identity.v2) carries the device
-    // name directly.
-    const directName = typeof payload.device_name === 'string' ? payload.device_name.trim() : ''
-    if (directName) {
-      return directName
-    }
-
-    // Legacy v1 identity files embed the device jwts instead. Lenient
-    // extraction: any JWT that carries an "n" claim is enough to learn the
-    // device name.
-    const miniDocJwt = typeof payload.device_mini_doc_jwt === 'string' ? payload.device_mini_doc_jwt : null
-    const miniDocClaims = parseSessionTokenClaims(miniDocJwt)
-    const miniDocName = typeof miniDocClaims?.n === 'string' ? miniDocClaims.n.trim() : ''
-    if (miniDocName) {
-      return miniDocName
-    }
-
-    const deviceDocJwt = typeof payload.device_doc_jwt === 'string' ? payload.device_doc_jwt : null
-    const deviceDocClaims = parseSessionTokenClaims(deviceDocJwt)
-    for (const claimKey of ['name', 'sub'] as const) {
-      const claimValue = deviceDocClaims?.[claimKey]
-      const candidate = typeof claimValue === 'string' ? claimValue.trim() : ''
-      if (candidate) {
-        return candidate
-      }
-    }
-
-    return null
-  }
-
-  private async readDeviceNameFromNodeIdentityPath(nodeIdentityPath: string): Promise<string | null> {
-    const metadata = await this.readNodeIdentityMetadata(nodeIdentityPath)
-    return metadata?.deviceName ?? null
   }
 
   private async tryLoadDeviceSigningMaterial(userId: string, roots: string[]): Promise<LocalSigningMaterial | null> {
@@ -1312,54 +1258,47 @@ export class BuckyOSRuntime {
 
     for (const dir of Array.from(new Set(candidateDirs))) {
       const metadata = await this.readNodeIdentityMetadata(path.join(dir, 'node_identity.json'))
-      const deviceName = metadata?.deviceName ?? null
-      if (!deviceName || deviceName !== userId) {
+      if (!metadata || metadata.deviceName !== userId) {
         continue
       }
 
-      for (const keyPath of await this.deviceKeyPathCandidates(dir, metadata?.deviceDid ?? null)) {
-        const keyPem = await this.readPemFile(keyPath)
-        if (!keyPem) {
-          continue
-        }
-
-        return {
-          keyPem,
-          issuer: deviceName,
-          subject: deviceName,
-          sourcePath: keyPath,
-        }
+      const material = await this.loadDeviceSigningMaterial(dir, metadata)
+      if (material) {
+        return material
       }
     }
 
     return null
   }
 
-  // node_identity schema v2 stores the device authentication key in the
-  // identity-roots security dir (keyed by the device DID); v1 layouts keep a
-  // node_private_key.pem next to node_identity.json.
-  private async deviceKeyPathCandidates(identityDir: string, deviceDid: string | null): Promise<string[]> {
+  // The device authentication key lives in the identity-roots security dir,
+  // keyed by the device DID.
+  private async loadDeviceSigningMaterial(identityDir: string, metadata: NodeIdentityMetadata): Promise<LocalSigningMaterial | null> {
     const path = await importNodeModule('node:path')
-    const candidates: string[] = []
+    const dirName = DID.fromStr(metadata.deviceDid).toFilename()
+    const keyFileName = 'authentication.private.pem'
+    const securityRoot = trimToNull(getProcessEnv().BUCKYOS_SECURITY_ROOT)
+      ?? path.join(await this.getBuckyOSRootDir(), 'security')
+    const keyPaths = [
+      // dev/test layout: security root under the node dir itself
+      path.join(identityDir, 'security', dirName, keyFileName),
+      // deployed layout: $BUCKYOS_SECURITY_ROOT or $BUCKYOS_ROOT/security
+      path.join(securityRoot, dirName, keyFileName),
+    ]
 
-    if (deviceDid) {
-      try {
-        const dirName = DID.fromStr(deviceDid).toFilename()
-        const keyFileName = 'authentication.private.pem'
-        // dev/test layout: security root under the node dir itself
-        candidates.push(path.join(identityDir, 'security', dirName, keyFileName))
-        // deployed layout: $BUCKYOS_SECURITY_ROOT or $BUCKYOS_ROOT/security
-        const env = getProcessEnv()
-        const securityRoot = trimToNull(env.BUCKYOS_SECURITY_ROOT)
-          ?? path.join(trimToNull(env.BUCKYOS_ROOT) ?? '/opt/buckyos', 'security')
-        candidates.push(path.join(securityRoot, dirName, keyFileName))
-      } catch {
-        // Malformed device did: fall through to the legacy key path.
+    for (const keyPath of keyPaths) {
+      const keyPem = await this.readPemFile(keyPath)
+      if (keyPem) {
+        return {
+          keyPem,
+          issuer: metadata.deviceName,
+          subject: metadata.deviceName,
+          sourcePath: keyPath,
+        }
       }
     }
 
-    candidates.push(path.join(identityDir, 'node_private_key.pem'))
-    return candidates
+    return null
   }
 
   private async tryLoadUserSigningMaterial(userId: string, roots: string[]): Promise<LocalSigningMaterial | null> {
@@ -1398,41 +1337,6 @@ export class BuckyOSRuntime {
     return null
   }
 
-  private async tryResolveDeviceNameFromSearchRoots(roots: string[]): Promise<string | null> {
-    const path = await importNodeModule('node:path')
-    const env = getProcessEnv()
-
-    const fromEnv = trimToNull(env.BUCKYOS_THIS_DEVICE_NAME)
-    if (fromEnv) {
-      return fromEnv
-    }
-
-    for (const key of ['BUCKYOS_THIS_DEVICE', 'BUCKYOS_THIS_DEVICE_INFO']) {
-      const raw = trimToNull(env[key])
-      if (!raw) {
-        continue
-      }
-      try {
-        const parsed = JSON.parse(raw) as { name?: unknown }
-        if (typeof parsed.name === 'string' && parsed.name.trim().length > 0) {
-          return parsed.name.trim()
-        }
-      } catch {
-        // Ignore malformed env payloads.
-      }
-    }
-
-    for (const root of roots) {
-      const nodeIdentityPath = path.join(root, 'node_identity.json')
-      const deviceName = await this.readDeviceNameFromNodeIdentityPath(nodeIdentityPath)
-      if (deviceName) {
-        return deviceName
-      }
-    }
-
-    return null
-  }
-
   private async tryResolveZoneHostFromSearchRoots(roots: string[]): Promise<string | null> {
     const fs = await importNodeModule('node:fs/promises')
     const path = await importNodeModule('node:path')
@@ -1446,19 +1350,9 @@ export class BuckyOSRuntime {
     for (const root of roots) {
       const nodeIdentityPath = path.join(root, 'node_identity.json')
       const metadata = await this.readNodeIdentityMetadata(nodeIdentityPath)
-      if (!metadata) {
-        continue
+      if (metadata) {
+        return resolveZoneHostFromDid(metadata.zoneDid)
       }
-
-      if (metadata.zoneName) {
-        return metadata.zoneName
-      }
-
-      if (!metadata.zoneDid) {
-        continue
-      }
-
-      return resolveZoneHostFromDid(metadata.zoneDid)
     }
 
     for (const root of roots) {

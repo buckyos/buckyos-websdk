@@ -44,8 +44,11 @@ describe('BuckyOSSDK.loginByPassword', () => {
     })
 
     await expect(sdk.loginByPassword('alice', 'password')).resolves.toMatchObject({
+      user_name: 'Alice',
       user_id: 'alice',
+      user_type: 'user',
       session_token: 'session-token',
+      refresh_token: 'refresh-token',
     })
 
     const body = JSON.parse((fetcher.mock.calls[0][1] as RequestInit).body as string)
