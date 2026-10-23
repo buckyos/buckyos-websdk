@@ -21,9 +21,8 @@ export declare const AICC_AI_METHODS: {
     readonly AUDIO_ASR: "audio.asr";
     readonly AUDIO_MUSIC: "audio.music";
     readonly AUDIO_ENHANCE: "audio.enhance";
-    readonly VIDEO_TXT2VIDEO: "video.txt2video";
-    readonly VIDEO_IMG2VIDEO: "video.img2video";
-    readonly VIDEO_VIDEO2VIDEO: "video.video2video";
+    readonly VIDEO_GENERATE: "video.generate";
+    readonly VIDEO_EDIT: "video.edit";
     readonly VIDEO_EXTEND: "video.extend";
     readonly VIDEO_UPSCALE: "video.upscale";
     readonly AGENT_COMPUTER_USE: "agent.computer_use";
@@ -32,6 +31,7 @@ export declare const AICC_CORE_METHODS: {
     readonly ROUTE_RESOLVE: "route.resolve";
     readonly HELPER_LLM_CHAT: "helper.llm_chat";
     readonly HELPER_TEXT_TO_IMAGE: "helper.text_to_image";
+    readonly HELPER_VIDEO_GENERATE: "helper.video_generate";
     readonly CANCEL: "cancel";
 };
 export declare const AICC_MANAGEMENT_METHODS: {
@@ -105,6 +105,7 @@ export declare const AICC_METHODS: {
     readonly ROUTE_RESOLVE: "route.resolve";
     readonly HELPER_LLM_CHAT: "helper.llm_chat";
     readonly HELPER_TEXT_TO_IMAGE: "helper.text_to_image";
+    readonly HELPER_VIDEO_GENERATE: "helper.video_generate";
     readonly CANCEL: "cancel";
     readonly CHAT_COMPLETIONS_CREATE: "chat.completions.create";
     readonly IMAGES_GENERATE: "images.generate";
@@ -124,9 +125,8 @@ export declare const AICC_METHODS: {
     readonly AUDIO_ASR: "audio.asr";
     readonly AUDIO_MUSIC: "audio.music";
     readonly AUDIO_ENHANCE: "audio.enhance";
-    readonly VIDEO_TXT2VIDEO: "video.txt2video";
-    readonly VIDEO_IMG2VIDEO: "video.img2video";
-    readonly VIDEO_VIDEO2VIDEO: "video.video2video";
+    readonly VIDEO_GENERATE: "video.generate";
+    readonly VIDEO_EDIT: "video.edit";
     readonly VIDEO_EXTEND: "video.extend";
     readonly VIDEO_UPSCALE: "video.upscale";
     readonly AGENT_COMPUTER_USE: "agent.computer_use";
@@ -136,7 +136,7 @@ export type AiccMethod = typeof AICC_METHODS[keyof typeof AICC_METHODS];
 export type JsonValue = null | boolean | number | string | JsonValue[] | {
     [key: string]: JsonValue;
 };
-export type ApiType = 'llm' | 'embedding.text' | 'embedding.multimodal' | 'decision' | 'rerank' | 'image.txt2img' | 'image.img2img' | 'image.inpaint' | 'image.upscale' | 'image.bg_remove' | 'vision.ocr' | 'vision.caption' | 'vision.detect' | 'vision.segment' | 'audio.tts' | 'audio.asr' | 'audio.music' | 'audio.enhance' | 'video.txt2video' | 'video.img2video' | 'video.video2video' | 'video.extend' | 'video.upscale' | 'agent.computer_use';
+export type ApiType = 'llm' | 'embedding.text' | 'embedding.multimodal' | 'decision' | 'rerank' | 'image.txt2img' | 'image.img2img' | 'image.inpaint' | 'image.upscale' | 'image.bg_remove' | 'vision.ocr' | 'vision.caption' | 'vision.detect' | 'vision.segment' | 'audio.tts' | 'audio.asr' | 'audio.music' | 'audio.enhance' | 'video.generate' | 'video.edit' | 'video.extend' | 'video.upscale' | 'agent.computer_use';
 export type Capability = 'llm' | 'embedding' | 'decision' | 'rerank' | 'image' | 'vision' | 'audio' | 'video' | 'agent';
 export type Feature = string;
 export declare const AICC_FEATURES: {
@@ -223,6 +223,9 @@ export interface AiUsage {
     output_tokens?: number;
     total_tokens?: number;
     request_units?: number;
+    video_seconds?: number;
+    reference_images?: number;
+    reported_cost?: number;
 }
 export interface Money {
     amount: number;
@@ -298,8 +301,9 @@ export interface ModelRequirement {
     vision?: boolean;
     image_generation?: boolean;
     min_context_tokens?: number;
+    video?: VideoGenerationRequirement;
 }
-export interface ModelDisable extends Omit<ModelRequirement, "decision"> {
+export interface ModelDisable extends Omit<ModelRequirement, "decision" | "video"> {
 }
 export interface HelperModelRequirement extends Omit<ModelRequirement, "decision"> {
 }
@@ -850,31 +854,87 @@ export interface AudioEnhanceResponse extends InferenceResponse {
     audio?: ResourceRef;
     stems?: ResourceRef[];
 }
-export interface VideoTextToVideoRequest extends InferenceRequest {
-    prompt: string;
-    duration_seconds?: number;
-    aspect_ratio?: string;
-    resolution?: string;
-    generate_audio?: boolean;
-    seed?: number;
-    output?: AiOutputOptions;
-}
-export interface VideoImageToVideoRequest extends InferenceRequest {
-    image: ResourceRef;
-    prompt: string;
-    duration_seconds?: number;
-    aspect_ratio?: string;
-    resolution?: string;
-}
 export interface TimeRange {
     start_seconds: number;
     end_seconds: number;
 }
-export interface VideoToVideoRequest extends InferenceRequest {
+/** Video generation inputs (doc/aicc/video_generation.md); `id` is referenced from the prompt as `@{id}`. */
+export type KeyframePosition = 'start' | 'end';
+export type VideoCondition = {
+    type: 'reference_image';
+    id: string;
+    resource: ResourceRef;
+} | {
+    type: 'reference_video';
+    id: string;
+    resource: ResourceRef;
+    time_range?: TimeRange;
+    include_audio?: boolean;
+} | {
+    type: 'reference_audio';
+    id: string;
+    resource: ResourceRef;
+    time_range?: TimeRange;
+} | {
+    type: 'keyframe';
+    id: string;
+    resource: ResourceRef;
+    position: KeyframePosition;
+};
+export type VideoConditionKind = VideoCondition['type'];
+export type VideoSize = {
+    short_edge: number;
+} | {
+    width: number;
+    height: number;
+};
+export type VideoAudioMode = 'auto' | 'generate' | 'none';
+export interface VideoOutputSpec {
+    duration_seconds?: number;
+    aspect_ratio?: string;
+    size?: VideoSize;
+    fps?: number;
+    audio?: VideoAudioMode;
+    media_type?: string;
+}
+/** What a video request demands of a model; used by `route.resolve`, helpers and routing alike. */
+export interface VideoGenerationRequirement {
+    prompt?: boolean;
+    negative_prompt?: boolean;
+    seed?: boolean;
+    reference_images?: number;
+    reference_videos?: number;
+    reference_audios?: number;
+    keyframes?: KeyframePosition[];
+    reference_video_audio?: boolean;
+    time_ranges?: boolean;
+    output?: VideoOutputSpec;
+}
+interface VideoGenerationFields {
+    prompt?: string;
+    negative_prompt?: string;
+    conditions?: VideoCondition[];
+    output?: VideoOutputSpec;
+    seed?: number;
+}
+export interface VideoGenerateRequest extends InferenceRequest, VideoGenerationFields {
+}
+export interface VideoGenerateHelperRequest extends VideoGenerationFields {
+    logical_model: string;
+    requirements?: HelperModelRequirement;
+    trace_id?: string;
+    execution_mode?: AiccExecutionMode;
+    disable?: ModelDisable;
+    policy?: RoutePolicy;
+    idempotency_key?: string;
+    task_options?: AiTaskOptions;
+    session_overlay?: AiccRouteOverlay;
+    session_id?: string;
+}
+export interface VideoEditRequest extends InferenceRequest {
     video: ResourceRef;
     prompt: string;
-    preserve_motion?: boolean;
-    time_range?: TimeRange;
+    output?: VideoOutputSpec;
 }
 export interface VideoExtendRequest extends InferenceRequest {
     video: ResourceRef;
@@ -890,12 +950,33 @@ export interface VideoUpscaleRequest extends InferenceRequest {
     sharpen?: number;
     output?: AiOutputOptions;
 }
-export interface VideoResponse extends InferenceResponse {
-    video?: ResourceRef;
+export interface VideoMetadata {
+    duration_seconds?: number;
+    width?: number;
+    height?: number;
+    fps?: number;
+    has_audio?: boolean;
 }
-export type VideoTextToVideoResponse = VideoResponse;
-export type VideoImageToVideoResponse = VideoResponse;
-export type VideoToVideoResponse = VideoResponse;
+export interface VideoDeviation {
+    field: string;
+    requested: JsonValue;
+    actual: JsonValue;
+    source: 'provider' | 'measured';
+}
+/** `provider_metadata` is what the Provider reported; `measured_metadata` is read from the file by AICC when it had the bytes. */
+export interface GeneratedVideo {
+    resource: ResourceRef;
+    media_type?: string;
+    provider_metadata: VideoMetadata;
+    measured_metadata?: VideoMetadata;
+    last_frame?: ResourceRef;
+    deviations?: VideoDeviation[];
+}
+export interface VideoResponse extends InferenceResponse {
+    videos?: GeneratedVideo[];
+}
+export type VideoGenerateResponse = VideoResponse;
+export type VideoEditResponse = VideoResponse;
 export type VideoExtendResponse = VideoResponse;
 export type VideoUpscaleResponse = VideoResponse;
 export interface ComputerEnvironment {
@@ -1559,9 +1640,9 @@ export declare class AiccClient {
     audioSpeechRecognition(r: AudioSpeechRecognitionRequest): Promise<AudioSpeechRecognitionResponse>;
     audioMusic(r: AudioMusicRequest): Promise<AudioMusicResponse>;
     audioEnhance(r: AudioEnhanceRequest): Promise<AudioEnhanceResponse>;
-    videoTextToVideo(r: VideoTextToVideoRequest): Promise<VideoResponse>;
-    videoImageToVideo(r: VideoImageToVideoRequest): Promise<VideoResponse>;
-    videoToVideo(r: VideoToVideoRequest): Promise<VideoResponse>;
+    videoGenerate(r: VideoGenerateRequest): Promise<VideoResponse>;
+    helperVideoGenerate(r: VideoGenerateHelperRequest): Promise<VideoResponse>;
+    videoEdit(r: VideoEditRequest): Promise<VideoResponse>;
     videoExtend(r: VideoExtendRequest): Promise<VideoResponse>;
     videoUpscale(r: VideoUpscaleRequest): Promise<VideoResponse>;
     computerUse(r: ComputerUseRequest): Promise<ComputerUseResponse>;
@@ -1610,5 +1691,20 @@ export declare class AiccClient {
 export declare function decisionRequirements(request: Pick<DecisionEvaluateRequest, 'state' | 'questions'>): ModelRequirement;
 export declare function validateDecisionRequest(request: DecisionEvaluateRequest): void;
 export declare function validateDecisionAnswers(request: DecisionEvaluateRequest, answers: DecisionAnswer[]): void;
+export type VideoPromptSegment = {
+    text: string;
+} | {
+    reference: string;
+};
+/** Splits a prompt into text and `@{id}` references; `@@` is a literal `@`, any other `@` stays as written. */
+export declare function parseVideoPrompt(prompt: string): VideoPromptSegment[];
+export declare function validateVideoOutput(output: unknown, field?: string): asserts output is VideoOutputSpec;
+/** Client-side check of the `video.generate` / `helper.video_generate` body, matching the server's validation. */
+export declare function validateVideoGeneration(request: VideoGenerationFields): void;
+export declare function validateVideoEdit(request: VideoEditRequest): void;
+/** The model requirement a video request implies, merged with a helper's `requirements.video` (which can only tighten it). */
+export declare function videoGenerationRequirement(request: VideoGenerationFields & {
+    requirements?: HelperModelRequirement;
+}): VideoGenerationRequirement;
 export {};
 //# sourceMappingURL=aicc_client.d.ts.map

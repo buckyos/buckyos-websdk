@@ -1292,9 +1292,8 @@ const AICC_AI_METHODS = {
   AUDIO_ASR: "audio.asr",
   AUDIO_MUSIC: "audio.music",
   AUDIO_ENHANCE: "audio.enhance",
-  VIDEO_TXT2VIDEO: "video.txt2video",
-  VIDEO_IMG2VIDEO: "video.img2video",
-  VIDEO_VIDEO2VIDEO: "video.video2video",
+  VIDEO_GENERATE: "video.generate",
+  VIDEO_EDIT: "video.edit",
   VIDEO_EXTEND: "video.extend",
   VIDEO_UPSCALE: "video.upscale",
   AGENT_COMPUTER_USE: "agent.computer_use"
@@ -1303,6 +1302,7 @@ const AICC_CORE_METHODS = {
   ROUTE_RESOLVE: "route.resolve",
   HELPER_LLM_CHAT: "helper.llm_chat",
   HELPER_TEXT_TO_IMAGE: "helper.text_to_image",
+  HELPER_VIDEO_GENERATE: "helper.video_generate",
   CANCEL: "cancel"
 };
 const AICC_MANAGEMENT_METHODS = {
@@ -1437,15 +1437,15 @@ const schemas = {
   [AICC_AI_METHODS.AUDIO_ASR]: [...common, "audio", "language", "timestamps", "diarization", "output_formats"],
   [AICC_AI_METHODS.AUDIO_MUSIC]: [...common, "prompt", "duration_seconds", "instrumental", "lyrics", "seed", "output"],
   [AICC_AI_METHODS.AUDIO_ENHANCE]: [...common, "audio", "task", "strength", "return_stems"],
-  [AICC_AI_METHODS.VIDEO_TXT2VIDEO]: [...common, "prompt", "duration_seconds", "aspect_ratio", "resolution", "generate_audio", "seed", "output"],
-  [AICC_AI_METHODS.VIDEO_IMG2VIDEO]: [...common, "image", "prompt", "duration_seconds", "aspect_ratio", "resolution"],
-  [AICC_AI_METHODS.VIDEO_VIDEO2VIDEO]: [...common, "video", "prompt", "preserve_motion", "time_range"],
+  [AICC_AI_METHODS.VIDEO_GENERATE]: [...common, "prompt", "negative_prompt", "conditions", "output", "seed"],
+  [AICC_AI_METHODS.VIDEO_EDIT]: [...common, "video", "prompt", "output"],
   [AICC_AI_METHODS.VIDEO_EXTEND]: [...common, "video", "prompt", "continuation_handle", "duration_seconds", "resolution"],
   [AICC_AI_METHODS.VIDEO_UPSCALE]: [...common, "video", "target_resolution", "denoise", "sharpen", "output"],
   [AICC_AI_METHODS.AGENT_COMPUTER_USE]: [...common, "task", "environment", "allowed_actions"],
   [AICC_CORE_METHODS.ROUTE_RESOLVE]: ["trace_id", "execution_mode", "request_id", "api_type", "logical_model", "requirements", "disable", "policy", "estimated_input_tokens", "estimated_output_tokens", "session_overlay", "session_id"],
   [AICC_CORE_METHODS.HELPER_LLM_CHAT]: ["logical_model", "trace_id", "execution_mode", "requirements", "disable", "policy", "messages", "tools", "response_format", "temperature", "top_p", "max_output_tokens", "seed", "stop", "output", "idempotency_key", "task_options", "session_overlay", "session_id"],
   [AICC_CORE_METHODS.HELPER_TEXT_TO_IMAGE]: ["logical_model", "trace_id", "execution_mode", "requirements", "disable", "policy", "prompt", "negative_prompt", "n", "aspect_ratio", "size", "quality", "style", "seed", "output", "idempotency_key", "task_options", "session_overlay", "session_id"],
+  [AICC_CORE_METHODS.HELPER_VIDEO_GENERATE]: ["logical_model", "trace_id", "execution_mode", "requirements", "disable", "policy", "prompt", "negative_prompt", "conditions", "output", "seed", "idempotency_key", "task_options", "session_overlay", "session_id"],
   [AICC_CORE_METHODS.CANCEL]: ["task_id"],
   [AICC_MANAGEMENT_METHODS.SERVICE_RELOAD_SETTINGS]: [],
   [AICC_MANAGEMENT_METHODS.QUOTA_QUERY]: ["app_id"],
@@ -1557,14 +1557,19 @@ class AiccClient {
   audioEnhance(r) {
     return this.inference(AICC_AI_METHODS.AUDIO_ENHANCE, r);
   }
-  videoTextToVideo(r) {
-    return this.inference(AICC_AI_METHODS.VIDEO_TXT2VIDEO, r);
+  videoGenerate(r) {
+    validateVideoGeneration(r);
+    return this.inference(AICC_AI_METHODS.VIDEO_GENERATE, r);
   }
-  videoImageToVideo(r) {
-    return this.inference(AICC_AI_METHODS.VIDEO_IMG2VIDEO, r);
+  helperVideoGenerate(r) {
+    logical(r.logical_model);
+    validateVideoGeneration(r);
+    videoGenerationRequirement(r);
+    return this.call(AICC_CORE_METHODS.HELPER_VIDEO_GENERATE, r);
   }
-  videoToVideo(r) {
-    return this.inference(AICC_AI_METHODS.VIDEO_VIDEO2VIDEO, r);
+  videoEdit(r) {
+    validateVideoEdit(r);
+    return this.inference(AICC_AI_METHODS.VIDEO_EDIT, r);
   }
   videoExtend(r) {
     return this.inference(AICC_AI_METHODS.VIDEO_EXTEND, r);
@@ -1800,6 +1805,200 @@ function validateDecisionAnswers(request, answers) {
     } else
       invalid();
   }
+}
+const VIDEO_MAX_CONDITIONS = 32;
+const VIDEO_CONDITION_ID = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/;
+const VIDEO_CONDITION_FIELDS = {
+  reference_image: ["type", "id", "resource"],
+  reference_video: ["type", "id", "resource", "time_range", "include_audio"],
+  reference_audio: ["type", "id", "resource", "time_range"],
+  keyframe: ["type", "id", "resource", "position"]
+};
+const KEYFRAME_POSITIONS = ["start", "end"];
+function parseVideoPrompt(prompt) {
+  const segments = [];
+  let text = "";
+  for (let index = 0; index < prompt.length; index++) {
+    const next = prompt[index + 1];
+    if (prompt[index] !== "@")
+      text += prompt[index];
+    else if (next === "@") {
+      text += "@";
+      index++;
+    } else if (next !== "{")
+      text += "@";
+    else {
+      const end = prompt.indexOf("}", index + 2);
+      if (end < 0)
+        throw new RPCError("prompt reference `@{` is not closed");
+      const id2 = prompt.slice(index + 2, end);
+      if (!VIDEO_CONDITION_ID.test(id2))
+        throw new RPCError(`prompt reference \`${id2}\` is not a valid condition id`);
+      if (text)
+        segments.push({ text });
+      text = "";
+      segments.push({ reference: id2 });
+      index = end;
+    }
+  }
+  if (text)
+    segments.push({ text });
+  return segments;
+}
+function isObject(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+function finiteIn(value, min, max) {
+  return typeof value === "number" && Number.isFinite(value) && value > min && value <= max;
+}
+function aspectRatio(value) {
+  const match = typeof value === "string" ? /^(\d{1,3}):(\d{1,3})$/.exec(value) : null;
+  const [width, height] = match ? [Number(match[1]), Number(match[2])] : [0, 0];
+  return width >= 1 && width <= 100 && height >= 1 && height <= 100 ? [width, height] : void 0;
+}
+function reducedRatio(width, height) {
+  const gcd = (a, b2) => b2 === 0 ? a : gcd(b2, a % b2);
+  const divisor = Math.max(gcd(width, height), 1);
+  return `${width / divisor}:${height / divisor}`;
+}
+function validateResourceRef(value, field) {
+  const fields = { url: ["kind", "url", "mime_hint"], base64: ["kind", "mime", "data_base64"], named_object: ["kind", "obj_id"] };
+  if (!isObject(value) || typeof value.kind !== "string" || !fields[value.kind])
+    throw new RPCError(`${field} must be a ResourceRef`);
+  strict(value, fields[value.kind]);
+}
+function validateVideoOutput(output2, field = "output") {
+  if (!isObject(output2))
+    throw new RPCError(`${field} must be an object`);
+  strict(output2, ["duration_seconds", "aspect_ratio", "size", "fps", "audio", "media_type"]);
+  if (output2.duration_seconds !== void 0 && !finiteIn(output2.duration_seconds, 0, 600))
+    throw new RPCError(`${field}.duration_seconds must be a number in (0, 600]`);
+  const ratio = output2.aspect_ratio === void 0 ? void 0 : aspectRatio(output2.aspect_ratio);
+  if (output2.aspect_ratio !== void 0 && !ratio)
+    throw new RPCError(`${field}.aspect_ratio must be \`W:H\` with integers in 1..100`);
+  const edge = (value, name) => {
+    if (!Number.isInteger(value) || value < 16 || value > 8192)
+      throw new RPCError(`${field}.size.${name} must be an integer in 16..8192`);
+  };
+  const size = output2.size;
+  if (size !== void 0) {
+    if (!isObject(size))
+      throw new RPCError(`${field}.size must be { short_edge } or { width, height }`);
+    if ("short_edge" in size) {
+      strict(size, ["short_edge"]);
+      edge(size.short_edge, "short_edge");
+    } else {
+      strict(size, ["width", "height"]);
+      edge(size.width, "width");
+      edge(size.height, "height");
+      if (ratio && reducedRatio(size.width, size.height) !== reducedRatio(...ratio))
+        throw new RPCError(`${field}.size conflicts with aspect_ratio`);
+    }
+  }
+  if (output2.fps !== void 0 && !finiteIn(output2.fps, 0, 240))
+    throw new RPCError(`${field}.fps must be a number in (0, 240]`);
+  if (output2.audio !== void 0 && !["auto", "generate", "none"].includes(output2.audio))
+    throw new RPCError(`${field}.audio must be auto, generate or none`);
+  if (output2.media_type !== void 0 && !(typeof output2.media_type === "string" && /^video\/[a-z0-9.+-]+$/.test(output2.media_type)))
+    throw new RPCError(`${field}.media_type must be a lowercase video/* MIME type`);
+}
+function validateVideoGeneration(request) {
+  const { prompt, negative_prompt: negative, seed } = request;
+  const conditions = request.conditions ?? [];
+  if (prompt !== void 0 && typeof prompt !== "string")
+    throw new RPCError("prompt must be a string");
+  if (!Array.isArray(conditions))
+    throw new RPCError("conditions must be an array");
+  if (!(prompt == null ? void 0 : prompt.trim()) && !conditions.length)
+    throw new RPCError("video generation requires a non-blank prompt or at least one condition");
+  if (negative !== void 0 && (typeof negative !== "string" || !negative.trim()))
+    throw new RPCError("negative_prompt must not be blank when present");
+  if (seed !== void 0 && !(Number.isSafeInteger(seed) && seed >= 0))
+    throw new RPCError("seed must be a non-negative integer");
+  if (conditions.length > VIDEO_MAX_CONDITIONS)
+    throw new RPCError(`video generation accepts at most ${VIDEO_MAX_CONDITIONS} conditions`);
+  const ids = /* @__PURE__ */ new Set();
+  const positions = /* @__PURE__ */ new Set();
+  conditions.forEach((condition, index) => {
+    const field = `conditions[${index}]`;
+    if (!isObject(condition) || !(condition.type in VIDEO_CONDITION_FIELDS))
+      throw new RPCError(`${field}.type must be a video condition type`);
+    strict(condition, VIDEO_CONDITION_FIELDS[condition.type]);
+    if (typeof condition.id !== "string" || !VIDEO_CONDITION_ID.test(condition.id))
+      throw new RPCError(`${field}.id must match ${VIDEO_CONDITION_ID}`);
+    if (ids.has(condition.id.toLowerCase()))
+      throw new RPCError(`${field}.id \`${condition.id}\` is not unique (compared case-insensitively)`);
+    ids.add(condition.id.toLowerCase());
+    validateResourceRef(condition.resource, `${field}.resource`);
+    if (condition.type === "keyframe") {
+      if (!KEYFRAME_POSITIONS.includes(condition.position))
+        throw new RPCError(`${field}.position must be start or end`);
+      if (positions.has(condition.position))
+        throw new RPCError(`${field}: at most one keyframe is allowed per position`);
+      positions.add(condition.position);
+    }
+    if (condition.include_audio !== void 0 && typeof condition.include_audio !== "boolean")
+      throw new RPCError(`${field}.include_audio must be a boolean`);
+    const range = condition.time_range;
+    if (range !== void 0) {
+      if (!isObject(range))
+        throw new RPCError(`${field}.time_range must be an object`);
+      strict(range, ["start_seconds", "end_seconds"]);
+      const { start_seconds: start, end_seconds: end } = range;
+      if (typeof start !== "number" || typeof end !== "number" || !Number.isFinite(start) || !Number.isFinite(end) || start < 0 || start >= end) {
+        throw new RPCError(`${field}.time_range must be finite, non-negative and start before it ends`);
+      }
+    }
+  });
+  for (const segment of prompt ? parseVideoPrompt(prompt) : []) {
+    if ("reference" in segment && !(request.conditions ?? []).some((condition) => condition.id === segment.reference)) {
+      throw new RPCError(`prompt references unknown condition \`${segment.reference}\``);
+    }
+  }
+  if (request.output !== void 0)
+    validateVideoOutput(request.output);
+}
+function validateVideoEdit(request) {
+  if (typeof request.prompt !== "string" || !request.prompt.trim())
+    throw new RPCError("video edit requires a non-blank prompt");
+  validateResourceRef(request.video, "video");
+  if (request.output !== void 0)
+    validateVideoOutput(request.output);
+}
+function videoGenerationRequirement(request) {
+  var _a2, _b;
+  const conditions = request.conditions ?? [];
+  const count = (type) => conditions.filter((condition) => condition.type === type).length;
+  const declared = ((_a2 = request.requirements) == null ? void 0 : _a2.video) ?? {};
+  const requirement = {};
+  const flag = (key, value) => {
+    if (value || declared[key])
+      requirement[key] = true;
+  };
+  flag("prompt", !!((_b = request.prompt) == null ? void 0 : _b.trim()));
+  flag("negative_prompt", request.negative_prompt !== void 0);
+  flag("seed", request.seed !== void 0);
+  for (const [key, type] of [["reference_images", "reference_image"], ["reference_videos", "reference_video"], ["reference_audios", "reference_audio"]]) {
+    const value = Math.max(count(type), declared[key] ?? 0);
+    if (value)
+      requirement[key] = value;
+  }
+  const keyframes = KEYFRAME_POSITIONS.filter((position) => {
+    var _a3;
+    return ((_a3 = declared.keyframes) == null ? void 0 : _a3.includes(position)) || conditions.some((condition) => condition.type === "keyframe" && condition.position === position);
+  });
+  if (keyframes.length)
+    requirement.keyframes = keyframes;
+  flag("reference_video_audio", conditions.some((condition) => condition.type === "reference_video" && condition.include_audio === true));
+  flag("time_ranges", conditions.some((condition) => "time_range" in condition && condition.time_range !== void 0));
+  const own = request.output && Object.values(request.output).some((value) => value !== void 0) ? request.output : void 0;
+  if (own && declared.output && decisionJson(own) !== decisionJson(declared.output))
+    throw new RPCError("requirements.video.output conflicts with the request output");
+  if (!own && declared.output)
+    validateVideoOutput(declared.output, "requirements.video.output");
+  if (own ?? declared.output)
+    requirement.output = own ?? declared.output;
+  return requirement;
 }
 const DEFAULT_QUEUE_CONFIG = {
   max_messages: null,
@@ -27191,16 +27390,16 @@ class SnClient {
     return this.call(this.bnsProxyRpc, METHOD_BNS_PUBLISH_DNS_TXT, params);
   }
   async publishDocument(req) {
-    const isObject = req.document !== null && typeof req.document === "object" && !Array.isArray(req.document);
+    const isObject2 = req.document !== null && typeof req.document === "object" && !Array.isArray(req.document);
     const jwtParts = typeof req.document === "string" ? req.document.trim().split(".") : [];
     const isJwt = jwtParts.length === 3 && jwtParts.every((part) => part.length > 0);
-    if (!isObject && !isJwt) {
+    if (!isObject2 && !isJwt) {
       throw new SnClientError(
         "validation",
         "publish_document document must be a JSON object or non-empty compact JWT string"
       );
     }
-    if (req.doc_type.trim().toLowerCase() === "owner" && !isObject) {
+    if (req.doc_type.trim().toLowerCase() === "owner" && !isObject2) {
       throw new SnClientError("validation", "owner document must be a JSON object");
     }
     const params = {
@@ -29030,7 +29229,7 @@ export {
   WORKFLOW_EXECUTE_RPC_TASK_SCHEMA_ID as ay,
   WORKFLOW_RUN_TARGET_TASK_SCHEMA_ID as az,
   bns_client as b,
-  decodeBnsPublishDocumentCalldata as b$,
+  BNS_DNS_TXT_DEFAULT_TTL as b$,
   TaskPhase as b0,
   isTerminalTaskPhase as b1,
   TaskWaitReasonKind as b2,
@@ -29052,22 +29251,22 @@ export {
   decisionRequirements as bI,
   validateDecisionRequest as bJ,
   validateDecisionAnswers as bK,
-  KEventReader as bL,
-  KEventClient as bM,
-  appIdFromDid as bN,
-  parseAppId as bO,
-  appDidFromId as bP,
-  createAppInstanceId as bQ,
-  parseAppInstanceId as bR,
-  BNS_EVM_DEFAULT_GAS_LIMIT as bS,
-  BNS_EVM_DEFAULT_MAX_FEE_PER_GAS as bT,
-  BNS_EVM_DEFAULT_MAX_PRIORITY_FEE_PER_GAS as bU,
-  BNS_MAX_INLINE_DOCUMENT_BYTES as bV,
-  BNS_DNS_TXT_DEFAULT_TTL as bW,
-  BNS_DNS_TXT_DOC_TYPE as bX,
-  BNS_PUBLISH_DOCUMENT_ABI as bY,
-  BnsEvmTxError as bZ,
-  BnsEvmTxBuilder as b_,
+  parseVideoPrompt as bL,
+  validateVideoOutput as bM,
+  validateVideoGeneration as bN,
+  validateVideoEdit as bO,
+  videoGenerationRequirement as bP,
+  KEventReader as bQ,
+  KEventClient as bR,
+  appIdFromDid as bS,
+  parseAppId as bT,
+  appDidFromId as bU,
+  createAppInstanceId as bV,
+  parseAppInstanceId as bW,
+  BNS_EVM_DEFAULT_GAS_LIMIT as bX,
+  BNS_EVM_DEFAULT_MAX_FEE_PER_GAS as bY,
+  BNS_EVM_DEFAULT_MAX_PRIORITY_FEE_PER_GAS as bZ,
+  BNS_MAX_INLINE_DOCUMENT_BYTES as b_,
   StorageDomain as ba,
   TaskEventType as bb,
   TaskManagerClient as bc,
@@ -29095,9 +29294,14 @@ export {
   AICC_FEATURES as by,
   AICC_EXECUTION_MODES as bz,
   createSDKModule as c,
-  BnsTxExecutorError as c0,
-  walletUserHasSnAccount as c1,
-  BnsTxExecutor as c2,
+  BNS_DNS_TXT_DOC_TYPE as c0,
+  BNS_PUBLISH_DOCUMENT_ABI as c1,
+  BnsEvmTxError as c2,
+  BnsEvmTxBuilder as c3,
+  decodeBnsPublishDocumentCalldata as c4,
+  BnsTxExecutorError as c5,
+  walletUserHasSnAccount as c6,
+  BnsTxExecutor as c7,
   BS_SERVICE_TASK_MANAGER as d,
   getActiveRuntimeType as e,
   getActiveZoneGatewayOrigin as f,
@@ -29122,4 +29326,4 @@ export {
   NOTIFY_TEXT_CONTROL_ID as y,
   NOTIFY_ACTION_ANSWER as z
 };
-//# sourceMappingURL=ndm_proxy-ba649c48.mjs.map
+//# sourceMappingURL=ndm_proxy-6b03b9ec.mjs.map

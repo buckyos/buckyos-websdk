@@ -23,9 +23,8 @@ export const AICC_AI_METHODS = {
   AUDIO_ASR: 'audio.asr',
   AUDIO_MUSIC: 'audio.music',
   AUDIO_ENHANCE: 'audio.enhance',
-  VIDEO_TXT2VIDEO: 'video.txt2video',
-  VIDEO_IMG2VIDEO: 'video.img2video',
-  VIDEO_VIDEO2VIDEO: 'video.video2video',
+  VIDEO_GENERATE: 'video.generate',
+  VIDEO_EDIT: 'video.edit',
   VIDEO_EXTEND: 'video.extend',
   VIDEO_UPSCALE: 'video.upscale',
   AGENT_COMPUTER_USE: 'agent.computer_use',
@@ -35,6 +34,7 @@ export const AICC_CORE_METHODS = {
   ROUTE_RESOLVE: 'route.resolve',
   HELPER_LLM_CHAT: 'helper.llm_chat',
   HELPER_TEXT_TO_IMAGE: 'helper.text_to_image',
+  HELPER_VIDEO_GENERATE: 'helper.video_generate',
   CANCEL: 'cancel',
 } as const
 
@@ -83,7 +83,7 @@ export type JsonValue = null | boolean | number | string | JsonValue[] | { [key:
 export type ApiType = 'llm' | 'embedding.text' | 'embedding.multimodal' | 'decision' | 'rerank' | 'image.txt2img' |
   'image.img2img' | 'image.inpaint' | 'image.upscale' | 'image.bg_remove' | 'vision.ocr' | 'vision.caption' |
   'vision.detect' | 'vision.segment' | 'audio.tts' | 'audio.asr' | 'audio.music' | 'audio.enhance' |
-  'video.txt2video' | 'video.img2video' | 'video.video2video' | 'video.extend' | 'video.upscale' | 'agent.computer_use'
+  'video.generate' | 'video.edit' | 'video.extend' | 'video.upscale' | 'agent.computer_use'
 export type Capability = 'llm' | 'embedding' | 'decision' | 'rerank' | 'image' | 'vision' | 'audio' | 'video' | 'agent'
 export type Feature = string
 export const AICC_FEATURES = {
@@ -112,7 +112,8 @@ export interface AiMessage { role: AiRole; content: AiContent[] }
 export interface AiToolSpec { type?: string; name: string; description: string; args_json_schema: JsonValue; output_schema?: JsonValue }
 export interface LlmJsonSchema { name?: string; schema: JsonValue; strict?: boolean }
 export interface LlmResponseFormat { type: 'text' | 'json' | 'json_object' | 'json_schema'; json_schema?: LlmJsonSchema }
-export interface AiUsage { input_tokens?: number; output_tokens?: number; total_tokens?: number; request_units?: number }
+export interface AiUsage { input_tokens?: number; output_tokens?: number; total_tokens?: number; request_units?: number;
+  video_seconds?: number; reference_images?: number; reported_cost?: number }
 export interface Money { amount: number; currency: string }
 export type AiCost = Money
 export interface AiArtifact { name: string; resource: ResourceRef; mime?: string; metadata?: JsonValue }
@@ -148,8 +149,8 @@ export type AiMethodStatus = 'succeeded' | 'running' | 'failed'
 export interface AiTaskOptions { parent_id?: string }
 export interface AiOutputOptions { media_type?: string; size?: string; sample_rate?: number; fps?: number }
 export interface ModelRequirement { decision?: DecisionRequirements; streaming?: boolean; tool_call?: boolean; json_schema?: boolean; web_search?: boolean;
-  vision?: boolean; image_generation?: boolean; min_context_tokens?: number }
-export interface ModelDisable extends Omit<ModelRequirement, "decision"> {}
+  vision?: boolean; image_generation?: boolean; min_context_tokens?: number; video?: VideoGenerationRequirement }
+export interface ModelDisable extends Omit<ModelRequirement, "decision" | "video"> {}
 export interface HelperModelRequirement extends Omit<ModelRequirement, "decision"> {}
 export interface RoutePolicy { profile?: 'cheap' | 'fast' | 'balanced' | 'quality'; local_only?: boolean;
   allow_fallback?: boolean; runtime_failover?: boolean; explain?: boolean; allowed_provider_instances?: string[];
@@ -292,20 +293,42 @@ export interface AudioMusicRequest extends InferenceRequest { prompt: string; du
 export interface AudioMusicResponse extends InferenceResponse { audio?: ResourceRef; structure?: MusicStructure }
 export interface AudioEnhanceRequest extends InferenceRequest { audio: ResourceRef; task: string; strength?: number; return_stems?: boolean }
 export interface AudioEnhanceResponse extends InferenceResponse { audio?: ResourceRef; stems?: ResourceRef[] }
-export interface VideoTextToVideoRequest extends InferenceRequest { prompt: string; duration_seconds?: number; aspect_ratio?: string;
-  resolution?: string; generate_audio?: boolean; seed?: number; output?: AiOutputOptions }
-export interface VideoImageToVideoRequest extends InferenceRequest { image: ResourceRef; prompt: string; duration_seconds?: number;
-  aspect_ratio?: string; resolution?: string }
 export interface TimeRange { start_seconds: number; end_seconds: number }
-export interface VideoToVideoRequest extends InferenceRequest { video: ResourceRef; prompt: string; preserve_motion?: boolean; time_range?: TimeRange }
+/** Video generation inputs (doc/aicc/video_generation.md); `id` is referenced from the prompt as `@{id}`. */
+export type KeyframePosition = 'start' | 'end'
+export type VideoCondition =
+  | { type: 'reference_image'; id: string; resource: ResourceRef }
+  | { type: 'reference_video'; id: string; resource: ResourceRef; time_range?: TimeRange; include_audio?: boolean }
+  | { type: 'reference_audio'; id: string; resource: ResourceRef; time_range?: TimeRange }
+  | { type: 'keyframe'; id: string; resource: ResourceRef; position: KeyframePosition }
+export type VideoConditionKind = VideoCondition['type']
+export type VideoSize = { short_edge: number } | { width: number; height: number }
+export type VideoAudioMode = 'auto' | 'generate' | 'none'
+export interface VideoOutputSpec { duration_seconds?: number; aspect_ratio?: string; size?: VideoSize; fps?: number;
+  audio?: VideoAudioMode; media_type?: string }
+/** What a video request demands of a model; used by `route.resolve`, helpers and routing alike. */
+export interface VideoGenerationRequirement { prompt?: boolean; negative_prompt?: boolean; seed?: boolean;
+  reference_images?: number; reference_videos?: number; reference_audios?: number; keyframes?: KeyframePosition[];
+  reference_video_audio?: boolean; time_ranges?: boolean; output?: VideoOutputSpec }
+interface VideoGenerationFields { prompt?: string; negative_prompt?: string; conditions?: VideoCondition[];
+  output?: VideoOutputSpec; seed?: number }
+export interface VideoGenerateRequest extends InferenceRequest, VideoGenerationFields {}
+export interface VideoGenerateHelperRequest extends VideoGenerationFields { logical_model: string; requirements?: HelperModelRequirement;
+  trace_id?: string; execution_mode?: AiccExecutionMode; disable?: ModelDisable; policy?: RoutePolicy;
+  idempotency_key?: string; task_options?: AiTaskOptions; session_overlay?: AiccRouteOverlay; session_id?: string }
+export interface VideoEditRequest extends InferenceRequest { video: ResourceRef; prompt: string; output?: VideoOutputSpec }
 export interface VideoExtendRequest extends InferenceRequest { video: ResourceRef; prompt: string; continuation_handle?: string;
   duration_seconds?: number; resolution?: string }
 export interface VideoUpscaleRequest extends InferenceRequest { video: ResourceRef; target_resolution: string; denoise?: boolean;
   sharpen?: number; output?: AiOutputOptions }
-export interface VideoResponse extends InferenceResponse { video?: ResourceRef }
-export type VideoTextToVideoResponse = VideoResponse
-export type VideoImageToVideoResponse = VideoResponse
-export type VideoToVideoResponse = VideoResponse
+export interface VideoMetadata { duration_seconds?: number; width?: number; height?: number; fps?: number; has_audio?: boolean }
+export interface VideoDeviation { field: string; requested: JsonValue; actual: JsonValue; source: 'provider' | 'measured' }
+/** `provider_metadata` is what the Provider reported; `measured_metadata` is read from the file by AICC when it had the bytes. */
+export interface GeneratedVideo { resource: ResourceRef; media_type?: string; provider_metadata: VideoMetadata;
+  measured_metadata?: VideoMetadata; last_frame?: ResourceRef; deviations?: VideoDeviation[] }
+export interface VideoResponse extends InferenceResponse { videos?: GeneratedVideo[] }
+export type VideoGenerateResponse = VideoResponse
+export type VideoEditResponse = VideoResponse
 export type VideoExtendResponse = VideoResponse
 export type VideoUpscaleResponse = VideoResponse
 export interface ComputerEnvironment { environment_id: string; session_id: string; screenshot: ResourceRef; viewport: { width: number; height: number } }
@@ -527,15 +550,15 @@ const schemas: Partial<Record<AiccMethod, string[]>> = {
   [AICC_AI_METHODS.AUDIO_ASR]: [...common, 'audio', 'language', 'timestamps', 'diarization', 'output_formats'],
   [AICC_AI_METHODS.AUDIO_MUSIC]: [...common, 'prompt', 'duration_seconds', 'instrumental', 'lyrics', 'seed', 'output'],
   [AICC_AI_METHODS.AUDIO_ENHANCE]: [...common, 'audio', 'task', 'strength', 'return_stems'],
-  [AICC_AI_METHODS.VIDEO_TXT2VIDEO]: [...common, 'prompt', 'duration_seconds', 'aspect_ratio', 'resolution', 'generate_audio', 'seed', 'output'],
-  [AICC_AI_METHODS.VIDEO_IMG2VIDEO]: [...common, 'image', 'prompt', 'duration_seconds', 'aspect_ratio', 'resolution'],
-  [AICC_AI_METHODS.VIDEO_VIDEO2VIDEO]: [...common, 'video', 'prompt', 'preserve_motion', 'time_range'],
+  [AICC_AI_METHODS.VIDEO_GENERATE]: [...common, 'prompt', 'negative_prompt', 'conditions', 'output', 'seed'],
+  [AICC_AI_METHODS.VIDEO_EDIT]: [...common, 'video', 'prompt', 'output'],
   [AICC_AI_METHODS.VIDEO_EXTEND]: [...common, 'video', 'prompt', 'continuation_handle', 'duration_seconds', 'resolution'],
   [AICC_AI_METHODS.VIDEO_UPSCALE]: [...common, 'video', 'target_resolution', 'denoise', 'sharpen', 'output'],
   [AICC_AI_METHODS.AGENT_COMPUTER_USE]: [...common, 'task', 'environment', 'allowed_actions'],
   [AICC_CORE_METHODS.ROUTE_RESOLVE]: ['trace_id', 'execution_mode', 'request_id', 'api_type', 'logical_model', 'requirements', 'disable', 'policy', 'estimated_input_tokens', 'estimated_output_tokens', 'session_overlay', 'session_id'],
   [AICC_CORE_METHODS.HELPER_LLM_CHAT]: ['logical_model', 'trace_id', 'execution_mode', 'requirements', 'disable', 'policy', 'messages', 'tools', 'response_format', 'temperature', 'top_p', 'max_output_tokens', 'seed', 'stop', 'output', 'idempotency_key', 'task_options', 'session_overlay', 'session_id'],
   [AICC_CORE_METHODS.HELPER_TEXT_TO_IMAGE]: ['logical_model', 'trace_id', 'execution_mode', 'requirements', 'disable', 'policy', 'prompt', 'negative_prompt', 'n', 'aspect_ratio', 'size', 'quality', 'style', 'seed', 'output', 'idempotency_key', 'task_options', 'session_overlay', 'session_id'],
+  [AICC_CORE_METHODS.HELPER_VIDEO_GENERATE]: ['logical_model', 'trace_id', 'execution_mode', 'requirements', 'disable', 'policy', 'prompt', 'negative_prompt', 'conditions', 'output', 'seed', 'idempotency_key', 'task_options', 'session_overlay', 'session_id'],
   [AICC_CORE_METHODS.CANCEL]: ['task_id'],
   [AICC_MANAGEMENT_METHODS.SERVICE_RELOAD_SETTINGS]: [],
   [AICC_MANAGEMENT_METHODS.QUOTA_QUERY]: ['app_id'],
@@ -599,9 +622,12 @@ export class AiccClient {
   audioSpeechRecognition(r: AudioSpeechRecognitionRequest) { return this.inference<AudioSpeechRecognitionResponse, AudioSpeechRecognitionRequest>(AICC_AI_METHODS.AUDIO_ASR, r) }
   audioMusic(r: AudioMusicRequest) { return this.inference<AudioMusicResponse, AudioMusicRequest>(AICC_AI_METHODS.AUDIO_MUSIC, r) }
   audioEnhance(r: AudioEnhanceRequest) { return this.inference<AudioEnhanceResponse, AudioEnhanceRequest>(AICC_AI_METHODS.AUDIO_ENHANCE, r) }
-  videoTextToVideo(r: VideoTextToVideoRequest) { return this.inference<VideoTextToVideoResponse, VideoTextToVideoRequest>(AICC_AI_METHODS.VIDEO_TXT2VIDEO, r) }
-  videoImageToVideo(r: VideoImageToVideoRequest) { return this.inference<VideoImageToVideoResponse, VideoImageToVideoRequest>(AICC_AI_METHODS.VIDEO_IMG2VIDEO, r) }
-  videoToVideo(r: VideoToVideoRequest) { return this.inference<VideoToVideoResponse, VideoToVideoRequest>(AICC_AI_METHODS.VIDEO_VIDEO2VIDEO, r) }
+  videoGenerate(r: VideoGenerateRequest) { validateVideoGeneration(r); return this.inference<VideoGenerateResponse, VideoGenerateRequest>(AICC_AI_METHODS.VIDEO_GENERATE, r) }
+  helperVideoGenerate(r: VideoGenerateHelperRequest) {
+    logical(r.logical_model); validateVideoGeneration(r); videoGenerationRequirement(r)
+    return this.call<VideoGenerateResponse, VideoGenerateHelperRequest>(AICC_CORE_METHODS.HELPER_VIDEO_GENERATE, r)
+  }
+  videoEdit(r: VideoEditRequest) { validateVideoEdit(r); return this.inference<VideoEditResponse, VideoEditRequest>(AICC_AI_METHODS.VIDEO_EDIT, r) }
   videoExtend(r: VideoExtendRequest) { return this.inference<VideoExtendResponse, VideoExtendRequest>(AICC_AI_METHODS.VIDEO_EXTEND, r) }
   videoUpscale(r: VideoUpscaleRequest) { return this.inference<VideoUpscaleResponse, VideoUpscaleRequest>(AICC_AI_METHODS.VIDEO_UPSCALE, r) }
   computerUse(r: ComputerUseRequest) { return this.inference<ComputerUseResponse, ComputerUseRequest>(AICC_AI_METHODS.AGENT_COMPUTER_USE, r) }
@@ -739,4 +765,167 @@ export function validateDecisionAnswers(request: DecisionEvaluateRequest, answer
       if (!Number.isFinite(answer.score) || answer.score < 0 || answer.score > keys.length - 1 || Math.abs(answer.score - expected) > 1e-4 * (keys.length - 1) || decisionJson(answer.levels) !== decisionJson(question.levels)) invalid()
     } else invalid()
   }
+}
+
+const VIDEO_MAX_CONDITIONS = 32
+const VIDEO_CONDITION_ID = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/
+const VIDEO_CONDITION_FIELDS: Record<VideoConditionKind, readonly string[]> = {
+  reference_image: ['type', 'id', 'resource'],
+  reference_video: ['type', 'id', 'resource', 'time_range', 'include_audio'],
+  reference_audio: ['type', 'id', 'resource', 'time_range'],
+  keyframe: ['type', 'id', 'resource', 'position'],
+}
+const KEYFRAME_POSITIONS: readonly KeyframePosition[] = ['start', 'end']
+
+export type VideoPromptSegment = { text: string } | { reference: string }
+
+/** Splits a prompt into text and `@{id}` references; `@@` is a literal `@`, any other `@` stays as written. */
+export function parseVideoPrompt(prompt: string): VideoPromptSegment[] {
+  const segments: VideoPromptSegment[] = []
+  let text = ''
+  for (let index = 0; index < prompt.length; index++) {
+    const next = prompt[index + 1]
+    if (prompt[index] !== '@') text += prompt[index]
+    else if (next === '@') { text += '@'; index++ }
+    else if (next !== '{') text += '@'
+    else {
+      const end = prompt.indexOf('}', index + 2)
+      if (end < 0) throw new RPCError('prompt reference `@{` is not closed')
+      const id = prompt.slice(index + 2, end)
+      if (!VIDEO_CONDITION_ID.test(id)) throw new RPCError(`prompt reference \`${id}\` is not a valid condition id`)
+      if (text) segments.push({ text })
+      text = ''
+      segments.push({ reference: id })
+      index = end
+    }
+  }
+  if (text) segments.push({ text })
+  return segments
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+function finiteIn(value: unknown, min: number, max: number): boolean {
+  return typeof value === 'number' && Number.isFinite(value) && value > min && value <= max
+}
+
+function aspectRatio(value: unknown): [number, number] | undefined {
+  const match = typeof value === 'string' ? /^(\d{1,3}):(\d{1,3})$/.exec(value) : null
+  const [width, height] = match ? [Number(match[1]), Number(match[2])] : [0, 0]
+  return width >= 1 && width <= 100 && height >= 1 && height <= 100 ? [width, height] : undefined
+}
+
+function reducedRatio(width: number, height: number): string {
+  const gcd = (a: number, b: number): number => b === 0 ? a : gcd(b, a % b)
+  const divisor = Math.max(gcd(width, height), 1)
+  return `${width / divisor}:${height / divisor}`
+}
+
+function validateResourceRef(value: unknown, field: string) {
+  const fields: Record<string, string[]> = { url: ['kind', 'url', 'mime_hint'], base64: ['kind', 'mime', 'data_base64'], named_object: ['kind', 'obj_id'] }
+  if (!isObject(value) || typeof value.kind !== 'string' || !fields[value.kind]) throw new RPCError(`${field} must be a ResourceRef`)
+  strict(value, fields[value.kind])
+}
+
+export function validateVideoOutput(output: unknown, field = 'output'): asserts output is VideoOutputSpec {
+  if (!isObject(output)) throw new RPCError(`${field} must be an object`)
+  strict(output, ['duration_seconds', 'aspect_ratio', 'size', 'fps', 'audio', 'media_type'])
+  if (output.duration_seconds !== undefined && !finiteIn(output.duration_seconds, 0, 600)) throw new RPCError(`${field}.duration_seconds must be a number in (0, 600]`)
+  const ratio = output.aspect_ratio === undefined ? undefined : aspectRatio(output.aspect_ratio)
+  if (output.aspect_ratio !== undefined && !ratio) throw new RPCError(`${field}.aspect_ratio must be \`W:H\` with integers in 1..100`)
+  const edge = (value: unknown, name: string) => {
+    if (!Number.isInteger(value) || (value as number) < 16 || (value as number) > 8192) throw new RPCError(`${field}.size.${name} must be an integer in 16..8192`)
+  }
+  const size = output.size
+  if (size !== undefined) {
+    if (!isObject(size)) throw new RPCError(`${field}.size must be { short_edge } or { width, height }`)
+    if ('short_edge' in size) { strict(size, ['short_edge']); edge(size.short_edge, 'short_edge') }
+    else {
+      strict(size, ['width', 'height']); edge(size.width, 'width'); edge(size.height, 'height')
+      if (ratio && reducedRatio(size.width as number, size.height as number) !== reducedRatio(...ratio)) throw new RPCError(`${field}.size conflicts with aspect_ratio`)
+    }
+  }
+  if (output.fps !== undefined && !finiteIn(output.fps, 0, 240)) throw new RPCError(`${field}.fps must be a number in (0, 240]`)
+  if (output.audio !== undefined && !['auto', 'generate', 'none'].includes(output.audio as string)) throw new RPCError(`${field}.audio must be auto, generate or none`)
+  if (output.media_type !== undefined && !(typeof output.media_type === 'string' && /^video\/[a-z0-9.+-]+$/.test(output.media_type))) throw new RPCError(`${field}.media_type must be a lowercase video/* MIME type`)
+}
+
+/** Client-side check of the `video.generate` / `helper.video_generate` body, matching the server's validation. */
+export function validateVideoGeneration(request: VideoGenerationFields): void {
+  const { prompt, negative_prompt: negative, seed } = request
+  const conditions: unknown = request.conditions ?? []
+  if (prompt !== undefined && typeof prompt !== 'string') throw new RPCError('prompt must be a string')
+  if (!Array.isArray(conditions)) throw new RPCError('conditions must be an array')
+  if (!prompt?.trim() && !conditions.length) throw new RPCError('video generation requires a non-blank prompt or at least one condition')
+  if (negative !== undefined && (typeof negative !== 'string' || !negative.trim())) throw new RPCError('negative_prompt must not be blank when present')
+  if (seed !== undefined && !(Number.isSafeInteger(seed) && seed >= 0)) throw new RPCError('seed must be a non-negative integer')
+  if (conditions.length > VIDEO_MAX_CONDITIONS) throw new RPCError(`video generation accepts at most ${VIDEO_MAX_CONDITIONS} conditions`)
+  const ids = new Set<string>()
+  const positions = new Set<string>()
+  conditions.forEach((condition: unknown, index: number) => {
+    const field = `conditions[${index}]`
+    if (!isObject(condition) || !(condition.type as string in VIDEO_CONDITION_FIELDS)) throw new RPCError(`${field}.type must be a video condition type`)
+    strict(condition, VIDEO_CONDITION_FIELDS[condition.type as VideoConditionKind])
+    if (typeof condition.id !== 'string' || !VIDEO_CONDITION_ID.test(condition.id)) throw new RPCError(`${field}.id must match ${VIDEO_CONDITION_ID}`)
+    if (ids.has(condition.id.toLowerCase())) throw new RPCError(`${field}.id \`${condition.id}\` is not unique (compared case-insensitively)`)
+    ids.add(condition.id.toLowerCase())
+    validateResourceRef(condition.resource, `${field}.resource`)
+    if (condition.type === 'keyframe') {
+      if (!KEYFRAME_POSITIONS.includes(condition.position as KeyframePosition)) throw new RPCError(`${field}.position must be start or end`)
+      if (positions.has(condition.position as string)) throw new RPCError(`${field}: at most one keyframe is allowed per position`)
+      positions.add(condition.position as string)
+    }
+    if (condition.include_audio !== undefined && typeof condition.include_audio !== 'boolean') throw new RPCError(`${field}.include_audio must be a boolean`)
+    const range = condition.time_range
+    if (range !== undefined) {
+      if (!isObject(range)) throw new RPCError(`${field}.time_range must be an object`)
+      strict(range, ['start_seconds', 'end_seconds'])
+      const { start_seconds: start, end_seconds: end } = range
+      if (typeof start !== 'number' || typeof end !== 'number' || !Number.isFinite(start) || !Number.isFinite(end) || start < 0 || start >= end) {
+        throw new RPCError(`${field}.time_range must be finite, non-negative and start before it ends`)
+      }
+    }
+  })
+  for (const segment of prompt ? parseVideoPrompt(prompt) : []) {
+    if ('reference' in segment && !(request.conditions ?? []).some(condition => condition.id === segment.reference)) {
+      throw new RPCError(`prompt references unknown condition \`${segment.reference}\``)
+    }
+  }
+  if (request.output !== undefined) validateVideoOutput(request.output)
+}
+
+export function validateVideoEdit(request: VideoEditRequest): void {
+  if (typeof request.prompt !== 'string' || !request.prompt.trim()) throw new RPCError('video edit requires a non-blank prompt')
+  validateResourceRef(request.video, 'video')
+  if (request.output !== undefined) validateVideoOutput(request.output)
+}
+
+/** The model requirement a video request implies, merged with a helper's `requirements.video` (which can only tighten it). */
+export function videoGenerationRequirement(request: VideoGenerationFields & { requirements?: HelperModelRequirement }): VideoGenerationRequirement {
+  const conditions = request.conditions ?? []
+  const count = (type: VideoConditionKind) => conditions.filter(condition => condition.type === type).length
+  const declared = request.requirements?.video ?? {}
+  const requirement: VideoGenerationRequirement = {}
+  const flag = (key: 'prompt' | 'negative_prompt' | 'seed' | 'reference_video_audio' | 'time_ranges', value: boolean) => {
+    if (value || declared[key]) requirement[key] = true
+  }
+  flag('prompt', !!request.prompt?.trim())
+  flag('negative_prompt', request.negative_prompt !== undefined)
+  flag('seed', request.seed !== undefined)
+  for (const [key, type] of [['reference_images', 'reference_image'], ['reference_videos', 'reference_video'], ['reference_audios', 'reference_audio']] as const) {
+    const value = Math.max(count(type), declared[key] ?? 0)
+    if (value) requirement[key] = value
+  }
+  const keyframes = KEYFRAME_POSITIONS.filter(position => declared.keyframes?.includes(position) ||
+    conditions.some(condition => condition.type === 'keyframe' && condition.position === position))
+  if (keyframes.length) requirement.keyframes = keyframes
+  flag('reference_video_audio', conditions.some(condition => condition.type === 'reference_video' && condition.include_audio === true))
+  flag('time_ranges', conditions.some(condition => 'time_range' in condition && condition.time_range !== undefined))
+  const own = request.output && Object.values(request.output).some(value => value !== undefined) ? request.output : undefined
+  if (own && declared.output && decisionJson(own) !== decisionJson(declared.output)) throw new RPCError('requirements.video.output conflicts with the request output')
+  if (!own && declared.output) validateVideoOutput(declared.output, 'requirements.video.output')
+  if (own ?? declared.output) requirement.output = own ?? declared.output
+  return requirement
 }

@@ -22,7 +22,13 @@ import {
   aiccMessageTextContent,
   aiccTextMessage,
   isAiccAiMethod,
+  parseVideoPrompt,
+  validateVideoGeneration,
+  VideoGenerateRequest,
+  videoGenerationRequirement,
 } from '../src/aicc_client'
+// Shared with buckyos/src/kernel/buckyos-api/tests/fixtures/video_generate_cases.json; keep the two identical.
+import videoCases from './fixtures/aicc_video_generate_cases.json'
 
 function response(result: unknown, seq = 1) {
   return { ok: true, status: 200, json: async () => ({ result, sys: [seq] }) }
@@ -143,9 +149,8 @@ describe('canonical AICC contract', () => {
       [AICC_AI_METHODS.AUDIO_ASR, () => client.audioSpeechRecognition({ exact_model: 'm@p', audio: ref })],
       [AICC_AI_METHODS.AUDIO_MUSIC, () => client.audioMusic({ exact_model: 'm@p', prompt: 'cat' })],
       [AICC_AI_METHODS.AUDIO_ENHANCE, () => client.audioEnhance({ exact_model: 'm@p', audio: ref, task: 'denoise' })],
-      [AICC_AI_METHODS.VIDEO_TXT2VIDEO, () => client.videoTextToVideo({ exact_model: 'm@p', prompt: 'cat' })],
-      [AICC_AI_METHODS.VIDEO_IMG2VIDEO, () => client.videoImageToVideo({ exact_model: 'm@p', image: ref, prompt: 'cat' })],
-      [AICC_AI_METHODS.VIDEO_VIDEO2VIDEO, () => client.videoToVideo({ exact_model: 'm@p', video: ref, prompt: 'cat' })],
+      [AICC_AI_METHODS.VIDEO_GENERATE, () => client.videoGenerate({ exact_model: 'm@p', prompt: 'cat' })],
+      [AICC_AI_METHODS.VIDEO_EDIT, () => client.videoEdit({ exact_model: 'm@p', video: ref, prompt: 'cat' })],
       [AICC_AI_METHODS.VIDEO_EXTEND, () => client.videoExtend({ exact_model: 'm@p', video: ref, prompt: 'cat' })],
       [AICC_AI_METHODS.VIDEO_UPSCALE, () => client.videoUpscale({ exact_model: 'm@p', video: ref, target_resolution: '1080p' })],
       [AICC_AI_METHODS.AGENT_COMPUTER_USE, () => client.computerUse({ exact_model: 'm@p', task: 'click', environment: {
@@ -167,6 +172,7 @@ describe('canonical AICC contract', () => {
       [AICC_CORE_METHODS.ROUTE_RESOLVE, () => client.routeResolve({ api_type: 'llm', logical_model: 'llm.chat' })],
       [AICC_CORE_METHODS.HELPER_LLM_CHAT, () => client.helperLlmChat({ logical_model: 'llm.chat', messages: [] })],
       [AICC_CORE_METHODS.HELPER_TEXT_TO_IMAGE, () => client.helperTextToImage({ logical_model: 'image.generate', prompt: 'cat' })],
+      [AICC_CORE_METHODS.HELPER_VIDEO_GENERATE, () => client.helperVideoGenerate({ logical_model: 'video.generate', prompt: 'cat' })],
       [AICC_CORE_METHODS.CANCEL, () => client.cancel('task-1')],
       [AICC_MANAGEMENT_METHODS.SERVICE_RELOAD_SETTINGS, () => client.reloadSettings()],
       [AICC_MANAGEMENT_METHODS.QUOTA_QUERY, () => client.queryQuota()],
@@ -312,6 +318,10 @@ describe('canonical AICC contract', () => {
       const legacyPayload = null as unknown as import('../src/aicc_client').AiccPayload
       // @ts-expect-error removed all-in-one client method
       client.callMethod(legacyRequest, legacyPayload)
+      // @ts-expect-error removed per-input video method; use videoGenerate with conditions
+      client.videoImageToVideo({ exact_model: 'm@p', image: { kind: 'url', url: 'https://example.test/a.png' }, prompt: 'cat' })
+      // @ts-expect-error video options live in `output`
+      client.videoGenerate({ exact_model: 'm@p', prompt: 'cat', duration_seconds: 5 })
     }
     expect(true).toBe(true)
   })
@@ -363,5 +373,47 @@ describe('decision.evaluate', () => {
       [answers[0], { ...answers[1], score: 1.5 }, answers[2]],
       [answers[0], answers[1], { ...answers[2], probability_true: Number.NaN }],
     ]) expect(() => validateDecisionAnswers(request, mutated as import('../src/aicc_client').DecisionAnswer[])).toThrow()
+  })
+})
+
+describe('video.generate protocol', () => {
+  it('parses prompt references like the server', () => {
+    for (const testCase of videoCases.prompt_cases) {
+      if ('error' in testCase) expect(() => parseVideoPrompt(testCase.prompt)).toThrow()
+      else expect(parseVideoPrompt(testCase.prompt)).toEqual(testCase.segments)
+    }
+  })
+
+  it('accepts, rejects and derives requirements like the server', async () => {
+    const fetcher = echoingFetcher({ task_id: 't', status: 'running' })
+    const client = new AiccClient(new kRPCClient('/kapi/aicc/', null, 1, { fetcher }))
+    for (const testCase of videoCases.requests) {
+      const request = testCase.request as unknown as VideoGenerateRequest
+      if (!testCase.valid) {
+        await expect(async () => client.videoGenerate(structuredClone(request))).rejects.toThrow()
+        continue
+      }
+      await client.videoGenerate(structuredClone(request))
+      expect(lastSent(fetcher).params).toEqual({ ...request, execution_mode: 'immediate' })
+      expect(videoGenerationRequirement(request)).toEqual(testCase.requirement)
+      const { exact_model: _exact, ...fields } = request
+      const helper = { ...fields, logical_model: 'video.generate' }
+      await client.helperVideoGenerate(helper)
+      expect(lastSent(fetcher).method).toBe('helper.video_generate')
+      expect(videoGenerationRequirement(helper)).toEqual(testCase.requirement)
+    }
+  })
+
+  it('lets a helper requirement tighten but not contradict the request', () => {
+    const request = { prompt: 'a', output: { duration_seconds: 6 }, requirements: { video: { reference_images: 2, keyframes: ['end' as const] } } }
+    expect(videoGenerationRequirement(request)).toEqual({ prompt: true, reference_images: 2, keyframes: ['end'], output: { duration_seconds: 6 } })
+    expect(() => videoGenerationRequirement({ ...request, requirements: { video: { output: { duration_seconds: 8 } } } })).toThrow()
+  })
+
+  it('rejects the removed video methods and their fields', () => {
+    expect(Object.values(AICC_METHODS)).not.toContain('video.txt2video')
+    expect(Object.values(AICC_METHODS)).not.toContain('video.img2video')
+    expect(Object.values(AICC_METHODS)).not.toContain('video.video2video')
+    expect(() => validateVideoGeneration({ prompt: 'a', conditions: [{ type: 'keyframe', id: 'a', position: 'middle', resource: { kind: 'url', url: 'https://example.test/a.png' } } as never] })).toThrow()
   })
 })
