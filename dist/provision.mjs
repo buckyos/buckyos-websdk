@@ -14339,7 +14339,7 @@ function layoutFor(rootDir, zoneDid, deviceDid) {
     etcDir,
     lockPath: path.join(etcDir, ACTIVATION_LOCK_FILE_NAME),
     nodeIdentityPath: path.join(etcDir, "node_identity.json"),
-    startConfigPath: path.join(etcDir, "start_config.json"),
+    startConfigPath: path.join(rootDir, "security", "start_config.json"),
     zoneDocumentJwtPath: path.join(etcDir, ZONE_DOCUMENT_JWT_FILE_NAME),
     gatewayParamsPath: path.join(etcDir, "node_gateway_params.json"),
     dnsRecordsPath: path.join(etcDir, ZONE_DNS_RECORDS_FILE_NAME),
@@ -14370,7 +14370,7 @@ function plannedFiles(rootDir, layout) {
     entry(layout.zoneBootOverridePath, "zone_boot_override", true, false),
     entry(layout.zoneDocumentJwtPath, "zone_document_jwt", true, false),
     entry(layout.dnsRecordsPath, "dns_records", false, false),
-    entry(layout.startConfigPath, "start_config", true, false),
+    entry(layout.startConfigPath, "start_config", true, true),
     entry(layout.gatewayParamsPath, "gateway_params", true, false),
     entry(layout.nodeIdentityPath, "node_identity", true, false)
   ];
@@ -14511,35 +14511,35 @@ async function validateActivationMaterials(rootDir, layout, identity, problems) 
   try {
     startConfig = readJsonObjectOrThrow(layout.startConfigPath);
   } catch (error) {
-    problem("START_CONFIG_UNREADABLE", `etc/start_config.json cannot be parsed: ${error instanceof Error ? error.message : String(error)}`);
+    problem("START_CONFIG_UNREADABLE", `security/start_config.json cannot be parsed: ${error instanceof Error ? error.message : String(error)}`);
   }
   let accessHostname = null;
   const jwts = {};
   if (startConfig) {
     for (const key of ["user_name", "zone_name", "access_hostname", "admin_password_hash"]) {
       if (typeof startConfig[key] !== "string" || startConfig[key].length === 0) {
-        problem("START_CONFIG_FIELD", `etc/start_config.json is missing ${key}`);
+        problem("START_CONFIG_FIELD", `security/start_config.json is missing ${key}`);
       }
     }
     for (const key of ["boot_config_jwt", "device_doc_jwt", "device_mini_doc_jwt", "zone_document_jwt", "ood_jwt"]) {
       if (typeof startConfig[key] === "string" && startConfig[key].length > 0) {
         jwts[key] = startConfig[key];
       } else {
-        problem("START_CONFIG_FIELD", `etc/start_config.json is missing ${key}`);
+        problem("START_CONFIG_FIELD", `security/start_config.json is missing ${key}`);
       }
     }
     if (startConfig.zone_name !== zoneDid.toString()) {
-      problem("START_CONFIG_ZONE", `etc/start_config.json zone_name is not ${zoneDid.toString()}`);
+      problem("START_CONFIG_ZONE", `security/start_config.json zone_name is not ${zoneDid.toString()}`);
     }
     if (typeof startConfig.access_hostname === "string") {
       accessHostname = startConfig.access_hostname;
       if (accessHostname !== zoneDid.toRawHostName()) {
-        problem("START_CONFIG_HOSTNAME", `etc/start_config.json access_hostname is not ${zoneDid.toRawHostName()}`);
+        problem("START_CONFIG_HOSTNAME", `security/start_config.json access_hostname is not ${zoneDid.toRawHostName()}`);
       }
     }
     const ownerDocument = startConfig.owner_document;
     if (!ownerDocument || typeof ownerDocument !== "object") {
-      problem("START_CONFIG_OWNER", "etc/start_config.json is missing owner_document");
+      problem("START_CONFIG_OWNER", "security/start_config.json is missing owner_document");
     } else {
       if (ownerDocument.id !== ownerDid) {
         problem("START_CONFIG_OWNER", `owner_document id ${String(ownerDocument.id)} is not ${ownerDid}`);
@@ -14550,11 +14550,11 @@ async function validateActivationMaterials(rootDir, layout, identity, problems) 
       }
     }
     if (jwts.ood_jwt && jwts.device_doc_jwt && jwts.ood_jwt !== jwts.device_doc_jwt) {
-      problem("START_CONFIG_OOD_JWT", "etc/start_config.json ood_jwt differs from device_doc_jwt");
+      problem("START_CONFIG_OOD_JWT", "security/start_config.json ood_jwt differs from device_doc_jwt");
     }
     for (const [key, secret] of [["private_key", true], ["device_private_key", true], ["sn_access_token", true], ["bns_evm_private_key", true]]) {
       if (secret && key in startConfig)
-        problem("START_CONFIG_SECRET", `etc/start_config.json must not contain ${key}`);
+        problem("START_CONFIG_SECRET", `security/start_config.json must not contain ${key}`);
     }
   }
   const readText = (filePath, label) => {
@@ -14732,13 +14732,19 @@ async function inspectActivationRoot(rootDir) {
   } else {
     for (const [name, role, required] of [
       ["node_identity.json", "node_identity", true],
-      ["start_config.json", "start_config", true],
       [ZONE_DOCUMENT_JWT_FILE_NAME, "zone_document_jwt", true],
       ["node_gateway_params.json", "gateway_params", true],
       [ZONE_DNS_RECORDS_FILE_NAME, "dns_records", false]
     ]) {
       files.push({ path: `etc/${name}`, role, required, secret: false, present: isFile(path.join(etcDir, name)) });
     }
+    files.push({
+      path: "security/start_config.json",
+      role: "start_config",
+      required: true,
+      secret: true,
+      present: isFile(path.join(root, "security", "start_config.json"))
+    });
     for (const name of zoneJsonFiles) {
       files.push({ path: `etc/${name}`, role: "zone_boot_override", required: true, secret: false, present: true });
     }
