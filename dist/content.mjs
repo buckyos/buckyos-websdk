@@ -139,6 +139,20 @@ function extensionOf(name) {
 function mediaTypeFromExtension(ext) {
   return MEDIA_TYPE_BY_EXTENSION[ext.toLowerCase()];
 }
+function readContentHints(value) {
+  if (!value || typeof value !== "object")
+    return {};
+  const v = value;
+  const hints = {};
+  if (typeof v.name === "string" && v.name && v.name.length <= 255 && !/[\/\\\0]/.test(v.name))
+    hints.name = v.name;
+  if (typeof v.mime === "string" && /^[\w.+-]+\/[\w.+-]+$/.test(v.mime))
+    hints.mime = v.mime.toLowerCase();
+  const size = typeof v.size === "string" ? Number(v.size) : v.size;
+  if (typeof size === "number" && Number.isSafeInteger(size) && size >= 0)
+    hints.size = size;
+  return hints;
+}
 const previewHandler = {
   provider: "system",
   handler_id: "preview",
@@ -297,6 +311,48 @@ function expandOpenPath(path, request, modes = ["view", "edit"]) {
   const expanded = path.replace(/\{(source|mode|session)\}/g, (_, key) => encodeURIComponent(params[key]));
   return expanded + (expanded.includes("?") ? "&" : "?") + "requestId=" + encodeURIComponent(request.requestId);
 }
+function systemOpenUrl(systemOrigin, open) {
+  const url = new URL("/", systemOrigin);
+  url.searchParams.set("open", contentRefString(open.request.source));
+  url.searchParams.set("intent", open.target);
+  const session = encodeSession(open.request.session, open.request.source);
+  if (session)
+    url.searchParams.set("session", session);
+  if (open.request.mode)
+    url.searchParams.set("mode", open.request.mode);
+  for (const key of ["name", "mime", "size"])
+    if (open.hints[key] !== void 0)
+      url.searchParams.set(key, String(open.hints[key]));
+  if (open.from)
+    url.searchParams.set("from", open.from);
+  return url.href;
+}
+function parseSystemOpen(params) {
+  const value = params.get("open");
+  if (!value)
+    return void 0;
+  const source = value.startsWith("obj://") ? { kind: "object-id", objectId: value.slice(6) } : { kind: "cyfs-path", path: value };
+  if (!isTransferableRef(source))
+    return void 0;
+  const intent = params.get("intent");
+  const target = intent === "preview" || intent === "chooser" ? intent : "default";
+  const request = { source };
+  const mode = params.get("mode");
+  if (mode === "view" || mode === "edit")
+    request.mode = mode;
+  const encoded = params.get("session");
+  if (encoded) {
+    try {
+      const session = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(encoded.replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0))));
+      if (isTransferableSession(session))
+        request.session = session;
+    } catch {
+    }
+  }
+  const from = params.get("from");
+  return { request, target, hints: readContentHints({ name: params.get("name") ?? void 0, mime: params.get("mime") ?? void 0, size: params.get("size") ?? void 0 }), from: from && /^[\w.@-]+$/.test(from) ? from : void 0 };
+}
+const handlerOfApp = (plan, appId) => !!plan.appInstanceId && plan.appInstanceId.split("@")[0] === appId.split("@")[0];
 class ContentRegistryClient {
   constructor(config, userId) {
     this.config = config;
@@ -349,13 +405,17 @@ export {
   encodeSession,
   expandOpenPath,
   extensionOf,
+  handlerOfApp,
   isOpenRequest,
   isTransferableRef,
   isTransferableSession,
   matchSelector,
   mediaTypeFromExtension,
   parentSource,
+  parseSystemOpen,
   previewHandler,
-  resolveContentHandlers
+  readContentHints,
+  resolveContentHandlers,
+  systemOpenUrl
 };
 //# sourceMappingURL=content.mjs.map

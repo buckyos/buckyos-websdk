@@ -15,6 +15,18 @@ export interface OpenRequest {
   mode?: 'view' | 'edit'
   origin?: { appInstanceId?: string; windowId?: string; hostContext?: string }
 }
+export type ContentOpenTarget = 'default' | 'preview' | 'chooser'
+export interface ContentHints { name?: string; mime?: string; size?: number }
+export function readContentHints(value: unknown): ContentHints {
+  if (!value || typeof value !== 'object') return {}
+  const v = value as Record<string, unknown>
+  const hints: ContentHints = {}
+  if (typeof v.name === 'string' && v.name && v.name.length <= 255 && !/[\/\\\0]/.test(v.name)) hints.name = v.name
+  if (typeof v.mime === 'string' && /^[\w.+-]+\/[\w.+-]+$/.test(v.mime)) hints.mime = v.mime.toLowerCase()
+  const size = typeof v.size === 'string' ? Number(v.size) : v.size
+  if (typeof size === 'number' && Number.isSafeInteger(size) && size >= 0) hints.size = size
+  return hints
+}
 export interface ContentSelector {
   objType?: string | string[]
   mime?: string | string[]
@@ -189,6 +201,47 @@ export function expandOpenPath(path: string, request: OpenRequest, modes: Array<
   const expanded = path.replace(/\{(source|mode|session)\}/g, (_, key: string) => encodeURIComponent(params[key]))
   return expanded + (expanded.includes('?') ? '&' : '?') + 'requestId=' + encodeURIComponent(request.requestId)
 }
+export interface SystemOpenRequest {
+  request: Omit<OpenRequest, 'requestId'>
+  target: ContentOpenTarget
+  hints: ContentHints
+  /** AppId of the App asking the system to open this content; its own handlers are not offered back to it. */
+  from?: string
+}
+export function systemOpenUrl(systemOrigin: string, open: SystemOpenRequest): string {
+  const url = new URL('/', systemOrigin)
+  url.searchParams.set('open', contentRefString(open.request.source))
+  url.searchParams.set('intent', open.target)
+  const session = encodeSession(open.request.session, open.request.source)
+  if (session) url.searchParams.set('session', session)
+  if (open.request.mode) url.searchParams.set('mode', open.request.mode)
+  for (const key of ['name', 'mime', 'size'] as const) if (open.hints[key] !== undefined) url.searchParams.set(key, String(open.hints[key]))
+  if (open.from) url.searchParams.set('from', open.from)
+  return url.href
+}
+export function parseSystemOpen(params: URLSearchParams): SystemOpenRequest | undefined {
+  const value = params.get('open')
+  if (!value) return undefined
+  const source: TransferableContentRef = value.startsWith('obj://') ? { kind: 'object-id', objectId: value.slice(6) } : { kind: 'cyfs-path', path: value }
+  if (!isTransferableRef(source)) return undefined
+  const intent = params.get('intent')
+  const target: ContentOpenTarget = intent === 'preview' || intent === 'chooser' ? intent : 'default'
+  const request: Omit<OpenRequest, 'requestId'> = { source }
+  const mode = params.get('mode')
+  if (mode === 'view' || mode === 'edit') request.mode = mode
+  const encoded = params.get('session')
+  if (encoded) {
+    try {
+      const session = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(encoded.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0))))
+      if (isTransferableSession(session)) request.session = session
+    } catch {}
+  }
+  const from = params.get('from')
+  return { request, target, hints: readContentHints({ name: params.get('name') ?? undefined, mime: params.get('mime') ?? undefined, size: params.get('size') ?? undefined }), from: from && /^[\w.@-]+$/.test(from) ? from : undefined }
+}
+/** Whether a handler belongs to the App identified by `appId` (an AppId, or an AppInstanceId `<appId>@<owner>`). */
+export const handlerOfApp = (plan: Pick<HandlerPlan, 'appInstanceId'>, appId: string): boolean =>
+  !!plan.appInstanceId && plan.appInstanceId.split('@')[0] === appId.split('@')[0]
 export class ContentRegistryClient {
   registry: ContentRegistry = { schema_version: 1, handlers: {} }
   defaults = emptyDefaults()

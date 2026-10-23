@@ -39,6 +39,13 @@ export interface OpenRequest {
         hostContext?: string;
     };
 }
+export type ContentOpenTarget = 'default' | 'preview' | 'chooser';
+export interface ContentHints {
+    name?: string;
+    mime?: string;
+    size?: number;
+}
+export declare function readContentHints(value: unknown): ContentHints;
 export interface ContentSelector {
     objType?: string | string[];
     mime?: string | string[];
@@ -126,6 +133,17 @@ export declare function resolveContentHandlers(registry: ContentRegistry, defaul
 export declare function parentSource(source: TransferableContentRef): TransferableContentRef | undefined;
 export declare function encodeSession(session: TransferableSessionContext | undefined, source: TransferableContentRef): string;
 export declare function expandOpenPath(path: string, request: OpenRequest, modes?: Array<'view' | 'edit'>): string;
+export interface SystemOpenRequest {
+    request: Omit<OpenRequest, 'requestId'>;
+    target: ContentOpenTarget;
+    hints: ContentHints;
+    /** AppId of the App asking the system to open this content; its own handlers are not offered back to it. */
+    from?: string;
+}
+export declare function systemOpenUrl(systemOrigin: string, open: SystemOpenRequest): string;
+export declare function parseSystemOpen(params: URLSearchParams): SystemOpenRequest | undefined;
+/** Whether a handler belongs to the App identified by `appId` (an AppId, or an AppInstanceId `<appId>@<owner>`). */
+export declare const handlerOfApp: (plan: Pick<HandlerPlan, 'appInstanceId'>, appId: string) => boolean;
 export declare class ContentRegistryClient {
     private config;
     private userId;
