@@ -1,3 +1,4 @@
+import { AiWorkspaceClient, AIWORKSPACE_SERVICE_NAME } from './aiworkspace_client'
 import { kRPCClient } from './krpc_client'
 import { AuthTarget, getAuthTargetAppId, VerifyHubClient } from './verify-hub-client'
 import { TaskManagerClient } from './task_mgr_client'
@@ -667,6 +668,10 @@ export class BuckyOSRuntime {
 
   getAiccClient(): AiccClient {
     return new AiccClient(this.getServiceRpcClient('aicc'))
+  }
+
+  getAiWorkspaceClient(): AiWorkspaceClient {
+    return new AiWorkspaceClient(this.getServiceRpcClient(AIWORKSPACE_SERVICE_NAME))
   }
 
   getMsgQueueClient(): MsgQueueClient {

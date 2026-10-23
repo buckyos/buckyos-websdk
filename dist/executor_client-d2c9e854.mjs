@@ -323,6 +323,91 @@ function buildJumpUrl(action, params, jumpBase = DEFAULT_JUMP_BASE_URL) {
   const fragment = new URLSearchParams(params).toString();
   return `${base.origin}${path}${fragment ? `#${fragment}` : ""}`;
 }
+const AIWORKSPACE_SERVICE_NAME = "aiworkspace";
+class AiwsFailure extends Error {
+  constructor(error) {
+    super(`${error.code}${error.sub_code ? `/${error.sub_code}` : ""}: ${error.detail}`);
+    this.name = "AiwsFailure";
+    this.code = error.code;
+    this.subCode = error.sub_code;
+    this.data = error.data;
+  }
+}
+class AiWorkspaceClient {
+  constructor(rpcClient) {
+    this.rpcClient = rpcClient;
+  }
+  async call(method, params) {
+    const raw = await this.rpcClient.call(method, params);
+    if (raw && typeof raw === "object" && raw.ok === false)
+      throw new AiwsFailure(raw.error);
+    return raw;
+  }
+  // ---- workspace
+  list() {
+    return this.call("ws.list", {});
+  }
+  info(workspace_id) {
+    return this.call("ws.get_info", { workspace_id });
+  }
+  getUserState(workspace_id) {
+    return this.call("ws.get_user_state", { workspace_id });
+  }
+  setUserState(workspace_id, entries, expect) {
+    return this.call("ws.set_user_state", { workspace_id, entries, ...expect ? { expect } : {} });
+  }
+  // ---- document
+  resolve(workspace_id, reference) {
+    return this.call("doc.resolve", { workspace_id, reference });
+  }
+  resolvePath(workspace_id, path) {
+    return this.call("doc.resolve", { workspace_id, path });
+  }
+  read(workspace_id, entity_id, selector) {
+    return this.call("doc.read", { workspace_id, entity_id, ...selector ? { selector } : {} });
+  }
+  query(workspace_id, params) {
+    return this.call("doc.query", { workspace_id, ...params });
+  }
+  outline(workspace_id) {
+    return this.call("doc.outline", { workspace_id });
+  }
+  prepare(workspace_id, request) {
+    return this.rpcClient.call("doc.prepare", { workspace_id, ...request });
+  }
+  /** The three-state commit result (`status: accepted | conflict | rejected`), never thrown. */
+  commit(workspace_id, request) {
+    return this.rpcClient.call("doc.commit", { workspace_id, ...request });
+  }
+  getSubmission(workspace_id, epoch, idempotency_key) {
+    return this.call("doc.get_submission", { workspace_id, epoch, idempotency_key });
+  }
+  // ---- runs (M3 executor protocol)
+  runStart(workspace_id, program, params, idempotency_key) {
+    return this.call("proc.start", { workspace_id, program, params, idempotency_key });
+  }
+  runGet(workspace_id, run_id, choices) {
+    return this.call("proc.get", { workspace_id, run_id, ...choices ? { choices } : {} });
+  }
+  runList(workspace_id, wish_id, limit) {
+    return this.call("proc.list", { workspace_id, ...wish_id ? { wish_id } : {}, ...limit ? { limit } : {} });
+  }
+  runClaim(workspace_id, run_id, claim_token, executor) {
+    return this.call("proc.claim", { workspace_id, run_id, claim_token, ...executor ? { executor } : {} });
+  }
+  runHeartbeat(workspace_id, run_id, attempt, progress) {
+    return this.call("proc.heartbeat", { workspace_id, run_id, attempt, ...progress ? { progress } : {} });
+  }
+  runReport(workspace_id, report) {
+    return this.call("proc.report", { workspace_id, ...report });
+  }
+  runApply(workspace_id, run_id, plan_digest, session_id) {
+    return this.call("proc.apply", { workspace_id, run_id, plan_digest, ...session_id ? { session_id } : {} });
+  }
+  runCancel(workspace_id, run_id) {
+    return this.call("proc.cancel", { workspace_id, run_id });
+  }
+}
 function serializeAuthTarget(target) {
   if (!target || typeof target !== "object") {
     throw new RPCError("verify-hub auth target is required");
@@ -3453,6 +3538,9 @@ class BuckyOSRuntime {
   getAiccClient() {
     return new AiccClient(this.getServiceRpcClient("aicc"));
   }
+  getAiWorkspaceClient() {
+    return new AiWorkspaceClient(this.getServiceRpcClient(AIWORKSPACE_SERVICE_NAME));
+  }
   getMsgQueueClient() {
     return new MsgQueueClient(this.getServiceRpcClient("kmsg"));
   }
@@ -5392,6 +5480,12 @@ class BuckyOSSDK {
     }
     return this.currentRuntime.getAiccClient();
   }
+  getAiWorkspaceClient() {
+    if (this.currentRuntime == null) {
+      throw new Error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
+    }
+    return this.currentRuntime.getAiWorkspaceClient();
+  }
   getMsgQueueClient() {
     if (this.currentRuntime == null) {
       throw new Error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
@@ -5584,6 +5678,7 @@ function createSDKModule(target) {
     getTaskManagerClient: sdk.getTaskManagerClient.bind(sdk),
     getWorkflowClient: sdk.getWorkflowClient.bind(sdk),
     getAiccClient: sdk.getAiccClient.bind(sdk),
+    getAiWorkspaceClient: sdk.getAiWorkspaceClient.bind(sdk),
     getMsgQueueClient: sdk.getMsgQueueClient.bind(sdk),
     getMsgCenterClient: sdk.getMsgCenterClient.bind(sdk),
     getRepoClient: sdk.getRepoClient.bind(sdk)
@@ -29805,6 +29900,9 @@ export {
   ExecutorStreamError as c9,
   encodeExecutorControl as ca,
   ExecutorCommandStream as cb,
+  AIWORKSPACE_SERVICE_NAME as cc,
+  AiwsFailure as cd,
+  AiWorkspaceClient as ce,
   BS_SERVICE_TASK_MANAGER as d,
   getActiveRuntimeType as e,
   getActiveZoneGatewayOrigin as f,
@@ -29829,4 +29927,4 @@ export {
   NOTIFY_TEXT_CONTROL_ID as y,
   NOTIFY_ACTION_ANSWER as z
 };
-//# sourceMappingURL=executor_client-00b51857.mjs.map
+//# sourceMappingURL=executor_client-d2c9e854.mjs.map

@@ -35,6 +35,7 @@ export declare const buckyos: {
     getTaskManagerClient: () => import("./task_mgr_client").TaskManagerClient;
     getWorkflowClient: () => import("./workflow_client").WorkflowClient;
     getAiccClient: () => import("./aicc_client").AiccClient;
+    getAiWorkspaceClient: () => import("./aiworkspace_client").AiWorkspaceClient;
     getMsgQueueClient: () => import("./msg_queue_client").MsgQueueClient;
     getMsgCenterClient: () => import("./msg_center_client").MsgCenterClient;
     getRepoClient: () => import("./repo_client").RepoClient;

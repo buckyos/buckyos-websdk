@@ -35,6 +35,7 @@ export declare const buckyos: {
     getTaskManagerClient: () => import("./task_mgr_client").TaskManagerClient;
     getWorkflowClient: () => import("./workflow_client").WorkflowClient;
     getAiccClient: () => import("./aicc_client").AiccClient;
+    getAiWorkspaceClient: () => import("./aiworkspace_client").AiWorkspaceClient;
     getMsgQueueClient: () => import("./msg_queue_client").MsgQueueClient;
     getMsgCenterClient: () => import("./msg_center_client").MsgCenterClient;
     getRepoClient: () => import("./repo_client").RepoClient;
@@ -75,6 +76,7 @@ export declare const getSystemConfigClient: () => import("./system_config_client
 export declare const getTaskManagerClient: () => import("./task_mgr_client").TaskManagerClient;
 export declare const getWorkflowClient: () => import("./workflow_client").WorkflowClient;
 export declare const getAiccClient: () => import("./aicc_client").AiccClient;
+export declare const getAiWorkspaceClient: () => import("./aiworkspace_client").AiWorkspaceClient;
 export declare const getMsgQueueClient: () => import("./msg_queue_client").MsgQueueClient;
 export declare const getMsgCenterClient: () => import("./msg_center_client").MsgCenterClient;
 export declare const getRepoClient: () => import("./repo_client").RepoClient;
@@ -91,4 +93,5 @@ export * as ndn from './ndn_types';
 export * as ndm from './ndm_client';
 export * as ndm_proxy from './ndm_proxy';
 export * from './executor_client';
+export * from './aiworkspace_client';
 //# sourceMappingURL=index.d.ts.map

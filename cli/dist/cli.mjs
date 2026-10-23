@@ -2499,7 +2499,7 @@ function replPrompt(config) {
   return `buckyos[${profile}|${zone}|${identity}]> `;
 }
 const EMPTY_INPUT$3 = { type: "object", properties: {}, additionalProperties: false };
-const OBJECT_OUTPUT$c = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$d = { type: "object", additionalProperties: true };
 function createAuthModule() {
   return {
     name: "auth",
@@ -2509,7 +2509,7 @@ function createAuthModule() {
         verb: "whoami",
         summary: "Show the effective principal and application identity",
         inputSchema: EMPTY_INPUT$3,
-        outputSchema: OBJECT_OUTPUT$c,
+        outputSchema: OBJECT_OUTPUT$d,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -2527,7 +2527,7 @@ function createAuthModule() {
         verb: "session-status",
         summary: "Show the in-memory session state without exposing credentials",
         inputSchema: EMPTY_INPUT$3,
-        outputSchema: OBJECT_OUTPUT$c,
+        outputSchema: OBJECT_OUTPUT$d,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -2548,7 +2548,7 @@ const EMPTY_INPUT$2 = {
   properties: {},
   additionalProperties: false
 };
-const OBJECT_OUTPUT$b = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$c = { type: "object", additionalProperties: true };
 function createCoreModules(registry) {
   return [createCommandModule(registry), createConfigModule(), createCompletionModule(registry)];
 }
@@ -2561,7 +2561,7 @@ function createCommandModule(registry) {
         verb: "list",
         summary: "List registered modules and commands",
         inputSchema: EMPTY_INPUT$2,
-        outputSchema: OBJECT_OUTPUT$b,
+        outputSchema: OBJECT_OUTPUT$c,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -2594,7 +2594,7 @@ function createCommandModule(registry) {
           required: ["target_module", "target_verb"],
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$b,
+        outputSchema: OBJECT_OUTPUT$c,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -2616,7 +2616,7 @@ function createConfigModule() {
         verb: "list",
         summary: "List the global configuration and available profiles",
         inputSchema: EMPTY_INPUT$2,
-        outputSchema: OBJECT_OUTPUT$b,
+        outputSchema: OBJECT_OUTPUT$c,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -2647,7 +2647,7 @@ function createConfigModule() {
           },
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$b,
+        outputSchema: OBJECT_OUTPUT$c,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -2693,7 +2693,7 @@ function createConfigModule() {
           required: ["key", "value"],
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$b,
+        outputSchema: OBJECT_OUTPUT$c,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "write" },
         asyncMode: "sync",
@@ -2733,7 +2733,7 @@ function createConfigModule() {
           required: ["profile_name"],
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$b,
+        outputSchema: OBJECT_OUTPUT$c,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "write" },
         asyncMode: "sync",
@@ -2765,7 +2765,7 @@ function createConfigModule() {
           properties: { effective: { type: "boolean" } },
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$b,
+        outputSchema: OBJECT_OUTPUT$c,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -3007,7 +3007,7 @@ async function buckyosInfo(ctx) {
   );
 }
 const SERVICE_NAME = "system_config";
-const OBJECT_OUTPUT$a = { type: "object", additionalProperties: false };
+const OBJECT_OUTPUT$b = { type: "object", additionalProperties: false };
 const KEY_INPUT = {
   type: "object",
   properties: { key: { type: "string", minLength: 1 } },
@@ -3025,7 +3025,7 @@ function createSystemConfigModule() {
         positionals: [{ name: "key", description: "System-config key" }],
         inputSchema: KEY_INPUT,
         outputSchema: {
-          ...OBJECT_OUTPUT$a,
+          ...OBJECT_OUTPUT$b,
           properties: {
             key: { type: "string" },
             value: { type: "string" },
@@ -3068,7 +3068,7 @@ function createSystemConfigModule() {
           additionalProperties: false
         },
         outputSchema: {
-          ...OBJECT_OUTPUT$a,
+          ...OBJECT_OUTPUT$b,
           properties: {
             key: { type: "string" },
             items: { type: "array", items: { type: "string" } }
@@ -3122,7 +3122,7 @@ function setCommand() {
       additionalProperties: false
     },
     outputSchema: {
-      ...OBJECT_OUTPUT$a,
+      ...OBJECT_OUTPUT$b,
       properties: { key: { type: "string" }, updated: { type: "boolean" } },
       required: ["key", "updated"]
     },
@@ -3161,7 +3161,7 @@ function setFileCommand() {
       additionalProperties: false
     },
     outputSchema: {
-      ...OBJECT_OUTPUT$a,
+      ...OBJECT_OUTPUT$b,
       properties: { key: { type: "string" }, updated: { type: "boolean" } },
       required: ["key", "updated"]
     },
@@ -3198,7 +3198,7 @@ function mutationCommand(options) {
       additionalProperties: false
     },
     outputSchema: {
-      ...OBJECT_OUTPUT$a,
+      ...OBJECT_OUTPUT$b,
       properties: {
         key: { type: "string" },
         [options.resultProperty]: { type: "boolean" }
@@ -5106,7 +5106,7 @@ function validateContentHandlers(value, permissions) {
   }
   return value;
 }
-const PACKAGE_VERSION = "0.7.139";
+const PACKAGE_VERSION = "0.7.130";
 const TOOL_VERSION = PACKAGE_VERSION;
 const SDK_VERSION = PACKAGE_VERSION;
 const PROTOCOL_VERSION = "1";
@@ -5123,7 +5123,7 @@ const VERSION$1 = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 const SHA256_ID = /^sha256:[0-9a-f]{64}$/;
 const OBJECT_ID = /^(?:appdoc|pkg):[0-9a-f]{64}$/;
 const SAFE_GENERATED_FILE = /^[A-Za-z0-9._-]+$/;
-const OBJECT_OUTPUT$9 = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$a = { type: "object", additionalProperties: true };
 const APP_KINDS = ["static-web", "script", "docker", "agent-skills"];
 const PATH_KINDS = {
   "static-web": { key: "web", category: "web", selectorType: "static" },
@@ -5166,7 +5166,7 @@ function createPikgModule(dependencies = {}) {
           properties: { meta_dir: { type: "string", minLength: 1 } },
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$9,
+        outputSchema: OBJECT_OUTPUT$a,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -5213,7 +5213,7 @@ function createPikgModule(dependencies = {}) {
           },
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$9,
+        outputSchema: OBJECT_OUTPUT$a,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "write" },
         asyncMode: "sync",
@@ -5238,7 +5238,7 @@ function createPikgModule(dependencies = {}) {
           properties: { meta_dir: { type: "string", minLength: 1 } },
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$9,
+        outputSchema: OBJECT_OUTPUT$a,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "write" },
         asyncMode: "sync",
@@ -5259,7 +5259,7 @@ function createPikgModule(dependencies = {}) {
           properties: { dist_dir: { type: "string", minLength: 1 } },
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$9,
+        outputSchema: OBJECT_OUTPUT$a,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "write" },
         asyncMode: "sync",
@@ -5279,7 +5279,7 @@ function createPikgModule(dependencies = {}) {
           required: ["pikg_path"],
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$9,
+        outputSchema: OBJECT_OUTPUT$a,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -5300,7 +5300,7 @@ function createPikgModule(dependencies = {}) {
           properties: { meta_dir: { type: "string", minLength: 1 } },
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$9,
+        outputSchema: OBJECT_OUTPUT$a,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "destructive" },
         asyncMode: "sync",
@@ -6563,7 +6563,7 @@ const CONTROL_PANEL_SERVICE = "control-panel";
 const PLAN_SCHEMA_VERSION = 4;
 const STAGING_RELEASE_TIMEOUT_MS = 5e3;
 const ZIP_LOCAL_MAGIC = [80, 75, 3, 4];
-const OBJECT_OUTPUT$8 = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$9 = { type: "object", additionalProperties: true };
 const INSTALL_POLICIES = [
   "strict-public",
   "normal",
@@ -6614,7 +6614,7 @@ function cancelCommand$1() {
       required: ["task_id"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$8,
+    outputSchema: OBJECT_OUTPUT$9,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "sync",
@@ -6649,7 +6649,7 @@ function fetchCommand(dependencies) {
       target: { type: "object", additionalProperties: true },
       install_params: { type: "object", additionalProperties: true }
     }),
-    outputSchema: OBJECT_OUTPUT$8,
+    outputSchema: OBJECT_OUTPUT$9,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -6666,7 +6666,7 @@ function listCommand$2() {
     verb: "list",
     summary: "List visible installed Apps",
     inputSchema: emptyInputSchema(),
-    outputSchema: OBJECT_OUTPUT$8,
+    outputSchema: OBJECT_OUTPUT$9,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -6724,7 +6724,7 @@ function installCommand(dependencies) {
       no_wait: { type: "boolean" },
       policy: { type: "string", enum: [...INSTALL_POLICIES] }
     }),
-    outputSchema: OBJECT_OUTPUT$8,
+    outputSchema: OBJECT_OUTPUT$9,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "either",
@@ -6768,7 +6768,7 @@ function upgradeCommand(dependencies) {
       },
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$8,
+    outputSchema: OBJECT_OUTPUT$9,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "either",
@@ -6897,7 +6897,7 @@ function statusCommand$1() {
       properties: { app_name: { type: "string", minLength: 1 } },
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$8,
+    outputSchema: OBJECT_OUTPUT$9,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -6968,7 +6968,7 @@ function publishCommand() {
       required: ["local_dir", "app_doc"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$8,
+    outputSchema: OBJECT_OUTPUT$9,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "sync",
@@ -8094,7 +8094,7 @@ function selectorCommand(options) {
       required: ["app_name"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$8,
+    outputSchema: OBJECT_OUTPUT$9,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: options.access },
     asyncMode: options.asyncMode,
@@ -8258,7 +8258,7 @@ function toHex(bytes) {
   return [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 const CONTROL_PANEL$3 = "control-panel";
-const OBJECT_OUTPUT$7 = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$8 = { type: "object", additionalProperties: true };
 function createDiagnosticModule(dependencies = {}) {
   return {
     name: "diagnostic",
@@ -8297,7 +8297,7 @@ function collectCommand() {
       required: ["services"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$7,
+    outputSchema: OBJECT_OUTPUT$8,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "privileged" },
     asyncMode: "task",
@@ -8351,7 +8351,7 @@ function exportCommand$1(dependencies) {
       required: ["bundle_id", "path"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$7,
+    outputSchema: OBJECT_OUTPUT$8,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "privileged" },
     asyncMode: "sync",
@@ -8393,7 +8393,7 @@ function compact$2(value) {
   return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== void 0));
 }
 const CONTROL_PANEL$2 = "control-panel";
-const OBJECT_OUTPUT$6 = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$7 = { type: "object", additionalProperties: true };
 const LOG_LEVELS = ["error", "warning", "info", "debug", "trace"];
 function createLogModule(dependencies = {}) {
   return {
@@ -8401,7 +8401,7 @@ function createLogModule(dependencies = {}) {
     summary: "List services, query, follow, and export redacted system logs",
     commands: [
       servicesCommand(),
-      queryCommand(),
+      queryCommand$1(),
       tailCommand(dependencies),
       exportCommand(dependencies)
     ]
@@ -8414,7 +8414,7 @@ function servicesCommand() {
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
     outputSchema: {
       type: "object",
-      properties: { services: { type: "array", items: OBJECT_OUTPUT$6 } },
+      properties: { services: { type: "array", items: OBJECT_OUTPUT$7 } },
       required: ["services"],
       additionalProperties: false
     },
@@ -8434,7 +8434,7 @@ function servicesCommand() {
     }
   };
 }
-function queryCommand() {
+function queryCommand$1() {
   return {
     verb: "query",
     summary: "Query structured redacted log entries",
@@ -8487,7 +8487,7 @@ function tailCommand(dependencies) {
       }
     ],
     inputSchema: filterSchema({ from: { type: "string", enum: ["start", "end"] } }),
-    outputSchema: OBJECT_OUTPUT$6,
+    outputSchema: OBJECT_OUTPUT$7,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "stream",
@@ -8543,7 +8543,7 @@ function exportCommand(dependencies) {
       ...filterSchema({ path: { type: "string", minLength: 1 } }),
       required: ["path"]
     },
-    outputSchema: OBJECT_OUTPUT$6,
+    outputSchema: OBJECT_OUTPUT$7,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -8695,7 +8695,7 @@ function abortableSleep(milliseconds, signal) {
 }
 const TASK_MANAGER = "task-manager";
 const CONTROL_PANEL$1 = "control-panel";
-const OBJECT_OUTPUT$5 = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$6 = { type: "object", additionalProperties: true };
 function createTaskModule() {
   return {
     name: "task",
@@ -8798,7 +8798,7 @@ function getCommand$1() {
       required: ["task_id"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$5,
+    outputSchema: OBJECT_OUTPUT$6,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -8839,7 +8839,7 @@ function waitCommand() {
     summary: "Stream changes until a Task becomes terminal",
     positionals: [{ name: "task_id", description: "Opaque Task ID", required: true }],
     inputSchema: taskIdSchema(),
-    outputSchema: OBJECT_OUTPUT$5,
+    outputSchema: OBJECT_OUTPUT$6,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "stream",
@@ -8890,7 +8890,7 @@ function cancelCommand() {
       required: ["task_id"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$5,
+    outputSchema: OBJECT_OUTPUT$6,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "sync",
@@ -8933,7 +8933,7 @@ function retryCommand() {
       required: ["task_id"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$5,
+    outputSchema: OBJECT_OUTPUT$6,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "either",
@@ -9007,7 +9007,7 @@ function invalidResponse$1(label) {
   throw new ToolError("INVALID_SERVICE_RESPONSE", `${label} is invalid`, EXIT_INTERNAL);
 }
 const sdk = provisionSdk;
-const OBJECT_OUTPUT$4 = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$5 = { type: "object", additionalProperties: true };
 const ROOT_OPTION = {
   name: "root",
   description: "Installed BuckyOS root on this machine (BUCKYOS_ROOT); read by status/check, written by activate",
@@ -9091,7 +9091,7 @@ function statusCommand(deps) {
       additionalProperties: false
     },
     outputSchema: {
-      ...OBJECT_OUTPUT$4,
+      ...OBJECT_OUTPUT$5,
       properties: {
         root: { type: "string" },
         state: {
@@ -9129,7 +9129,7 @@ function checkCommand(deps) {
       additionalProperties: false
     },
     outputSchema: {
-      ...OBJECT_OUTPUT$4,
+      ...OBJECT_OUTPUT$5,
       properties: {
         ready: { type: "boolean" },
         root: { type: "string" },
@@ -9177,7 +9177,7 @@ function activateCommand(deps) {
       additionalProperties: false
     },
     outputSchema: {
-      ...OBJECT_OUTPUT$4,
+      ...OBJECT_OUTPUT$5,
       properties: {
         root: { type: "string" },
         state: { type: "string", enum: ["configured"] },
@@ -9459,7 +9459,7 @@ function inputFingerprint(input) {
   hash.update(new TextEncoder().encode(JSON.stringify(material)));
   return hash.digestHex();
 }
-const OBJECT_OUTPUT$3 = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$4 = { type: "object", additionalProperties: true };
 const SKILL_KINDS = ["cmd", "goal"];
 const SKILLS_SUB_PKG = "agent_skills";
 const SKILL_DIRS = ["cmd_skills", "goal_skills", "tools"];
@@ -9496,7 +9496,7 @@ function createSkillModule() {
           required: ["agent_id"],
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$3,
+        outputSchema: OBJECT_OUTPUT$4,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -9535,7 +9535,7 @@ function createSkillModule() {
           required: ["pikg_path", "agent_id"],
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$3,
+        outputSchema: OBJECT_OUTPUT$4,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "write" },
         asyncMode: "sync",
@@ -9562,7 +9562,7 @@ function createSkillModule() {
           required: ["name", "agent_id"],
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$3,
+        outputSchema: OBJECT_OUTPUT$4,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "destructive" },
         asyncMode: "sync",
@@ -9683,7 +9683,7 @@ function base64(bytes) {
   return btoa(binary);
 }
 const CONTROL_PANEL = "control-panel";
-const OBJECT_OUTPUT$2 = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$3 = { type: "object", additionalProperties: true };
 const AGENT_POSITIONAL = {
   name: "agent_id",
   description: "Agent ID as `agent list` prints it (raw host name, e.g. jarvis.example.zone)"
@@ -9707,7 +9707,7 @@ function createAgentModule() {
         inputSchema: { type: "object", properties: {}, additionalProperties: false },
         outputSchema: {
           type: "object",
-          properties: { agents: { type: "array", items: OBJECT_OUTPUT$2 } },
+          properties: { agents: { type: "array", items: OBJECT_OUTPUT$3 } },
           required: ["agents"],
           additionalProperties: false
         },
@@ -9733,7 +9733,7 @@ function createAgentModule() {
         summary: "Get one Agent: profile, settings, install state, template, and runtime",
         positionals: [AGENT_POSITIONAL],
         inputSchema: AGENT_INPUT,
-        outputSchema: OBJECT_OUTPUT$2,
+        outputSchema: OBJECT_OUTPUT$3,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -9746,7 +9746,7 @@ function createAgentModule() {
         summary: "Get the public profile (display name, bio, avatar) of an Agent",
         positionals: [AGENT_POSITIONAL],
         inputSchema: AGENT_INPUT,
-        outputSchema: OBJECT_OUTPUT$2,
+        outputSchema: OBJECT_OUTPUT$3,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -9787,8 +9787,8 @@ function createAgentModule() {
           type: "object",
           properties: {
             agent_id: { type: "string" },
-            before: OBJECT_OUTPUT$2,
-            profile: OBJECT_OUTPUT$2
+            before: OBJECT_OUTPUT$3,
+            profile: OBJECT_OUTPUT$3
           },
           required: ["agent_id", "before", "profile"],
           additionalProperties: false
@@ -9833,7 +9833,7 @@ async function callAgent(ctx, method, params) {
   }
 }
 const AICC = "aicc";
-const OBJECT_OUTPUT$1 = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$2 = { type: "object", additionalProperties: true };
 const EMPTY_INPUT = { type: "object", properties: {}, additionalProperties: false };
 const RANGES = ["last1d", "last7d", "last30d"];
 const GROUPS = [
@@ -9851,13 +9851,13 @@ function createAiModule() {
     name: "ai",
     summary: "Read AI provider, routing, usage and token quota state of the AICC service",
     commands: [
-      readCommand({
+      readCommand$1({
         verb: "providers",
         summary: "List configured AI provider instances with auth, health, and model inventory",
         method: "provider.list",
         description: "Credentials are reported only as configured/kind; secrets are never returned."
       }),
-      readCommand({
+      readCommand$1({
         verb: "routing",
         summary: "Get the AICC routing overlay and its settings revision",
         method: "routing.get",
@@ -9881,7 +9881,7 @@ function quotaCommand() {
       properties: { app: { type: "string", minLength: 1 } },
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$1,
+    outputSchema: OBJECT_OUTPUT$2,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -9893,13 +9893,13 @@ function quotaCommand() {
     )
   };
 }
-function readCommand(options) {
+function readCommand$1(options) {
   return {
     verb: options.verb,
     summary: options.summary,
     description: options.description,
     inputSchema: EMPTY_INPUT,
-    outputSchema: OBJECT_OUTPUT$1,
+    outputSchema: OBJECT_OUTPUT$2,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -9951,7 +9951,7 @@ function usageCommand() {
       },
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$1,
+    outputSchema: OBJECT_OUTPUT$2,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -9996,7 +9996,7 @@ function timeRange(input) {
   }
   return { kind: "explicit", start_time_ms: since, end_time_ms: until ?? Date.now() };
 }
-const OBJECT_OUTPUT = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$1 = { type: "object", additionalProperties: true };
 const DAY_MS = 864e5;
 const EXPIRES_HELP = "1d, 7d (default), 30d, none, or an RFC 3339 time";
 function createShareModule() {
@@ -10107,7 +10107,7 @@ function createCommand() {
       required: ["path"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT,
+    outputSchema: OBJECT_OUTPUT$1,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "either",
@@ -10176,7 +10176,7 @@ function listCommand() {
       },
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT,
+    outputSchema: OBJECT_OUTPUT$1,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -10208,7 +10208,7 @@ function getCommand() {
       required: ["share_id"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT,
+    outputSchema: OBJECT_OUTPUT$1,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -10245,7 +10245,7 @@ function updateCommand() {
       required: ["share_id"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT,
+    outputSchema: OBJECT_OUTPUT$1,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "sync",
@@ -10289,7 +10289,7 @@ function stopCommand() {
       required: ["share_id"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT,
+    outputSchema: OBJECT_OUTPUT$1,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "destructive" },
     asyncMode: "sync",
@@ -10321,7 +10321,7 @@ function statsCommand() {
       },
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT,
+    outputSchema: OBJECT_OUTPUT$1,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -10455,6 +10455,308 @@ function operation(verb, extra, required) {
         stream.close();
       }
     }
+  };
+}
+const SERVICE = "aiworkspace";
+const OBJECT_OUTPUT = { type: "object", additionalProperties: true };
+const WORKSPACE_OPTION = { name: "workspace", property: "workspace_id", description: "Workspace id (ws_…)", type: "string", required: true };
+const RUN_OPTION = { name: "run", property: "run_id", description: "Run id (run_…)", type: "string", required: true };
+const ATTEMPT_OPTION = { name: "attempt", property: "attempt", description: "The attempt number `run-claim` answered", type: "integer", required: true };
+function workspaceInput(extra, required = []) {
+  return { type: "object", properties: { workspace_id: { type: "string", minLength: 1 }, ...extra }, required: ["workspace_id", ...required], additionalProperties: false };
+}
+async function aiws(ctx, method, params) {
+  const result = expectObject$4(await callService(ctx, SERVICE, method, params), method);
+  if (result.ok === false) {
+    const error = expectObject$4(result.error, `${method}.error`);
+    const code = typeof error.code === "string" ? error.code : "AIWS_ERROR";
+    const detail = typeof error.detail === "string" ? error.detail : code;
+    throw new ToolError(code, `${code}${typeof error.sub_code === "string" ? `/${error.sub_code}` : ""}: ${detail}`);
+  }
+  return result;
+}
+async function jsonInput(input, textKey, fileKey, label) {
+  const text2 = inputString(input, textKey);
+  const file = inputString(input, fileKey);
+  if (text2 && file)
+    throw new UsageError("AIWS_USAGE", `${textKey} and ${fileKey} are exclusive`);
+  if (file)
+    return JSON.parse(await getHost().readTextFile(file));
+  if (text2)
+    return JSON.parse(text2);
+  throw new UsageError("AIWS_USAGE", `${label}: pass --${textKey.replace(/_/g, "-")} or --${fileKey.replace(/_/g, "-")}`);
+}
+const readCommand = {
+  verb: "read",
+  summary: "Read one entity of a workspace (envelope and content)",
+  positionals: [{ name: "entity_id", description: "Entity id", required: true }],
+  options: [WORKSPACE_OPTION, { name: "selector", property: "selector", description: 'Selector JSON, e.g. {"kind":"table_record","record_id":"r1"}', type: "string" }],
+  inputSchema: workspaceInput({ entity_id: { type: "string", minLength: 1 }, selector: { type: "string" } }, ["entity_id"]),
+  outputSchema: OBJECT_OUTPUT,
+  resultSchemaVersion: 1,
+  access: { mode: "fixed", level: "read" },
+  asyncMode: "sync",
+  requiresSession: true,
+  examples: ["buckyos aiws read orders --workspace ws_abc"],
+  handler: (ctx, input) => {
+    const selector = inputString(input, "selector");
+    return aiws(ctx, "doc.read", { workspace_id: requiredInputString(input, "workspace_id"), entity_id: requiredInputString(input, "entity_id"), ...selector ? { selector: JSON.parse(selector) } : {} });
+  }
+};
+const queryCommand = {
+  verb: "query",
+  summary: "Query the rows of a table (or through a saved view)",
+  options: [
+    WORKSPACE_OPTION,
+    { name: "source", property: "source_id", description: "Table entity id", type: "string" },
+    { name: "view", property: "view_id", description: "Table view (Block) id", type: "string" },
+    { name: "filter", property: "filter", description: "Filter JSON (README: doc.query)", type: "string" },
+    { name: "limit", property: "limit", description: "Rows per page (≤ 1000)", type: "integer" },
+    { name: "cursor", property: "cursor", description: "Continue from a previous page", type: "string" }
+  ],
+  inputSchema: workspaceInput({ source_id: { type: "string" }, view_id: { type: "string" }, filter: { type: "string" }, limit: { type: "integer" }, cursor: { type: "string" } }),
+  outputSchema: OBJECT_OUTPUT,
+  resultSchemaVersion: 1,
+  access: { mode: "fixed", level: "read" },
+  asyncMode: "sync",
+  requiresSession: true,
+  examples: ["buckyos aiws query --workspace ws_abc --source orders --limit 100"],
+  handler: (ctx, input) => {
+    const params = { workspace_id: requiredInputString(input, "workspace_id") };
+    for (const key of ["source_id", "view_id", "cursor"]) {
+      const value = inputString(input, key);
+      if (value)
+        params[key] = value;
+    }
+    const filter = inputString(input, "filter");
+    if (filter)
+      params.filter = JSON.parse(filter);
+    if (typeof input.limit === "number")
+      params.limit = input.limit;
+    if (!params.source_id && !params.view_id)
+      throw new UsageError("AIWS_USAGE", "pass --source or --view");
+    return aiws(ctx, "doc.query", params);
+  }
+};
+const infoCommand = {
+  verb: "info",
+  summary: "Workspace info: versions, capabilities of the caller, usage, hosted execution configuration",
+  options: [WORKSPACE_OPTION],
+  inputSchema: workspaceInput({}),
+  outputSchema: OBJECT_OUTPUT,
+  resultSchemaVersion: 1,
+  access: { mode: "fixed", level: "read" },
+  asyncMode: "sync",
+  requiresSession: true,
+  examples: ["buckyos aiws info --workspace ws_abc"],
+  handler: (ctx, input) => aiws(ctx, "ws.get_info", { workspace_id: requiredInputString(input, "workspace_id") })
+};
+const runGetCommand = {
+  verb: "run-get",
+  summary: "A wish run: state, execution context, the brief an executor starts from, candidate and preview",
+  options: [WORKSPACE_OPTION, RUN_OPTION],
+  inputSchema: workspaceInput({ run_id: { type: "string", minLength: 1 } }, ["run_id"]),
+  outputSchema: OBJECT_OUTPUT,
+  resultSchemaVersion: 1,
+  access: { mode: "fixed", level: "read" },
+  asyncMode: "sync",
+  requiresSession: true,
+  examples: ["buckyos aiws run-get --workspace ws_abc --run run_xyz"],
+  handler: (ctx, input) => aiws(ctx, "proc.get", { workspace_id: requiredInputString(input, "workspace_id"), run_id: requiredInputString(input, "run_id") })
+};
+const runClaimCommand = {
+  verb: "run-claim",
+  summary: "Take a run as its executor: starts an attempt, answers the attempt number, a run token and the lease",
+  options: [WORKSPACE_OPTION, RUN_OPTION, { name: "claim-token", property: "claim_token", description: "The claim token the run was dispatched with (ct_…)", type: "string", required: true, secret: true }],
+  inputSchema: workspaceInput({ run_id: { type: "string", minLength: 1 }, claim_token: { type: "string", minLength: 1 } }, ["run_id", "claim_token"]),
+  outputSchema: OBJECT_OUTPUT,
+  resultSchemaVersion: 1,
+  access: { mode: "fixed", level: "write" },
+  asyncMode: "sync",
+  requiresSession: true,
+  examples: ["buckyos aiws run-claim --workspace ws_abc --run run_xyz --claim-token ct_…"],
+  handler: (ctx, input) => aiws(ctx, "proc.claim", {
+    workspace_id: requiredInputString(input, "workspace_id"),
+    run_id: requiredInputString(input, "run_id"),
+    claim_token: requiredInputString(input, "claim_token"),
+    executor: { kind: "agent", principal: ctx.principal.id }
+  })
+};
+const runHeartbeatCommand = {
+  verb: "run-heartbeat",
+  summary: "Keep the lease of a claimed run alive (every minute while working); optionally report progress",
+  options: [WORKSPACE_OPTION, RUN_OPTION, ATTEMPT_OPTION, { name: "phase", property: "phase", description: 'A short progress phase, e.g. "reading inputs"', type: "string" }],
+  inputSchema: workspaceInput({ run_id: { type: "string", minLength: 1 }, attempt: { type: "integer", minimum: 1 }, phase: { type: "string" } }, ["run_id", "attempt"]),
+  outputSchema: OBJECT_OUTPUT,
+  resultSchemaVersion: 1,
+  access: { mode: "fixed", level: "write" },
+  asyncMode: "sync",
+  requiresSession: true,
+  examples: ['buckyos aiws run-heartbeat --workspace ws_abc --run run_xyz --attempt 1 --phase "reading inputs"'],
+  handler: (ctx, input) => {
+    const phase = inputString(input, "phase");
+    return aiws(ctx, "proc.heartbeat", { workspace_id: requiredInputString(input, "workspace_id"), run_id: requiredInputString(input, "run_id"), attempt: input.attempt, ...phase ? { progress: { phase } } : {} });
+  }
+};
+const runFilesCommand = {
+  verb: "run-files",
+  summary: "Write the stage of a claimed run into a directory: the snapshot (context/), request.json, the Renderer catalog and the program host (lib/)",
+  description: "Run the program there the way the service does: `deno run -A lib/run.js` reads program/main.js and writes output/.aiws/results.json.",
+  options: [WORKSPACE_OPTION, RUN_OPTION, ATTEMPT_OPTION, { name: "dir", property: "dir", description: "Directory to write into (created)", type: "string", required: true }],
+  inputSchema: workspaceInput({ run_id: { type: "string", minLength: 1 }, attempt: { type: "integer", minimum: 1 }, dir: { type: "string", minLength: 1 } }, ["run_id", "attempt", "dir"]),
+  outputSchema: { type: "object", properties: { dir: { type: "string" }, files: { type: "array", items: { type: "string" } } }, required: ["dir", "files"], additionalProperties: true },
+  resultSchemaVersion: 1,
+  access: { mode: "fixed", level: "read" },
+  asyncMode: "sync",
+  requiresSession: true,
+  examples: ["buckyos aiws run-files --workspace ws_abc --run run_xyz --attempt 1 --dir work"],
+  handler: async (ctx, input) => {
+    const result = await aiws(ctx, "proc.files", { workspace_id: requiredInputString(input, "workspace_id"), run_id: requiredInputString(input, "run_id"), attempt: input.attempt });
+    const dir = requiredInputString(input, "dir");
+    const host2 = getHost();
+    const written = [];
+    for (const [path, file] of Object.entries(expectObject$4(result.files, "proc.files.files"))) {
+      const f = expectObject$4(file, path);
+      if (typeof f.text !== "string" && typeof f.base64 !== "string")
+        continue;
+      const target = `${dir}/${path}`;
+      await host2.mkdir(target.slice(0, target.lastIndexOf("/")), { recursive: true });
+      if (typeof f.text === "string")
+        await host2.writeTextFile(target, f.text);
+      else
+        await host2.writeFile(target, Uint8Array.from(atob(f.base64), (c) => c.charCodeAt(0)));
+      written.push(path);
+    }
+    await host2.mkdir(`${dir}/output`, { recursive: true });
+    await host2.mkdir(`${dir}/program`, { recursive: true });
+    return { dir, files: written };
+  }
+};
+const runToolCommand = {
+  verb: "run-tool",
+  summary: "Call one stage tool of a claimed run (ws_profile, ws_read, ws_query, submit_analysis, put_result, check_results, finish, …): the service answers as it answers the model",
+  options: [WORKSPACE_OPTION, RUN_OPTION, ATTEMPT_OPTION, { name: "name", property: "name", description: "Tool name (the claim answered the list, with their argument schemas)", type: "string", required: true }, { name: "args", property: "args", description: "Arguments JSON", type: "string" }, { name: "args-file", property: "args_file", description: "Path of a JSON file holding the arguments", type: "string" }],
+  inputSchema: workspaceInput({ run_id: { type: "string", minLength: 1 }, attempt: { type: "integer", minimum: 1 }, name: { type: "string", minLength: 1 }, args: { type: "string" }, args_file: { type: "string" } }, ["run_id", "attempt", "name"]),
+  outputSchema: OBJECT_OUTPUT,
+  resultSchemaVersion: 1,
+  access: { mode: "fixed", level: "write" },
+  asyncMode: "sync",
+  requiresSession: true,
+  examples: [`buckyos aiws run-tool --workspace ws_abc --run run_xyz --attempt 1 --name ws_profile --args '{"target":"@B1"}'`, `buckyos aiws run-tool --workspace ws_abc --run run_xyz --attempt 1 --name finish --args '{"summary":"done"}'`],
+  handler: async (ctx, input) => {
+    const args = inputString(input, "args") || inputString(input, "args_file") ? await jsonInput(input, "args", "args_file", "arguments") : {};
+    return aiws(ctx, "proc.tool", { workspace_id: requiredInputString(input, "workspace_id"), run_id: requiredInputString(input, "run_id"), attempt: input.attempt, name: requiredInputString(input, "name"), args });
+  }
+};
+const runProgramCommand = {
+  verb: "run-program",
+  summary: "Hand in a program run: the program source, what lib/run.js wrote to output/.aiws/results.json, the files under output/ and the log; the service validates it like its own run_program",
+  options: [
+    WORKSPACE_OPTION,
+    RUN_OPTION,
+    ATTEMPT_OPTION,
+    { name: "dir", property: "dir", description: "The stage directory written by run-files (program/main.js, output/)", type: "string", required: true },
+    { name: "log-file", property: "log_file", description: "Path of the program log to attach (stdout/stderr of deno run)", type: "string" }
+  ],
+  inputSchema: workspaceInput({ run_id: { type: "string", minLength: 1 }, attempt: { type: "integer", minimum: 1 }, dir: { type: "string", minLength: 1 }, log_file: { type: "string" } }, ["run_id", "attempt", "dir"]),
+  outputSchema: OBJECT_OUTPUT,
+  resultSchemaVersion: 1,
+  access: { mode: "fixed", level: "write" },
+  asyncMode: "sync",
+  requiresSession: true,
+  examples: ["buckyos aiws run-program --workspace ws_abc --run run_xyz --attempt 1 --dir work --log-file work/run.log"],
+  handler: async (ctx, input) => {
+    const dir = requiredInputString(input, "dir");
+    const host2 = getHost();
+    const source = await host2.readTextFile(`${dir}/program/main.js`);
+    let results = null;
+    try {
+      results = JSON.parse(await host2.readTextFile(`${dir}/output/.aiws/results.json`));
+    } catch {
+      results = null;
+    }
+    const logFile = inputString(input, "log_file");
+    const log = logFile ? await host2.readTextFile(logFile).catch(() => "") : "";
+    const files = {};
+    const walk = async (rel) => {
+      for (const entry of await host2.readDir(`${dir}/output${rel ? `/${rel}` : ""}`)) {
+        const name = rel ? `${rel}/${entry.name}` : entry.name;
+        if (name === ".aiws" || name.startsWith(".aiws/"))
+          continue;
+        if (entry.isDirectory)
+          await walk(name);
+        else {
+          const bytes = await host2.readFile(`${dir}/output/${name}`);
+          let text2 = null;
+          try {
+            text2 = bytes.includes(0) ? null : new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+          } catch {
+            text2 = null;
+          }
+          files[`output/${name}`] = text2 ?? { base64: btoa(Array.from(bytes, (b) => String.fromCharCode(b)).join("")) };
+        }
+      }
+    };
+    await walk("");
+    return aiws(ctx, "proc.program", { workspace_id: requiredInputString(input, "workspace_id"), run_id: requiredInputString(input, "run_id"), attempt: input.attempt, source, results, log, files });
+  }
+};
+const runReportCommand = {
+  verb: "run-report",
+  summary: "End a claimed run: --finished after the stage tools accepted the work (submit_analysis / finish), or the candidate itself (results / analysis), or a failure",
+  description: "The service validates and plans what is reported; the user confirms it in the workspace. A superseded attempt or a cancelled run gets RUN_REVOKED.",
+  options: [
+    WORKSPACE_OPTION,
+    RUN_OPTION,
+    ATTEMPT_OPTION,
+    { name: "finished", property: "finished", description: "The stage is done: what the tools collected becomes the candidate", type: "boolean" },
+    { name: "results", property: "results", description: "Results JSON array (execute runs): [{ name, type, title?, content, config? }]", type: "string" },
+    { name: "results-file", property: "results_file", description: "Path of a JSON file holding the results array", type: "string" },
+    { name: "analysis", property: "analysis", description: "Analysis JSON (analyze runs, wish.analysis.v2)", type: "string" },
+    { name: "analysis-file", property: "analysis_file", description: "Path of a JSON file holding the analysis", type: "string" },
+    { name: "summary", property: "summary", description: "One paragraph on what was done", type: "string" },
+    { name: "warning", property: "warnings", description: "A warning for the user (repeatable)", type: "string" },
+    { name: "error", property: "error", description: "Report a failure instead: its reason", type: "string" }
+  ],
+  inputSchema: workspaceInput({ run_id: { type: "string", minLength: 1 }, attempt: { type: "integer", minimum: 1 }, finished: { type: "boolean" }, results: { type: "string" }, results_file: { type: "string" }, analysis: { type: "string" }, analysis_file: { type: "string" }, summary: { type: "string" }, warnings: { type: "string" }, error: { type: "string" } }, ["run_id", "attempt"]),
+  outputSchema: OBJECT_OUTPUT,
+  resultSchemaVersion: 1,
+  access: { mode: "fixed", level: "write" },
+  asyncMode: "sync",
+  requiresSession: true,
+  examples: [
+    "buckyos aiws run-report --workspace ws_abc --run run_xyz --attempt 1 --finished",
+    'buckyos aiws run-report --workspace ws_abc --run run_xyz --attempt 1 --results-file out/results.json --summary "monthly totals and a commentary"',
+    "buckyos aiws run-report --workspace ws_abc --run run_xyz --attempt 1 --analysis-file out/analysis.json",
+    'buckyos aiws run-report --workspace ws_abc --run run_xyz --attempt 1 --error "the input table is empty"'
+  ],
+  handler: async (ctx, input) => {
+    const params = { workspace_id: requiredInputString(input, "workspace_id"), run_id: requiredInputString(input, "run_id"), attempt: input.attempt };
+    const error = inputString(input, "error");
+    if (error) {
+      params.error = { code: "EXECUTOR_FAILED", detail: error };
+    } else if (input.finished === true) {
+      params.finished = true;
+    } else if (inputString(input, "analysis") || inputString(input, "analysis_file")) {
+      params.analysis = await jsonInput(input, "analysis", "analysis_file", "an analysis");
+    } else {
+      params.results = await jsonInput(input, "results", "results_file", "results");
+      params.read_set = [];
+    }
+    const summary2 = inputString(input, "summary");
+    if (summary2)
+      params.summary = summary2;
+    const warning = inputString(input, "warnings");
+    if (warning)
+      params.warnings = [warning];
+    return aiws(ctx, "proc.report", params);
+  }
+};
+function createAiwsModule() {
+  return {
+    name: "aiws",
+    summary: "AI Workspace: read a workspace, and execute wish runs as their executor (claim, heartbeat, report)",
+    commands: [infoCommand, readCommand, queryCommand, runGetCommand, runClaimCommand, runHeartbeatCommand, runFilesCommand, runToolCommand, runProgramCommand, runReportCommand]
   };
 }
 const VERSION = TOOL_VERSION;
@@ -10825,6 +11127,7 @@ function createRegistry(pikgDependencies, appDependencies, logDependencies, diag
   registry.register(createAiModule());
   registry.register(createShareModule());
   registry.register(createExecutorModule());
+  registry.register(createAiwsModule());
   return registry;
 }
 function assertNoSessionOptions(global, command) {

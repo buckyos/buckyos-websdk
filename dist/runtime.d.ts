@@ -1,3 +1,4 @@
+import { AiWorkspaceClient } from './aiworkspace_client';
 import { kRPCClient } from './krpc_client';
 import { AuthTarget, VerifyHubClient } from './verify-hub-client';
 import { TaskManagerClient } from './task_mgr_client';
@@ -121,6 +122,7 @@ export declare class BuckyOSRuntime {
     getTaskManagerClient(): TaskManagerClient;
     getWorkflowClient(): WorkflowClient;
     getAiccClient(): AiccClient;
+    getAiWorkspaceClient(): AiWorkspaceClient;
     getMsgQueueClient(): MsgQueueClient;
     getMsgCenterClient(): MsgCenterClient;
     getRepoClient(): RepoClient;

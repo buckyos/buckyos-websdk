@@ -38,6 +38,7 @@ export const getSystemConfigClient = sdkModule.getSystemConfigClient
 export const getTaskManagerClient = sdkModule.getTaskManagerClient
 export const getWorkflowClient = sdkModule.getWorkflowClient
 export const getAiccClient = sdkModule.getAiccClient
+export const getAiWorkspaceClient = sdkModule.getAiWorkspaceClient
 export const getMsgQueueClient = sdkModule.getMsgQueueClient
 export const getMsgCenterClient = sdkModule.getMsgCenterClient
 export const getRepoClient = sdkModule.getRepoClient
@@ -56,3 +57,4 @@ export * as ndm from './ndm_client'
 export * as ndm_proxy from './ndm_proxy'
 
 export * from './executor_client'
+export * from './aiworkspace_client'

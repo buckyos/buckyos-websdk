@@ -39,6 +39,7 @@ import { createAgentModule } from '../modules/agent.ts'
 import { createAiModule } from '../modules/ai.ts'
 import { createShareModule } from '../modules/share.ts'
 import { createExecutorModule } from '../modules/executor.ts'
+import { createAiwsModule } from '../modules/aiws.ts'
 import {
   distributionManifestView,
   getHost,
@@ -483,6 +484,7 @@ export function createRegistry(
   registry.register(createAiModule())
   registry.register(createShareModule())
   registry.register(createExecutorModule())
+  registry.register(createAiwsModule())
   return registry
 }
 

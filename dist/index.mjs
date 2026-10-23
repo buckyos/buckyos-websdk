@@ -1,5 +1,5 @@
-import { c as createSDKModule } from "./executor_client-00b51857.mjs";
-import { a8, aA, bt, aF, bu, bz, by, bv, bx, bA, bw, br, bs, bq, ab, aG, aI, aH, aK, aJ, bH, b$, c0, bX, bY, bZ, b_, c1, d, B, c3, c2, c7, c5, i, a0, $, _, Y, b6, af, a7, aq, E, c8, cb, c9, X, ap, aB, ag, bR, bQ, o, M, z, A, x, v, u, N, C, w, y, aC, aD, ao, m, j, R, ar, ba, S, aS, aR, aQ, aV, aT, aP, aL, aM, aU, aN, aW, aO, al, am, ak, aX, an, aE, b7, b4, b9, bb, a$, b8, bc, b3, b0, b2, a3, a2, V, W, a1, ay, au, az, as, aw, ax, bd, at, av, bp, bi, bl, bg, bk, bf, bh, bj, bo, bn, bm, be, Z, aa, bF, bE, bB, bD, T, bU, bS, b5, b, aj, Q, a4, a5, bV, bI, c4, ca, e, h, f, g, ae, ad, H, bC, l, D, b1, a6, q, t, O, n, a, ah, J, G, F, P, L, a9, bT, bW, ac, p, bL, k, I, r, s, a_, aY, aZ, bG, bK, bJ, K, bO, bN, bM, bP, U, c6, ai } from "./executor_client-00b51857.mjs";
+import { c as createSDKModule } from "./executor_client-d2c9e854.mjs";
+import { a8, aA, bt, aF, bu, bz, by, bv, bx, bA, bw, br, bs, bq, cc, ab, aG, aI, aH, aK, aJ, ce, bH, cd, b$, c0, bX, bY, bZ, b_, c1, d, B, c3, c2, c7, c5, i, a0, $, _, Y, b6, af, a7, aq, E, c8, cb, c9, X, ap, aB, ag, bR, bQ, o, M, z, A, x, v, u, N, C, w, y, aC, aD, ao, m, j, R, ar, ba, S, aS, aR, aQ, aV, aT, aP, aL, aM, aU, aN, aW, aO, al, am, ak, aX, an, aE, b7, b4, b9, bb, a$, b8, bc, b3, b0, b2, a3, a2, V, W, a1, ay, au, az, as, aw, ax, bd, at, av, bp, bi, bl, bg, bk, bf, bh, bj, bo, bn, bm, be, Z, aa, bF, bE, bB, bD, T, bU, bS, b5, b, aj, Q, a4, a5, bV, bI, c4, ca, e, h, f, g, ae, ad, H, bC, l, D, b1, a6, q, t, O, n, a, ah, J, G, F, P, L, a9, bT, bW, ac, p, bL, k, I, r, s, a_, aY, aZ, bG, bK, bJ, K, bO, bN, bM, bP, U, c6, ai } from "./executor_client-d2c9e854.mjs";
 import { b as b10, D as D2, N as N2, u as u2, t as t2, h as h2, k as k2, m as m2, j as j2, d as d2, g as g2, f as f2, c, e as e2, o as o2, l as l2, i as i2, n as n2, a as a10, s as s2, r as r2, q as q2, p as p2 } from "./ndn_types-dcb74613.mjs";
 const sdkModule = createSDKModule("universal");
 const buckyos = sdkModule.buckyos;
@@ -37,6 +37,7 @@ const getSystemConfigClient = sdkModule.getSystemConfigClient;
 const getTaskManagerClient = sdkModule.getTaskManagerClient;
 const getWorkflowClient = sdkModule.getWorkflowClient;
 const getAiccClient = sdkModule.getAiccClient;
+const getAiWorkspaceClient = sdkModule.getAiWorkspaceClient;
 const getMsgQueueClient = sdkModule.getMsgQueueClient;
 const getMsgCenterClient = sdkModule.getMsgCenterClient;
 const getRepoClient = sdkModule.getRepoClient;
@@ -55,13 +56,16 @@ export {
   br as AICC_SERVICE_SERVICE_NAME,
   bs as AICC_SERVICE_SERVICE_PORT,
   bq as AICC_SERVICE_UNIQUE_ID,
+  cc as AIWORKSPACE_SERVICE_NAME,
   ab as ANONYMOUS_IDENTITY,
   aG as APP_INSTALL_TASK_SCHEMA_ID,
   aI as APP_START_TASK_SCHEMA_ID,
   aH as APP_UNINSTALL_TASK_SCHEMA_ID,
   aK as APP_UPDATE_BATCH_TASK_SCHEMA_ID,
   aJ as APP_UPDATE_TASK_SCHEMA_ID,
+  ce as AiWorkspaceClient,
   bH as AiccClient,
+  cd as AiwsFailure,
   b$ as BNS_DNS_TXT_DEFAULT_TTL,
   c0 as BNS_DNS_TXT_DOC_TYPE,
   bX as BNS_EVM_DEFAULT_GAS_LIMIT,
@@ -199,6 +203,7 @@ export {
   e as getActiveRuntimeType,
   h as getActiveSessionToken,
   f as getActiveZoneGatewayOrigin,
+  getAiWorkspaceClient,
   getAiccClient,
   getAppDataDir,
   getAppDid,
