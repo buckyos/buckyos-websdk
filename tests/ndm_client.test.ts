@@ -49,6 +49,12 @@ import {
     getImportProvider,
     pickupAndImport,
     startUpload,
+    ensureUploaded,
+    importFiles,
+    importDirectory,
+    getUploadProgress,
+    cancelImportSession,
+    releaseImportSession,
     getImportSessionStatus,
     calculateQcidFromFile,
     ImportProvider,
@@ -145,6 +151,13 @@ describe('ndm_client (jest-only)', () => {
             defaultProtocol: 'https://',
         })
 
+        global.fetch = jest.fn(async (input, init) => {
+            if (String(input).endsWith('/import/finalize')) {
+                const request = JSON.parse(init!.body as string)
+                return jsonResponse({ ready: true, roots: request.roots.map((obj_id: string) => ({ obj_id, ready: true })) })
+            }
+            return jsonResponse({ state: 'not_exist', reusable: false, chunk_size: 0 })
+        }) as typeof fetch
         const size = 33 * 1024 * 1024
         const data = new Uint8Array(size)
         for (let i = 0; i < size; i++) data[i] = i & 0xff
@@ -152,7 +165,7 @@ describe('ndm_client (jest-only)', () => {
         setImportProvider(mockProvider({}, [makeFile('big-upload.bin', data)]))
         const result = await pickupAndImport({ mode: 'single_file' })
 
-        await startUpload(result.sessionId, {
+        await ensureUploaded(result.sessionId, {
             endpoint: 'https://gateway.example.com',
             concurrency: 1,
         })
@@ -176,8 +189,8 @@ describe('ndm_client (jest-only)', () => {
         expect(secondMetadata.chunk_index).toBe('1')
         expect(firstMetadata.chunk_hash).toBeTruthy()
         expect(secondMetadata.chunk_hash).toBeTruthy()
-        expect(firstMetadata.logical_path).toBe(`default/${firstMetadata.chunk_hash}`)
-        expect(secondMetadata.logical_path).toBe(`default/${secondMetadata.chunk_hash}`)
+        expect(firstMetadata.logical_path).toBe(firstMetadata.chunk_hash)
+        expect(secondMetadata.logical_path).toBe(secondMetadata.chunk_hash)
         expect(firstMetadata.chunk_hash).not.toBe(secondMetadata.chunk_hash)
         expect(mockTusUpload.mock.calls[0][1].headers.Authorization).toMatch(/^Bearer \S+/)
     })
@@ -194,7 +207,7 @@ describe('ndm_client (jest-only)', () => {
         for (let i = 0; i < data.length; i++) data[i] = (i * 29) & 0xff
         const file = makeFile('lookup-hit.bin', data)
         const qcid = await calculateQcidFromFile(file)
-        const chunkListId = 'chunklist:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd'
+        const chunkListId = 'clist:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd'
         const expectedFileObj = new NdnFileObject(file.name, file.size, chunkListId)
         const [expectedObjId] = expectedFileObj.genObjId()
 
@@ -203,6 +216,7 @@ describe('ndm_client (jest-only)', () => {
                 object_id: qcid,
                 scope: 'app',
                 state: 'same_as',
+                reusable: true,
                 chunk_size: file.size,
                 same_as: chunkListId,
             }), {
@@ -215,7 +229,7 @@ describe('ndm_client (jest-only)', () => {
         global.fetch = fetchMock as typeof fetch
         setImportProvider(mockProvider({}, [file]))
 
-        const result = await pickupAndImport({ mode: 'single_file' })
+        const result = await pickupAndImport({ mode: 'single_file', sessionToken: null })
         const selection = result.selection as ImportedFileObject
 
         expect(fetchMock).toHaveBeenCalledWith(
@@ -227,7 +241,8 @@ describe('ndm_client (jest-only)', () => {
         expect(selection.objectId).toBe(expectedObjId.toString())
         expect(selection.locality).toBe('store')
         expect(result.materializationStatus).toBe('all_in_store')
-        expect(result.uploadStatus).toBe('not_required')
+        expect(result.uploadStatus).toBe('not_started')
+        expect(result.objectStatus).toBe('pending')
     })
 
     it('structured store APIs reject pure Browser runtime', async () => {
@@ -502,5 +517,167 @@ describe('ndm_client (jest-only)', () => {
                 method: 'GET',
             }),
         )
+    })
+})
+
+
+function jsonResponse(body: unknown, status = 200): Response {
+    return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
+}
+
+describe('unified import lifecycle', () => {
+    const sessions: string[] = []
+    const originalFetch = global.fetch
+    afterEach(() => {
+        sessions.splice(0).forEach(releaseImportSession)
+        global.fetch = originalFetch
+        mockTusUpload.mockClear()
+    })
+    const remember = <T extends { sessionId: string }>(value: T): T => { sessions.push(value.sessionId); return value }
+    const finalizations: any[] = []
+    const fetcher = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+        if (String(input).endsWith('/import/finalize')) {
+            const body = JSON.parse(init!.body as string)
+            finalizations.push(body)
+            return jsonResponse({ ready: true, roots: body.roots.map((obj_id: string) => ({ obj_id, ready: true })), warnings: [] })
+        }
+        return jsonResponse({ state: 'not_exist', chunk_size: 0, reusable: false })
+    }
+    const options = { endpoint: 'https://ndm.example', sessionToken: 'test-token', headers: { 'X-Auth': 'business-token', Authorization: 'ignored-token' }, fetcher }
+    beforeEach(() => { finalizations.length = 0 })
+
+    it('keeps concurrent selected-file imports isolated from the picker provider', async () => {
+        const provider = getImportProvider()
+        const [a, b] = await Promise.all([
+            importFiles([makeFile('a.txt', 'A')], { ...options, mode: 'single_file' }),
+            importFiles([makeFile('b.txt', 'B')], { ...options, mode: 'single_file' }),
+        ])
+        remember(a); remember(b)
+        expect(a.selection.name).toBe('a.txt')
+        expect(b.selection.name).toBe('b.txt')
+        expect(getImportProvider()).toBe(provider)
+    })
+
+    it('registers ChunkList, FileObject and DirObjects in dependency order, preserving empty directories', async () => {
+        const result = remember(await importDirectory({ kind: 'dir', name: '根目录', children: [
+            { kind: 'file', file: makeFile('large.bin', new Uint8Array(33 * 1024 * 1024)) },
+            { kind: 'dir', name: '空 目录', children: [] },
+        ] }, options))
+        const status = await ensureUploaded(result.sessionId)
+        expect(status.objectStatus).toBe('ready')
+        const objects = finalizations[0].objects
+        expect(objects.map((object: any) => object.obj_id.split(':')[0])).toEqual(['clist', 'cyfile', 'cydir', 'cydir'])
+        const file = JSON.parse(objects[1].obj_data)
+        expect(file.content).toBe(objects[0].obj_id)
+        expect(JSON.parse(objects[3].obj_data).body['空 目录']).toBe(objects[2].obj_id)
+        expect(status.summary).toMatchObject({ totalFiles: 1, totalDirs: 2 })
+    })
+
+    it('QCID hit reads only samples, skips all TUS bytes but still registers renamed metadata', async () => {
+        const file = makeFile('renamed.bin', new Uint8Array(20000))
+        const arrayBuffer = jest.spyOn(file, 'arrayBuffer')
+        const { ChunkId, sha256Bytes } = await import('../src/ndn_types')
+        const contentId = ChunkId.fromMix256Result(file.size, sha256Bytes(new Uint8Array(file.size))).toString()
+        const hitFetcher = async (input: RequestInfo | URL, init?: RequestInit) => String(input).endsWith('/import/finalize')
+            ? fetcher(input, init)
+            : jsonResponse({ object_id: contentId, scope: 'app', state: 'same_as', same_as: contentId, chunk_size: file.size, reusable: true })
+        const result = remember(await importFiles([file], { ...options, fetcher: hitFetcher, mode: 'single_file' }))
+        expect(arrayBuffer).not.toHaveBeenCalled()
+        expect(result.objectStatus).toBe('pending')
+        await ensureUploaded(result.sessionId)
+        expect(mockTusUpload).not.toHaveBeenCalled()
+        expect(JSON.parse(finalizations[0].objects[0].obj_data).name).toBe('renamed.bin')
+        expect((await getUploadProgress(result.sessionId)).transmittedBytes).toBe(0)
+        expect(finalizations[0].qcid_links).toHaveLength(1)
+    })
+
+    it('does not reuse presence without an explicit authorization grant', async () => {
+        const file = makeFile('private.bin', new Uint8Array(20000))
+        const arrayBuffer = jest.spyOn(file, 'arrayBuffer')
+        const deniedFetcher = async (input: RequestInfo | URL, init?: RequestInit) => String(input).endsWith('/import/finalize')
+            ? fetcher(input, init)
+            : jsonResponse({ state: 'completed', object_id: 'chunk:abc', chunk_size: file.size, reusable: false })
+        const result = remember(await importFiles([file], { ...options, fetcher: deniedFetcher, mode: 'single_file' }))
+        await ensureUploaded(result.sessionId)
+        expect(arrayBuffer).toHaveBeenCalledTimes(1)
+        expect(mockTusUpload).toHaveBeenCalledTimes(1)
+    })
+
+    it('retries lost finalize responses without sending completed chunks again', async () => {
+        let attempts = 0
+        const flaky = async (input: RequestInfo | URL, init?: RequestInit) => {
+            if (String(input).endsWith('/import/finalize') && attempts++ === 0) throw new Error('response lost')
+            return fetcher(input, init)
+        }
+        const result = remember(await importFiles([makeFile('retry.txt', 'retry')], { ...options, fetcher: flaky, mode: 'single_file' }))
+        await expect(ensureUploaded(result.sessionId)).rejects.toThrow('response lost')
+        expect((await getImportSessionStatus(result.sessionId)).objectStatus).toBe('failed')
+        await ensureUploaded(result.sessionId)
+        expect(mockTusUpload).toHaveBeenCalledTimes(1)
+        expect(mockTusUpload.mock.calls[0][1].headers).toEqual({ 'X-Auth': 'business-token', Authorization: 'Bearer test-token' })
+        expect(attempts).toBe(2)
+        expect((await getImportSessionStatus(result.sessionId)).objectStatus).toBe('ready')
+    })
+
+    it('never marks incomplete dependencies ready', async () => {
+        const incomplete = async (input: RequestInfo | URL, init?: RequestInit) => String(input).endsWith('/import/finalize')
+            ? jsonResponse({ ready: false, roots: [] }) : fetcher(input, init)
+        const result = remember(await importFiles([makeFile('missing.txt', 'missing')], { ...options, fetcher: incomplete, mode: 'single_file' }))
+        await expect(ensureUploaded(result.sessionId)).rejects.toMatchObject({ code: 'OBJECT_NOT_READY' })
+        expect((await getImportSessionStatus(result.sessionId)).objectStatus).toBe('failed')
+    })
+
+    it('deduplicates identical leaves without losing directory progress', async () => {
+        const result = remember(await importDirectory({ kind: 'dir', name: 'root', children: ['a', 'b'].map(name => ({
+            kind: 'dir', name, children: [{ kind: 'file', file: makeFile('same.txt', 'same') }],
+        })) }, options))
+        await ensureUploaded(result.sessionId)
+        const progress = await getUploadProgress(result.sessionId)
+        expect(progress.uploadedObjects).toBe(2)
+        expect(progress.uploadedBytes).toBe(8)
+        expect(progress.transmittedBytes).toBe(4)
+        expect(mockTusUpload).toHaveBeenCalledTimes(1)
+    })
+
+    it('rejects path traversal and file/directory collisions before I/O', async () => {
+        const file = makeFile('evil.txt', 'x')
+        Object.defineProperty(file, 'webkitRelativePath', { value: 'root/../evil.txt' })
+        await expect(importFiles([file], { ...options, mode: 'single_dir' })).rejects.toMatchObject({ code: 'INVALID_IMPORT_PATH' })
+        await expect(importDirectory({ kind: 'dir', name: 'root', children: [
+            { kind: 'file', file: makeFile('same', 'x') }, { kind: 'dir', name: 'same', children: [] },
+        ] }, options)).rejects.toMatchObject({ code: 'IMPORT_PATH_CONFLICT' })
+        await expect(importFiles([], { ...options, mode: 'single_dir' })).rejects.toMatchObject({ code: 'EMPTY_DIRECTORY_UNAVAILABLE' })
+        expect(mockTusUpload).not.toHaveBeenCalled()
+    })
+
+    it('aborts an in-flight lookup without finalizing, then retries with the same File handles', async () => {
+        let signalReady: () => void
+        const started = new Promise<void>(resolve => { signalReady = resolve })
+        const controller = new AbortController()
+        const waiting = async (_input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+            signalReady!()
+            return new Promise((_resolve, reject) => init!.signal!.addEventListener('abort', () => reject(new Error('aborted')), { once: true }))
+        }
+        const result = remember(await importFiles([makeFile('interrupt.txt', 'data')], { ...options, mode: 'single_file' }))
+        const upload = ensureUploaded(result.sessionId, { fetcher: waiting, signal: controller.signal })
+        await started
+        controller.abort()
+        await expect(upload).rejects.toMatchObject({ code: 'USER_CANCELLED' })
+        expect((await getImportSessionStatus(result.sessionId)).objectStatus).toBe('cancelled')
+        expect(finalizations).toHaveLength(0)
+        await ensureUploaded(result.sessionId, { fetcher })
+        expect((await getImportSessionStatus(result.sessionId)).objectStatus).toBe('ready')
+    })
+
+    it('cancels pending work and permits retry, then releases the session', async () => {
+        const result = remember(await importFiles([makeFile('cancel.txt', 'cancel')], { ...options, mode: 'single_file' }))
+        cancelImportSession(result.sessionId)
+        expect((await getImportSessionStatus(result.sessionId)).objectStatus).toBe('cancelled')
+        await ensureUploaded(result.sessionId)
+        expect((await getImportSessionStatus(result.sessionId)).objectStatus).toBe('ready')
+        releaseImportSession(result.sessionId)
+        sessions.splice(sessions.indexOf(result.sessionId), 1)
+        await expect(getImportSessionStatus(result.sessionId)).rejects.toMatchObject({ code: 'SESSION_NOT_FOUND' })
+        expect(result.selection._file).toBeUndefined()
     })
 })

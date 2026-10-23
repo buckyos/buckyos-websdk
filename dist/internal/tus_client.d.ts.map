@@ -1,1 +1,1 @@
-{"version":3,"file":"tus_client.d.ts","sourceRoot":"","sources":["../../src/internal/tus_client.ts"],"names":[],"mappings":"AAAA,cAAc,eAAe,CAAA"}
+{"version":3,"file":"tus_client.d.ts","sourceRoot":"","sources":["../../src/internal/tus_client.ts"],"names":[],"mappings":"AAAA,cAAc,eAAe,CAAA;AAC7B,OAAO,KAAK,EAA6B,SAAS,EAAE,MAAM,eAAe,CAAA;AAEzE,6EAA6E;AAC7E,eAAO,MAAM,cAAc,EAAE,SA6B5B,CAAA"}

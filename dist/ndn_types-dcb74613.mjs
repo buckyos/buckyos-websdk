@@ -3772,8 +3772,8 @@ export {
   canonicalize$1 as F,
   signJwtEdDSA as G,
   ChunkId as H,
-  FileObject as I,
-  sha256Bytes as J,
+  sha256Bytes as I,
+  FileObject as J,
   DirObject as K,
   newDeviceDocumentByJwk as L,
   verifyJwtEdDSA as M,
@@ -3831,4 +3831,4 @@ export {
   saveBrowserIdentity as y,
   saveBrowserUserInfo as z
 };
-//# sourceMappingURL=ndn_types-ac9c1e48.mjs.map
+//# sourceMappingURL=ndn_types-dcb74613.mjs.map

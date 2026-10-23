@@ -181,18 +181,12 @@ function computeExpectedMultiChunkFileObjectId(
 }
 
 function computeExpectedQcid(content: Uint8Array): string {
-    const partSize = 4096
-    if (content.length < partSize * 3) {
-        throw new Error('content too small for QCID test helper')
-    }
-
-    const midOffset = Math.floor(content.length / 2)
-    const merged = new Uint8Array(partSize * 2)
-    merged.set(content.slice(0, partSize), 0)
-    merged.set(content.slice(midOffset, midOffset + partSize), partSize)
-
-    const hash = sha256Bytes(merged)
-    return ChunkId.fromMixHashResult(content.length, hash, 'qcid').toString()
+    const samples = content.length < 12288 ? content : new Uint8Array([
+        ...content.slice(0, 4096),
+        ...content.slice(Math.floor((content.length - 4096) / 2), Math.floor((content.length - 4096) / 2) + 4096),
+        ...content.slice(-4096),
+    ])
+    return ChunkId.fromMixHashResult(content.length, sha256Bytes(samples), 'qcid').toString()
 }
 
 function mockProvider(
@@ -287,16 +281,28 @@ export const NDM_CLIENT_TEST_CASES: NdmClientTestCase[] = [
     {
         name: 'calculateQcidFromFile matches ndn-lib quick-hash rule',
         async run(t) {
-            const data = new Uint8Array(20000)
-            for (let i = 0; i < data.length; i++) {
-                data[i] = (i * 17) & 0xff
+            for (const size of [0, 3, 12287, 12288, 12289, 20000, 32769]) {
+                const data = Uint8Array.from({ length: size }, (_, i) => (i * 17 + Math.floor(i / 251)) & 0xff)
+                t.eq(await calculateQcidFromFile(makeFile('qcid.bin', data)), computeExpectedQcid(data))
             }
+        },
+    },
 
-            const file = makeFile('qcid.bin', data)
-            const actual = await calculateQcidFromFile(file)
-            const expected = computeExpectedQcid(data)
-
-            t.eq(actual, expected)
+    {
+        name: 'QCID agrees with ndn-lib canonical boundary vectors',
+        async run(t) {
+            const vectors: Array<[number, string]> = [
+                [0, 'qcid:00e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'],
+                [1, 'qcid:016e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d'],
+                [4095, 'qcid:ff1f45de2924756389e3ccab98bdaacbef8a81cdeb651b59f916a6d6385b4f7b999d'],
+                [4096, 'qcid:8020d67c656e01756650d77717b0839985a056ec28ffe174601d690fc407a2ceffca'],
+                [12287, 'qcid:ff5f78ac95e2a27d63518fe831893f210699f7d6d6091071e6d5adccaaa476caf39c'],
+                [12288, 'qcid:80602ffe74f47a7bb7350e913f6b9259080cbe3cee97b2d313d5e2fe2942108d98e9'],
+                [12289, 'qcid:8160e526e1336f9c56d5012c520783dba4c96852a49a515a988447b940253faa28f1'],
+            ]
+            for (const [size, expected] of vectors) {
+                t.eq(await calculateQcidFromFile(makeFile('qcid.bin', Uint8Array.from({ length: size }, (_, i) => i % 251))), expected)
+            }
         },
     },
 
@@ -801,27 +807,28 @@ export const NDM_CLIENT_TEST_CASES: NdmClientTestCase[] = [
 
     // ---- NDM Store / Cache capability ----
     {
-        name: 'NDM Store: uploadStatus is not_required',
+        name: 'NDM Store capability alone does not establish object readiness',
         async run(t) {
             const saved = getImportProvider()
             try {
                 setImportProvider(mockProvider({ canUseNDMStore: true }, [makeFile('s.bin', 'data')]))
                 const result = await pickupAndImport({ mode: 'single_file' })
-                t.eq(result.materializationStatus, 'all_in_store')
-                t.eq(result.uploadStatus, 'not_required')
+                t.eq(result.materializationStatus, 'ok')
+                t.eq(result.uploadStatus, 'not_started')
+                t.eq(result.objectStatus, 'pending')
             } finally {
                 setImportProvider(saved)
             }
         },
     },
     {
-        name: 'NDM Cache: materializationStatus is on_cache',
+        name: 'NDM Cache capability alone does not prove materialization',
         async run(t) {
             const saved = getImportProvider()
             try {
                 setImportProvider(mockProvider({ canUseNDMCache: true }, [makeFile('c.bin', 'data')]))
                 const result = await pickupAndImport({ mode: 'single_file' })
-                t.eq(result.materializationStatus, 'on_cache')
+                t.eq(result.materializationStatus, 'ok')
                 t.eq(result.uploadStatus, 'not_started')
             } finally {
                 setImportProvider(saved)

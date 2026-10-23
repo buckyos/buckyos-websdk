@@ -253,6 +253,17 @@ export interface CommitResult {
         size: number;
     };
 }
+export interface CommitObjectResult {
+    ref: WireRef;
+    entry_ref: string;
+    revision: string;
+    obj_id: string;
+    kind: 'file' | 'dir';
+    obj: {
+        size: number;
+        sha256?: string;
+    };
+}
 export interface MetaRecord {
     ns: string;
     key: string;
@@ -671,6 +682,11 @@ export declare class NfspClient {
         overwrite?: boolean;
         expectedRevision?: string;
     }): Promise<CommitResult>;
+    commitObject(parent: LocatorLike, name: string, objId: string, opts?: {
+        overwrite?: boolean;
+        expectedRevision?: string;
+        leaseId?: string;
+    }): Promise<CommitObjectResult>;
     /** Which of these digests must be uploaded (§ probe / 秒传). */
     probe(digests: {
         hash: string;

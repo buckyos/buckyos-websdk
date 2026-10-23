@@ -57,6 +57,7 @@ export interface WorkerHashSession {
      * The callback receives the cumulative bytes hashed so far.
      */
     onProgress: (cb: (bytesHashed: number) => void) => void
+    cancel: () => void
 }
 
 let cachedWorkerUrl: string | null = null
@@ -89,7 +90,8 @@ export function isHashWorkerAvailable(): boolean {
  * `.result` promise resolves with all chunk hashes, and whose
  * `.onProgress()` method lets callers observe per-chunk progress.
  */
-export function hashFileInWorker(file: File, chunkSize: number): WorkerHashSession {
+export function hashFileInWorker(file: File, chunkSize: number, signal?: AbortSignal): WorkerHashSession {
+    let cancel = () => {}
     let progressCb: ((bytesHashed: number) => void) | null = null
     let cumulativeBytes = 0
     const chunks: ChunkHashResult[] = []
@@ -102,6 +104,14 @@ export function hashFileInWorker(file: File, chunkSize: number): WorkerHashSessi
             reject(new Error('Failed to create hash worker'))
             return
         }
+
+        cancel = () => {
+            worker.terminate()
+            signal?.removeEventListener('abort', cancel)
+            reject(new Error('Hash cancelled'))
+        }
+        if (signal?.aborted) { cancel(); return }
+        signal?.addEventListener('abort', cancel, { once: true })
 
         worker.onmessage = (e: MessageEvent) => {
             const msg = e.data
@@ -116,15 +126,18 @@ export function hashFileInWorker(file: File, chunkSize: number): WorkerHashSessi
                 cumulativeBytes += r.length
                 if (progressCb) progressCb(cumulativeBytes)
             } else if (msg.type === 'done') {
+                signal?.removeEventListener('abort', cancel)
                 worker.terminate()
                 resolve(chunks)
             } else if (msg.type === 'error') {
+                signal?.removeEventListener('abort', cancel)
                 worker.terminate()
                 reject(new Error(msg.message ?? 'Worker hash error'))
             }
         }
 
         worker.onerror = (err) => {
+            signal?.removeEventListener('abort', cancel)
             worker.terminate()
             reject(new Error(err.message ?? 'Worker error'))
         }
@@ -134,6 +147,7 @@ export function hashFileInWorker(file: File, chunkSize: number): WorkerHashSessi
 
     return {
         result,
+        cancel: () => cancel(),
         onProgress(cb) {
             progressCb = cb
         },

@@ -2,7 +2,7 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 import * as nodePath from "node:path";
 import { resolve as resolve$5, dirname as dirname$3 } from "node:path";
-import { BuckyOSSDK, RuntimeType, buckyos, namelib, VerifyHubClient, createAppInstanceId, parseSessionTokenClaims, ndn, ndm_proxy } from "buckyos/node";
+import { BuckyOSSDK, RuntimeType, buckyos, namelib, VerifyHubClient, createAppInstanceId, parseSessionTokenClaims, ndn, ndm_proxy, ExecutorCommandStream } from "buckyos/node";
 import * as provisionSdk from "buckyos/provision";
 import { createHash } from "node:crypto";
 import { readFile, writeFile, readdir, stat, lstat, realpath, mkdtemp, rename, rm, mkdir, chmod, symlink, copyFile, open } from "node:fs/promises";
@@ -345,20 +345,20 @@ function validateSchema(value, schema, path) {
     if (!value || typeof value !== "object" || Array.isArray(value)) {
       throw new UsageError("SCHEMA_VALIDATION_FAILED", `${path} must be an object`);
     }
-    const object = value;
+    const object2 = value;
     for (const required of schema.required ?? []) {
-      if (!Object.hasOwn(object, required)) {
+      if (!Object.hasOwn(object2, required)) {
         throw new UsageError("SCHEMA_VALIDATION_FAILED", `${path}.${required} is required`);
       }
     }
     if (schema.additionalProperties === false) {
-      for (const key of Object.keys(object)) {
+      for (const key of Object.keys(object2)) {
         if (!Object.hasOwn(schema.properties ?? {}, key)) {
           throw new UsageError("SCHEMA_VALIDATION_FAILED", `${path}.${key} is not allowed`);
         }
       }
     }
-    for (const [key, propertyValue] of Object.entries(object)) {
+    for (const [key, propertyValue] of Object.entries(object2)) {
       const propertySchema = schema.properties?.[key];
       if (propertySchema)
         validateSchema(propertyValue, propertySchema, `${path}.${key}`);
@@ -2057,11 +2057,11 @@ function renderText(data) {
   if (typeof data === "string")
     return data;
   if (data && typeof data === "object" && !Array.isArray(data)) {
-    const object = data;
-    if (typeof object.script === "string")
-      return object.script;
-    if (typeof object.text === "string")
-      return object.text;
+    const object2 = data;
+    if (typeof object2.script === "string")
+      return object2.script;
+    if (typeof object2.text === "string")
+      return object2.text;
   }
   return JSON.stringify(data, null, 2);
 }
@@ -2069,11 +2069,11 @@ function renderTable(data) {
   if (Array.isArray(data))
     return renderRows(data);
   if (data && typeof data === "object") {
-    const object = data;
-    const arrayEntry = Object.entries(object).find(([, value]) => Array.isArray(value));
+    const object2 = data;
+    const arrayEntry = Object.entries(object2).find(([, value]) => Array.isArray(value));
     if (arrayEntry)
       return renderRows(arrayEntry[1]);
-    const rows = Object.entries(object).map(([key, value]) => ({ key, value: displayValue(value) }));
+    const rows = Object.entries(object2).map(([key, value]) => ({ key, value: displayValue(value) }));
     return renderRows(rows);
   }
   return String(data ?? "");
@@ -3240,8 +3240,8 @@ async function readValueFile(path) {
 function isConfigValue(value) {
   if (!value || typeof value !== "object" || Array.isArray(value))
     return false;
-  const object = value;
-  return typeof object.value === "string" && Number.isSafeInteger(object.version) && Number(object.version) >= 0;
+  const object2 = value;
+  return typeof object2.value === "string" && Number.isSafeInteger(object2.version) && Number(object2.version) >= 0;
 }
 function invalidResponse$3(method) {
   throw new ToolError(
@@ -3333,7 +3333,7 @@ async function gzipFile(source, destination) {
 async function readTarGz(bytes, limit) {
   const tar = await gunzipBytes(bytes, limit);
   const decoder = new TextDecoder("utf-8", { fatal: true });
-  const text = (offset2, length) => decoder.decode(tar.subarray(offset2, offset2 + length)).replace(/\0.*$/s, "");
+  const text2 = (offset2, length) => decoder.decode(tar.subarray(offset2, offset2 + length)).replace(/\0.*$/s, "");
   const files = [];
   const seen = /* @__PURE__ */ new Set();
   let offset = 0;
@@ -3342,10 +3342,10 @@ async function readTarGz(bytes, limit) {
     let size;
     let mode;
     try {
-      const prefix = text(offset + 257, 6) === "ustar" ? text(offset + 345, 155) : "";
-      raw = prefix ? `${prefix}/${text(offset, 100)}` : text(offset, 100);
-      size = Number.parseInt(text(offset + 124, 12).trim() || "0", 8);
-      mode = Number.parseInt(text(offset + 100, 8).trim() || "0", 8);
+      const prefix = text2(offset + 257, 6) === "ustar" ? text2(offset + 345, 155) : "";
+      raw = prefix ? `${prefix}/${text2(offset, 100)}` : text2(offset, 100);
+      size = Number.parseInt(text2(offset + 124, 12).trim() || "0", 8);
+      mode = Number.parseInt(text2(offset + 100, 8).trim() || "0", 8);
     } catch {
       throw invalidZip("payload", "tar header is not valid UTF-8");
     }
@@ -3961,14 +3961,14 @@ function writeString(target, offset, length, value) {
   target.set(bytes, offset);
 }
 function writeOctal(target, offset, length, value) {
-  const text = value.toString(8).padStart(length - 1, "0");
-  if (text.length >= length)
+  const text2 = value.toString(8).padStart(length - 1, "0");
+  if (text2.length >= length)
     throw new UsageError("FILE_TOO_LARGE", "tar field overflows");
-  writeString(target, offset, length, `${text}\0`);
+  writeString(target, offset, length, `${text2}\0`);
 }
 function writeChecksum(target, value) {
-  const text = value.toString(8).padStart(6, "0");
-  writeString(target, 148, 8, `${text}\0 `);
+  const text2 = value.toString(8).padStart(6, "0");
+  writeString(target, 148, 8, `${text2}\0 `);
 }
 function validateZipEntryName(name) {
   if (!name || name.includes("\0") || name.includes("\\") || name.startsWith("/")) {
@@ -5106,7 +5106,7 @@ function validateContentHandlers(value, permissions) {
   }
   return value;
 }
-const PACKAGE_VERSION = "0.7.138";
+const PACKAGE_VERSION = "0.7.139";
 const TOOL_VERSION = PACKAGE_VERSION;
 const SDK_VERSION = PACKAGE_VERSION;
 const PROTOCOL_VERSION = "1";
@@ -6394,8 +6394,8 @@ function toPortablePath(path) {
   return path.split(getHost().path.sep).join("/") || ".";
 }
 function safeDockerError(bytes) {
-  const text = new TextDecoder().decode(bytes).trim().replaceAll(/[\r\n]+/g, " ");
-  return text.slice(0, 500) || "unknown Docker error";
+  const text2 = new TextDecoder().decode(bytes).trim().replaceAll(/[\r\n]+/g, " ");
+  return text2.slice(0, 500) || "unknown Docker error";
 }
 async function removeTreeIfExists(path) {
   try {
@@ -7937,8 +7937,8 @@ async function releaseStaging(ctx, source) {
   }
 }
 function expectInspection(value) {
-  const object = expectObject$1(value, "apps.inspect response");
-  const schemaVersion = expectNumber(object, "schema_version");
+  const object2 = expectObject$1(value, "apps.inspect response");
+  const schemaVersion = expectNumber(object2, "schema_version");
   if (schemaVersion !== PLAN_SCHEMA_VERSION) {
     throw new ToolError(
       "UNSUPPORTED_SCHEMA_VERSION",
@@ -7947,9 +7947,9 @@ function expectInspection(value) {
   }
   const inspection = {
     schema_version: schemaVersion,
-    plan: expectObject$1(object.plan, "inspection.plan"),
-    resolution_status: expectObject$1(object.resolution_status, "inspection.resolution_status"),
-    status: expectObject$1(object.status, "inspection.status")
+    plan: expectObject$1(object2.plan, "inspection.plan"),
+    resolution_status: expectObject$1(object2.resolution_status, "inspection.resolution_status"),
+    status: expectObject$1(object2.status, "inspection.status")
   };
   assertPortablePlan(inspection.plan);
   if (inspection.status.plan_fingerprint !== inspection.plan.plan_fingerprint) {
@@ -8169,8 +8169,8 @@ function expectString(value, property) {
   }
   return candidate;
 }
-function expectNumber(object, property) {
-  const value = object[property];
+function expectNumber(object2, property) {
+  const value = object2[property];
   if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
     throw new ToolError("INVALID_SERVICE_RESPONSE", `${property} must be a non-negative integer`, 9);
   }
@@ -9239,9 +9239,9 @@ function resolvePath(ctx, value) {
   const path = getHost().path;
   return path.isAbsolute(value) ? path.resolve(value) : path.resolve(ctx.cwd, value);
 }
-async function assertHostAccess(path, operation) {
+async function assertHostAccess(path, operation2) {
   try {
-    await getHost().assertAccess(path, operation);
+    await getHost().assertAccess(path, operation2);
   } catch (error) {
     if (isHostError(error, "PermissionDenied")) {
       throw new ToolError(
@@ -9249,7 +9249,7 @@ async function assertHostAccess(path, operation) {
         `${error.message}; pass the path on the command line (--root / --owner-key-backup) so the launcher can grant it`,
         EXIT_PERMISSION,
         false,
-        { path, operation }
+        { path, operation: operation2 }
       );
     }
     throw error;
@@ -10060,10 +10060,10 @@ function gatewayOrigin(endpoint) {
 function parseExpires(value) {
   if (value === void 0)
     return void 0;
-  const text = String(value).trim().toLowerCase();
-  if (text === "none" || text === "never")
+  const text2 = String(value).trim().toLowerCase();
+  if (text2 === "none" || text2 === "never")
     return null;
-  const days = text.match(/^(\d+)d$/);
+  const days = text2.match(/^(\d+)d$/);
   if (days)
     return Math.floor((Date.now() + Number(days[1]) * DAY_MS) / 1e3);
   const at = parseTimestamp(value, "expires");
@@ -10337,6 +10337,123 @@ function statsCommand() {
         to,
         granularity: input.granularity ?? "day"
       });
+    }
+  };
+}
+const text = { type: "string", minLength: 1 };
+const object = { type: "object", additionalProperties: true };
+const targetProperties = {
+  executor_id: text,
+  generation: { type: "integer", minimum: 1 },
+  profile_id: text,
+  store_id: text,
+  locator: text
+};
+function call(ctx, method, params) {
+  return ctx.clients.call("control-panel", method, params, {
+    traceId: ctx.traceId,
+    signal: ctx.signal,
+    timeoutMs: Math.max(1, (ctx.deadline ?? Date.now() + 3e4) - Date.now())
+  });
+}
+function management(verb, method, properties, required, write = false) {
+  return {
+    verb,
+    summary: `Executor ${verb}`,
+    inputSchema: { ...object, properties, required, additionalProperties: false },
+    outputSchema: object,
+    resultSchemaVersion: 1,
+    access: { mode: "fixed", level: write ? "write" : "read" },
+    asyncMode: "sync",
+    requiresSession: true,
+    options: Object.entries(properties).filter(([, schema]) => schema.type !== "object").map(([name, schema]) => ({
+      name: name.replaceAll("_", "-"),
+      property: name,
+      description: name,
+      type: schema.type === "integer" ? "integer" : "string",
+      required: required.includes(name)
+    })),
+    handler: (ctx, input) => call(ctx, method, input)
+  };
+}
+function createExecutorModule() {
+  return {
+    name: "executor",
+    summary: "Manage lightweight devices and explicitly target online command/file executors",
+    commands: [
+      management("create", "executor.device.create", { name: text, profiles: object, limits: object, expires_at_ms: { type: "integer" } }, ["name", "profiles"], true),
+      management("list", "executor.device.list", {}, []),
+      management("issue", "executor.device.issue", { executor_id: text, expires_at_ms: { type: "integer" } }, ["executor_id"], true),
+      management("revoke", "executor.device.revoke", { executor_id: text }, ["executor_id"], true),
+      management("delete", "executor.device.delete", { executor_id: text }, ["executor_id"], true),
+      management("online", "executor.online.list", {}, []),
+      operation("exec", { cmd: text, cwd: text, env: object, execution_timeout_ms: { type: "integer", minimum: 1 } }, ["cmd", "cwd"]),
+      operation("read", { path: text }, ["path"]),
+      operation("write", { path: text, content: { type: "string" }, mode: { type: "string", enum: ["replace", "append", "create_new"] } }, ["path", "content"]),
+      operation("edit", { path: text, old_string: text, new_string: { type: "string" } }, ["path", "old_string", "new_string"]),
+      operation("query", { channel: { type: "string", enum: ["stdout", "stderr", "content"] }, offset: { type: "integer", minimum: 0 }, wait_ms: { type: "integer", minimum: 0 } }, []),
+      operation("cancel", {}, [])
+    ]
+  };
+}
+function operation(verb, extra, required) {
+  const recovery = verb === "query" || verb === "cancel";
+  const properties = { ...targetProperties, ...extra };
+  return {
+    verb,
+    summary: `${verb} on an explicit executor; persist --locator before dispatch and query it after disconnection`,
+    inputSchema: { ...object, properties, required: [...Object.keys(targetProperties), ...required], additionalProperties: false },
+    outputSchema: object,
+    resultSchemaVersion: 1,
+    access: { mode: "fixed", level: ["read", "query"].includes(verb) ? "read" : "write" },
+    asyncMode: "sync",
+    requiresSession: true,
+    options: Object.entries(properties).filter(([, schema]) => schema.type !== "object").map(([name, schema]) => ({
+      name: name.replaceAll("_", "-"),
+      property: name,
+      description: name,
+      type: schema.type === "integer" ? "integer" : "string",
+      required: Object.keys(targetProperties).includes(name) || required.includes(name)
+    })),
+    handler: async (ctx, input) => {
+      const target = { executor_id: String(input.executor_id), generation: Number(input.generation), profile_id: String(input.profile_id), store_id: String(input.store_id) };
+      const path = String(input.locator);
+      const host2 = getHost();
+      let locator;
+      if (recovery)
+        locator = JSON.parse(await host2.readTextFile(path));
+      else {
+        locator = { ...target, op_id: crypto.randomUUID(), run_id: ctx.traceId, call_id: ctx.idempotencyKey ?? crypto.randomUUID() };
+        await host2.writeTextFile(path, JSON.stringify(locator) + "\n", { createNew: true, mode: 384 });
+      }
+      if (!ctx.session)
+        throw new ToolError("AUTH_REQUIRED", "An authenticated App session is required");
+      const { token } = await ctx.session.ensureValid();
+      const route = await call(ctx, "executor.stream.open", { executor_id: target.executor_id, generation: target.generation, profile_id: target.profile_id });
+      const stream = await ExecutorCommandStream.connect(route, target, token, "buckyos-cli", locator.run_id);
+      if (!stream)
+        throw new ToolError("INVALID_SERVICE_RESPONSE", "Executor stream did not initialize");
+      const abort = () => stream.close();
+      ctx.signal.addEventListener("abort", abort, { once: true });
+      try {
+        let reply;
+        if (verb === "exec")
+          reply = await stream.exec(locator, String(input.cmd), String(input.cwd), input.env ?? {}, Number(input.execution_timeout_ms ?? 6e4));
+        else if (verb === "read")
+          reply = await stream.read(locator, String(input.path));
+        else if (verb === "write")
+          reply = await stream.write(locator, String(input.path), new TextEncoder().encode(String(input.content)), input.mode ?? "replace");
+        else if (verb === "edit")
+          reply = await stream.edit(locator, String(input.path), [{ old_string: String(input.old_string), new_string: String(input.new_string) }]);
+        else if (verb === "cancel")
+          reply = await stream.cancel(locator);
+        else
+          reply = await stream.query(locator, input.channel, Number(input.offset ?? 0), Number(input.wait_ms ?? 0));
+        return { locator, reply };
+      } finally {
+        ctx.signal.removeEventListener("abort", abort);
+        stream.close();
+      }
     }
   };
 }
@@ -10707,6 +10824,7 @@ function createRegistry(pikgDependencies, appDependencies, logDependencies, diag
   registry.register(createAgentModule());
   registry.register(createAiModule());
   registry.register(createShareModule());
+  registry.register(createExecutorModule());
   return registry;
 }
 function assertNoSessionOptions(global, command) {
@@ -10812,8 +10930,8 @@ async function runCli(host2, argv) {
   installHost(host2);
   return await new BuckyOSToolApplication().run(argv);
 }
-async function assertPathAccess(policy2, path, realPath, candidate, operation, resolveLinks = true) {
-  const roots = operation === "read" ? policy2.readPaths : policy2.writePaths;
+async function assertPathAccess(policy2, path, realPath, candidate, operation2, resolveLinks = true) {
+  const roots = operation2 === "read" ? policy2.readPaths : policy2.writePaths;
   const absolute = path.resolve(candidate);
   const physicalRoots = [];
   for (const root of roots) {
@@ -10827,7 +10945,7 @@ async function assertPathAccess(policy2, path, realPath, candidate, operation, r
   if (!insideAny(absolute, roots, path) && !insideAny(absolute, physicalRoots, path)) {
     throw new HostError(
       "PermissionDenied",
-      `${operation} access is outside ${policy2.name}: ${absolute}`,
+      `${operation2} access is outside ${policy2.name}: ${absolute}`,
       absolute
     );
   }
@@ -10838,7 +10956,7 @@ async function assertPathAccess(policy2, path, realPath, candidate, operation, r
     if (!insideAny(physical, physicalRoots, path)) {
       throw new HostError(
         "PermissionDenied",
-        `${operation} access escapes ${policy2.name}: ${absolute}`,
+        `${operation2} access escapes ${policy2.name}: ${absolute}`,
         absolute
       );
     }
@@ -11034,8 +11152,8 @@ class NodeHost {
       throw translateNodeError(error, path);
     }
   }
-  async assertAccess(path, operation) {
-    await this.assertPath(path, operation);
+  async assertAccess(path, operation2) {
+    await this.assertPath(path, operation2);
   }
   createHash(_algorithm) {
     const hash = createHash("sha256");
@@ -11162,7 +11280,7 @@ class NodeHost {
       throw new HostError("PermissionDenied", `subprocess is not allowed: ${command}`);
     }
   }
-  async assertPath(candidate, operation, resolveLinks = true) {
+  async assertPath(candidate, operation2, resolveLinks = true) {
     await assertPathAccess(
       this.policy,
       nodePath,
@@ -11174,7 +11292,7 @@ class NodeHost {
         }
       },
       candidate,
-      operation,
+      operation2,
       resolveLinks
     );
   }

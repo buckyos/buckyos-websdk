@@ -86,4 +86,5 @@ export * as sn from './sn_client';
 export * as ndn from './ndn_types';
 export * as ndm from './ndm_client';
 export * as ndm_proxy from './ndm_proxy';
+export * from './executor_client';
 //# sourceMappingURL=node.d.ts.map

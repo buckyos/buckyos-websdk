@@ -8,7 +8,8 @@
  */
 export type ImportMode = 'single_file' | 'multi_file' | 'single_dir' | 'mixed';
 export type MaterializationStatus = 'ok' | 'on_cache' | 'all_in_store';
-export type UploadStatus = 'not_started' | 'uploading' | 'completed' | 'failed' | 'not_required';
+export type UploadStatus = 'not_started' | 'uploading' | 'completed' | 'failed' | 'not_required' | 'cancelled';
+export type ObjectStatus = 'pending' | 'finalizing' | 'ready' | 'failed' | 'cancelled';
 export type MaterializationPhase = 'qcid_lookup' | 'materializing' | 'thumbnail';
 /**
  * Progress information emitted during the materialization (hashing) phase
@@ -28,7 +29,7 @@ export interface MaterializationProgress {
     /** Total bytes of the current file. */
     fileTotalBytes?: number;
 }
-export type NdmErrorCode = 'USER_CANCELLED' | 'MODE_NOT_SUPPORTED_IN_RUNTIME' | 'DIRECTORY_NOT_SUPPORTED' | 'INVALID_ACCEPT_FILTER' | 'SESSION_NOT_FOUND' | 'UPLOAD_FAILED' | 'THUMBNAIL_GENERATION_FAILED' | 'STORE_API_NOT_SUPPORTED_IN_RUNTIME' | 'STORE_API_ENDPOINT_REQUIRED';
+export type NdmErrorCode = 'USER_CANCELLED' | 'INVALID_IMPORT_PATH' | 'IMPORT_PATH_CONFLICT' | 'EMPTY_DIRECTORY_UNAVAILABLE' | 'OBJECT_NOT_READY' | 'MODE_NOT_SUPPORTED_IN_RUNTIME' | 'DIRECTORY_NOT_SUPPORTED' | 'INVALID_ACCEPT_FILTER' | 'SESSION_NOT_FOUND' | 'UPLOAD_FAILED' | 'THUMBNAIL_GENERATION_FAILED' | 'STORE_API_NOT_SUPPORTED_IN_RUNTIME' | 'STORE_API_ENDPOINT_REQUIRED';
 export declare class NdmError extends Error {
     readonly code: NdmErrorCode;
     constructor(code: NdmErrorCode, message?: string);
@@ -74,6 +75,13 @@ export interface PickupAndImportOptions<TMode extends ImportMode = ImportMode> {
     accept?: string[];
     thumbnails?: ThumbnailOptions;
     autoStartUpload?: boolean;
+    endpoint?: string;
+    sessionToken?: string | null;
+    headers?: Record<string, string>;
+    fetcher?: NdmStoreRequestOptions['fetcher'];
+    signal?: AbortSignal;
+    /** Per-call provider; selected files should use importFiles instead. */
+    provider?: ImportProvider;
     /**
      * Optional callback invoked during the materialization (hashing) phase.
      * Use this to drive a progress bar while large files are being processed.
@@ -92,6 +100,9 @@ export interface ImportSessionSnapshot<TSelection> {
     items: Array<ImportedFileObject | ImportedDirObject>;
     materializationStatus: MaterializationStatus;
     uploadStatus: UploadStatus;
+    objectStatus: ObjectStatus;
+    error?: string;
+    warnings: string[];
     summary: ImportSessionSummary;
 }
 export type PickupAndImportResult<TMode extends ImportMode> = TMode extends 'single_file' ? ImportSessionSnapshot<ImportedFileObject> : TMode extends 'multi_file' ? ImportSessionSnapshot<ImportedFileObject[]> : TMode extends 'single_dir' ? ImportSessionSnapshot<ImportedDirObject> : ImportSessionSnapshot<Array<ImportedFileObject | ImportedDirObject>>;
@@ -105,6 +116,9 @@ export interface ImportSessionStatus {
     sessionId: string;
     materializationStatus: MaterializationStatus;
     uploadStatus: UploadStatus;
+    objectStatus: ObjectStatus;
+    error?: string;
+    warnings: string[];
     summary: ImportSessionSummary;
     progress: {
         uploadedBytes: number;
@@ -116,6 +130,10 @@ export interface ImportSessionStatus {
 }
 export interface StartUploadOptions {
     concurrency?: number;
+    signal?: AbortSignal;
+    headers?: Record<string, string>;
+    fetcher?: NdmStoreRequestOptions['fetcher'];
+    onProgress?: (progress: UploadProgress) => void;
     priority?: 'foreground' | 'background';
     /**
      * Override the NDM service base URL for TUS uploads. When omitted the
@@ -134,8 +152,13 @@ export interface StartUploadOptions {
 export interface UploadProgress {
     sessionId: string;
     uploadStatus: UploadStatus;
+    objectStatus: ObjectStatus;
+    error?: string;
+    warnings: string[];
     totalBytes: number;
     uploadedBytes: number;
+    /** Actual chunk payload bytes sent; excludes deduplicated logical progress. */
+    transmittedBytes: number;
     totalObjects: number;
     uploadedObjects: number;
     speedBps?: number;
@@ -164,6 +187,7 @@ export interface NdmStoreRequestOptions {
     headers?: Record<string, string>;
     credentials?: RequestCredentials;
     sessionToken?: string | null;
+    signal?: AbortSignal;
 }
 export interface NdmLookupRequestOptions extends NdmStoreRequestOptions {
 }
@@ -304,6 +328,7 @@ export interface LookupObjectRequest {
     inner_path?: string;
 }
 export interface LookupObjectExistsResponse {
+    reusable?: boolean;
     object_id: string;
     scope: NdmLookupScope;
     exists: boolean;
@@ -311,35 +336,41 @@ export interface LookupObjectExistsResponse {
 export type LookupObjectChunkStateResponse = ({
     object_id: string;
     scope: NdmLookupScope;
+    reusable?: boolean;
 } & {
     state: 'new';
     chunk_size: number;
 }) | ({
     object_id: string;
     scope: NdmLookupScope;
+    reusable?: boolean;
 } & {
     state: 'completed';
     chunk_size: number;
 }) | ({
     object_id: string;
     scope: NdmLookupScope;
+    reusable?: boolean;
 } & {
     state: 'disabled';
     chunk_size: number;
 }) | ({
     object_id: string;
     scope: NdmLookupScope;
+    reusable?: boolean;
 } & {
     state: 'not_exist';
     chunk_size: number;
 }) | ({
     object_id: string;
+    reusable?: boolean;
     scope: NdmLookupScope;
     state: 'local_link';
     chunk_size: number;
     local_info: ChunkStateLocalInfo;
 }) | ({
     object_id: string;
+    reusable?: boolean;
     scope: NdmLookupScope;
     state: 'same_as';
     chunk_size: number;
@@ -374,15 +405,30 @@ export declare function outboxCount(options?: NdmStoreRequestOptions): Promise<C
 export declare function debugDumpExpandState<TResponse = unknown>(request: GetObjectRequest, options?: NdmStoreRequestOptions): Promise<TResponse>;
 export declare function anchorState(request: UnpinRequest, options?: NdmStoreRequestOptions): Promise<AnchorStateResponse>;
 /**
- * Calculate a QCID for a File using the same quick-hash rule as ndn-lib:
- * SHA-256(first 4096 bytes + middle 4096 bytes), encoded as ChunkType `qcid`.
+ * Canonical ndn-lib QCID: hash the entire file below 12 KiB, otherwise hash
+ * three 4096-byte samples at head, centered midpoint, and tail.
  */
 export declare function calculateQcidFromFile(file: File): Promise<string>;
+/**
+ * Build directory tree from flat file list (for webkitdirectory results).
+ */
+export type ImportTreeEntry = {
+    kind: 'file';
+    file: File;
+} | ImportDirectoryEntry;
+export interface ImportDirectoryEntry {
+    kind: 'dir';
+    name: string;
+    children: ImportTreeEntry[];
+}
 /**
  * Initiate a user file/directory selection and materialize the chosen items
  * into NDN objects. Returns a session snapshot with objectIds ready to use.
  */
 export declare function pickupAndImport<TMode extends ImportMode>(options: PickupAndImportOptions<TMode>): Promise<PickupAndImportResult<TMode>>;
+/** Import an already selected FileList without modifying the global picker. */
+export declare function importFiles<TMode extends ImportMode>(selectedFiles: readonly File[], options: PickupAndImportOptions<TMode>): Promise<PickupAndImportResult<TMode>>;
+export declare function importDirectory(tree: ImportDirectoryEntry, options?: Omit<PickupAndImportOptions<'single_dir'>, 'mode'>): Promise<PickupAndImportResult<'single_dir'>>;
 /**
  * Query the current status of an import session.
  */
@@ -391,8 +437,11 @@ export declare function getImportSessionStatus(sessionId: string): Promise<Impor
  * Query upload progress for an import session (focused view for progress bars).
  */
 export declare function getUploadProgress(sessionId: string): Promise<UploadProgress>;
-/**
- * Explicitly start uploading the objects in an import session.
- */
+/** Begin or retry upload. Completion includes canonical metadata and readiness. */
 export declare function startUpload(sessionId: string, options?: StartUploadOptions): Promise<ImportSessionStatus>;
+export declare function ensureUploaded(sessionId: string, options?: StartUploadOptions): Promise<ImportSessionStatus>;
+/** Cancels only this import; shared stored objects are never deleted. */
+export declare function cancelImportSession(sessionId: string): void;
+/** Release local File handles after consuming the result. A refresh requires reselection. */
+export declare function releaseImportSession(sessionId: string): void;
 //# sourceMappingURL=ndm_client.d.ts.map

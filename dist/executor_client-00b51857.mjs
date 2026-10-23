@@ -35,7 +35,7 @@ var __privateMethod = (obj, member, method) => {
   return method;
 };
 var _listener, _listeners, _cancelled, _allowInsecure, _gzip, _headers, _method, _timeout, _url, _body, _bodyType, _creds, _preflight, _process, _retry, _signal, _throttle, _getUrlFunc, _send, send_fn, _statusCode, _statusMessage, _headers2, _body2, _request, _error, _names, _data, _dataLength, _writeData, writeData_fn, _data2, _offset, _bytesRead, _parent, _maxInflation, _incrementBytesRead, incrementBytesRead_fn, _peekBytes, peekBytes_fn, _r, _s, _v, _networkV, _privateKey, _options, _type, _to, _data3, _nonce, _gasLimit, _gasPrice, _maxPriorityFeePerGas, _maxFeePerGas, _value, _chainId, _sig, _accessList, _maxFeePerBlobGas, _blobVersionedHashes, _kzg, _blobs, _auths, _blobWrapperVersion, _getSerialized, getSerialized_fn, _types, _fullTypes, _encoderCache, _getEncoder, getEncoder_fn, _offset2, _tokens, _subTokenString, subTokenString_fn, _walkAsync, walkAsync_fn, _getCoder, getCoder_fn, _errors, _events, _functions, _abiCoder, _getFunction, getFunction_fn, _getEvent, getEvent_fn, _transactions, _logs, _startBlock, _iface, _iface2, _filter, _a, _supports2544, _resolver, _fetch, fetch_fn, _getResolver, getResolver_fn, _url2, _processFunc, _name, _chainId2, _plugins, _provider, _poller, _interval, _blockNumber, _poll, poll_fn, _provider2, _poll2, _running, _tag, _lastBlock, _filter2, _hash, _provider3, _filter3, _poller2, _running2, _blockNumber2, _poll3, poll_fn2, _subs, _plugins2, _pausedState, _destroyed, _networkPromise, _anyNetwork, _performCache, _lastBlockNumber, _nextTimer, _timers, _disableCcipRead, _requestRate, _requestTimes, _options2, _getDelay, getDelay_fn, _perform, perform_fn, _call, call_fn, _checkNetwork, checkNetwork_fn, _getAccountValue, getAccountValue_fn, _getBlock, getBlock_fn, _hasSub, hasSub_fn, _getSub, getSub_fn, _throwUnsupported, throwUnsupported_fn, _provider4, _filterIdPromise, _poller3, _running3, _network, _hault, _poll4, poll_fn3, _teardown, teardown_fn, _event, _options3, _nextId, _payloads, _drainTimer, _notReady, _network2, _pendingDetectNetwork, _scheduleDrain, scheduleDrain_fn, _pollingInterval, _connect, _signingKey, _data4, _checksum, _words, _loadWords, loadWords_fn, _account, account_fn, _fromSeed, fromSeed_fn, _fromAccount, fromAccount_fn;
-import { v as DID, w as getBrowserIdentityRaw, x as clearBrowserUserInfo, y as saveBrowserIdentity, z as saveBrowserUserInfo, A as getBrowserUserInfo, B as clearBrowserIdentity, q as parseBuckyOSOwnerDocument, h as hashPassword, C as saveLocalAccountInfo, E as cleanLocalAccountInfo, F as canonicalize, G as signJwtEdDSA, O as ObjId, H as ChunkId, I as FileObject, J as sha256Bytes, K as DirObject, S as SimpleChunkList } from "./ndn_types-ac9c1e48.mjs";
+import { v as DID, w as getBrowserIdentityRaw, x as clearBrowserUserInfo, y as saveBrowserIdentity, z as saveBrowserUserInfo, A as getBrowserUserInfo, B as clearBrowserIdentity, q as parseBuckyOSOwnerDocument, h as hashPassword, C as saveLocalAccountInfo, E as cleanLocalAccountInfo, F as canonicalize, G as signJwtEdDSA, H as ChunkId, I as sha256Bytes, J as FileObject, O as ObjId, K as DirObject, S as SimpleChunkList } from "./ndn_types-dcb74613.mjs";
 class RPCError extends Error {
   constructor(message, code, data) {
     super(message);
@@ -22178,7 +22178,7 @@ class AbstractProvider {
         request.body = { data, sender };
       }
       this.emit("debug", { action: "sendCcipReadFetchRequest", request, index: i, urls });
-      let errorMessage = "unknown error";
+      let errorMessage2 = "unknown error";
       let resp;
       try {
         resp = await request.send();
@@ -22194,13 +22194,13 @@ class AbstractProvider {
           return result.data;
         }
         if (result.message) {
-          errorMessage = result.message;
+          errorMessage2 = result.message;
         }
         this.emit("debug", { action: "receiveCcipReadFetchError", request, result });
       } catch (error) {
       }
-      assert(resp.statusCode < 400 || resp.statusCode >= 500, `response not found during CCIP fetch: ${errorMessage}`, "OFFCHAIN_FAULT", { reason: "404_MISSING_RESOURCE", transaction: tx, info: { url, errorMessage } });
-      errorMessages.push(errorMessage);
+      assert(resp.statusCode < 400 || resp.statusCode >= 500, `response not found during CCIP fetch: ${errorMessage2}`, "OFFCHAIN_FAULT", { reason: "404_MISSING_RESOURCE", transaction: tx, info: { url, errorMessage: errorMessage2 } });
+      errorMessages.push(errorMessage2);
     }
     assert(false, `error encountered during CCIP fetch: ${errorMessages.map((m) => JSON.stringify(m)).join(", ")}`, "OFFCHAIN_FAULT", {
       reason: "500_SERVER_ERROR",
@@ -27581,7 +27581,9 @@ function getWorkerBlobUrl() {
 function isHashWorkerAvailable() {
   return typeof Worker !== "undefined" && typeof Blob !== "undefined" && typeof URL !== "undefined" && typeof URL.createObjectURL === "function" && typeof crypto !== "undefined" && typeof crypto.subtle !== "undefined";
 }
-function hashFileInWorker(file, chunkSize) {
+function hashFileInWorker(file, chunkSize, signal) {
+  let cancel = () => {
+  };
   let progressCb = null;
   let cumulativeBytes = 0;
   const chunks = [];
@@ -27593,6 +27595,16 @@ function hashFileInWorker(file, chunkSize) {
       reject(new Error("Failed to create hash worker"));
       return;
     }
+    cancel = () => {
+      worker.terminate();
+      signal == null ? void 0 : signal.removeEventListener("abort", cancel);
+      reject(new Error("Hash cancelled"));
+    };
+    if (signal == null ? void 0 : signal.aborted) {
+      cancel();
+      return;
+    }
+    signal == null ? void 0 : signal.addEventListener("abort", cancel, { once: true });
     worker.onmessage = (e) => {
       const msg = e.data;
       if (msg.type === "chunk") {
@@ -27607,14 +27619,17 @@ function hashFileInWorker(file, chunkSize) {
         if (progressCb)
           progressCb(cumulativeBytes);
       } else if (msg.type === "done") {
+        signal == null ? void 0 : signal.removeEventListener("abort", cancel);
         worker.terminate();
         resolve(chunks);
       } else if (msg.type === "error") {
+        signal == null ? void 0 : signal.removeEventListener("abort", cancel);
         worker.terminate();
         reject(new Error(msg.message ?? "Worker hash error"));
       }
     };
     worker.onerror = (err) => {
+      signal == null ? void 0 : signal.removeEventListener("abort", cancel);
       worker.terminate();
       reject(new Error(err.message ?? "Worker error"));
     };
@@ -27622,6 +27637,7 @@ function hashFileInWorker(file, chunkSize) {
   });
   return {
     result,
+    cancel: () => cancel(),
     onProgress(cb) {
       progressCb = cb;
     }
@@ -27664,6 +27680,7 @@ const browserProvider = {
   },
   pickFiles(options) {
     return new Promise((resolve, reject) => {
+      var _a2, _b;
       const input = document.createElement("input");
       input.type = "file";
       if (options.mode === "single_dir") {
@@ -27679,27 +27696,44 @@ const browserProvider = {
         input.accept = options.accept.join(",");
       }
       let settled = false;
-      input.addEventListener("change", () => {
+      const cleanup = () => {
+        var _a3;
+        window.removeEventListener("focus", onFocus);
+        (_a3 = options.signal) == null ? void 0 : _a3.removeEventListener("abort", onAbort);
+      };
+      const fail2 = (error) => {
         if (settled)
           return;
         settled = true;
-        const files = input.files;
-        if (!files || files.length === 0) {
-          reject(new NdmError("USER_CANCELLED", "No files selected"));
-          return;
-        }
-        resolve(Array.from(files));
-      });
+        cleanup();
+        reject(error);
+      };
+      const onAbort = () => fail2(new NdmError("USER_CANCELLED", "Import cancelled"));
       const onFocus = () => {
         setTimeout(() => {
-          if (!settled) {
-            settled = true;
-            reject(new NdmError("USER_CANCELLED", "User cancelled file selection"));
-          }
-          window.removeEventListener("focus", onFocus);
+          if (!settled)
+            fail2(new NdmError("USER_CANCELLED", "User cancelled file selection"));
         }, 500);
       };
+      input.addEventListener("change", () => {
+        if (settled)
+          return;
+        const files = input.files;
+        if (!files || files.length === 0) {
+          fail2(new NdmError(options.mode === "single_dir" ? "EMPTY_DIRECTORY_UNAVAILABLE" : "USER_CANCELLED", options.mode === "single_dir" ? "FileList cannot represent an empty directory; use a directory-tree provider" : "No files selected"));
+          return;
+        }
+        settled = true;
+        cleanup();
+        resolve(Array.from(files));
+      });
+      input.addEventListener("cancel", onAbort);
       window.addEventListener("focus", onFocus);
+      if ((_a2 = options.signal) == null ? void 0 : _a2.aborted) {
+        onAbort();
+        return;
+      }
+      (_b = options.signal) == null ? void 0 : _b.addEventListener("abort", onAbort, { once: true });
       input.click();
     });
   }
@@ -27772,7 +27806,8 @@ async function callStoreApi(methodName, requestBody, options) {
     method: "POST",
     headers,
     body: JSON.stringify(requestBody),
-    credentials: (options == null ? void 0 : options.credentials) ?? "include"
+    credentials: (options == null ? void 0 : options.credentials) ?? "include",
+    signal: options == null ? void 0 : options.signal
   });
   if (response.status === 204) {
     await ((_a2 = response.body) == null ? void 0 : _a2.cancel());
@@ -27806,7 +27841,8 @@ async function getZoneGatewayJson(pathWithQuery, options) {
   const response = await fetcher(`${endpoint}${pathWithQuery}`, {
     method: "GET",
     headers,
-    credentials: (options == null ? void 0 : options.credentials) ?? "include"
+    credentials: (options == null ? void 0 : options.credentials) ?? "include",
+    signal: options == null ? void 0 : options.signal
   });
   const contentType = response.headers.get("content-type") ?? "";
   const isJsonResponse = contentType.includes("application/json");
@@ -27911,7 +27947,8 @@ async function debugDumpExpandState$1(request, options) {
 async function anchorState$1(request, options) {
   return callStoreApi("anchor_state", request, options);
 }
-async function materializeFile(file, chunkSize = DEFAULT_CHUNK_SIZE) {
+async function materializeFile(file, chunkSize = DEFAULT_CHUNK_SIZE, signal) {
+  throwIfCancelled(signal);
   const fileSize = file.size;
   const chunks = [];
   if (fileSize <= chunkSize) {
@@ -27921,12 +27958,14 @@ async function materializeFile(file, chunkSize = DEFAULT_CHUNK_SIZE) {
     const chunkIdStr = chunkId.toString();
     chunks.push({ chunkId: chunkIdStr, offset: 0, length: buf.length, uploaded: false });
     const fileObj2 = new FileObject(file.name, fileSize, chunkIdStr);
-    const [objId2] = fileObj2.genObjId();
-    return { objectId: objId2.toString(), chunks, fileObject: fileObj2.toJSON() };
+    const [objId2, objData2] = fileObj2.genObjId();
+    throwIfCancelled(signal);
+    return { objectId: objId2.toString(), chunks, fileObject: fileObj2.toJSON(), objects: [{ obj_id: objId2.toString(), obj_data: objData2 }] };
   }
   const chunkList = new SimpleChunkList();
   let offset = 0;
   while (offset < fileSize) {
+    throwIfCancelled(signal);
     const end = Math.min(offset + chunkSize, fileSize);
     const slice = new Uint8Array(await file.slice(offset, end).arrayBuffer());
     const hash2 = sha256Bytes(slice);
@@ -27935,29 +27974,42 @@ async function materializeFile(file, chunkSize = DEFAULT_CHUNK_SIZE) {
     chunks.push({ chunkId: chunkId.toString(), offset, length: slice.length, uploaded: false });
     offset = end;
   }
-  const [chunkListObjId] = chunkList.genObjId();
+  const [chunkListObjId, chunkListData] = chunkList.genObjId();
   const fileObj = new FileObject(file.name, fileSize, chunkListObjId.toString());
-  const [objId] = fileObj.genObjId();
-  return { objectId: objId.toString(), chunks, fileObject: fileObj.toJSON() };
+  const [objId, objData] = fileObj.genObjId();
+  throwIfCancelled(signal);
+  return { objectId: objId.toString(), chunks, fileObject: fileObj.toJSON(), objects: [
+    { obj_id: chunkListObjId.toString(), obj_data: chunkListData },
+    { obj_id: objId.toString(), obj_data: objData }
+  ] };
 }
-async function materializeFileViaWorker(file, onHashProgress, chunkSize = DEFAULT_CHUNK_SIZE) {
-  if (!isHashWorkerAvailable()) {
-    return materializeFile(file, chunkSize);
+async function materializeFileViaWorker(file, onHashProgress, chunkSize = DEFAULT_CHUNK_SIZE, signal) {
+  if (!isHashWorkerAvailable() || file.size === 0) {
+    const result = await materializeFile(file, chunkSize, signal);
+    onHashProgress == null ? void 0 : onHashProgress(file.size);
+    return result;
   }
   let hashResults;
+  let timer;
+  const worker = hashFileInWorker(file, chunkSize, signal);
   try {
-    const session = hashFileInWorker(file, chunkSize);
-    if (onHashProgress) {
-      session.onProgress(onHashProgress);
-    }
-    const WORKER_TIMEOUT_MS = 5 * 60 * 1e3;
+    if (onHashProgress)
+      worker.onProgress(onHashProgress);
     const timeout = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error("hash worker timeout")), WORKER_TIMEOUT_MS);
+      timer = setTimeout(() => {
+        worker.cancel();
+        reject(new Error("hash worker timeout"));
+      }, 5 * 60 * 1e3);
     });
-    hashResults = await Promise.race([session.result, timeout]);
+    hashResults = await Promise.race([worker.result, timeout]);
   } catch {
-    return materializeFile(file, chunkSize);
+    throwIfCancelled(signal);
+    return materializeFile(file, chunkSize, signal);
+  } finally {
+    if (timer)
+      clearTimeout(timer);
   }
+  throwIfCancelled(signal);
   const fileSize = file.size;
   const chunks = [];
   if (hashResults.length === 1) {
@@ -27966,8 +28018,9 @@ async function materializeFileViaWorker(file, onHashProgress, chunkSize = DEFAUL
     const chunkIdStr = chunkId.toString();
     chunks.push({ chunkId: chunkIdStr, offset: 0, length: r.length, uploaded: false });
     const fileObj2 = new FileObject(file.name, fileSize, chunkIdStr);
-    const [objId2] = fileObj2.genObjId();
-    return { objectId: objId2.toString(), chunks, fileObject: fileObj2.toJSON() };
+    const [objId2, objData2] = fileObj2.genObjId();
+    throwIfCancelled(signal);
+    return { objectId: objId2.toString(), chunks, fileObject: fileObj2.toJSON(), objects: [{ obj_id: objId2.toString(), obj_data: objData2 }] };
   }
   const chunkList = new SimpleChunkList();
   for (const r of hashResults) {
@@ -27975,10 +28028,14 @@ async function materializeFileViaWorker(file, onHashProgress, chunkSize = DEFAUL
     chunkList.appendChunk(chunkId);
     chunks.push({ chunkId: chunkId.toString(), offset: r.offset, length: r.length, uploaded: false });
   }
-  const [chunkListObjId] = chunkList.genObjId();
+  const [chunkListObjId, chunkListData] = chunkList.genObjId();
   const fileObj = new FileObject(file.name, fileSize, chunkListObjId.toString());
-  const [objId] = fileObj.genObjId();
-  return { objectId: objId.toString(), chunks, fileObject: fileObj.toJSON() };
+  const [objId, objData] = fileObj.genObjId();
+  throwIfCancelled(signal);
+  return { objectId: objId.toString(), chunks, fileObject: fileObj.toJSON(), objects: [
+    { obj_id: chunkListObjId.toString(), obj_data: chunkListData },
+    { obj_id: objId.toString(), obj_data: objData }
+  ] };
 }
 function buildFileObjectFromContentId(name, size, contentId) {
   const fileObj = new FileObject(name, size, contentId);
@@ -28000,27 +28057,21 @@ function resolveImportLookupEndpoint() {
   return void 0;
 }
 async function tryCalculateQcidFromFile(file) {
-  const fileSize = file.size;
-  if (fileSize < MIN_QCID_FILE_SIZE) {
-    return null;
-  }
-  const beginBytes = new Uint8Array(await file.slice(0, QCID_HASH_PIECE_SIZE).arrayBuffer());
-  const midOffset = Math.floor(fileSize / 2);
-  const midBytes = new Uint8Array(
-    await file.slice(midOffset, midOffset + QCID_HASH_PIECE_SIZE).arrayBuffer()
-  );
-  const combined = new Uint8Array(beginBytes.length + midBytes.length);
-  combined.set(beginBytes, 0);
-  combined.set(midBytes, beginBytes.length);
-  const hash2 = sha256Bytes(combined);
-  return ChunkId.fromMixHashResult(fileSize, hash2, "qcid").toString();
+  return file.size < MIN_QCID_FILE_SIZE ? null : calculateQcidFromFile(file);
 }
 async function calculateQcidFromFile(file) {
-  const qcid = await tryCalculateQcidFromFile(file);
-  if (!qcid) {
-    throw new Error(`QCID requires file size >= ${MIN_QCID_FILE_SIZE} bytes`);
+  const fileSize = file.size;
+  let sampled;
+  if (fileSize < MIN_QCID_FILE_SIZE) {
+    sampled = new Uint8Array(await file.arrayBuffer());
+  } else {
+    sampled = new Uint8Array(QCID_HASH_PIECE_SIZE * 3);
+    const offsets = [0, Math.floor((fileSize - QCID_HASH_PIECE_SIZE) / 2), fileSize - QCID_HASH_PIECE_SIZE];
+    for (let index = 0; index < offsets.length; index++) {
+      sampled.set(new Uint8Array(await file.slice(offsets[index], offsets[index] + QCID_HASH_PIECE_SIZE).arrayBuffer()), index * QCID_HASH_PIECE_SIZE);
+    }
   }
-  return qcid;
+  return ChunkId.fromMixHashResult(fileSize, sha256Bytes(sampled), "qcid").toString();
 }
 function extractLookupContentId(response, quickHash) {
   const body = response;
@@ -28046,81 +28097,75 @@ function extractLookupContentId(response, quickHash) {
   }
   return void 0;
 }
-async function lookupFileByQcid(file) {
-  const endpoint = resolveImportLookupEndpoint();
-  if (!endpoint) {
+async function lookupFileByQcid(file, options, warnings) {
+  const endpoint = options.endpoint ?? resolveImportLookupEndpoint();
+  if (!endpoint)
     return null;
-  }
   const qcid = await tryCalculateQcidFromFile(file);
-  if (!qcid) {
+  throwIfCancelled(options.signal);
+  if (!qcid)
+    return null;
+  try {
+    const response = await lookupObject({ scope: "app", quick_hash: qcid }, { ...options, endpoint });
+    if (response.reusable !== true || !("state" in response) || !["completed", "same_as", "local_link"].includes(response.state))
+      return null;
+    if (response.chunk_size !== file.size)
+      return null;
+    const contentId = extractLookupContentId(response, qcid);
+    if (!contentId || !(ObjId.fromString(contentId).isChunk() || ObjId.fromString(contentId).isChunkList()) || contentId.startsWith("qcid:"))
+      return null;
+    return { ...buildFileObjectFromContentId(file.name, file.size, contentId), locality: "store", qcid };
+  } catch (error) {
+    throwIfCancelled(options.signal);
+    if (!(error instanceof NdmStoreApiError && error.status === 404)) {
+      warnings.push(`QCID lookup for ${file.name}: ${errorMessage(error)}`);
+    }
     return null;
   }
-  for (const scope of ["app", "global"]) {
-    try {
-      const response = await lookupObject(
-        { scope, quick_hash: qcid },
-        {
-          endpoint,
-          sessionToken: getActiveRuntimeType() === RuntimeType.Browser ? null : void 0
-        }
-      );
-      const contentId = extractLookupContentId(response, qcid);
-      if (!contentId) {
-        continue;
-      }
-      return {
-        ...buildFileObjectFromContentId(file.name, file.size, contentId),
-        locality: "store"
-      };
-    } catch (error) {
-      if (error instanceof NdmStoreApiError && error.status === 404) {
-        continue;
-      }
-      return null;
-    }
+}
+function validateName(name) {
+  if (!name || name === "." || name === ".." || /[\\/\x00-\x1f]/.test(name) || /^[a-z]:/i.test(name)) {
+    throw new NdmError("INVALID_IMPORT_PATH", `Invalid file or directory name: ${name}`);
   }
-  return null;
+}
+function validatePath(path) {
+  const parts = path.split("/");
+  parts.forEach(validateName);
+  return parts;
 }
 function buildDirTree(files, fileObjects) {
-  const firstPath = files[0].webkitRelativePath;
-  const rootName = firstPath ? firstPath.split("/")[0] : "directory";
-  const root = {
-    kind: "dir",
-    objectId: "",
-    // will be computed later
-    name: rootName,
-    children: []
-  };
-  const dirMap = /* @__PURE__ */ new Map();
-  dirMap.set("", root);
-  for (const fileObj of fileObjects) {
-    const relPath = fileObj.relativePath ?? fileObj.name;
-    const parts = relPath.split("/");
-    const pathParts = parts.length > 1 ? parts.slice(1) : parts;
-    let currentDir = root;
-    for (let i = 0; i < pathParts.length - 1; i++) {
-      const dirName = pathParts[i];
-      const dirPath = pathParts.slice(0, i + 1).join("/");
-      let dir = dirMap.get(dirPath);
-      if (!dir) {
-        dir = {
-          kind: "dir",
-          objectId: "",
-          name: dirName,
-          relativePath: dirPath,
-          children: []
-        };
-        dirMap.set(dirPath, dir);
-        currentDir.children.push(dir);
-      }
-      currentDir = dir;
-    }
-    currentDir.children.push(fileObj);
+  if (files.length === 0)
+    throw new NdmError("EMPTY_DIRECTORY_UNAVAILABLE", "FileList cannot represent an empty directory; use importDirectory with directory nodes");
+  const paths = files.map((file) => validatePath(file.webkitRelativePath || file.name));
+  if (paths.some((parts) => parts.length < 2 || parts[0] !== paths[0][0])) {
+    throw new NdmError("INVALID_IMPORT_PATH", "Folder selection must contain one root directory in webkitRelativePath");
   }
-  computeDirObjectIds(root);
+  const root = { kind: "dir", objectId: "", name: paths[0][0], children: [] };
+  for (let index = 0; index < paths.length; index++) {
+    const parts = paths[index].slice(1);
+    let dir = root;
+    for (let i = 0; i < parts.length; i++) {
+      const name = parts[i];
+      const existing = dir.children.find((child) => child.name === name);
+      if (i === parts.length - 1) {
+        if (existing)
+          throw new NdmError("IMPORT_PATH_CONFLICT", `Duplicate file or directory: ${paths[index].join("/")}`);
+        if (name !== fileObjects[index].name)
+          throw new NdmError("INVALID_IMPORT_PATH", "Relative path basename must match File.name");
+        dir.children.push(fileObjects[index]);
+      } else {
+        if ((existing == null ? void 0 : existing.kind) === "file")
+          throw new NdmError("IMPORT_PATH_CONFLICT", `File used as directory: ${name}`);
+        const child = existing ?? { kind: "dir", objectId: "", name, relativePath: parts.slice(0, i + 1).join("/"), children: [] };
+        if (!existing)
+          dir.children.push(child);
+        dir = child;
+      }
+    }
+  }
   return root;
 }
-function computeDirObjectIds(dir) {
+function computeDirObjectIds(dir, manifest) {
   const ndnDir = new DirObject(dir.name);
   if (dir.children) {
     for (const child of dir.children) {
@@ -28130,13 +28175,14 @@ function computeDirObjectIds(dir) {
         }
         ndnDir.addFile(child.name, child._ndnFileObject, child.size);
       } else {
-        const childState = computeDirObjectIds(child);
+        const childState = computeDirObjectIds(child, manifest);
         ndnDir.addDirectory(child.name, ObjId.fromString(childState.objectId), childState.totalSize);
       }
     }
   }
-  const [objId] = ndnDir.genObjId();
+  const [objId, objData] = ndnDir.genObjId();
   dir.objectId = objId.toString();
+  manifest.set(dir.objectId, { obj_id: dir.objectId, obj_data: objData });
   return {
     objectId: dir.objectId,
     totalSize: ndnDir.total_size,
@@ -28225,18 +28271,63 @@ function collectSummary(items) {
   return { totalObjects: totalFiles + totalDirs, totalFiles, totalDirs, totalBytes };
 }
 async function pickupAndImport(options) {
+  const provider = options.provider ?? currentProvider;
+  const caps = provider.getCapabilities();
+  if (options.mode === "single_dir" && !caps.canPickDirectory)
+    throw new NdmError("DIRECTORY_NOT_SUPPORTED");
+  if (options.mode === "mixed" && !caps.canPickMixed)
+    throw new NdmError("MODE_NOT_SUPPORTED_IN_RUNTIME");
+  throwIfCancelled(options.signal);
+  const files = await provider.pickFiles(options);
+  return importFiles(files, options);
+}
+async function importFiles(selectedFiles, options) {
+  return importSelectedFiles(selectedFiles, options);
+}
+async function importDirectory(tree, options = {}) {
+  return importSelectedFiles([], { ...options, mode: "single_dir" }, tree);
+}
+async function importSelectedFiles(selectedFiles, options, tree) {
   var _a2;
-  const caps = currentProvider.getCapabilities();
-  if (options.mode === "single_dir" && !caps.canPickDirectory) {
-    throw new NdmError("DIRECTORY_NOT_SUPPORTED", "Current runtime does not support directory selection");
+  throwIfCancelled(options.signal);
+  const files = [...selectedFiles];
+  const treePaths = [];
+  if (tree) {
+    const walk = (dir, parent) => {
+      validateName(dir.name);
+      const names = /* @__PURE__ */ new Set();
+      for (const child of dir.children) {
+        const name = child.kind === "file" ? child.file.name : child.name;
+        validateName(name);
+        if (names.has(name))
+          throw new NdmError("IMPORT_PATH_CONFLICT", `Duplicate child: ${parent}/${name}`);
+        names.add(name);
+        if (child.kind === "file") {
+          files.push(child.file);
+          treePaths.push(`${parent}/${name}`);
+        } else
+          walk(child, `${parent}/${child.name}`);
+      }
+    };
+    walk(tree, tree.name);
   }
-  if (options.mode === "mixed" && !caps.canPickMixed) {
-    throw new NdmError("MODE_NOT_SUPPORTED_IN_RUNTIME", "Current runtime does not support mixed file/directory selection");
-  }
-  const files = await currentProvider.pickFiles(options);
-  if (files.length === 0) {
-    throw new NdmError("USER_CANCELLED", "No files selected");
-  }
+  if (!tree && files.length === 0)
+    throw new NdmError(options.mode === "single_dir" ? "EMPTY_DIRECTORY_UNAVAILABLE" : "USER_CANCELLED", options.mode === "single_dir" ? "FileList cannot represent empty directories; use importDirectory" : "No files selected");
+  if (options.mode === "single_file" && files.length !== 1)
+    throw new NdmError("INVALID_IMPORT_PATH", "single_file requires exactly one file");
+  files.forEach((file) => {
+    validateName(file.name);
+    if (file.webkitRelativePath)
+      validatePath(file.webkitRelativePath);
+  });
+  if (!tree && options.mode === "single_dir")
+    buildDirTree(files, files.map((file) => ({ kind: "file", objectId: "", name: file.name, size: file.size })));
+  const warnings = [];
+  if (!tree && options.mode === "single_dir")
+    warnings.push("FileList selections cannot preserve empty directories");
+  const manifest = /* @__PURE__ */ new Map();
+  const qcidLinks = [];
+  const requestOptions = { endpoint: options.endpoint, sessionToken: options.sessionToken, fetcher: options.fetcher, headers: options.headers, signal: options.signal };
   const fileObjects = [];
   const objectStates = /* @__PURE__ */ new Map();
   let allFilesAlreadyStored = true;
@@ -28244,11 +28335,12 @@ async function pickupAndImport(options) {
   const fileCount = files.length;
   for (let fi = 0; fi < files.length; fi++) {
     const file = files[fi];
-    const relativePath = file.webkitRelativePath || void 0;
+    throwIfCancelled(options.signal);
+    const relativePath = treePaths[fi] || file.webkitRelativePath || void 0;
     if (onProgress) {
       onProgress({ phase: "qcid_lookup", fileIndex: fi, fileCount, fileName: file.name, fileTotalBytes: file.size });
     }
-    const lookupHit = await lookupFileByQcid(file);
+    const lookupHit = await lookupFileByQcid(file, requestOptions, warnings);
     let materialized = null;
     if (!lookupHit) {
       if (onProgress) {
@@ -28258,12 +28350,25 @@ async function pickupAndImport(options) {
         file,
         onProgress ? (bytesHashed) => {
           onProgress({ phase: "materializing", fileIndex: fi, fileCount, fileName: file.name, bytesProcessed: bytesHashed, fileTotalBytes: file.size });
-        } : void 0
+        } : void 0,
+        DEFAULT_CHUNK_SIZE,
+        options.signal
       );
     }
     const objectId = (lookupHit == null ? void 0 : lookupHit.objectId) ?? materialized.objectId;
     const fileObject = (lookupHit == null ? void 0 : lookupHit.fileObject) ?? materialized.fileObject;
     const chunks = lookupHit ? [] : materialized.chunks;
+    if (materialized)
+      for (const object2 of materialized.objects)
+        manifest.set(object2.obj_id, object2);
+    else {
+      const [, objData] = new FileObject(file.name, file.size, fileObject.content).genObjId();
+      manifest.set(objectId, { obj_id: objectId, obj_data: objData });
+    }
+    const qcid = (lookupHit == null ? void 0 : lookupHit.qcid) ?? await tryCalculateQcidFromFile(file);
+    if (qcid)
+      qcidLinks.push({ qcid, content_id: fileObject.content, size: file.size });
+    throwIfCancelled(options.signal);
     const imported = {
       kind: "file",
       objectId,
@@ -28306,7 +28411,10 @@ async function pickupAndImport(options) {
   let items;
   let selection;
   if (options.mode === "single_dir") {
-    const dirObj = buildDirTree(files, fileObjects);
+    let index = 0;
+    const rebuild = (node) => ({ kind: "dir", name: node.name, objectId: "", children: node.children.map((child) => child.kind === "file" ? fileObjects[index++] : rebuild(child)) });
+    const dirObj = tree ? rebuild(tree) : buildDirTree(files, fileObjects);
+    computeDirObjectIds(dirObj, manifest);
     items = [dirObj];
     selection = dirObj;
   } else {
@@ -28319,32 +28427,35 @@ async function pickupAndImport(options) {
   }
   const summary = collectSummary(items);
   const sessionId = generateSessionId();
-  let materializationStatus = "ok";
-  if (allFilesAlreadyStored || caps.canUseNDMStore) {
-    materializationStatus = "all_in_store";
-  } else if (caps.canUseNDMCache) {
-    materializationStatus = "on_cache";
-  }
-  const uploadStatus = materializationStatus === "all_in_store" ? "not_required" : "not_started";
+  const materializationStatus = allFilesAlreadyStored ? "all_in_store" : "ok";
+  const uploadStatus = "not_started";
   const session = {
     sessionId,
     items,
     materializationStatus,
     uploadStatus,
     summary,
-    objectStates
+    objectStates,
+    objectStatus: "pending",
+    warnings,
+    manifest,
+    qcidLinks,
+    requestOptions,
+    transmittedBytes: 0
   };
   sessionRegistry.set(sessionId, session);
   const snapshot = {
     sessionId,
     selection,
     items,
+    objectStatus: "pending",
+    warnings,
     materializationStatus,
     uploadStatus,
     summary
   };
   if (options.autoStartUpload && uploadStatus === "not_started") {
-    startUpload(sessionId).catch(() => {
+    startUpload(sessionId, { endpoint: options.endpoint, sessionToken: options.sessionToken, fetcher: options.fetcher, headers: options.headers, signal: options.signal }).catch(() => {
     });
     snapshot.uploadStatus = "uploading";
   }
@@ -28358,21 +28469,27 @@ async function getImportSessionStatus(sessionId) {
   const perObjectProgress = {};
   let uploadedBytes = 0;
   let uploadedObjects = 0;
-  for (const [id2, state] of session.objectStates) {
-    perObjectProgress[id2] = {
-      objectId: state.objectId,
-      uploadedBytes: state.uploadedBytes,
-      totalBytes: state.size,
-      state: state.state
-    };
-    uploadedBytes += state.uploadedBytes;
-    if (state.state === "completed")
-      uploadedObjects++;
-  }
+  const collect = (items) => {
+    for (const item of items) {
+      if (item.kind === "dir") {
+        collect(item.children ?? []);
+        continue;
+      }
+      const state = session.objectStates.get(item.objectId);
+      perObjectProgress[item.objectId] = { objectId: item.objectId, uploadedBytes: state.uploadedBytes, totalBytes: state.size, state: state.state };
+      uploadedBytes += state.uploadedBytes;
+      if (state.state === "completed")
+        uploadedObjects++;
+    }
+  };
+  collect(session.items);
   return {
     sessionId,
     materializationStatus: session.materializationStatus,
     uploadStatus: session.uploadStatus,
+    objectStatus: session.objectStatus,
+    error: session.error,
+    warnings: [...session.warnings],
     summary: session.summary,
     progress: {
       uploadedBytes,
@@ -28388,6 +28505,10 @@ async function getUploadProgress(sessionId) {
   const result = {
     sessionId,
     uploadStatus: status.uploadStatus,
+    objectStatus: status.objectStatus,
+    error: status.error,
+    warnings: status.warnings,
+    transmittedBytes: requireSession(sessionId).transmittedBytes,
     totalBytes: status.progress.totalBytes,
     uploadedBytes: status.progress.uploadedBytes,
     totalObjects: status.progress.totalObjects,
@@ -28405,13 +28526,13 @@ async function getUploadProgress(sessionId) {
   }
   return result;
 }
-async function uploadChunkViaTus(endpoint, file, chunkInfo, chunkIndex, appId, fileHash, sessionToken, onProgress, signal) {
+async function uploadChunkViaTus(endpoint, file, chunkInfo, chunkIndex, fileHash, sessionToken, extraHeaders, onProgress, signal) {
   const slice = file.slice(chunkInfo.offset, chunkInfo.offset + chunkInfo.length);
   const chunkData = new Uint8Array(await slice.arrayBuffer());
-  const logicalPath = `${appId}/${chunkInfo.chunkId}`;
+  const logicalPath = chunkInfo.chunkId;
   let tusModule;
   try {
-    tusModule = await import("./tus_client-19baa342.mjs");
+    tusModule = await import("./tus_client-8fd4d937.mjs");
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new NdmError("UPLOAD_FAILED", `Failed to load tus-js-client: ${message}`);
@@ -28424,12 +28545,12 @@ async function uploadChunkViaTus(endpoint, file, chunkInfo, chunkIndex, appId, f
     const blob = new Blob([chunkData]);
     const upload = new tusModule.Upload(blob, {
       endpoint: `${endpoint}/ndm/v1/uploads`,
-      headers: sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {},
+      ...typeof XMLHttpRequest === "undefined" ? { httpStack: tusModule.fetchHttpStack } : {},
+      headers: { ...extraHeaders, ...sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {} },
       chunkSize: chunkData.length,
       retryDelays: [0, 1e3, 3e3, 5e3],
       storeFingerprintForResuming: false,
       metadata: {
-        app_id: appId,
         logical_path: logicalPath,
         file_name: file.name,
         file_size: String(file.size),
@@ -28443,109 +28564,209 @@ async function uploadChunkViaTus(endpoint, file, chunkInfo, chunkIndex, appId, f
       },
       onSuccess: () => {
         onProgress(chunkData.length);
+        signal == null ? void 0 : signal.removeEventListener("abort", onAbort);
         resolve(chunkInfo.chunkId);
       },
       onError: (error) => {
+        signal == null ? void 0 : signal.removeEventListener("abort", onAbort);
         reject(new NdmError("UPLOAD_FAILED", error.message));
       }
     });
-    if (signal) {
-      signal.addEventListener("abort", () => {
-        upload.abort(true);
-        reject(new NdmError("UPLOAD_FAILED", "Upload aborted"));
-      });
-    }
+    const onAbort = () => {
+      void Promise.resolve(upload.abort(true)).catch(() => void 0);
+      reject(new NdmError("USER_CANCELLED", "Upload cancelled"));
+    };
+    signal == null ? void 0 : signal.addEventListener("abort", onAbort, { once: true });
     upload.start();
   });
 }
-async function startUpload(sessionId, options) {
+function errorMessage(error) {
+  return error instanceof Error ? error.message : String(error);
+}
+function throwIfCancelled(signal) {
+  if (signal == null ? void 0 : signal.aborted)
+    throw new NdmError("USER_CANCELLED", "Import cancelled");
+}
+function requireSession(sessionId) {
   const session = sessionRegistry.get(sessionId);
-  if (!session) {
+  if (!session)
     throw new NdmError("SESSION_NOT_FOUND", `Session ${sessionId} not found`);
-  }
-  if (session.uploadStatus === "completed" || session.uploadStatus === "not_required") {
+  return session;
+}
+async function startUpload(sessionId, options = {}) {
+  var _a2;
+  const session = requireSession(sessionId);
+  if (session.objectStatus === "ready" || session.uploadPromise)
     return getImportSessionStatus(sessionId);
-  }
-  if (session.uploadStatus === "uploading") {
-    return getImportSessionStatus(sessionId);
-  }
-  if (session.materializationStatus === "all_in_store") {
-    session.uploadStatus = "not_required";
-    return getImportSessionStatus(sessionId);
-  }
-  session.uploadStatus = "uploading";
-  session.uploadStartTime = Date.now();
+  const concurrency = options.concurrency ?? 3;
+  if (!Number.isInteger(concurrency) || concurrency < 1)
+    throw new NdmError("UPLOAD_FAILED", "concurrency must be a positive integer");
+  throwIfCancelled(options.signal);
+  session.requestOptions = { ...session.requestOptions, ...Object.fromEntries(Object.entries({ endpoint: options.endpoint, sessionToken: options.sessionToken, fetcher: options.fetcher, headers: options.headers }).filter(([, value]) => value !== void 0)) };
+  const endpoint = session.requestOptions.endpoint ?? resolveImportLookupEndpoint();
+  if (!endpoint)
+    throw new NdmError("STORE_API_ENDPOINT_REQUIRED", "Pass endpoint or initialize the SDK before uploading");
+  session.requestOptions.endpoint = normalizeEndpoint$1(endpoint);
   session.abortController = new AbortController();
-  const concurrency = (options == null ? void 0 : options.concurrency) ?? 3;
-  let endpoint;
-  if (options == null ? void 0 : options.endpoint) {
-    endpoint = options.endpoint.replace(/\/+$/, "");
-  } else {
-    endpoint = typeof window !== "undefined" ? window.location.origin : "";
-  }
-  const sessionToken = (options == null ? void 0 : options.sessionToken) !== void 0 ? async () => options.sessionToken ?? null : async () => getActiveSessionToken().catch(() => null);
-  doUpload(session, endpoint, concurrency, sessionToken).catch(() => {
+  const cancel = () => {
+    var _a3;
+    return (_a3 = session.abortController) == null ? void 0 : _a3.abort();
+  };
+  (_a2 = options.signal) == null ? void 0 : _a2.addEventListener("abort", cancel, { once: true });
+  session.requestOptions.signal = session.abortController.signal;
+  session.uploadStatus = "uploading";
+  session.objectStatus = "pending";
+  session.error = void 0;
+  session.onProgress = options.onProgress;
+  session.uploadStartTime = Date.now();
+  session.uploadPromise = doUpload(session, concurrency).catch((error) => {
+    var _a3;
+    session.error = errorMessage(error);
+    const cancelled = (_a3 = session.abortController) == null ? void 0 : _a3.signal.aborted;
+    session.uploadStatus = cancelled ? "cancelled" : "failed";
+    session.objectStatus = cancelled ? "cancelled" : "failed";
+    throw error;
+  }).finally(() => {
+    var _a3;
+    session.uploadPromise = void 0;
+    (_a3 = options.signal) == null ? void 0 : _a3.removeEventListener("abort", cancel);
+    emitProgress(session);
   });
+  void session.uploadPromise.catch(() => void 0);
   return getImportSessionStatus(sessionId);
 }
-async function doUpload(session, endpoint, concurrency, sessionToken) {
-  const states = Array.from(session.objectStates.values()).filter((s) => s.state !== "completed");
-  let running = 0;
-  let idx = 0;
-  let hasError = false;
-  await new Promise((resolve, reject) => {
-    function next() {
-      if (hasError)
-        return;
-      if (idx >= states.length && running === 0) {
-        const allCompleted = Array.from(session.objectStates.values()).every((s) => s.state === "completed");
-        session.uploadStatus = allCompleted ? "completed" : "failed";
-        resolve();
-        return;
-      }
-      while (running < concurrency && idx < states.length) {
-        const state = states[idx++];
-        running++;
-        uploadSingleObject(session, endpoint, state, sessionToken).then(() => {
-          running--;
-          next();
-        }).catch(() => {
-          running--;
-          if (!hasError) {
-            hasError = true;
-            session.uploadStatus = "failed";
-            reject(new NdmError("UPLOAD_FAILED", `Upload of ${state.name} failed`));
+async function ensureUploaded(sessionId, options = {}) {
+  await startUpload(sessionId, options);
+  const session = requireSession(sessionId);
+  await session.uploadPromise;
+  if (session.objectStatus !== "ready")
+    throw new NdmError("OBJECT_NOT_READY", session.error ?? "Objects are not ready");
+  return getImportSessionStatus(sessionId);
+}
+function cancelImportSession(sessionId) {
+  var _a2;
+  const session = requireSession(sessionId);
+  if (session.objectStatus === "ready")
+    return;
+  (_a2 = session.abortController) == null ? void 0 : _a2.abort();
+  session.uploadStatus = "cancelled";
+  session.objectStatus = "cancelled";
+}
+function releaseImportSession(sessionId) {
+  const session = requireSession(sessionId);
+  cancelImportSession(sessionId);
+  sessionRegistry.delete(sessionId);
+  const release = (items) => items.forEach((item) => {
+    if (item.kind === "dir")
+      release(item.children ?? []);
+    else {
+      delete item._file;
+      delete item._ndnFileObject;
+    }
+  });
+  release(session.items);
+}
+function emitProgress(session) {
+  if (session.onProgress && sessionRegistry.has(session.sessionId)) {
+    void getUploadProgress(session.sessionId).then((progress) => {
+      var _a2;
+      return (_a2 = session.onProgress) == null ? void 0 : _a2.call(session, progress);
+    }).catch(() => void 0);
+  }
+}
+async function doUpload(session, concurrency) {
+  var _a2;
+  const states = [...session.objectStates.values()];
+  const chunkTasks = /* @__PURE__ */ new Map();
+  let index = 0;
+  let failure;
+  const workers = Array.from({ length: Math.min(concurrency, states.length) }, async () => {
+    var _a3, _b;
+    while (index < states.length && !failure) {
+      const state = states[index++];
+      try {
+        throwIfCancelled((_a3 = session.abortController) == null ? void 0 : _a3.signal);
+        if (state.state === "completed")
+          continue;
+        state.state = "uploading";
+        for (const [chunkIndex, chunk] of state.chunks.entries()) {
+          throwIfCancelled((_b = session.abortController) == null ? void 0 : _b.signal);
+          if (chunk.uploaded)
+            continue;
+          let task = chunkTasks.get(chunk.chunkId);
+          if (!task) {
+            task = uploadMissingChunk(session, state, chunk, chunkIndex);
+            chunkTasks.set(chunk.chunkId, task);
           }
-        });
+          await task;
+          chunk.uploaded = true;
+          state.uploadedBytes = state.chunks.filter((c) => c.uploaded).reduce((sum, c) => sum + c.length, 0);
+          emitProgress(session);
+        }
+        state.uploadedBytes = state.size;
+        state.state = "completed";
+      } catch (error) {
+        state.state = "failed";
+        failure = error;
       }
     }
-    next();
   });
-}
-async function uploadSingleObject(session, endpoint, state, sessionToken) {
-  var _a2;
-  state.state = "uploading";
-  for (const [chunkIndex, chunk] of state.chunks.entries()) {
-    if (chunk.uploaded)
-      continue;
-    await uploadChunkViaTus(
-      endpoint,
-      state.file,
-      chunk,
-      chunkIndex,
-      "default",
-      state.objectId,
-      await sessionToken(),
-      (uploaded) => {
-        const prevChunkBytes = state.chunks.filter((c) => c !== chunk && c.uploaded).reduce((sum, c) => sum + c.length, 0);
-        state.uploadedBytes = prevChunkBytes + uploaded;
-      },
-      (_a2 = session.abortController) == null ? void 0 : _a2.signal
-    );
-    chunk.uploaded = true;
+  await Promise.all(workers);
+  if (failure)
+    throw failure;
+  throwIfCancelled((_a2 = session.abortController) == null ? void 0 : _a2.signal);
+  session.objectStatus = "finalizing";
+  emitProgress(session);
+  const options = session.requestOptions;
+  const token = options.sessionToken !== void 0 ? options.sessionToken : await getActiveSessionToken();
+  const response = await (options.fetcher ?? defaultStoreFetcher)(`${options.endpoint}/ndm/v1/import/finalize`, {
+    method: "POST",
+    credentials: "include",
+    signal: options.signal,
+    headers: { ...options.headers, "Content-Type": "application/json", ...token ? { Authorization: `Bearer ${token}` } : {} },
+    body: JSON.stringify({ objects: [...session.manifest.values()], roots: session.items.map((item) => item.objectId), qcid_links: session.qcidLinks })
+  });
+  const body = await response.json();
+  if (!response.ok)
+    throw new NdmStoreApiError(response.status, body.error, body.message ?? "Object registration failed", body);
+  throwIfCancelled(options.signal);
+  if (Array.isArray(body.warnings))
+    session.warnings.push(...body.warnings.map(String));
+  if (body.ready !== true || !Array.isArray(body.roots) || session.items.some((item) => !body.roots.some((root) => root.obj_id === item.objectId && root.ready === true))) {
+    throw new NdmError("OBJECT_NOT_READY", "NDM did not confirm all root objects and their dependencies are ready");
   }
-  state.uploadedBytes = state.size;
-  state.state = "completed";
+  session.objectStatus = "ready";
+  session.uploadStatus = session.transmittedBytes === 0 ? "not_required" : "completed";
+  session.materializationStatus = "all_in_store";
+  emitProgress(session);
+}
+async function uploadMissingChunk(session, state, chunk, chunkIndex) {
+  var _a2, _b;
+  try {
+    const found = await lookupObject({ scope: "app", quick_hash: chunk.chunkId }, session.requestOptions);
+    if (found.reusable === true && "state" in found && ["completed", "same_as", "local_link"].includes(found.state) && found.chunk_size === chunk.length)
+      return;
+  } catch (error) {
+    throwIfCancelled((_a2 = session.abortController) == null ? void 0 : _a2.signal);
+    if (!(error instanceof NdmStoreApiError && error.status === 404))
+      session.warnings.push(`Chunk lookup: ${errorMessage(error)}`);
+  }
+  const token = session.requestOptions.sessionToken !== void 0 ? session.requestOptions.sessionToken : await getActiveSessionToken();
+  await uploadChunkViaTus(
+    session.requestOptions.endpoint,
+    state.file,
+    chunk,
+    chunkIndex,
+    state.objectId,
+    token,
+    session.requestOptions.headers,
+    (uploaded) => {
+      state.uploadedBytes = state.chunks.filter((c) => c.uploaded).reduce((sum, c) => sum + c.length, 0) + uploaded;
+      emitProgress(session);
+    },
+    (_b = session.abortController) == null ? void 0 : _b.signal
+  );
+  session.transmittedBytes += chunk.length;
 }
 const ndm_client = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
   __proto__: null,
@@ -28555,7 +28776,9 @@ const ndm_client = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.definePr
   anchorState: anchorState$1,
   applyEdge: applyEdge$1,
   calculateQcidFromFile,
+  cancelImportSession,
   debugDumpExpandState: debugDumpExpandState$1,
+  ensureUploaded,
   forcedGcUntil: forcedGcUntil$1,
   fsAcquire: fsAcquire$1,
   fsAnchorState: fsAnchorState$1,
@@ -28567,6 +28790,8 @@ const ndm_client = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.definePr
   getObject: getObject$1,
   getUploadProgress,
   haveChunk: haveChunk$1,
+  importDirectory,
+  importFiles,
   isObjectExist: isObjectExist$1,
   isObjectStored: isObjectStored$1,
   lookupObject,
@@ -28577,6 +28802,7 @@ const ndm_client = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.definePr
   putObject: putObject$1,
   queryChunkState: queryChunkState$1,
   queryObjectById: queryObjectById$1,
+  releaseImportSession,
   removeChunk: removeChunk$1,
   removeObject: removeObject$1,
   setImportProvider,
@@ -29134,6 +29360,279 @@ const ndm_proxy = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.definePro
   unpin,
   unpinOwner
 }, Symbol.toStringTag, { value: "Module" }));
+class ExecutorClient {
+  constructor(serviceUrl, token = null, options = {}) {
+    this.rpc = new kRPCClient(serviceUrl, token, null, options);
+  }
+  syncSessionToken(token) {
+    this.rpc.setSessionToken(token);
+  }
+  createDevice(input) {
+    return this.rpc.call("executor.device.create", input);
+  }
+  listDevices() {
+    return this.rpc.call("executor.device.list", {});
+  }
+  issueAccess(executor_id, expires_at_ms) {
+    return this.rpc.call("executor.device.issue", { executor_id, expires_at_ms });
+  }
+  revokeAccess(executor_id) {
+    return this.rpc.call("executor.device.revoke", { executor_id });
+  }
+  deleteDevice(executor_id) {
+    return this.rpc.call("executor.device.delete", { executor_id });
+  }
+  listOnline() {
+    return this.rpc.call("executor.online.list", {});
+  }
+  async *watchOnline(signal, intervalMs = 5e3) {
+    if (intervalMs < 250)
+      throw new Error("Watch interval must be at least 250 ms");
+    let previous = "";
+    while (!(signal == null ? void 0 : signal.aborted)) {
+      const { executors } = await this.listOnline();
+      const next = JSON.stringify(executors);
+      if (next !== previous) {
+        previous = next;
+        yield executors;
+      }
+      await new Promise((resolve) => {
+        const done = () => {
+          clearTimeout(timer);
+          signal == null ? void 0 : signal.removeEventListener("abort", done);
+          resolve();
+        };
+        const timer = setTimeout(done, intervalMs);
+        signal == null ? void 0 : signal.addEventListener("abort", done, { once: true });
+        if (signal == null ? void 0 : signal.aborted)
+          done();
+      });
+    }
+  }
+  openRoute(target) {
+    return this.rpc.call("executor.stream.open", {
+      executor_id: target.executor_id,
+      generation: target.generation,
+      profile_id: target.profile_id
+    });
+  }
+  async connect(target, sessionToken, runtimeId, runId) {
+    const route = await this.openRoute(target);
+    return ExecutorCommandStream.connect(route, target, sessionToken, runtimeId, runId);
+  }
+}
+class ExecutorStreamError extends Error {
+  constructor(message, code = "unavailable", effectUnknown = false) {
+    super(message);
+    this.code = code;
+    this.effectUnknown = effectUnknown;
+    this.name = "ExecutorStreamError";
+  }
+}
+function encodeExecutorControl(message) {
+  const payload = new TextEncoder().encode(JSON.stringify(message));
+  if (payload.length > 1024 * 1024)
+    throw new Error("Executor control frame exceeds 1 MiB");
+  const frame = new Uint8Array(5 + payload.length);
+  frame[0] = 1;
+  new DataView(frame.buffer).setUint32(1, payload.length);
+  frame.set(payload, 5);
+  return frame;
+}
+class ExecutorCommandStream {
+  constructor(socket, target, runId) {
+    this.socket = socket;
+    this.target = target;
+    this.runId = runId;
+    this.buffer = new Uint8Array();
+    this.sequence = 0;
+    this.pending = /* @__PURE__ */ new Map();
+    this.closed = false;
+    socket.binaryType = "arraybuffer";
+    socket.onmessage = (event) => {
+      if (!(event.data instanceof ArrayBuffer)) {
+        this.fail(new ExecutorStreamError("Expected binary Command Stream"));
+        return;
+      }
+      try {
+        this.receive(new Uint8Array(event.data));
+      } catch {
+        this.fail(new ExecutorStreamError("Invalid Command Stream frame", "protocol"));
+      }
+    };
+    socket.onclose = () => this.fail(new ExecutorStreamError("Executor disconnected; query the persisted operation locator before taking further action", "unavailable", true));
+    socket.onerror = () => this.fail(new ExecutorStreamError("Executor transport failed", "unavailable", true));
+  }
+  static async connect(route, target, token, runtimeId, runId) {
+    if (route.executor_id !== target.executor_id || route.generation !== target.generation || route.profile_id !== target.profile_id || route.expires_at_ms <= Date.now()) {
+      throw new ExecutorStreamError("Route does not match the requested active executor", "stale_target");
+    }
+    const url = new URL(route.ws_url);
+    if (url.protocol !== "wss:" && !(url.protocol === "ws:" && ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname))) {
+      throw new ExecutorStreamError("Executor routes require WSS");
+    }
+    if (url.username || url.password || url.hash)
+      throw new ExecutorStreamError("Invalid executor route URL");
+    const socket = new WebSocket(url);
+    await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        socket.close();
+        reject(new ExecutorStreamError("Route authentication timed out"));
+      }, 1e4);
+      socket.onopen = () => socket.send(JSON.stringify({ ticket: route.ticket }));
+      socket.onmessage = (event) => {
+        try {
+          if (typeof event.data !== "string" || JSON.parse(event.data).ready !== true)
+            throw new Error();
+          clearTimeout(timer);
+          resolve();
+        } catch {
+          clearTimeout(timer);
+          socket.close();
+          reject(new ExecutorStreamError("Route authentication failed"));
+        }
+      };
+      socket.onerror = socket.onclose = () => {
+        clearTimeout(timer);
+        reject(new ExecutorStreamError("Unable to connect executor route"));
+      };
+    });
+    const client = new ExecutorCommandStream(socket, target, runId);
+    try {
+      const login = await client.request("login", { v: 1, token, profile: target.profile_id, client: { runtime_id: runtimeId, run_id: runId } });
+      if (login.type !== "login_ok" || login.store_id !== target.store_id)
+        throw new ExecutorStreamError("Executor ledger changed", "store_mismatch");
+      return client;
+    } catch (error) {
+      client.close();
+      throw error;
+    }
+  }
+  receive(bytes2) {
+    const merged = new Uint8Array(this.buffer.length + bytes2.length);
+    merged.set(this.buffer);
+    merged.set(bytes2, this.buffer.length);
+    this.buffer = merged;
+    while (this.buffer.length >= 5) {
+      const length = new DataView(this.buffer.buffer, this.buffer.byteOffset).getUint32(1);
+      if (length > 1024 * 1024 || ![1, 2].includes(this.buffer[0]))
+        throw new Error();
+      if (this.buffer.length < length + 5)
+        return;
+      const kind = this.buffer[0];
+      const payload = this.buffer.slice(5, length + 5);
+      this.buffer = this.buffer.slice(length + 5);
+      if (kind !== 1)
+        continue;
+      const reply = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(payload));
+      if (reply.type === "closing") {
+        this.fail(new ExecutorStreamError("Executor stopped accepting requests"));
+        return;
+      }
+      const pending = reply.request_id && this.pending.get(reply.request_id);
+      if (!pending)
+        continue;
+      this.pending.delete(reply.request_id);
+      clearTimeout(pending.timer);
+      if (reply.error)
+        pending.reject(new ExecutorStreamError(reply.error.message, reply.error.code, reply.error.effect_unknown));
+      else
+        pending.resolve(reply);
+    }
+  }
+  fail(error) {
+    if (this.closed)
+      return;
+    this.closed = true;
+    for (const item of this.pending.values()) {
+      clearTimeout(item.timer);
+      item.reject(error);
+    }
+    this.pending.clear();
+    this.socket.close();
+  }
+  close() {
+    this.fail(new ExecutorStreamError("Executor stream closed", "unavailable", true));
+  }
+  request(type, params = {}, timeoutMs = 4e4) {
+    if (this.closed)
+      return Promise.reject(new ExecutorStreamError("Executor stream is closed"));
+    const request_id = `q${++this.sequence}`;
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pending.delete(request_id);
+        reject(new ExecutorStreamError("Executor response timed out; query operation before retrying", "unavailable", true));
+      }, timeoutMs);
+      this.pending.set(request_id, { resolve, reject, timer });
+      try {
+        this.socket.send(encodeExecutorControl({ ...params, type, request_id }));
+      } catch {
+        clearTimeout(timer);
+        this.pending.delete(request_id);
+        reject(new ExecutorStreamError("Unable to send request", "unavailable", true));
+      }
+    });
+  }
+  operation(locator) {
+    if (locator.executor_id !== this.target.executor_id || locator.store_id !== this.target.store_id || locator.profile_id !== this.target.profile_id) {
+      throw new ExecutorStreamError("Operation locator belongs to another executor, profile or ledger", "store_mismatch");
+    }
+    return { store_id: locator.store_id, op_id: locator.op_id, run_id: locator.run_id, call_id: locator.call_id };
+  }
+  fresh(locator) {
+    if (locator.generation !== this.target.generation)
+      throw new ExecutorStreamError("Cannot dispatch an old operation to a new connection generation", "stale_target");
+    return this.operation(locator);
+  }
+  async describe(workdir) {
+    const reply = await this.request("describe", { workdir });
+    const described = reply.target;
+    if (reply.type !== "describe_ok" || (described == null ? void 0 : described.executor_id) !== this.target.executor_id || (described == null ? void 0 : described.node_did) || (described == null ? void 0 : described.profile_id) !== this.target.profile_id || (described == null ? void 0 : described.store_id) !== this.target.store_id) {
+      throw new ExecutorStreamError("Executor describe target changed", "stale_target");
+    }
+    return reply;
+  }
+  exec(locator, cmd, cwd, env_overrides = {}, execution_timeout_ms = 6e4) {
+    return this.request("exec", { ...this.fresh(locator), cmd, cwd, env_overrides, execution_timeout_ms });
+  }
+  read(locator, path) {
+    return this.request("read", { ...this.fresh(locator), path, offset: 0 });
+  }
+  edit(locator, path, edits) {
+    return this.request("edit", { ...this.fresh(locator), path, edits });
+  }
+  async write(locator, path, content, mode = "replace") {
+    const operation = this.fresh(locator);
+    const id2 = new TextEncoder().encode(locator.op_id);
+    if (id2.length === 0 || id2.length > 128)
+      throw new Error("Invalid operation ID");
+    const hash2 = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", content))).map((value) => value.toString(16).padStart(2, "0")).join("");
+    const accepted = this.request("write", { ...operation, path, mode, content_length: content.length, content_hash: `sha256:${hash2}` });
+    for (let offset = 0; offset < content.length; offset += 16384) {
+      const chunk = content.subarray(offset, offset + 16384);
+      const frame = new Uint8Array(16 + id2.length + chunk.length);
+      const view = new DataView(frame.buffer);
+      frame[0] = 2;
+      view.setUint32(1, frame.length - 5);
+      frame[5] = 4;
+      view.setBigUint64(6, BigInt(offset));
+      view.setUint16(14, id2.length);
+      frame.set(id2, 16);
+      frame.set(chunk, 16 + id2.length);
+      this.socket.send(frame);
+    }
+    this.socket.send(encodeExecutorControl({ type: "upload_end", request_id: `end${++this.sequence}`, op_id: locator.op_id }));
+    return accepted;
+  }
+  query(locator, channel, offset = 0, wait_ms = 0) {
+    this.operation(locator);
+    return this.request("query", { store_id: locator.store_id, op_id: locator.op_id, channel, offset, max_bytes: 262144, wait_ms });
+  }
+  cancel(locator) {
+    this.operation(locator);
+    return this.request("cancel", { store_id: locator.store_id, op_id: locator.op_id });
+  }
+}
 export {
   CONTACT_TAG_HOMESTATION_FOLLOWING as $,
   NOTIFY_ACTION_DISMISS as A,
@@ -29302,6 +29801,10 @@ export {
   BnsTxExecutorError as c5,
   walletUserHasSnAccount as c6,
   BnsTxExecutor as c7,
+  ExecutorClient as c8,
+  ExecutorStreamError as c9,
+  encodeExecutorControl as ca,
+  ExecutorCommandStream as cb,
   BS_SERVICE_TASK_MANAGER as d,
   getActiveRuntimeType as e,
   getActiveZoneGatewayOrigin as f,
@@ -29326,4 +29829,4 @@ export {
   NOTIFY_TEXT_CONTROL_ID as y,
   NOTIFY_ACTION_ANSWER as z
 };
-//# sourceMappingURL=ndm_proxy-6b03b9ec.mjs.map
+//# sourceMappingURL=executor_client-00b51857.mjs.map

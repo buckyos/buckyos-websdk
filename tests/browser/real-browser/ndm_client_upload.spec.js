@@ -108,7 +108,9 @@ test.describe('ndm_client upload integration', () => {
       }
 
       // Verify upload completed
-      expect(result.uploadStatus).toBe('completed');
+      expect(['completed', 'not_required']).toContain(result.uploadStatus);
+      expect(result.objectStatus).toBe('ready');
+      expect(result.readback.every(item => item.verified)).toBe(true);
       expect(result.progress.uploadedObjects).toBe(result.progress.totalObjects);
       expect(result.progress.uploadedBytes).toBe(result.progress.totalBytes);
     } finally {
@@ -174,11 +176,51 @@ test.describe('ndm_client upload integration', () => {
       expect(names).toEqual(['ndm_multi_a.bin', 'ndm_multi_b.txt']);
 
       // Verify upload completed
-      expect(result.uploadStatus).toBe('completed');
+      expect(['completed', 'not_required']).toContain(result.uploadStatus);
+      expect(result.objectStatus).toBe('ready');
+      expect(result.readback.every(item => item.verified)).toBe(true);
       expect(result.progress.uploadedObjects).toBe(2);
     } finally {
       cleanup(file1.dir);
       cleanup(file2.dir);
     }
   });
+});
+
+
+test.describe('ndm_client directory and ChunkList readback', () => {
+  for (const scenario of ['folder', 'large']) {
+    test(`${scenario}: finalize and verify all leaf bytes`, async ({ page }) => {
+      test.setTimeout(180000);
+      const { filePath, dir } = createTestFile('跨块 中文.bin', 33 * 1024 * 1024);
+      try {
+        if (scenario === 'folder') {
+          fs.mkdirSync(path.join(dir, 'nested'));
+          fs.renameSync(filePath, path.join(dir, 'nested', '跨块 中文.bin'));
+          fs.writeFileSync(path.join(dir, 'empty.bin'), Buffer.alloc(0));
+          fs.writeFileSync(path.join(dir, 'same.bin'), Buffer.from([0, 1, 2, 3]));
+          fs.writeFileSync(path.join(dir, 'nested', 'same.bin'), Buffer.from([0, 1, 2, 3]));
+        }
+        await page.goto(`https://systest.test.buckyos.io/ndm_client_upload.html?ts=${Date.now()}`);
+        await page.waitForFunction(() => ['ready', 'failed'].includes(document.querySelector('#status')?.dataset.state));
+        expect(await page.locator('#status').getAttribute('data-state')).toBe('ready');
+        const [chooser] = await Promise.all([
+          page.waitForEvent('filechooser'),
+          page.click(scenario === 'folder' ? '#pick-folder' : '#pick-single-file'),
+        ]);
+        await chooser.setFiles(scenario === 'folder' ? dir : filePath);
+        await page.waitForFunction(() => ['passed', 'failed'].includes(document.querySelector('#status')?.dataset.state), null, { timeout: 150000 });
+        const result = JSON.parse(await page.locator('#result').textContent());
+        expect(result.ok, JSON.stringify(result)).toBe(true);
+        expect(result.objectStatus).toBe('ready');
+        expect(result.readback.every(item => item.verified)).toBe(true);
+        expect(result.readback.some(item => item.size > 32 * 1024 * 1024)).toBe(true);
+        if (scenario === 'folder') {
+          expect(result.items[0].kind).toBe('dir');
+          expect(result.items[0].name).toBe(path.basename(dir));
+          expect(result.readback).toHaveLength(4);
+        }
+      } finally { cleanup(dir); }
+    });
+  }
 });

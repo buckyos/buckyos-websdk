@@ -229,6 +229,15 @@ export interface CommitResult {
   obj: { sha256: string; size: number }
 }
 
+export interface CommitObjectResult {
+  ref: WireRef
+  entry_ref: string
+  revision: string
+  obj_id: string
+  kind: 'file' | 'dir'
+  obj: { size: number; sha256?: string }
+}
+
 export interface MetaRecord {
   ns: string
   key: string
@@ -772,6 +781,18 @@ export class NfspClient {
       args.hash = source.hash
     }
     return (await this.write('commit_file', { at: toLocator(parent), args })) as CommitResult
+  }
+
+  async commitObject(
+    parent: LocatorLike,
+    name: string,
+    objId: string,
+    opts?: { overwrite?: boolean; expectedRevision?: string; leaseId?: string },
+  ): Promise<CommitObjectResult> {
+    return await this.write('commit_object', {
+      at: toLocator(parent),
+      args: { name, obj_id: objId, overwrite: opts?.overwrite, expected_revision: opts?.expectedRevision, lease_id: opts?.leaseId },
+    }) as CommitObjectResult
   }
 
   /** Which of these digests must be uploaded (§ probe / 秒传). */

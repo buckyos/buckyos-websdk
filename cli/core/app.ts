@@ -38,6 +38,7 @@ import { createSkillModule } from '../modules/skill.ts'
 import { createAgentModule } from '../modules/agent.ts'
 import { createAiModule } from '../modules/ai.ts'
 import { createShareModule } from '../modules/share.ts'
+import { createExecutorModule } from '../modules/executor.ts'
 import {
   distributionManifestView,
   getHost,
@@ -481,6 +482,7 @@ export function createRegistry(
   registry.register(createAgentModule())
   registry.register(createAiModule())
   registry.register(createShareModule())
+  registry.register(createExecutorModule())
   return registry
 }
 

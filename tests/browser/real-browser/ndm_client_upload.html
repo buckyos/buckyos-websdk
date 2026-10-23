@@ -102,6 +102,7 @@
       <p>
         <button id="pick-single-file" type="button" disabled>Pick Single File</button>
         <button id="pick-multi-file" type="button" disabled>Pick Multi Files</button>
+        <button id="pick-folder" type="button" disabled>Pick Folder</button>
       </p>
       <pre id="result">Preparing...</pre>
     </main>
@@ -113,6 +114,7 @@
       const resultNode = document.getElementById('result');
       const pickSingleBtn = document.getElementById('pick-single-file');
       const pickMultiBtn = document.getElementById('pick-multi-file');
+      const pickFolderBtn = document.getElementById('pick-folder');
 
       function setStatus(state, text) {
         statusNode.dataset.state = state;
@@ -164,6 +166,7 @@
         const snapshot = await ndm.pickupAndImport({
           mode,
           autoStartUpload: false,
+          endpoint: window.location.origin,
         });
 
         log('[pick] Materialization complete:');
@@ -215,49 +218,50 @@
         setStatus('running', 'Uploading...');
         log('[upload] Starting upload for session: ' + sessionId);
 
-        const uploadResult = await ndm.startUpload(sessionId, { concurrency: 2 });
-        log('[upload] startUpload returned: ' + uploadResult.uploadStatus);
+        await ndm.ensureUploaded(sessionId, {
+          endpoint: window.location.origin,
+          concurrency: 2,
+          onProgress: progress => log(`[progress] ${progress.uploadedBytes}/${progress.totalBytes}, ${progress.objectStatus}`),
+        });
+        return ndm.getUploadProgress(sessionId);
+      }
 
-        // Poll progress until completed or failed
-        const maxWaitMs = 120000;
-        const pollIntervalMs = 1000;
-        const startTime = Date.now();
-
-        while (Date.now() - startTime < maxWaitMs) {
-          await new Promise(r => setTimeout(r, pollIntervalMs));
-
-          const progress = await ndm.getUploadProgress(sessionId);
-          log(`[progress] ${progress.uploadedBytes}/${progress.totalBytes} bytes, ${progress.uploadedObjects}/${progress.totalObjects} objects, status=${progress.uploadStatus}`);
-
-          if (progress.uploadStatus === 'completed') {
-            return progress;
+      // Verify actual bytes through the authenticated NamedStore reader, not
+      // just a status response. Fixtures contain byte[i] = i & 255.
+      async function verifyReadback(items) {
+        const token = (await buckyos.getAccountInfo())?.session_token;
+        const result = [];
+        for (const item of items) {
+          if (item.kind === 'dir') { result.push(...await verifyReadback(item.children || [])); continue; }
+          const response = await fetch('/ndm/proxy/v1/read/object/open', {
+            method: 'POST', credentials: 'include',
+            headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+            body: JSON.stringify({ obj_id: item.objectId }),
+          });
+          if (!response.ok) throw new Error(`Readback ${item.name} returned ${response.status}`);
+          const bytes = new Uint8Array(await response.arrayBuffer());
+          if (bytes.length !== item.size) throw new Error(`Readback size mismatch for ${item.name}`);
+          for (let i = 0; i < bytes.length; i++) {
+            if (bytes[i] !== (i & 255)) throw new Error(`Readback content mismatch for ${item.name} at ${i}`);
           }
-          if (progress.uploadStatus === 'failed') {
-            // Collect per-object errors for diagnostics
-            const status = await ndm.getImportSessionStatus(sessionId);
-            const failedObjects = status.perObjectProgress
-              ? Object.values(status.perObjectProgress).filter(p => p.state === 'failed')
-              : [];
-            throw new Error(`Upload failed. failedObjects=${JSON.stringify(failedObjects)}, networkLog=${JSON.stringify(networkLog.slice(-10))}`);
-          }
-          if (progress.uploadStatus === 'not_required') {
-            return progress;
-          }
+          result.push({ objectId: item.objectId, name: item.name, size: bytes.length, verified: true });
         }
-
-        throw new Error('Upload timed out after ' + maxWaitMs + 'ms');
+        return result;
       }
 
       // ---- Wire up buttons ----
       async function handlePick(mode) {
         pickSingleBtn.disabled = true;
         pickMultiBtn.disabled = true;
+        pickFolderBtn.disabled = true;
 
         try {
           const snapshot = await doPickAndImport(mode);
           const finalProgress = await doUpload(snapshot.sessionId);
 
           const finalStatus = await ndm.getImportSessionStatus(snapshot.sessionId);
+          if (finalStatus.objectStatus !== 'ready') throw new Error('Root objects are not ready');
+          const readback = await verifyReadback(snapshot.items);
 
           const result = {
             ok: true,
@@ -265,6 +269,9 @@
             sessionId: snapshot.sessionId,
             materializationStatus: snapshot.materializationStatus,
             uploadStatus: finalStatus.uploadStatus,
+            objectStatus: finalStatus.objectStatus,
+            transmittedBytes: finalProgress.transmittedBytes,
+            readback,
             summary: finalStatus.summary,
             progress: finalStatus.progress,
             items: snapshot.items.map(item => ({
@@ -272,8 +279,10 @@
               name: item.name,
               objectId: item.objectId,
               size: item.kind === 'file' ? item.size : undefined,
+              children: item.kind === 'dir' ? item.children : undefined,
             })),
           };
+          ndm.releaseImportSession(snapshot.sessionId);
 
           setStatus('passed', 'Passed');
           setResult(result);
@@ -295,6 +304,7 @@
 
       pickSingleBtn.addEventListener('click', () => void handlePick('single_file'), { once: true });
       pickMultiBtn.addEventListener('click', () => void handlePick('multi_file'), { once: true });
+      pickFolderBtn.addEventListener('click', () => void handlePick('single_dir'), { once: true });
 
       // ---- Boot ----
       async function boot() {
@@ -308,6 +318,7 @@
           });
           pickSingleBtn.disabled = false;
           pickMultiBtn.disabled = false;
+          pickFolderBtn.disabled = !ndm.getImportProvider().getCapabilities().canPickDirectory;
         } catch (error) {
           setStatus('failed', 'Init Failed');
           setResult({

@@ -34,7 +34,9 @@ export type ImportMode = 'single_file' | 'multi_file' | 'single_dir' | 'mixed'
 
 export type MaterializationStatus = 'ok' | 'on_cache' | 'all_in_store'
 
-export type UploadStatus = 'not_started' | 'uploading' | 'completed' | 'failed' | 'not_required'
+export type UploadStatus = 'not_started' | 'uploading' | 'completed' | 'failed' | 'not_required' | 'cancelled'
+
+export type ObjectStatus = 'pending' | 'finalizing' | 'ready' | 'failed' | 'cancelled'
 
 export type MaterializationPhase = 'qcid_lookup' | 'materializing' | 'thumbnail'
 
@@ -61,6 +63,10 @@ export interface MaterializationProgress {
 
 export type NdmErrorCode =
     | 'USER_CANCELLED'
+    | 'INVALID_IMPORT_PATH'
+    | 'IMPORT_PATH_CONFLICT'
+    | 'EMPTY_DIRECTORY_UNAVAILABLE'
+    | 'OBJECT_NOT_READY'
     | 'MODE_NOT_SUPPORTED_IN_RUNTIME'
     | 'DIRECTORY_NOT_SUPPORTED'
     | 'INVALID_ACCEPT_FILTER'
@@ -131,6 +137,13 @@ export interface PickupAndImportOptions<TMode extends ImportMode = ImportMode> {
     accept?: string[]
     thumbnails?: ThumbnailOptions
     autoStartUpload?: boolean
+    endpoint?: string
+    sessionToken?: string | null
+    headers?: Record<string, string>
+    fetcher?: NdmStoreRequestOptions['fetcher']
+    signal?: AbortSignal
+    /** Per-call provider; selected files should use importFiles instead. */
+    provider?: ImportProvider
     /**
      * Optional callback invoked during the materialization (hashing) phase.
      * Use this to drive a progress bar while large files are being processed.
@@ -151,6 +164,9 @@ export interface ImportSessionSnapshot<TSelection> {
     items: Array<ImportedFileObject | ImportedDirObject>
     materializationStatus: MaterializationStatus
     uploadStatus: UploadStatus
+    objectStatus: ObjectStatus
+    error?: string
+    warnings: string[]
     summary: ImportSessionSummary
 }
 
@@ -173,6 +189,9 @@ export interface ImportSessionStatus {
     sessionId: string
     materializationStatus: MaterializationStatus
     uploadStatus: UploadStatus
+    objectStatus: ObjectStatus
+    error?: string
+    warnings: string[]
     summary: ImportSessionSummary
     progress: {
         uploadedBytes: number
@@ -187,6 +206,10 @@ export interface ImportSessionStatus {
 
 export interface StartUploadOptions {
     concurrency?: number
+    signal?: AbortSignal
+    headers?: Record<string, string>
+    fetcher?: NdmStoreRequestOptions['fetcher']
+    onProgress?: (progress: UploadProgress) => void
     priority?: 'foreground' | 'background'
     /**
      * Override the NDM service base URL for TUS uploads. When omitted the
@@ -206,8 +229,13 @@ export interface StartUploadOptions {
 export interface UploadProgress {
     sessionId: string
     uploadStatus: UploadStatus
+    objectStatus: ObjectStatus
+    error?: string
+    warnings: string[]
     totalBytes: number
     uploadedBytes: number
+    /** Actual chunk payload bytes sent; excludes deduplicated logical progress. */
+    transmittedBytes: number
     totalObjects: number
     uploadedObjects: number
     speedBps?: number
@@ -241,6 +269,7 @@ export interface NdmStoreRequestOptions {
     headers?: Record<string, string>
     credentials?: RequestCredentials
     sessionToken?: string | null
+    signal?: AbortSignal
 }
 
 export interface NdmLookupRequestOptions extends NdmStoreRequestOptions {}
@@ -404,18 +433,20 @@ export interface LookupObjectRequest {
 }
 
 export interface LookupObjectExistsResponse {
+    reusable?: boolean
     object_id: string
     scope: NdmLookupScope
     exists: boolean
 }
 
 export type LookupObjectChunkStateResponse =
-    | ({ object_id: string; scope: NdmLookupScope } & { state: 'new'; chunk_size: number })
-    | ({ object_id: string; scope: NdmLookupScope } & { state: 'completed'; chunk_size: number })
-    | ({ object_id: string; scope: NdmLookupScope } & { state: 'disabled'; chunk_size: number })
-    | ({ object_id: string; scope: NdmLookupScope } & { state: 'not_exist'; chunk_size: number })
+    | ({ object_id: string; scope: NdmLookupScope; reusable?: boolean } & { state: 'new'; chunk_size: number })
+    | ({ object_id: string; scope: NdmLookupScope; reusable?: boolean } & { state: 'completed'; chunk_size: number })
+    | ({ object_id: string; scope: NdmLookupScope; reusable?: boolean } & { state: 'disabled'; chunk_size: number })
+    | ({ object_id: string; scope: NdmLookupScope; reusable?: boolean } & { state: 'not_exist'; chunk_size: number })
     | ({
         object_id: string
+        reusable?: boolean
         scope: NdmLookupScope
         state: 'local_link'
         chunk_size: number
@@ -423,6 +454,7 @@ export type LookupObjectChunkStateResponse =
     })
     | ({
         object_id: string
+        reusable?: boolean
         scope: NdmLookupScope
         state: 'same_as'
         chunk_size: number
@@ -432,7 +464,7 @@ export type LookupObjectChunkStateResponse =
 export type LookupObjectResponse = LookupObjectExistsResponse | LookupObjectChunkStateResponse
 
 // ============================================================
-// Default chunk size for splitting files (4 MiB)
+// Default chunk size for splitting files (32 MiB)
 // ============================================================
 
 const DEFAULT_CHUNK_SIZE = 32 * 1024 * 1024
@@ -466,6 +498,15 @@ interface ImportSession {
     uploadStatus: UploadStatus
     summary: ImportSessionSummary
     objectStates: Map<string, ObjectUploadState>
+    objectStatus: ObjectStatus
+    error?: string
+    warnings: string[]
+    manifest: Map<string, PutObjectRequest>
+    qcidLinks: Array<{ qcid: string; content_id: string; size: number }>
+    requestOptions: NdmStoreRequestOptions
+    uploadPromise?: Promise<void>
+    transmittedBytes: number
+    onProgress?: (progress: UploadProgress) => void
     uploadStartTime?: number
     /** Abort controller for cancelling in-flight uploads. */
     abortController?: AbortController
@@ -514,29 +555,37 @@ const browserProvider: ImportProvider = {
             }
 
             let settled = false
-
-            input.addEventListener('change', () => {
+            const cleanup = () => {
+                window.removeEventListener('focus', onFocus)
+                options.signal?.removeEventListener('abort', onAbort)
+            }
+            const fail = (error: NdmError) => {
                 if (settled) return
                 settled = true
-                const files = input.files
-                if (!files || files.length === 0) {
-                    reject(new NdmError('USER_CANCELLED', 'No files selected'))
-                    return
-                }
-                resolve(Array.from(files))
-            })
-
-            // Detect cancel: when user focuses back on window without selecting
+                cleanup()
+                reject(error)
+            }
+            const onAbort = () => fail(new NdmError('USER_CANCELLED', 'Import cancelled'))
             const onFocus = () => {
                 setTimeout(() => {
-                    if (!settled) {
-                        settled = true
-                        reject(new NdmError('USER_CANCELLED', 'User cancelled file selection'))
-                    }
-                    window.removeEventListener('focus', onFocus)
+                    if (!settled) fail(new NdmError('USER_CANCELLED', 'User cancelled file selection'))
                 }, 500)
             }
+            input.addEventListener('change', () => {
+                if (settled) return
+                const files = input.files
+                if (!files || files.length === 0) {
+                    fail(new NdmError(options.mode === 'single_dir' ? 'EMPTY_DIRECTORY_UNAVAILABLE' : 'USER_CANCELLED', options.mode === 'single_dir' ? 'FileList cannot represent an empty directory; use a directory-tree provider' : 'No files selected'))
+                    return
+                }
+                settled = true
+                cleanup()
+                resolve(Array.from(files))
+            })
+            input.addEventListener('cancel', onAbort)
             window.addEventListener('focus', onFocus)
+            if (options.signal?.aborted) { onAbort(); return }
+            options.signal?.addEventListener('abort', onAbort, { once: true })
 
             input.click()
         })
@@ -637,6 +686,7 @@ async function callStoreApi<TRequest, TResponse>(
         headers,
         body: JSON.stringify(requestBody),
         credentials: options?.credentials ?? 'include',
+        signal: options?.signal,
     })
 
     if (response.status === 204) {
@@ -690,6 +740,7 @@ async function getZoneGatewayJson<TResponse>(
         method: 'GET',
         headers,
         credentials: options?.credentials ?? 'include',
+        signal: options?.signal,
     })
 
     const contentType = response.headers.get('content-type') ?? ''
@@ -918,7 +969,9 @@ export async function anchorState(
 async function materializeFile(
     file: File,
     chunkSize: number = DEFAULT_CHUNK_SIZE,
-): Promise<{ objectId: string; chunks: ObjectUploadState['chunks']; fileObject: Record<string, unknown> }> {
+    signal?: AbortSignal,
+): Promise<{ objectId: string; chunks: ObjectUploadState['chunks']; fileObject: Record<string, unknown>; objects: PutObjectRequest[] }> {
+    throwIfCancelled(signal)
     const fileSize = file.size
     const chunks: ObjectUploadState['chunks'] = []
 
@@ -933,14 +986,16 @@ async function materializeFile(
 
         // Build a FileObject to derive the objectId
         const fileObj = new NdnFileObject(file.name, fileSize, chunkIdStr)
-        const [objId] = fileObj.genObjId()
-        return { objectId: objId.toString(), chunks, fileObject: fileObj.toJSON() }
+        const [objId, objData] = fileObj.genObjId()
+        throwIfCancelled(signal)
+        return { objectId: objId.toString(), chunks, fileObject: fileObj.toJSON(), objects: [{ obj_id: objId.toString(), obj_data: objData }] }
     }
 
     // Multi-chunk: split file, hash each chunk, build ChunkList
     const chunkList = new SimpleChunkList()
     let offset = 0
     while (offset < fileSize) {
+        throwIfCancelled(signal)
         const end = Math.min(offset + chunkSize, fileSize)
         const slice = new Uint8Array(await file.slice(offset, end).arrayBuffer())
         const hash = sha256Bytes(slice)
@@ -950,10 +1005,14 @@ async function materializeFile(
         offset = end
     }
 
-    const [chunkListObjId] = chunkList.genObjId()
+    const [chunkListObjId, chunkListData] = chunkList.genObjId()
     const fileObj = new NdnFileObject(file.name, fileSize, chunkListObjId.toString())
-    const [objId] = fileObj.genObjId()
-    return { objectId: objId.toString(), chunks, fileObject: fileObj.toJSON() }
+    const [objId, objData] = fileObj.genObjId()
+    throwIfCancelled(signal)
+    return { objectId: objId.toString(), chunks, fileObject: fileObj.toJSON(), objects: [
+        { obj_id: chunkListObjId.toString(), obj_data: chunkListData },
+        { obj_id: objId.toString(), obj_data: objData },
+    ] }
 }
 
 /**
@@ -965,28 +1024,30 @@ async function materializeFileViaWorker(
     file: File,
     onHashProgress?: (bytesHashed: number) => void,
     chunkSize: number = DEFAULT_CHUNK_SIZE,
-): Promise<{ objectId: string; chunks: ObjectUploadState['chunks']; fileObject: Record<string, unknown> }> {
-    if (!isHashWorkerAvailable()) {
-        return materializeFile(file, chunkSize)
+    signal?: AbortSignal,
+): Promise<{ objectId: string; chunks: ObjectUploadState['chunks']; fileObject: Record<string, unknown>; objects: PutObjectRequest[] }> {
+    if (!isHashWorkerAvailable() || file.size === 0) {
+        const result = await materializeFile(file, chunkSize, signal)
+        onHashProgress?.(file.size)
+        return result
     }
 
     let hashResults: Awaited<ReturnType<typeof hashFileInWorker>['result']>
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const worker = hashFileInWorker(file, chunkSize, signal)
     try {
-        const session = hashFileInWorker(file, chunkSize)
-        if (onHashProgress) {
-            session.onProgress(onHashProgress)
-        }
-
-        // Race against a timeout so a broken/blocked worker doesn't hang forever.
-        const WORKER_TIMEOUT_MS = 5 * 60 * 1000 // 5 minutes
+        if (onHashProgress) worker.onProgress(onHashProgress)
         const timeout = new Promise<never>((_, reject) => {
-            setTimeout(() => reject(new Error('hash worker timeout')), WORKER_TIMEOUT_MS)
+            timer = setTimeout(() => { worker.cancel(); reject(new Error('hash worker timeout')) }, 5 * 60 * 1000)
         })
-        hashResults = await Promise.race([session.result, timeout])
+        hashResults = await Promise.race([worker.result, timeout])
     } catch {
-        // Worker failed — fall back to main-thread hashing.
-        return materializeFile(file, chunkSize)
+        throwIfCancelled(signal)
+        return materializeFile(file, chunkSize, signal)
+    } finally {
+        if (timer) clearTimeout(timer)
     }
+    throwIfCancelled(signal)
     const fileSize = file.size
     const chunks: ObjectUploadState['chunks'] = []
 
@@ -998,8 +1059,9 @@ async function materializeFileViaWorker(
         chunks.push({ chunkId: chunkIdStr, offset: 0, length: r.length, uploaded: false })
 
         const fileObj = new NdnFileObject(file.name, fileSize, chunkIdStr)
-        const [objId] = fileObj.genObjId()
-        return { objectId: objId.toString(), chunks, fileObject: fileObj.toJSON() }
+        const [objId, objData] = fileObj.genObjId()
+        throwIfCancelled(signal)
+        return { objectId: objId.toString(), chunks, fileObject: fileObj.toJSON(), objects: [{ obj_id: objId.toString(), obj_data: objData }] }
     }
 
     // Multi-chunk: build ChunkList from worker results
@@ -1010,10 +1072,14 @@ async function materializeFileViaWorker(
         chunks.push({ chunkId: chunkId.toString(), offset: r.offset, length: r.length, uploaded: false })
     }
 
-    const [chunkListObjId] = chunkList.genObjId()
+    const [chunkListObjId, chunkListData] = chunkList.genObjId()
     const fileObj = new NdnFileObject(file.name, fileSize, chunkListObjId.toString())
-    const [objId] = fileObj.genObjId()
-    return { objectId: objId.toString(), chunks, fileObject: fileObj.toJSON() }
+    const [objId, objData] = fileObj.genObjId()
+    throwIfCancelled(signal)
+    return { objectId: objId.toString(), chunks, fileObject: fileObj.toJSON(), objects: [
+        { obj_id: chunkListObjId.toString(), obj_data: chunkListData },
+        { obj_id: objId.toString(), obj_data: objData },
+    ] }
 }
 
 function buildFileObjectFromContentId(
@@ -1043,35 +1109,27 @@ function resolveImportLookupEndpoint(): string | undefined {
 }
 
 async function tryCalculateQcidFromFile(file: File): Promise<string | null> {
-    const fileSize = file.size
-    if (fileSize < MIN_QCID_FILE_SIZE) {
-        return null
-    }
-
-    const beginBytes = new Uint8Array(await file.slice(0, QCID_HASH_PIECE_SIZE).arrayBuffer())
-    const midOffset = Math.floor(fileSize / 2)
-    const midBytes = new Uint8Array(
-        await file.slice(midOffset, midOffset + QCID_HASH_PIECE_SIZE).arrayBuffer(),
-    )
-
-    const combined = new Uint8Array(beginBytes.length + midBytes.length)
-    combined.set(beginBytes, 0)
-    combined.set(midBytes, beginBytes.length)
-
-    const hash = sha256Bytes(combined)
-    return ChunkId.fromMixHashResult(fileSize, hash, 'qcid').toString()
+    // A full read is cheaper for tiny files; reserve early lookup for samples.
+    return file.size < MIN_QCID_FILE_SIZE ? null : calculateQcidFromFile(file)
 }
 
 /**
- * Calculate a QCID for a File using the same quick-hash rule as ndn-lib:
- * SHA-256(first 4096 bytes + middle 4096 bytes), encoded as ChunkType `qcid`.
+ * Canonical ndn-lib QCID: hash the entire file below 12 KiB, otherwise hash
+ * three 4096-byte samples at head, centered midpoint, and tail.
  */
 export async function calculateQcidFromFile(file: File): Promise<string> {
-    const qcid = await tryCalculateQcidFromFile(file)
-    if (!qcid) {
-        throw new Error(`QCID requires file size >= ${MIN_QCID_FILE_SIZE} bytes`)
+    const fileSize = file.size
+    let sampled: Uint8Array
+    if (fileSize < MIN_QCID_FILE_SIZE) {
+        sampled = new Uint8Array(await file.arrayBuffer())
+    } else {
+        sampled = new Uint8Array(QCID_HASH_PIECE_SIZE * 3)
+        const offsets = [0, Math.floor((fileSize - QCID_HASH_PIECE_SIZE) / 2), fileSize - QCID_HASH_PIECE_SIZE]
+        for (let index = 0; index < offsets.length; index++) {
+            sampled.set(new Uint8Array(await file.slice(offsets[index], offsets[index] + QCID_HASH_PIECE_SIZE).arrayBuffer()), index * QCID_HASH_PIECE_SIZE)
+        }
     }
-    return qcid
+    return ChunkId.fromMixHashResult(fileSize, sha256Bytes(sampled), 'qcid').toString()
 }
 
 function extractLookupContentId(
@@ -1108,102 +1166,75 @@ function extractLookupContentId(
 
 async function lookupFileByQcid(
     file: File,
-): Promise<{ objectId: string; fileObject: Record<string, unknown>; locality: 'store' } | null> {
-    const endpoint = resolveImportLookupEndpoint()
-    if (!endpoint) {
-        return null
-    }
-
+    options: NdmStoreRequestOptions,
+    warnings: string[],
+): Promise<{ objectId: string; fileObject: Record<string, unknown>; locality: 'store'; qcid: string } | null> {
+    const endpoint = options.endpoint ?? resolveImportLookupEndpoint()
+    if (!endpoint) return null
     const qcid = await tryCalculateQcidFromFile(file)
-    if (!qcid) {
+    throwIfCancelled(options.signal)
+    if (!qcid) return null
+    try {
+        // Only authenticated, app-scoped hits authorize reuse. Global presence
+        // is not an upload grant and must never suppress byte transfer.
+        const response = await lookupObject({ scope: 'app', quick_hash: qcid }, { ...options, endpoint })
+        if (response.reusable !== true || !('state' in response) || !['completed', 'same_as', 'local_link'].includes(response.state)) return null
+        if (response.chunk_size !== file.size) return null
+        const contentId = extractLookupContentId(response, qcid)
+        if (!contentId || !(ObjId.fromString(contentId).isChunk() || ObjId.fromString(contentId).isChunkList()) || contentId.startsWith('qcid:')) return null
+        return { ...buildFileObjectFromContentId(file.name, file.size, contentId), locality: 'store', qcid }
+    } catch (error) {
+        throwIfCancelled(options.signal)
+        if (!(error instanceof NdmStoreApiError && error.status === 404)) {
+            warnings.push(`QCID lookup for ${file.name}: ${errorMessage(error)}`)
+        }
         return null
     }
-
-    for (const scope of ['app', 'global'] as const) {
-        try {
-            const response = await lookupObject(
-                { scope, quick_hash: qcid },
-                {
-                    endpoint,
-                    sessionToken: getActiveRuntimeType() === RuntimeType.Browser ? null : undefined,
-                },
-            )
-
-            const contentId = extractLookupContentId(response, qcid)
-            if (!contentId) {
-                continue
-            }
-
-            return {
-                ...buildFileObjectFromContentId(file.name, file.size, contentId),
-                locality: 'store',
-            }
-        } catch (error) {
-            if (error instanceof NdmStoreApiError && error.status === 404) {
-                continue
-            }
-
-            // QCID lookup is an optimization. Fall back to local materialization
-            // when the gateway is unavailable or returns an incompatible shape.
-            return null
-        }
-    }
-
-    return null
 }
 
 /**
  * Build directory tree from flat file list (for webkitdirectory results).
  */
-function buildDirTree(
-    files: File[],
-    fileObjects: ImportedFileObject[],
-): ImportedDirObject {
-    // Determine the common root directory name
-    const firstPath = (files[0] as any).webkitRelativePath as string | undefined
-    const rootName = firstPath ? firstPath.split('/')[0] : 'directory'
+export type ImportTreeEntry = { kind: 'file'; file: File } | ImportDirectoryEntry
+export interface ImportDirectoryEntry { kind: 'dir'; name: string; children: ImportTreeEntry[] }
 
-    const root: ImportedDirObject = {
-        kind: 'dir',
-        objectId: '', // will be computed later
-        name: rootName,
-        children: [],
+function validateName(name: string): void {
+    if (!name || name === '.' || name === '..' || /[\\/\x00-\x1f]/.test(name) || /^[a-z]:/i.test(name)) {
+        throw new NdmError('INVALID_IMPORT_PATH', `Invalid file or directory name: ${name}`)
     }
+}
 
-    const dirMap = new Map<string, ImportedDirObject>()
-    dirMap.set('', root)
+function validatePath(path: string): string[] {
+    const parts = path.split('/')
+    parts.forEach(validateName)
+    return parts
+}
 
-    for (const fileObj of fileObjects) {
-        const relPath = fileObj.relativePath ?? fileObj.name
-        const parts = relPath.split('/')
-        // Skip the root dir name itself
-        const pathParts = parts.length > 1 ? parts.slice(1) : parts
-
-        // Ensure intermediate directories exist
-        let currentDir = root
-        for (let i = 0; i < pathParts.length - 1; i++) {
-            const dirName = pathParts[i]
-            const dirPath = pathParts.slice(0, i + 1).join('/')
-            let dir = dirMap.get(dirPath)
-            if (!dir) {
-                dir = {
-                    kind: 'dir',
-                    objectId: '',
-                    name: dirName,
-                    relativePath: dirPath,
-                    children: [],
-                }
-                dirMap.set(dirPath, dir)
-                currentDir.children!.push(dir)
+function buildDirTree(files: File[], fileObjects: ImportedFileObject[]): ImportedDirObject {
+    if (files.length === 0) throw new NdmError('EMPTY_DIRECTORY_UNAVAILABLE', 'FileList cannot represent an empty directory; use importDirectory with directory nodes')
+    const paths = files.map(file => validatePath(file.webkitRelativePath || file.name))
+    if (paths.some(parts => parts.length < 2 || parts[0] !== paths[0][0])) {
+        throw new NdmError('INVALID_IMPORT_PATH', 'Folder selection must contain one root directory in webkitRelativePath')
+    }
+    const root: ImportedDirObject = { kind: 'dir', objectId: '', name: paths[0][0], children: [] }
+    for (let index = 0; index < paths.length; index++) {
+        const parts = paths[index].slice(1)
+        let dir = root
+        for (let i = 0; i < parts.length; i++) {
+            const name = parts[i]
+            const existing = dir.children!.find(child => child.name === name)
+            if (i === parts.length - 1) {
+                if (existing) throw new NdmError('IMPORT_PATH_CONFLICT', `Duplicate file or directory: ${paths[index].join('/')}`)
+                if (name !== fileObjects[index].name) throw new NdmError('INVALID_IMPORT_PATH', 'Relative path basename must match File.name')
+                dir.children!.push(fileObjects[index])
+            } else {
+                if (existing?.kind === 'file') throw new NdmError('IMPORT_PATH_CONFLICT', `File used as directory: ${name}`)
+                const child = existing as ImportedDirObject | undefined ?? { kind: 'dir' as const, objectId: '', name, relativePath: parts.slice(0, i + 1).join('/'), children: [] }
+                if (!existing) dir.children!.push(child)
+                dir = child
             }
-            currentDir = dir
         }
-        currentDir.children!.push(fileObj)
     }
-
-    // Compute directory objectIds bottom-up
-    computeDirObjectIds(root)
-
     return root
 }
 
@@ -1214,7 +1245,7 @@ interface ComputedDirState {
     fileSize: number
 }
 
-function computeDirObjectIds(dir: ImportedDirObject): ComputedDirState {
+function computeDirObjectIds(dir: ImportedDirObject, manifest: Map<string, PutObjectRequest>): ComputedDirState {
     const ndnDir = new NdnDirObject(dir.name)
 
     if (dir.children) {
@@ -1225,14 +1256,15 @@ function computeDirObjectIds(dir: ImportedDirObject): ComputedDirState {
                 }
                 ndnDir.addFile(child.name, child._ndnFileObject, child.size)
             } else {
-                const childState = computeDirObjectIds(child)
+                const childState = computeDirObjectIds(child, manifest)
                 ndnDir.addDirectory(child.name, ObjId.fromString(childState.objectId), childState.totalSize)
             }
         }
     }
 
-    const [objId] = ndnDir.genObjId()
+    const [objId, objData] = ndnDir.genObjId()
     dir.objectId = objId.toString()
+    manifest.set(dir.objectId, { obj_id: dir.objectId, obj_data: objData })
     return {
         objectId: dir.objectId,
         totalSize: ndnDir.total_size,
@@ -1351,21 +1383,63 @@ function collectSummary(items: Array<ImportedFileObject | ImportedDirObject>): I
 export async function pickupAndImport<TMode extends ImportMode>(
     options: PickupAndImportOptions<TMode>,
 ): Promise<PickupAndImportResult<TMode>> {
-    const caps = currentProvider.getCapabilities()
+    const provider = options.provider ?? currentProvider
+    const caps = provider.getCapabilities()
+    if (options.mode === 'single_dir' && !caps.canPickDirectory) throw new NdmError('DIRECTORY_NOT_SUPPORTED')
+    if (options.mode === 'mixed' && !caps.canPickMixed) throw new NdmError('MODE_NOT_SUPPORTED_IN_RUNTIME')
+    throwIfCancelled(options.signal)
+    const files = await provider.pickFiles(options)
+    return importFiles(files, options)
+}
 
-    // Validate mode against runtime capabilities
-    if (options.mode === 'single_dir' && !caps.canPickDirectory) {
-        throw new NdmError('DIRECTORY_NOT_SUPPORTED', 'Current runtime does not support directory selection')
-    }
-    if (options.mode === 'mixed' && !caps.canPickMixed) {
-        throw new NdmError('MODE_NOT_SUPPORTED_IN_RUNTIME', 'Current runtime does not support mixed file/directory selection')
-    }
+/** Import an already selected FileList without modifying the global picker. */
+export async function importFiles<TMode extends ImportMode>(
+    selectedFiles: readonly File[],
+    options: PickupAndImportOptions<TMode>,
+): Promise<PickupAndImportResult<TMode>> {
+    return importSelectedFiles(selectedFiles, options)
+}
 
-    // Pick files via provider
-    const files = await currentProvider.pickFiles(options)
-    if (files.length === 0) {
-        throw new NdmError('USER_CANCELLED', 'No files selected')
+export async function importDirectory(
+    tree: ImportDirectoryEntry,
+    options: Omit<PickupAndImportOptions<'single_dir'>, 'mode'> = {},
+): Promise<PickupAndImportResult<'single_dir'>> {
+    return importSelectedFiles([], { ...options, mode: 'single_dir' }, tree)
+}
+
+async function importSelectedFiles<TMode extends ImportMode>(
+    selectedFiles: readonly File[],
+    options: PickupAndImportOptions<TMode>,
+    tree?: ImportDirectoryEntry,
+): Promise<PickupAndImportResult<TMode>> {
+    throwIfCancelled(options.signal)
+    const files = [...selectedFiles]
+    const treePaths: string[] = []
+    if (tree) {
+        const walk = (dir: ImportDirectoryEntry, parent: string) => {
+            validateName(dir.name)
+            const names = new Set<string>()
+            for (const child of dir.children) {
+                const name = child.kind === 'file' ? child.file.name : child.name
+                validateName(name)
+                if (names.has(name)) throw new NdmError('IMPORT_PATH_CONFLICT', `Duplicate child: ${parent}/${name}`)
+                names.add(name)
+                if (child.kind === 'file') { files.push(child.file); treePaths.push(`${parent}/${name}`) }
+                else walk(child, `${parent}/${child.name}`)
+            }
+        }
+        walk(tree, tree.name)
     }
+    if (!tree && files.length === 0) throw new NdmError(options.mode === 'single_dir' ? 'EMPTY_DIRECTORY_UNAVAILABLE' : 'USER_CANCELLED', options.mode === 'single_dir' ? 'FileList cannot represent empty directories; use importDirectory' : 'No files selected')
+    if (options.mode === 'single_file' && files.length !== 1) throw new NdmError('INVALID_IMPORT_PATH', 'single_file requires exactly one file')
+    // Validate before any hashing or remote requests.
+    files.forEach(file => { validateName(file.name); if (file.webkitRelativePath) validatePath(file.webkitRelativePath) })
+    if (!tree && options.mode === 'single_dir') buildDirTree(files, files.map(file => ({ kind: 'file', objectId: '', name: file.name, size: file.size })))
+    const warnings: string[] = []
+    if (!tree && options.mode === 'single_dir') warnings.push('FileList selections cannot preserve empty directories')
+    const manifest = new Map<string, PutObjectRequest>()
+    const qcidLinks: ImportSession['qcidLinks'] = []
+    const requestOptions: NdmStoreRequestOptions = { endpoint: options.endpoint, sessionToken: options.sessionToken, fetcher: options.fetcher, headers: options.headers, signal: options.signal }
 
     // Materialize each file
     const fileObjects: ImportedFileObject[] = []
@@ -1377,13 +1451,14 @@ export async function pickupAndImport<TMode extends ImportMode>(
 
     for (let fi = 0; fi < files.length; fi++) {
         const file = files[fi]
-        const relativePath = (file as any).webkitRelativePath || undefined
+        throwIfCancelled(options.signal)
+        const relativePath = treePaths[fi] || file.webkitRelativePath || undefined
 
         // Phase 1: QCID fast-path lookup (skips full hash when server already has the file)
         if (onProgress) {
             onProgress({ phase: 'qcid_lookup', fileIndex: fi, fileCount, fileName: file.name, fileTotalBytes: file.size })
         }
-        const lookupHit = await lookupFileByQcid(file)
+        const lookupHit = await lookupFileByQcid(file, requestOptions, warnings)
 
         // Phase 2: Full materialization (worker-based when available)
         let materialized: Awaited<ReturnType<typeof materializeFile>> | null = null
@@ -1398,12 +1473,22 @@ export async function pickupAndImport<TMode extends ImportMode>(
                         onProgress({ phase: 'materializing', fileIndex: fi, fileCount, fileName: file.name, bytesProcessed: bytesHashed, fileTotalBytes: file.size })
                     }
                     : undefined,
+                DEFAULT_CHUNK_SIZE,
+                options.signal,
             )
         }
 
         const objectId = lookupHit?.objectId ?? materialized!.objectId
         const fileObject = lookupHit?.fileObject ?? materialized!.fileObject
         const chunks = lookupHit ? [] : materialized!.chunks
+        if (materialized) for (const object of materialized.objects) manifest.set(object.obj_id, object)
+        else {
+            const [, objData] = new NdnFileObject(file.name, file.size, fileObject.content as string).genObjId()
+            manifest.set(objectId, { obj_id: objectId, obj_data: objData })
+        }
+        const qcid = lookupHit?.qcid ?? await tryCalculateQcidFromFile(file)
+        if (qcid) qcidLinks.push({ qcid, content_id: fileObject.content as string, size: file.size })
+        throwIfCancelled(options.signal)
 
         const imported: ImportedFileObject = {
             kind: 'file',
@@ -1456,7 +1541,10 @@ export async function pickupAndImport<TMode extends ImportMode>(
     let selection: unknown
 
     if (options.mode === 'single_dir') {
-        const dirObj = buildDirTree(files, fileObjects)
+        let index = 0
+        const rebuild = (node: ImportDirectoryEntry): ImportedDirObject => ({ kind: 'dir', name: node.name, objectId: '', children: node.children.map(child => child.kind === 'file' ? fileObjects[index++] : rebuild(child)) })
+        const dirObj = tree ? rebuild(tree) : buildDirTree(files, fileObjects)
+        computeDirObjectIds(dirObj, manifest)
         items = [dirObj]
         selection = dirObj
     } else {
@@ -1471,16 +1559,10 @@ export async function pickupAndImport<TMode extends ImportMode>(
     const summary = collectSummary(items)
     const sessionId = generateSessionId()
 
-    // Determine initial materialization status
-    let materializationStatus: MaterializationStatus = 'ok'
-    if (allFilesAlreadyStored || caps.canUseNDMStore) {
-        materializationStatus = 'all_in_store'
-    } else if (caps.canUseNDMCache) {
-        materializationStatus = 'on_cache'
-    }
-
-    const uploadStatus: UploadStatus =
-        materializationStatus === 'all_in_store' ? 'not_required' : 'not_started'
+    // Runtime capabilities and QCID hits do not prove that named-object
+    // metadata (including a renamed FileObject or parent DirObject) exists.
+    const materializationStatus: MaterializationStatus = allFilesAlreadyStored ? 'all_in_store' : 'ok'
+    const uploadStatus: UploadStatus = 'not_started'
 
     const session: ImportSession = {
         sessionId,
@@ -1489,6 +1571,8 @@ export async function pickupAndImport<TMode extends ImportMode>(
         uploadStatus,
         summary,
         objectStates,
+        objectStatus: 'pending',
+        warnings, manifest, qcidLinks, requestOptions, transmittedBytes: 0,
     }
 
     sessionRegistry.set(sessionId, session)
@@ -1497,6 +1581,8 @@ export async function pickupAndImport<TMode extends ImportMode>(
         sessionId,
         selection,
         items,
+        objectStatus: 'pending',
+        warnings,
         materializationStatus,
         uploadStatus,
         summary,
@@ -1505,7 +1591,7 @@ export async function pickupAndImport<TMode extends ImportMode>(
     // Auto-start upload if requested
     if (options.autoStartUpload && uploadStatus === 'not_started') {
         // Fire and forget — the session transitions to 'uploading'
-        startUpload(sessionId).catch(() => { /* session state already tracks failure */ })
+        startUpload(sessionId, { endpoint: options.endpoint, sessionToken: options.sessionToken, fetcher: options.fetcher, headers: options.headers, signal: options.signal }).catch(() => { /* session state already tracks failure */ })
         snapshot.uploadStatus = 'uploading'
     }
 
@@ -1525,21 +1611,24 @@ export async function getImportSessionStatus(sessionId: string): Promise<ImportS
     let uploadedBytes = 0
     let uploadedObjects = 0
 
-    for (const [id, state] of session.objectStates) {
-        perObjectProgress[id] = {
-            objectId: state.objectId,
-            uploadedBytes: state.uploadedBytes,
-            totalBytes: state.size,
-            state: state.state,
+    const collect = (items: ImportSession['items']) => {
+        for (const item of items) {
+            if (item.kind === 'dir') { collect(item.children ?? []); continue }
+            const state = session.objectStates.get(item.objectId)!
+            perObjectProgress[item.objectId] = { objectId: item.objectId, uploadedBytes: state.uploadedBytes, totalBytes: state.size, state: state.state }
+            uploadedBytes += state.uploadedBytes
+            if (state.state === 'completed') uploadedObjects++
         }
-        uploadedBytes += state.uploadedBytes
-        if (state.state === 'completed') uploadedObjects++
     }
+    collect(session.items)
 
     return {
         sessionId,
         materializationStatus: session.materializationStatus,
         uploadStatus: session.uploadStatus,
+        objectStatus: session.objectStatus,
+        error: session.error,
+        warnings: [...session.warnings],
         summary: session.summary,
         progress: {
             uploadedBytes,
@@ -1559,6 +1648,10 @@ export async function getUploadProgress(sessionId: string): Promise<UploadProgre
     const result: UploadProgress = {
         sessionId,
         uploadStatus: status.uploadStatus,
+        objectStatus: status.objectStatus,
+        error: status.error,
+        warnings: status.warnings,
+        transmittedBytes: requireSession(sessionId).transmittedBytes,
         totalBytes: status.progress.totalBytes,
         uploadedBytes: status.progress.uploadedBytes,
         totalObjects: status.progress.totalObjects,
@@ -1593,15 +1686,15 @@ async function uploadChunkViaTus(
     file: File,
     chunkInfo: ObjectUploadState['chunks'][0],
     chunkIndex: number,
-    appId: string,
     fileHash: string,
     sessionToken: string | null,
+    extraHeaders: Record<string, string> | undefined,
     onProgress: (uploaded: number) => void,
     signal?: AbortSignal,
 ): Promise<string> {
     const slice = file.slice(chunkInfo.offset, chunkInfo.offset + chunkInfo.length)
     const chunkData = new Uint8Array(await slice.arrayBuffer())
-    const logicalPath = `${appId}/${chunkInfo.chunkId}`
+    const logicalPath = chunkInfo.chunkId
 
     // Load a local wrapper so the dependency is resolved and bundled at build
     // time, while the runtime can still lazy-load the chunk on demand.
@@ -1619,12 +1712,12 @@ async function uploadChunkViaTus(
         const blob = new Blob([chunkData])
         const upload = new tusModule.Upload(blob, {
             endpoint: `${endpoint}/ndm/v1/uploads`,
-            headers: sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {},
+            ...(typeof XMLHttpRequest === 'undefined' ? { httpStack: tusModule.fetchHttpStack } : {}),
+            headers: { ...extraHeaders, ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}) },
             chunkSize: chunkData.length,
             retryDelays: [0, 1000, 3000, 5000],
             storeFingerprintForResuming: false,
             metadata: {
-                app_id: appId,
                 logical_path: logicalPath,
                 file_name: file.name,
                 file_size: String(file.size),
@@ -1638,162 +1731,175 @@ async function uploadChunkViaTus(
             },
             onSuccess: () => {
                 onProgress(chunkData.length)
+                signal?.removeEventListener('abort', onAbort)
                 resolve(chunkInfo.chunkId)
             },
             onError: (error: Error) => {
+                signal?.removeEventListener('abort', onAbort)
                 reject(new NdmError('UPLOAD_FAILED', error.message))
             },
         })
 
-        if (signal) {
-            signal.addEventListener('abort', () => {
-                upload.abort(true)
-                reject(new NdmError('UPLOAD_FAILED', 'Upload aborted'))
-            })
+        const onAbort = () => {
+            void Promise.resolve(upload.abort(true)).catch(() => undefined)
+            reject(new NdmError('USER_CANCELLED', 'Upload cancelled'))
         }
+        signal?.addEventListener('abort', onAbort, { once: true })
 
         upload.start()
     })
 }
 
-/**
- * Explicitly start uploading the objects in an import session.
- */
-export async function startUpload(
-    sessionId: string,
-    options?: StartUploadOptions,
-): Promise<ImportSessionStatus> {
+function errorMessage(error: unknown): string { return error instanceof Error ? error.message : String(error) }
+function throwIfCancelled(signal?: AbortSignal): void {
+    if (signal?.aborted) throw new NdmError('USER_CANCELLED', 'Import cancelled')
+}
+function requireSession(sessionId: string): ImportSession {
     const session = sessionRegistry.get(sessionId)
-    if (!session) {
-        throw new NdmError('SESSION_NOT_FOUND', `Session ${sessionId} not found`)
-    }
+    if (!session) throw new NdmError('SESSION_NOT_FOUND', `Session ${sessionId} not found`)
+    return session
+}
 
-    // Idempotent: already completed or not required
-    if (session.uploadStatus === 'completed' || session.uploadStatus === 'not_required') {
-        return getImportSessionStatus(sessionId)
-    }
-
-    // Idempotent: already uploading
-    if (session.uploadStatus === 'uploading') {
-        return getImportSessionStatus(sessionId)
-    }
-
-    // all_in_store => no-op success
-    if (session.materializationStatus === 'all_in_store') {
-        session.uploadStatus = 'not_required'
-        return getImportSessionStatus(sessionId)
-    }
-
-    session.uploadStatus = 'uploading'
-    session.uploadStartTime = Date.now()
+/** Begin or retry upload. Completion includes canonical metadata and readiness. */
+export async function startUpload(sessionId: string, options: StartUploadOptions = {}): Promise<ImportSessionStatus> {
+    const session = requireSession(sessionId)
+    if (session.objectStatus === 'ready' || session.uploadPromise) return getImportSessionStatus(sessionId)
+    const concurrency = options.concurrency ?? 3
+    if (!Number.isInteger(concurrency) || concurrency < 1) throw new NdmError('UPLOAD_FAILED', 'concurrency must be a positive integer')
+    throwIfCancelled(options.signal)
+    session.requestOptions = { ...session.requestOptions, ...Object.fromEntries(Object.entries({ endpoint: options.endpoint, sessionToken: options.sessionToken, fetcher: options.fetcher, headers: options.headers }).filter(([, value]) => value !== undefined)) }
+    const endpoint = session.requestOptions.endpoint ?? resolveImportLookupEndpoint()
+    if (!endpoint) throw new NdmError('STORE_API_ENDPOINT_REQUIRED', 'Pass endpoint or initialize the SDK before uploading')
+    session.requestOptions.endpoint = normalizeEndpoint(endpoint)
     session.abortController = new AbortController()
-
-    const concurrency = options?.concurrency ?? 3
-
-    // Determine the NDM upload base URL.
-    // TUS requests go to `${endpoint}/ndm/v1/uploads`, so `endpoint` should
-    // be the origin of the zone gateway that routes /ndm/*.
-    let endpoint: string
-    if (options?.endpoint) {
-        endpoint = options.endpoint.replace(/\/+$/, '')
-    } else {
-        endpoint = typeof window !== 'undefined' ? window.location.origin : ''
-    }
-
-    // The gateway authenticates every TUS request; a runtime session is renewed per chunk.
-    const sessionToken: UploadTokenSource = options?.sessionToken !== undefined
-        ? async () => options.sessionToken ?? null
-        : async () => getActiveSessionToken().catch(() => null)
-
-    // Start upload in background
-    doUpload(session, endpoint, concurrency, sessionToken).catch(() => {
-        // Error state is already tracked in session
+    const cancel = () => session.abortController?.abort()
+    options.signal?.addEventListener('abort', cancel, { once: true })
+    session.requestOptions.signal = session.abortController.signal
+    session.uploadStatus = 'uploading'
+    session.objectStatus = 'pending'
+    session.error = undefined
+    session.onProgress = options.onProgress
+    session.uploadStartTime = Date.now()
+    session.uploadPromise = doUpload(session, concurrency).catch(error => {
+        session.error = errorMessage(error)
+        const cancelled = session.abortController?.signal.aborted
+        session.uploadStatus = cancelled ? 'cancelled' : 'failed'
+        session.objectStatus = cancelled ? 'cancelled' : 'failed'
+        throw error
+    }).finally(() => {
+        session.uploadPromise = undefined
+        options.signal?.removeEventListener('abort', cancel)
+        emitProgress(session)
     })
-
+    // startUpload intentionally starts background work; ensureUploaded observes
+    // the same promise and propagates registration/readiness failures.
+    void session.uploadPromise.catch(() => undefined)
     return getImportSessionStatus(sessionId)
 }
 
-type UploadTokenSource = () => Promise<string | null>
-
-async function doUpload(
-    session: ImportSession,
-    endpoint: string,
-    concurrency: number,
-    sessionToken: UploadTokenSource,
-): Promise<void> {
-    const states = Array.from(session.objectStates.values())
-        .filter((s) => s.state !== 'completed')
-
-    // Simple semaphore for concurrency control
-    let running = 0
-    let idx = 0
-    let hasError = false
-
-    await new Promise<void>((resolve, reject) => {
-        function next() {
-            if (hasError) return
-            if (idx >= states.length && running === 0) {
-                // All done
-                const allCompleted = Array.from(session.objectStates.values())
-                    .every((s) => s.state === 'completed')
-                session.uploadStatus = allCompleted ? 'completed' : 'failed'
-                resolve()
-                return
-            }
-            while (running < concurrency && idx < states.length) {
-                const state = states[idx++]
-                running++
-                uploadSingleObject(session, endpoint, state, sessionToken)
-                    .then(() => {
-                        running--
-                        next()
-                    })
-                    .catch(() => {
-                        running--
-                        if (!hasError) {
-                            hasError = true
-                            session.uploadStatus = 'failed'
-                            reject(new NdmError('UPLOAD_FAILED', `Upload of ${state.name} failed`))
-                        }
-                    })
-            }
-        }
-        next()
-    })
+export async function ensureUploaded(sessionId: string, options: StartUploadOptions = {}): Promise<ImportSessionStatus> {
+    await startUpload(sessionId, options)
+    const session = requireSession(sessionId)
+    await session.uploadPromise
+    if (session.objectStatus !== 'ready') throw new NdmError('OBJECT_NOT_READY', session.error ?? 'Objects are not ready')
+    return getImportSessionStatus(sessionId)
 }
 
-async function uploadSingleObject(
-    session: ImportSession,
-    endpoint: string,
-    state: ObjectUploadState,
-    sessionToken: UploadTokenSource,
-): Promise<void> {
-    state.state = 'uploading'
+/** Cancels only this import; shared stored objects are never deleted. */
+export function cancelImportSession(sessionId: string): void {
+    const session = requireSession(sessionId)
+    if (session.objectStatus === 'ready') return
+    session.abortController?.abort()
+    session.uploadStatus = 'cancelled'
+    session.objectStatus = 'cancelled'
+}
 
-    for (const [chunkIndex, chunk] of state.chunks.entries()) {
-        if (chunk.uploaded) continue
+/** Release local File handles after consuming the result. A refresh requires reselection. */
+export function releaseImportSession(sessionId: string): void {
+    const session = requireSession(sessionId)
+    cancelImportSession(sessionId)
+    sessionRegistry.delete(sessionId)
+    const release = (items: ImportSession['items']) => items.forEach(item => {
+        if (item.kind === 'dir') release(item.children ?? [])
+        else { delete item._file; delete item._ndnFileObject }
+    })
+    release(session.items)
+}
 
-        await uploadChunkViaTus(
-            endpoint,
-            state.file,
-            chunk,
-            chunkIndex,
-            'default',
-            state.objectId,
-            await sessionToken(),
-            (uploaded) => {
-                // Update byte-level progress
-                const prevChunkBytes = state.chunks
-                    .filter((c) => c !== chunk && c.uploaded)
-                    .reduce((sum, c) => sum + c.length, 0)
-                state.uploadedBytes = prevChunkBytes + uploaded
-            },
-            session.abortController?.signal,
-        )
-
-        chunk.uploaded = true
+function emitProgress(session: ImportSession): void {
+    if (session.onProgress && sessionRegistry.has(session.sessionId)) {
+        void getUploadProgress(session.sessionId).then(progress => session.onProgress?.(progress)).catch(() => undefined)
     }
+}
 
-    state.uploadedBytes = state.size
-    state.state = 'completed'
+async function doUpload(session: ImportSession, concurrency: number): Promise<void> {
+    const states = [...session.objectStates.values()]
+    const chunkTasks = new Map<string, Promise<void>>()
+    let index = 0
+    let failure: unknown
+    const workers = Array.from({ length: Math.min(concurrency, states.length) }, async () => {
+        while (index < states.length && !failure) {
+            const state = states[index++]
+            try {
+                throwIfCancelled(session.abortController?.signal)
+                if (state.state === 'completed') continue
+                state.state = 'uploading'
+                for (const [chunkIndex, chunk] of state.chunks.entries()) {
+                    throwIfCancelled(session.abortController?.signal)
+                    if (chunk.uploaded) continue
+                    let task = chunkTasks.get(chunk.chunkId)
+                    if (!task) {
+                        task = uploadMissingChunk(session, state, chunk, chunkIndex)
+                        chunkTasks.set(chunk.chunkId, task)
+                    }
+                    await task
+                    chunk.uploaded = true
+                    state.uploadedBytes = state.chunks.filter(c => c.uploaded).reduce((sum, c) => sum + c.length, 0)
+                    emitProgress(session)
+                }
+                state.uploadedBytes = state.size
+                state.state = 'completed'
+            } catch (error) { state.state = 'failed'; failure = error }
+        }
+    })
+    await Promise.all(workers)
+    if (failure) throw failure
+    throwIfCancelled(session.abortController?.signal)
+    session.objectStatus = 'finalizing'
+    emitProgress(session)
+    const options = session.requestOptions
+    const token = options.sessionToken !== undefined ? options.sessionToken : await getActiveSessionToken()
+    const response = await (options.fetcher ?? defaultStoreFetcher)(`${options.endpoint}/ndm/v1/import/finalize`, {
+        method: 'POST', credentials: 'include', signal: options.signal,
+        headers: { ...options.headers, 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ objects: [...session.manifest.values()], roots: session.items.map(item => item.objectId), qcid_links: session.qcidLinks }),
+    })
+    const body = await response.json()
+    if (!response.ok) throw new NdmStoreApiError(response.status, body.error, body.message ?? 'Object registration failed', body)
+    throwIfCancelled(options.signal)
+    if (Array.isArray(body.warnings)) session.warnings.push(...body.warnings.map(String))
+    if (body.ready !== true || !Array.isArray(body.roots) || session.items.some(item => !body.roots.some((root: { obj_id: string; ready: boolean }) => root.obj_id === item.objectId && root.ready === true))) {
+        throw new NdmError('OBJECT_NOT_READY', 'NDM did not confirm all root objects and their dependencies are ready')
+    }
+    session.objectStatus = 'ready'
+    session.uploadStatus = session.transmittedBytes === 0 ? 'not_required' : 'completed'
+    session.materializationStatus = 'all_in_store'
+    emitProgress(session)
+}
+
+async function uploadMissingChunk(session: ImportSession, state: ObjectUploadState, chunk: ObjectUploadState['chunks'][number], chunkIndex: number): Promise<void> {
+    try {
+        const found = await lookupObject({ scope: 'app', quick_hash: chunk.chunkId }, session.requestOptions)
+        if (found.reusable === true && 'state' in found && ['completed', 'same_as', 'local_link'].includes(found.state) && found.chunk_size === chunk.length) return
+    } catch (error) {
+        throwIfCancelled(session.abortController?.signal)
+        if (!(error instanceof NdmStoreApiError && error.status === 404)) session.warnings.push(`Chunk lookup: ${errorMessage(error)}`)
+    }
+    const token = session.requestOptions.sessionToken !== undefined ? session.requestOptions.sessionToken : await getActiveSessionToken()
+    await uploadChunkViaTus(session.requestOptions.endpoint!, state.file, chunk, chunkIndex, state.objectId, token, session.requestOptions.headers,
+        uploaded => {
+            state.uploadedBytes = state.chunks.filter(c => c.uploaded).reduce((sum, c) => sum + c.length, 0) + uploaded
+            emitProgress(session)
+        }, session.abortController?.signal)
+    session.transmittedBytes += chunk.length
 }

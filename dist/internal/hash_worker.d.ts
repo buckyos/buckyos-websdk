@@ -23,6 +23,7 @@ export interface WorkerHashSession {
      * The callback receives the cumulative bytes hashed so far.
      */
     onProgress: (cb: (bytesHashed: number) => void) => void;
+    cancel: () => void;
 }
 /**
  * Check whether inline Blob-URL workers are available in the current
@@ -34,5 +35,5 @@ export declare function isHashWorkerAvailable(): boolean;
  * `.result` promise resolves with all chunk hashes, and whose
  * `.onProgress()` method lets callers observe per-chunk progress.
  */
-export declare function hashFileInWorker(file: File, chunkSize: number): WorkerHashSession;
+export declare function hashFileInWorker(file: File, chunkSize: number, signal?: AbortSignal): WorkerHashSession;
 //# sourceMappingURL=hash_worker.d.ts.map

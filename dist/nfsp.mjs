@@ -199,6 +199,12 @@ class NfspClient {
     }
     return await this.write("commit_file", { at: toLocator(parent), args });
   }
+  async commitObject(parent, name, objId, opts) {
+    return await this.write("commit_object", {
+      at: toLocator(parent),
+      args: { name, obj_id: objId, overwrite: opts == null ? void 0 : opts.overwrite, expected_revision: opts == null ? void 0 : opts.expectedRevision, lease_id: opts == null ? void 0 : opts.leaseId }
+    });
+  }
   /** Which of these digests must be uploaded (§ probe / 秒传). */
   async probe(digests) {
     return await this.call("probe", { args: { digests } });

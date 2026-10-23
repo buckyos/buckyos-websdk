@@ -1,4 +1,4 @@
-import { ac as getDefaultExportFromCjs, R as commonjsGlobal } from "./ndn_types-ac9c1e48.mjs";
+import { ac as getDefaultExportFromCjs, R as commonjsGlobal } from "./ndn_types-dcb74613.mjs";
 function _typeof$8(o) {
   "@babel/helpers - typeof";
   return _typeof$8 = "function" == typeof Symbol && "symbol" == typeof Symbol.iterator ? function(o2) {
@@ -3167,6 +3167,43 @@ var Upload = /* @__PURE__ */ function(_BaseUpload) {
   }]);
 }(BaseUpload);
 var isSupported = typeof XMLHttpRequest === "function" && typeof Blob === "function" && typeof Blob.prototype.slice === "function";
+const fetchHttpStack = {
+  getName: () => "FetchHttpStack",
+  createRequest(method, url) {
+    const headers = new Headers();
+    const controller = new AbortController();
+    let progress;
+    let response;
+    return {
+      getMethod: () => method,
+      getURL: () => url,
+      setHeader: (name, value) => {
+        headers.set(name, value);
+      },
+      getHeader: (name) => headers.get(name) ?? void 0,
+      setProgressHandler: (handler) => {
+        progress = handler;
+      },
+      async send(body = null) {
+        response = await fetch(url, { method, headers, body, signal: controller.signal, credentials: "include" });
+        const text = await response.text();
+        if (response.ok && body instanceof Blob)
+          progress == null ? void 0 : progress(body.size);
+        const received = response;
+        return {
+          getStatus: () => received.status,
+          getHeader: (name) => received.headers.get(name) ?? void 0,
+          getBody: () => text,
+          getUnderlyingObject: () => received
+        };
+      },
+      async abort() {
+        controller.abort();
+      },
+      getUnderlyingObject: () => response
+    };
+  }
+};
 export {
   XHRHttpStack as DefaultHttpStack,
   DetailedError$1 as DetailedError,
@@ -3174,6 +3211,7 @@ export {
   canStoreURLs,
   defaultOptions,
   enableDebugLog,
+  fetchHttpStack,
   isSupported
 };
-//# sourceMappingURL=tus_client-19baa342.mjs.map
+//# sourceMappingURL=tus_client-8fd4d937.mjs.map
