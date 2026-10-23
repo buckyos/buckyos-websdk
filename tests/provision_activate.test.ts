@@ -141,13 +141,25 @@ describe('offline activation API', () => {
       'etc/corp.example.com.zone.json',
       'etc/zone_document.jwt',
       'etc/zone_dns_records.json',
-      'etc/start_config.json',
+      'security/start_config.json',
       'etc/node_gateway_params.json',
       'etc/node_identity.json',
     ])
     expect(precheck.plannedFiles.filter(file => file.secret).map(file => file.path)).toEqual([
       'security/ood1.corp.example.com/authentication.private.pem',
+      'security/start_config.json',
     ])
+  })
+
+  test('status detects private start config before node identity is committed', async () => {
+    const rootDir = makeInstalledRoot(sandbox)
+    fs.mkdirSync(path.join(rootDir, 'security'))
+    fs.writeFileSync(path.join(rootDir, 'security', 'start_config.json'), '{}', { mode: 0o600 })
+    const status = await inspectActivationRoot(rootDir)
+    expect(status.state).toBe('partial')
+    expect(status.files.find(file => file.role === 'start_config')).toEqual({
+      path: 'security/start_config.json', role: 'start_config', required: true, secret: true, present: true,
+    })
   })
 
   test('check reports backup and target problems without throwing', async () => {
@@ -238,7 +250,15 @@ describe('offline activation API', () => {
       expect(fs.statSync(ownerKeyBackupPath).mode & 0o777).toBe(0o600)
     }
 
-    const startConfig = readJson(path.join(rootDir, 'etc', 'start_config.json'))
+    const startConfigPath = path.join(rootDir, 'security', 'start_config.json')
+    const startConfig = readJson(startConfigPath)
+    expect(fs.existsSync(path.join(rootDir, 'etc', 'start_config.json'))).toBe(false)
+    expect(result.committedFiles.find(file => file.role === 'start_config')).toMatchObject({
+      path: 'security/start_config.json', secret: true, sha256: null,
+    })
+    if (process.platform !== 'win32') {
+      expect(fs.statSync(startConfigPath).mode & 0o777).toBe(0o600)
+    }
     expect(startConfig.user_name).toBe('alice')
     expect(startConfig.zone_name).toBe(result.zoneDid)
     expect(startConfig.access_hostname).toBe('home.example.com')
@@ -368,7 +388,7 @@ describe('offline activation API', () => {
       adminPassword: 'test-password',
       ownerKeyBackupPath: path.join(sandbox, 'owner.pem'),
     })
-    const startConfigPath = path.join(rootDir, 'etc', 'start_config.json')
+    const startConfigPath = path.join(rootDir, 'security', 'start_config.json')
     const startConfig = readJson(startConfigPath)
     startConfig.zone_name = 'did:web:other.example.com'
     fs.writeFileSync(startConfigPath, JSON.stringify(startConfig))

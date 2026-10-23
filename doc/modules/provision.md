@@ -70,7 +70,7 @@
 | `etc/<domain>.zone.json` | zone_boot_override | 最小 ZoneBoot，本地启动旁路读取 |
 | `etc/zone_document.jwt` | zone_document_jwt | Owner 签名，< 4096 字节 |
 | `etc/zone_dns_records.json` | dns_records | 可选说明文件，不作激活标记 |
-| `etc/start_config.json` | start_config | 首次启动配置，含 admin_password_hash，不含任何私钥 |
+| `security/start_config.json` | start_config | 首次启动配置，含 admin_password_hash，0600，目录 0700，secret，不含任何私钥 |
 | `etc/node_gateway_params.json` | gateway_params | `device_did` 和从设备文档生成的字符串 `rtcp_port`（默认 `2980`）；`did:bns:unactivated.local` 占位不算激活标记 |
 | `etc/node_identity.json` | node_identity | node-daemon 的激活开关，最后提交 |
 
@@ -120,7 +120,7 @@ check 不生成密钥、不写备份、不改变目标目录、不产生可 appl
 
 root 指 CLI 当前所在机器的目录。Jarvis/paios 容器中的路径不自动代表 Host。
 
-私钥材料创建即限制访问：设备私钥 0600 / 目录 0700，Owner 备份 0600 且独占创建、禁止覆盖；
+设备私钥和 start_config 创建即限制为 0600 / 目录 0700，Owner 备份 0600 且独占创建、禁止覆盖；
 备份路径已存在（含悬空符号链接）返回 `OWNER_KEY_BACKUP_EXISTS`，父目录不存在返回 `OWNER_KEY_BACKUP_DIRECTORY_MISSING`。
 不继承脚本的 `~/.buckycli/owner-keys` 默认路径。
 
