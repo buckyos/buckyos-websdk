@@ -175,6 +175,7 @@ export type { ZoneUserType, TokenPrincipalKind } from './runtime';
 export { VerifyHubClient };
 export { RPCError } from './krpc_client';
 export * from './hybrid_sso';
+export * from './app_login';
 export type { AppAuthTarget, AuthTarget, LoginByJwtParams, LoginByPasswordParams, RefreshTokenParams, SudoByPasswordParams, SudoByPasswordResponse, SystemAuthTarget, TokenPair, VerifyTokenParams, } from './verify-hub-client';
 export { SystemConfigClient };
 export * from './task_mgr_client';

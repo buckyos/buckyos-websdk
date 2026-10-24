@@ -231,15 +231,15 @@ const DENY_REASONS = [
   "authorization_unavailable"
 ];
 const ACCESS_DENIED_ERROR_CODE = "access_denied";
-function isRecord(value) {
+function isRecord$1(value) {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
 function parseAccessDenial(value) {
-  if (!isRecord(value) || typeof value.reason !== "string")
+  if (!isRecord$1(value) || typeof value.reason !== "string")
     return null;
   if (!DENY_REASONS.includes(value.reason))
     return null;
-  const adjust = isRecord(value.adjust) && typeof value.adjust.party === "string" ? value.adjust : null;
+  const adjust = isRecord$1(value.adjust) && typeof value.adjust.party === "string" ? value.adjust : null;
   if (!adjust)
     return null;
   return value;
@@ -251,7 +251,7 @@ function accessDenialOf(error) {
 }
 const ANONYMOUS_IDENTITY = { kind: "anonymous" };
 function parseCurrentIdentity(value) {
-  if (!isRecord(value))
+  if (!isRecord$1(value))
     return null;
   if (value.kind === "anonymous")
     return ANONYMOUS_IDENTITY;
@@ -4868,6 +4868,72 @@ class KEventClient {
       }
     };
   }
+}
+const APP_LOGIN_ISSUE_METHOD = "user.app_login.issue";
+const APP_LOGIN_EXCHANGE_METHOD = "auth.app_login.exchange";
+const APP_LOGIN_SETTINGS_GET_METHOD = "apps.app_login.get";
+const APP_LOGIN_SETTINGS_SET_METHOD = "apps.app_login.set";
+function isRecord(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+async function issueAppLoginCode(client, params) {
+  const result = await client.call(APP_LOGIN_ISSUE_METHOD, { ...params });
+  if (!isRecord(result) || typeof result.code !== "string" || typeof result.user_id !== "string") {
+    throw new Error(`invalid ${APP_LOGIN_ISSUE_METHOD} response`);
+  }
+  return {
+    user_id: result.user_id,
+    code: result.code,
+    expires_at: Number(result.expires_at ?? 0),
+    new_account: result.new_account === true,
+    invite: isRecord(result.invite) ? result.invite : {}
+  };
+}
+function parseAppLoginExchangeResult(value) {
+  if (!isRecord(value))
+    return null;
+  if (value.status === "ready") {
+    if (typeof value.callback_url !== "string" || typeof value.user_id !== "string")
+      return null;
+    return { status: "ready", callback_url: value.callback_url, user_id: value.user_id };
+  }
+  if (value.status === "denied") {
+    const denial = parseAccessDenial(value.denial);
+    return denial ? { status: "denied", denial } : null;
+  }
+  return null;
+}
+function randomAppLoginNonce() {
+  var _a2;
+  const bytes2 = new Uint8Array(16);
+  if (typeof ((_a2 = globalThis.crypto) == null ? void 0 : _a2.getRandomValues) === "function") {
+    globalThis.crypto.getRandomValues(bytes2);
+  } else {
+    for (let i = 0; i < bytes2.length; i += 1)
+      bytes2[i] = Math.floor(Math.random() * 256);
+  }
+  return Array.from(bytes2, (b2) => b2.toString(16).padStart(2, "0")).join("");
+}
+async function loginByAppAccessToken(params) {
+  const client = params.client ?? new kRPCClient(params.controlPanelUrl ?? "/kapi/control-panel");
+  const request = {
+    code: params.code,
+    nonce: params.nonce ?? randomAppLoginNonce()
+  };
+  if (params.return_path)
+    request.return_path = params.return_path;
+  const result = parseAppLoginExchangeResult(await client.call(APP_LOGIN_EXCHANGE_METHOD, request));
+  if (!result)
+    throw new Error(`invalid ${APP_LOGIN_EXCHANGE_METHOD} response`);
+  return result;
+}
+async function completeAppAccessTokenLogin(params, navigate = (url) => {
+  window.location.assign(url);
+}) {
+  const result = await loginByAppAccessToken(params);
+  if (result.status === "ready")
+    navigate(result.callback_url);
+  return result;
 }
 const WEB3_BRIDGE_HOST = "web3.buckyos.ai";
 const BS_SERVICE_VERIFY_HUB = "verify-hub";
@@ -29662,7 +29728,7 @@ export {
   ZONE_USER_TYPES as Z,
   CONTACT_TAG_ZONE_AGENT as _,
   ndm_proxy as a,
-  TaskExecutorKind as a$,
+  TASK_ERR_ALREADY_COMPLETED as a$,
   CONTACT_CHANGED_EVENT_BOX as a0,
   WELL_KNOWN_CONTACT_TAGS as a1,
   USER_TYPE_GROUP_REF_PREFIX as a2,
@@ -29673,33 +29739,33 @@ export {
   DENY_REASONS as a7,
   ACCESS_DENIED_ERROR_CODE as a8,
   parseAccessDenial as a9,
-  AGENT_DELEGATE_TASK_SCHEMA_ID as aA,
-  HUMAN_INPUT_TASK_SCHEMA_ID as aB,
-  OPENDAN_ASYNC_TOOL_TASK_SCHEMA_ID as aC,
-  OPENDAN_COMMAND_TASK_SCHEMA_ID as aD,
-  TOOL_EXEC_BASH_TASK_SCHEMA_ID as aE,
-  AICC_COMPUTE_TASK_SCHEMA_ID as aF,
-  APP_INSTALL_TASK_SCHEMA_ID as aG,
-  APP_UNINSTALL_TASK_SCHEMA_ID as aH,
-  APP_START_TASK_SCHEMA_ID as aI,
-  APP_UPDATE_TASK_SCHEMA_ID as aJ,
-  APP_UPDATE_BATCH_TASK_SCHEMA_ID as aK,
-  TASK_ERR_NOT_FOUND as aL,
-  TASK_ERR_PERMISSION_DENIED as aM,
-  TASK_ERR_REVISION_CONFLICT as aN,
-  TASK_ERR_STALE_RUNNER_EPOCH as aO,
-  TASK_ERR_INVALID_PHASE as aP,
-  TASK_ERR_CONTROL_NOT_AVAILABLE as aQ,
-  TASK_ERR_CONTROL_ALREADY_PENDING as aR,
-  TASK_ERR_ALREADY_COMPLETED as aS,
-  TASK_ERR_INPUT_SCHEMA_MISMATCH as aT,
-  TASK_ERR_RESULT_SCHEMA_MISMATCH as aU,
-  TASK_ERR_IDEMPOTENCY_CONFLICT as aV,
-  TASK_ERR_SCHEMA_NOT_FOUND as aW,
-  TASK_MGR_ERROR_CODES as aX,
-  taskMgrTaskEventPath as aY,
-  taskMgrTreeEventPath as aZ,
-  taskMgrErrorCode as a_,
+  SCHEDULER_DISPATCH_THUNK_TASK_SCHEMA_ID as aA,
+  WORKFLOW_RUN_TREE_TASK_SCHEMA_ID as aB,
+  WORKFLOW_STEP_TASK_SCHEMA_ID as aC,
+  WORKFLOW_MAP_SHARD_TASK_SCHEMA_ID as aD,
+  WORKFLOW_THUNK_TASK_SCHEMA_ID as aE,
+  WORKFLOW_SCHEDULE_TASK_SCHEMA_ID as aF,
+  WORKFLOW_SEND_MESSAGE_TASK_SCHEMA_ID as aG,
+  WORKFLOW_EXECUTE_RPC_TASK_SCHEMA_ID as aH,
+  WORKFLOW_RUN_TARGET_TASK_SCHEMA_ID as aI,
+  AGENT_DELEGATE_TASK_SCHEMA_ID as aJ,
+  HUMAN_INPUT_TASK_SCHEMA_ID as aK,
+  OPENDAN_ASYNC_TOOL_TASK_SCHEMA_ID as aL,
+  OPENDAN_COMMAND_TASK_SCHEMA_ID as aM,
+  TOOL_EXEC_BASH_TASK_SCHEMA_ID as aN,
+  AICC_COMPUTE_TASK_SCHEMA_ID as aO,
+  APP_INSTALL_TASK_SCHEMA_ID as aP,
+  APP_UNINSTALL_TASK_SCHEMA_ID as aQ,
+  APP_START_TASK_SCHEMA_ID as aR,
+  APP_UPDATE_TASK_SCHEMA_ID as aS,
+  APP_UPDATE_BATCH_TASK_SCHEMA_ID as aT,
+  TASK_ERR_NOT_FOUND as aU,
+  TASK_ERR_PERMISSION_DENIED as aV,
+  TASK_ERR_REVISION_CONFLICT as aW,
+  TASK_ERR_STALE_RUNNER_EPOCH as aX,
+  TASK_ERR_INVALID_PHASE as aY,
+  TASK_ERR_CONTROL_NOT_AVAILABLE as aZ,
+  TASK_ERR_CONTROL_ALREADY_PENDING as a_,
   accessDenialOf as aa,
   ANONYMOUS_IDENTITY as ab,
   parseCurrentIdentity as ac,
@@ -29710,103 +29776,112 @@ export {
   normalizeZoneHostname as ah,
   zoneActionUrl as ai,
   buildJumpUrl as aj,
-  TASK_MANAGER_SERVICE_UNIQUE_ID as ak,
-  TASK_MANAGER_SERVICE_NAME as al,
-  TASK_MANAGER_SERVICE_PORT as am,
-  TASK_POLICY_PRESET_COLLABORATIVE_TREE_V1 as an,
-  RAW_TASK_SCHEMA_ID as ao,
-  HUMAN_APPROVAL_SCHEMA_ID as ap,
-  DOWNLOAD_TASK_SCHEMA_ID as aq,
-  SCHEDULER_DISPATCH_THUNK_TASK_SCHEMA_ID as ar,
-  WORKFLOW_RUN_TREE_TASK_SCHEMA_ID as as,
-  WORKFLOW_STEP_TASK_SCHEMA_ID as at,
-  WORKFLOW_MAP_SHARD_TASK_SCHEMA_ID as au,
-  WORKFLOW_THUNK_TASK_SCHEMA_ID as av,
-  WORKFLOW_SCHEDULE_TASK_SCHEMA_ID as aw,
-  WORKFLOW_SEND_MESSAGE_TASK_SCHEMA_ID as ax,
-  WORKFLOW_EXECUTE_RPC_TASK_SCHEMA_ID as ay,
-  WORKFLOW_RUN_TARGET_TASK_SCHEMA_ID as az,
+  APP_LOGIN_ISSUE_METHOD as ak,
+  APP_LOGIN_EXCHANGE_METHOD as al,
+  APP_LOGIN_SETTINGS_GET_METHOD as am,
+  APP_LOGIN_SETTINGS_SET_METHOD as an,
+  issueAppLoginCode as ao,
+  parseAppLoginExchangeResult as ap,
+  randomAppLoginNonce as aq,
+  loginByAppAccessToken as ar,
+  completeAppAccessTokenLogin as as,
+  TASK_MANAGER_SERVICE_UNIQUE_ID as at,
+  TASK_MANAGER_SERVICE_NAME as au,
+  TASK_MANAGER_SERVICE_PORT as av,
+  TASK_POLICY_PRESET_COLLABORATIVE_TREE_V1 as aw,
+  RAW_TASK_SCHEMA_ID as ax,
+  HUMAN_APPROVAL_SCHEMA_ID as ay,
+  DOWNLOAD_TASK_SCHEMA_ID as az,
   bns_client as b,
-  BNS_DNS_TXT_DEFAULT_TTL as b$,
-  TaskPhase as b0,
-  isTerminalTaskPhase as b1,
-  TaskWaitReasonKind as b2,
-  TaskOutcome as b3,
-  TaskControlAction as b4,
-  baselineTaskControlProfile as b5,
-  DEFAULT_CHILD_CONTROL_POLICY as b6,
-  TaskAction as b7,
-  TaskGrantScope as b8,
-  TaskDataScope as b9,
-  AICC_POLICY_REFUSAL_CODES as bA,
-  aiccRefusalOf as bB,
-  isAiccAiMethod as bC,
-  aiccTextMessage as bD,
-  aiccMessageTextContent as bE,
-  aiccMessageFirstText as bF,
-  validateAiccMessage as bG,
-  AiccClient as bH,
-  decisionRequirements as bI,
-  validateDecisionRequest as bJ,
-  validateDecisionAnswers as bK,
-  parseVideoPrompt as bL,
-  validateVideoOutput as bM,
-  validateVideoGeneration as bN,
-  validateVideoEdit as bO,
-  videoGenerationRequirement as bP,
-  KEventReader as bQ,
-  KEventClient as bR,
-  appIdFromDid as bS,
-  parseAppId as bT,
-  appDidFromId as bU,
-  createAppInstanceId as bV,
-  parseAppInstanceId as bW,
-  BNS_EVM_DEFAULT_GAS_LIMIT as bX,
-  BNS_EVM_DEFAULT_MAX_FEE_PER_GAS as bY,
-  BNS_EVM_DEFAULT_MAX_PRIORITY_FEE_PER_GAS as bZ,
-  BNS_MAX_INLINE_DOCUMENT_BYTES as b_,
-  StorageDomain as ba,
-  TaskEventType as bb,
-  TaskManagerClient as bc,
-  WORKFLOW_SERVICE_NAME as bd,
-  WorkflowStepType as be,
-  WorkflowOutputMode as bf,
-  WorkflowJoinMode as bg,
-  WorkflowRetryFallback as bh,
-  WorkflowDefinitionStatus as bi,
-  WorkflowRunStatus as bj,
-  WorkflowNodeRunState as bk,
-  WorkflowHumanActionKind as bl,
-  WorkflowScheduledTaskStatus as bm,
-  WorkflowScheduledTaskMisfirePolicy as bn,
-  WorkflowScheduledTaskFireStatus as bo,
-  WorkflowClient as bp,
-  AICC_SERVICE_UNIQUE_ID as bq,
-  AICC_SERVICE_SERVICE_NAME as br,
-  AICC_SERVICE_SERVICE_PORT as bs,
-  AICC_AI_METHODS as bt,
-  AICC_CORE_METHODS as bu,
-  AICC_MANAGEMENT_METHODS as bv,
-  AICC_QUOTA_METHODS as bw,
-  AICC_METHODS as bx,
-  AICC_FEATURES as by,
-  AICC_EXECUTION_MODES as bz,
+  appIdFromDid as b$,
+  TASK_ERR_INPUT_SCHEMA_MISMATCH as b0,
+  TASK_ERR_RESULT_SCHEMA_MISMATCH as b1,
+  TASK_ERR_IDEMPOTENCY_CONFLICT as b2,
+  TASK_ERR_SCHEMA_NOT_FOUND as b3,
+  TASK_MGR_ERROR_CODES as b4,
+  taskMgrTaskEventPath as b5,
+  taskMgrTreeEventPath as b6,
+  taskMgrErrorCode as b7,
+  TaskExecutorKind as b8,
+  TaskPhase as b9,
+  AICC_SERVICE_SERVICE_NAME as bA,
+  AICC_SERVICE_SERVICE_PORT as bB,
+  AICC_AI_METHODS as bC,
+  AICC_CORE_METHODS as bD,
+  AICC_MANAGEMENT_METHODS as bE,
+  AICC_QUOTA_METHODS as bF,
+  AICC_METHODS as bG,
+  AICC_FEATURES as bH,
+  AICC_EXECUTION_MODES as bI,
+  AICC_POLICY_REFUSAL_CODES as bJ,
+  aiccRefusalOf as bK,
+  isAiccAiMethod as bL,
+  aiccTextMessage as bM,
+  aiccMessageTextContent as bN,
+  aiccMessageFirstText as bO,
+  validateAiccMessage as bP,
+  AiccClient as bQ,
+  decisionRequirements as bR,
+  validateDecisionRequest as bS,
+  validateDecisionAnswers as bT,
+  parseVideoPrompt as bU,
+  validateVideoOutput as bV,
+  validateVideoGeneration as bW,
+  validateVideoEdit as bX,
+  videoGenerationRequirement as bY,
+  KEventReader as bZ,
+  KEventClient as b_,
+  isTerminalTaskPhase as ba,
+  TaskWaitReasonKind as bb,
+  TaskOutcome as bc,
+  TaskControlAction as bd,
+  baselineTaskControlProfile as be,
+  DEFAULT_CHILD_CONTROL_POLICY as bf,
+  TaskAction as bg,
+  TaskGrantScope as bh,
+  TaskDataScope as bi,
+  StorageDomain as bj,
+  TaskEventType as bk,
+  TaskManagerClient as bl,
+  WORKFLOW_SERVICE_NAME as bm,
+  WorkflowStepType as bn,
+  WorkflowOutputMode as bo,
+  WorkflowJoinMode as bp,
+  WorkflowRetryFallback as bq,
+  WorkflowDefinitionStatus as br,
+  WorkflowRunStatus as bs,
+  WorkflowNodeRunState as bt,
+  WorkflowHumanActionKind as bu,
+  WorkflowScheduledTaskStatus as bv,
+  WorkflowScheduledTaskMisfirePolicy as bw,
+  WorkflowScheduledTaskFireStatus as bx,
+  WorkflowClient as by,
+  AICC_SERVICE_UNIQUE_ID as bz,
   createSDKModule as c,
-  BNS_DNS_TXT_DOC_TYPE as c0,
-  BNS_PUBLISH_DOCUMENT_ABI as c1,
-  BnsEvmTxError as c2,
-  BnsEvmTxBuilder as c3,
-  decodeBnsPublishDocumentCalldata as c4,
-  BnsTxExecutorError as c5,
-  walletUserHasSnAccount as c6,
-  BnsTxExecutor as c7,
-  ExecutorClient as c8,
-  ExecutorStreamError as c9,
-  encodeExecutorControl as ca,
-  ExecutorCommandStream as cb,
-  AIWORKSPACE_SERVICE_NAME as cc,
-  AiwsFailure as cd,
-  AiWorkspaceClient as ce,
+  parseAppId as c0,
+  appDidFromId as c1,
+  createAppInstanceId as c2,
+  parseAppInstanceId as c3,
+  BNS_EVM_DEFAULT_GAS_LIMIT as c4,
+  BNS_EVM_DEFAULT_MAX_FEE_PER_GAS as c5,
+  BNS_EVM_DEFAULT_MAX_PRIORITY_FEE_PER_GAS as c6,
+  BNS_MAX_INLINE_DOCUMENT_BYTES as c7,
+  BNS_DNS_TXT_DEFAULT_TTL as c8,
+  BNS_DNS_TXT_DOC_TYPE as c9,
+  BNS_PUBLISH_DOCUMENT_ABI as ca,
+  BnsEvmTxError as cb,
+  BnsEvmTxBuilder as cc,
+  decodeBnsPublishDocumentCalldata as cd,
+  BnsTxExecutorError as ce,
+  walletUserHasSnAccount as cf,
+  BnsTxExecutor as cg,
+  ExecutorClient as ch,
+  ExecutorStreamError as ci,
+  encodeExecutorControl as cj,
+  ExecutorCommandStream as ck,
+  AIWORKSPACE_SERVICE_NAME as cl,
+  AiwsFailure as cm,
+  AiWorkspaceClient as cn,
   BS_SERVICE_TASK_MANAGER as d,
   getActiveRuntimeType as e,
   getActiveZoneGatewayOrigin as f,
@@ -29831,4 +29906,4 @@ export {
   NOTIFY_TEXT_CONTROL_ID as y,
   NOTIFY_ACTION_ANSWER as z
 };
-//# sourceMappingURL=executor_client-eb372968.mjs.map
+//# sourceMappingURL=executor_client-ef3c8d54.mjs.map

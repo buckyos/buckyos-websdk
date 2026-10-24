@@ -975,6 +975,7 @@ export type { ZoneUserType, TokenPrincipalKind } from './runtime'
 export { VerifyHubClient }
 export { RPCError } from './krpc_client'
 export * from './hybrid_sso'
+export * from './app_login'
 export type {
   AppAuthTarget,
   AuthTarget,

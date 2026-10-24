@@ -5,7 +5,7 @@
 import { RPCError } from './krpc_client'
 import type { ZoneUserType } from './runtime'
 
-export type AuthMethod = 'password' | 'exclusive_invite' | 'did_federation' | 'assertion'
+export type AuthMethod = 'password' | 'exclusive_invite' | 'did_federation' | 'assertion' | 'app_access_token'
 
 export type SessionScope = 'account_self' | 'msg_group' | 'aiworkspace' | 'homestation' | 'aicc'
 
