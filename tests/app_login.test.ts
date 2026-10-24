@@ -4,6 +4,7 @@ import {
   APP_LOGIN_EXCHANGE_METHOD,
   APP_LOGIN_ISSUE_METHOD,
   completeAppAccessTokenLogin,
+  issueAppCustomerLink,
   issueAppLoginCode,
   loginByAppAccessToken,
   parseAppLoginExchangeResult,
@@ -56,8 +57,41 @@ describe('App login', () => {
       external_account_id: 'crm:42',
       show_name: 'Alice',
       return_path: '/tickets/42',
+      kind: 'code',
     })
     expect(body.sys).toEqual([1, 'app-service-token'])
+  })
+
+  it('issues a 48-hour customer link on the Zone root', async () => {
+    const fetcher = jest.fn().mockResolvedValue(
+      response({
+        result: {
+          user_id: 'crm-0123456789abcdef',
+          link: 'https://zone.example/sso/invite/ei-2#s=secret',
+          expires_at: 172_800,
+          new_account: false,
+          invite: { invite_id: 'ei-2' },
+        },
+        sys: [1],
+      }),
+    )
+    const issued = await issueAppCustomerLink(clientWith(fetcher, 'app-service-token'), {
+      external_account_id: 'crm:42',
+      resource: { kind: 'group_session', group_did: 'did:web:support.zone', session_id: 't-42' },
+      return_path: '/messagehub/guest?group=did%3Aweb%3Asupport.zone&session=t-42',
+    })
+    expect(issued).toEqual({
+      user_id: 'crm-0123456789abcdef',
+      link: 'https://zone.example/sso/invite/ei-2#s=secret',
+      expires_at: 172_800,
+      new_account: false,
+      invite: { invite_id: 'ei-2' },
+    })
+    const body = await sentBody(fetcher)
+    expect(body.params).toMatchObject({ external_account_id: 'crm:42', kind: 'link' })
+    // A code response is not a link.
+    const code = jest.fn().mockResolvedValue(response({ result: { user_id: 'u', code: 'ei-1.s' }, sys: [1] }))
+    await expect(issueAppCustomerLink(clientWith(code), { external_account_id: 'x' })).rejects.toThrow('invalid')
   })
 
   it('exchanges the code with a nonce and navigates on ready', async () => {

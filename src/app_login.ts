@@ -1,8 +1,11 @@
-// App 代登录 (buckyos notepads/self-host-group-extension-todo.md EXT-09, D-7).
-// An App signs its own external customers in: the App backend, with its App
-// service session, asks Control Panel for a one-time code (`issueAppLoginCode`);
-// the App's page exchanges it (`loginByAppAccessToken`) and follows the returned
-// callback URL, which sets the host-only cookies of the App's own origin.
+// App 代登录 (buckyos notepads/self-host-group-extension-todo.md EXT-09, D-7; EXT-11, D-8).
+// An App signs its own external customers in. The App backend, with its App
+// service session, asks Control Panel for either a one-time code
+// (`issueAppLoginCode`) that the App's page exchanges (`loginByAppAccessToken`)
+// on the App's own origin, or a 48-hour customer link (`issueAppCustomerLink`)
+// the customer opens on the Zone root like an admin-issued exclusive invite:
+// usable until it expires or the customer sets a password, after which the same
+// link asks for the password.
 
 import { kRPCClient } from './krpc_client'
 import { parseAccessDenial, type AccessDenial } from './hybrid_sso'
@@ -28,13 +31,22 @@ export interface IssueAppLoginCodeParams {
   show_name?: string
   /** A group Session to invite the account into as a guest, as the App owner. */
   resource?: AppLoginResource
-  /** Path on the App's origin the exchange returns to (default `/`). */
+  /** Where the customer lands after signing in: a path on the App's origin for a code, on the Zone root for a link (default `/`). */
   return_path?: string
 }
 
 export interface IssuedAppLoginCode {
   user_id: string
   code: string
+  expires_at: number
+  new_account: boolean
+  invite: Record<string, unknown>
+}
+
+export interface IssuedAppCustomerLink {
+  user_id: string
+  /** `https://<zone>/sso/invite/<id>#s=<secret>`; the secret is in the fragment only. */
+  link: string
   expires_at: number
   new_account: boolean
   invite: Record<string, unknown>
@@ -54,18 +66,46 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
+async function issue(
+  client: kRPCClient,
+  params: IssueAppLoginCodeParams,
+  kind: 'code' | 'link',
+): Promise<Record<string, unknown>> {
+  const result = await client.call(APP_LOGIN_ISSUE_METHOD, { ...params, kind })
+  if (!isRecord(result) || typeof result[kind] !== 'string' || typeof result.user_id !== 'string') {
+    throw new Error(`invalid ${APP_LOGIN_ISSUE_METHOD} response`)
+  }
+  return result
+}
+
 /** App backend side: `client` is a control-panel kRPC client holding the App's service token. */
 export async function issueAppLoginCode(
   client: kRPCClient,
   params: IssueAppLoginCodeParams,
 ): Promise<IssuedAppLoginCode> {
-  const result = await client.call(APP_LOGIN_ISSUE_METHOD, { ...params })
-  if (!isRecord(result) || typeof result.code !== 'string' || typeof result.user_id !== 'string') {
-    throw new Error(`invalid ${APP_LOGIN_ISSUE_METHOD} response`)
-  }
+  const result = await issue(client, params, 'code')
   return {
-    user_id: result.user_id,
-    code: result.code,
+    user_id: result.user_id as string,
+    code: result.code as string,
+    expires_at: Number(result.expires_at ?? 0),
+    new_account: result.new_account === true,
+    invite: isRecord(result.invite) ? result.invite : {},
+  }
+}
+
+/**
+ * App backend side: a 48-hour customer link on the Zone root. `return_path` is a
+ * Zone-root path (for a group Session usually `/messagehub/guest?group=&session=`),
+ * not a path on the App's origin.
+ */
+export async function issueAppCustomerLink(
+  client: kRPCClient,
+  params: IssueAppLoginCodeParams,
+): Promise<IssuedAppCustomerLink> {
+  const result = await issue(client, params, 'link')
+  return {
+    user_id: result.user_id as string,
+    link: result.link as string,
     expires_at: Number(result.expires_at ?? 0),
     new_account: result.new_account === true,
     invite: isRecord(result.invite) ? result.invite : {},
