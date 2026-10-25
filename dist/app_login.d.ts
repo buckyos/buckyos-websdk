@@ -19,12 +19,20 @@ export interface IssueAppLoginCodeParams {
     show_name?: string;
     /** A group Session to invite the account into as a guest, as the App owner. */
     resource?: AppLoginResource;
-    /** Path on the App's origin the exchange returns to (default `/`). */
+    /** Where the customer lands after signing in: a path on the App's origin for a code, on the Zone root for a link (default `/`). */
     return_path?: string;
 }
 export interface IssuedAppLoginCode {
     user_id: string;
     code: string;
+    expires_at: number;
+    new_account: boolean;
+    invite: Record<string, unknown>;
+}
+export interface IssuedAppCustomerLink {
+    user_id: string;
+    /** `https://<zone>/sso/invite/<id>#s=<secret>`; the secret is in the fragment only. */
+    link: string;
     expires_at: number;
     new_account: boolean;
     invite: Record<string, unknown>;
@@ -44,6 +52,12 @@ export interface AppLoginSettings {
 }
 /** App backend side: `client` is a control-panel kRPC client holding the App's service token. */
 export declare function issueAppLoginCode(client: kRPCClient, params: IssueAppLoginCodeParams): Promise<IssuedAppLoginCode>;
+/**
+ * App backend side: a 48-hour customer link on the Zone root. `return_path` is a
+ * Zone-root path (for a group Session usually `/messagehub/guest?group=&session=`),
+ * not a path on the App's origin.
+ */
+export declare function issueAppCustomerLink(client: kRPCClient, params: IssueAppLoginCodeParams): Promise<IssuedAppCustomerLink>;
 export declare function parseAppLoginExchangeResult(value: unknown): AppLoginExchangeResult | null;
 export declare function randomAppLoginNonce(): string;
 export interface LoginByAppAccessTokenParams {
