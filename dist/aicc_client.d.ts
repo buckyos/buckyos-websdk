@@ -1326,6 +1326,11 @@ export interface ProviderValidationErrorDetail {
     message: string;
 }
 export interface ProviderValidateResponse {
+    models_recognized: string[];
+    unmatched_models: JsonValue[];
+    unavailable_presets: JsonValue[];
+    routing_candidates: Record<string, string[]>;
+    warnings: string[];
     base_url_reachable: boolean;
     auth_valid: boolean;
     models_discovered: string[];
@@ -1388,6 +1393,8 @@ export interface ProviderInstanceHealthView {
     checked_at_ms?: number;
 }
 export interface ProviderInstanceView {
+    provider_rules_id?: string;
+    instance_rules?: JsonValue;
     provider_instance_name: string;
     provider_type: string;
     provider_profile_id: string;
@@ -1410,6 +1417,7 @@ export interface ProviderHealthResponse {
     health: JsonValue;
 }
 export interface ProviderUpdateRequest {
+    provider_rules_id?: string;
     provider_instance_name: string;
     settings_revision: number;
     enabled?: boolean;
