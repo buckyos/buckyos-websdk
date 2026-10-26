@@ -1156,6 +1156,19 @@ interface GeneratedMaterial {
   dnsRecords: ActivationDnsRecord[]
 }
 
+/**
+ * The installed product edition (`<root>/etc/product.json`, the full edition
+ * when absent): BuckyOS Desktop Lite activates its node without containers.
+ */
+function productRunsContainers(rootDir: string): boolean {
+  const fs = requireNode('node:fs')
+  const path = requireNode('node:path')
+  const file = path.join(rootDir, 'etc', 'product.json')
+  if (!fs.existsSync(file)) return true
+  const profile = JSON.parse(fs.readFileSync(file, 'utf8')) as { capabilities?: { container?: unknown } }
+  return profile.capabilities?.container !== false
+}
+
 async function generateMaterial(
   params: NormalizedActivationParams,
   adminPassword: string,
@@ -1198,7 +1211,12 @@ async function generateMaterial(
     params.deviceDid,
     now,
   )
-  delete (deviceDoc as Record<string, unknown>).support_container
+  // support_container is serialized only when false (serde default true).
+  if (productRunsContainers(params.rootDir)) {
+    delete (deviceDoc as Record<string, unknown>).support_container
+  } else {
+    deviceDoc.support_container = false
+  }
   deviceDoc.owner = ownerDidStr
   deviceDoc.zone_did = zoneDidStr
   deviceDoc.net_id = ACTIVATION_NET_ID

@@ -14874,6 +14874,16 @@ function precheckError(precheck) {
     { state: precheck.state, problems: precheck.problems }
   );
 }
+function productRunsContainers(rootDir) {
+  var _a3;
+  const fs = requireNode$1("node:fs");
+  const path = requireNode$1("node:path");
+  const file = path.join(rootDir, "etc", "product.json");
+  if (!fs.existsSync(file))
+    return true;
+  const profile = JSON.parse(fs.readFileSync(file, "utf8"));
+  return ((_a3 = profile.capabilities) == null ? void 0 : _a3.container) !== false;
+}
 async function generateMaterial(params, adminPassword, ownerKeyPair, deviceKeyPair) {
   const now = buckyosGetUnixTimestamp();
   const exp = now + ACTIVATION_DOCUMENT_VALIDITY_SECONDS;
@@ -14904,7 +14914,11 @@ async function generateMaterial(params, adminPassword, ownerKeyPair, deviceKeyPa
     params.deviceDid,
     now
   );
-  delete deviceDoc.support_container;
+  if (productRunsContainers(params.rootDir)) {
+    delete deviceDoc.support_container;
+  } else {
+    deviceDoc.support_container = false;
+  }
   deviceDoc.owner = ownerDidStr;
   deviceDoc.zone_did = zoneDidStr;
   deviceDoc.net_id = ACTIVATION_NET_ID;

@@ -379,6 +379,30 @@ describe('offline activation API', () => {
     expect(fs.existsSync(path.join(backupDir, 'second.pem'))).toBe(false)
   })
 
+  test('a BuckyOS Desktop Lite root is activated without containers', async () => {
+    const rootDir = makeInstalledRoot(sandbox)
+    fs.writeFileSync(path.join(rootDir, 'etc', 'product.json'), JSON.stringify({
+      schema_version: 1,
+      edition: 'lite',
+      capabilities: { container: false, user_service_apps: false, static_web_apps: true, max_running_agents: 1 },
+    }))
+    const backupDir = path.join(sandbox, 'backup-lite')
+    fs.mkdirSync(backupDir)
+    await activateOfflineZone({
+      rootDir,
+      domain: 'lite.example.com',
+      ownerName: 'alice',
+      adminPassword: 'test-password',
+      ownerKeyBackupPath: path.join(backupDir, 'owner.pem'),
+      publicIp: '203.0.113.10',
+      rtcpPort: 2980,
+      traceId: 'trace-lite',
+    })
+    const startConfig = readJson(path.join(rootDir, 'security', 'start_config.json'))
+    expect(decodeJwt(startConfig.device_doc_jwt).support_container).toBe(false)
+    expect(decodeJwt(startConfig.zone_document_jwt).devices.ood1.support_container).toBe(false)
+  })
+
   test('status distinguishes partial and invalid material', async () => {
     const rootDir = makeInstalledRoot(sandbox)
     await activateOfflineZone({
