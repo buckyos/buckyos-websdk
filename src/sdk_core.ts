@@ -1,4 +1,5 @@
 import type { AiWorkspaceClient } from './aiworkspace_client'
+import type { BucketClient } from './bucket_client'
 import { kRPCClient } from './krpc_client'
 import { AuthClient } from './auth_client'
 import { ANONYMOUS_IDENTITY } from './hybrid_sso'
@@ -716,6 +717,13 @@ export class BuckyOSSDK {
     return this.currentRuntime.getAiWorkspaceClient()
   }
 
+  getBucketClient(): BucketClient {
+    if (this.currentRuntime == null) {
+      throw new Error('BuckyOS WebSDK is not initialized,call initBuckyOS first')
+    }
+    return this.currentRuntime.getBucketClient()
+  }
+
   getMsgQueueClient(): MsgQueueClient {
     if (this.currentRuntime == null) {
       throw new Error('BuckyOS WebSDK is not initialized,call initBuckyOS first')
@@ -946,6 +954,7 @@ export function createSDKModule(target: SDKTarget) {
     getWorkflowClient: sdk.getWorkflowClient.bind(sdk),
     getAiccClient: sdk.getAiccClient.bind(sdk),
     getAiWorkspaceClient: sdk.getAiWorkspaceClient.bind(sdk),
+    getBucketClient: sdk.getBucketClient.bind(sdk),
     getMsgQueueClient: sdk.getMsgQueueClient.bind(sdk),
     getMsgCenterClient: sdk.getMsgCenterClient.bind(sdk),
     getRepoClient: sdk.getRepoClient.bind(sdk),

@@ -185,8 +185,19 @@ export interface PerObjectProgress {
     state: 'pending' | 'uploading' | 'completed' | 'failed'
 }
 
+/** Where `finalize` bound the single imported root (`StartUploadOptions.bind`). */
+export interface UploadBinding {
+    bucket_id: string
+    key: string
+    obj_id: string
+    version: number
+    etag: string
+    created: boolean
+}
+
 export interface ImportSessionStatus {
     sessionId: string
+    binding?: UploadBinding
     materializationStatus: MaterializationStatus
     uploadStatus: UploadStatus
     objectStatus: ObjectStatus
@@ -223,6 +234,21 @@ export interface StartUploadOptions {
      * sends cookies only.
      */
     sessionToken?: string | null
+    /**
+     * Bind the imported root (exactly one) into an application object bucket
+     * as part of finalize; success means the content is retained by the bucket.
+     */
+    bind?: {
+        bucketId: string
+        key: string
+        contentType?: string
+        metadata?: Record<string, string>
+        tags?: Record<string, string>
+        expiresAt?: number
+        origin?: { author: string; source: string; collected_at: number; proof?: string }
+        ifNoneMatch?: string
+        ifMatch?: string
+    }
     extra?: Record<string, unknown>
 }
 
@@ -510,6 +536,8 @@ interface ImportSession {
     uploadStartTime?: number
     /** Abort controller for cancelling in-flight uploads. */
     abortController?: AbortController
+    bind?: StartUploadOptions['bind']
+    binding?: UploadBinding
 }
 
 const sessionRegistry = new Map<string, ImportSession>()
@@ -1624,6 +1652,7 @@ export async function getImportSessionStatus(sessionId: string): Promise<ImportS
 
     return {
         sessionId,
+        ...(session.binding ? { binding: session.binding } : {}),
         materializationStatus: session.materializationStatus,
         uploadStatus: session.uploadStatus,
         objectStatus: session.objectStatus,
@@ -1779,6 +1808,10 @@ export async function startUpload(sessionId: string, options: StartUploadOptions
     session.objectStatus = 'pending'
     session.error = undefined
     session.onProgress = options.onProgress
+    if (options.bind) {
+        if (session.items.length !== 1) throw new NdmError('UPLOAD_FAILED', 'bind needs exactly one imported root')
+        session.bind = options.bind
+    }
     session.uploadStartTime = Date.now()
     session.uploadPromise = doUpload(session, concurrency).catch(error => {
         session.error = errorMessage(error)
@@ -1872,7 +1905,12 @@ async function doUpload(session: ImportSession, concurrency: number): Promise<vo
     const response = await (options.fetcher ?? defaultStoreFetcher)(`${options.endpoint}/ndm/v1/import/finalize`, {
         method: 'POST', credentials: 'include', signal: options.signal,
         headers: { ...options.headers, 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        body: JSON.stringify({ objects: [...session.manifest.values()], roots: session.items.map(item => item.objectId), qcid_links: session.qcidLinks }),
+        body: JSON.stringify({
+            objects: [...session.manifest.values()],
+            roots: session.items.map(item => item.objectId),
+            qcid_links: session.qcidLinks,
+            ...(session.bind ? { auto_bind: autoBindBody(session.bind) } : {}),
+        }),
     })
     const body = await response.json()
     if (!response.ok) throw new NdmStoreApiError(response.status, body.error, body.message ?? 'Object registration failed', body)
@@ -1881,10 +1919,23 @@ async function doUpload(session: ImportSession, concurrency: number): Promise<vo
     if (body.ready !== true || !Array.isArray(body.roots) || session.items.some(item => !body.roots.some((root: { obj_id: string; ready: boolean }) => root.obj_id === item.objectId && root.ready === true))) {
         throw new NdmError('OBJECT_NOT_READY', 'NDM did not confirm all root objects and their dependencies are ready')
     }
+    if (session.bind) session.binding = body.binding as UploadBinding
     session.objectStatus = 'ready'
     session.uploadStatus = session.transmittedBytes === 0 ? 'not_required' : 'completed'
     session.materializationStatus = 'all_in_store'
     emitProgress(session)
+}
+
+function autoBindBody(bind: NonNullable<StartUploadOptions['bind']>): Record<string, unknown> {
+    const body: Record<string, unknown> = { bucket_id: bind.bucketId, key: bind.key }
+    if (bind.contentType !== undefined) body.content_type = bind.contentType
+    if (bind.metadata !== undefined) body.metadata = bind.metadata
+    if (bind.tags !== undefined) body.tags = bind.tags
+    if (bind.expiresAt !== undefined) body.expires_at = bind.expiresAt
+    if (bind.origin !== undefined) body.origin = bind.origin
+    if (bind.ifNoneMatch !== undefined) body.if_none_match = bind.ifNoneMatch
+    if (bind.ifMatch !== undefined) body.if_match = bind.ifMatch
+    return body
 }
 
 async function uploadMissingChunk(session: ImportSession, state: ObjectUploadState, chunk: ObjectUploadState['chunks'][number], chunkIndex: number): Promise<void> {

@@ -36,6 +36,7 @@ export declare const buckyos: {
     getWorkflowClient: () => import("./workflow_client").WorkflowClient;
     getAiccClient: () => import("./aicc_client").AiccClient;
     getAiWorkspaceClient: () => import("./aiworkspace_client").AiWorkspaceClient;
+    getBucketClient: () => import("./bucket_client").BucketClient;
     getMsgQueueClient: () => import("./msg_queue_client").MsgQueueClient;
     getMsgCenterClient: () => import("./msg_center_client").MsgCenterClient;
     getRepoClient: () => import("./repo_client").RepoClient;
@@ -87,5 +88,6 @@ export * as sn from './sn_client';
 export * as ndn from './ndn_types';
 export * as ndm from './ndm_client';
 export * as ndm_proxy from './ndm_proxy';
+export * as bucket from './bucket_client';
 export * from './executor_client';
 //# sourceMappingURL=node.d.ts.map

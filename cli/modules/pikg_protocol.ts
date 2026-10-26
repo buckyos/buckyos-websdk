@@ -265,6 +265,72 @@ export function validatePermissions(value: unknown, label: string): unknown[] {
   })
 }
 
+const BUCKET_POLICIES = ['documents', 'app_data', 'collected', 'ambient', 'temp', 'cache']
+
+/** `buckets` / `storage_quota_mib` (BuckyOS 应用对象桶设计 §4.3, §4.5.3, D17). */
+function validateBuckets(config: Record<string, unknown>, label: string): void {
+  if (config.storage_quota_mib !== undefined) {
+    expectUint(config.storage_quota_mib, `${label}.storage_quota_mib`, Number.MAX_SAFE_INTEGER)
+  }
+  let needsAppPool = false
+  for (const [name, raw] of Object.entries(expectObject(config.buckets ?? {}, `${label}.buckets`))) {
+    const at = `${label}.buckets.${name}`
+    if (!/^[A-Za-z0-9._-]{1,128}$/.test(name) || name === '.' || name === '..') {
+      throw invalid('schema', `${at} is not a valid bucket name`)
+    }
+    const bucket = expectObject(raw, at)
+    assertKnownFields(
+      bucket,
+      ['kind', 'data_policy', 'scope', 'versioning', 'quota_mib', 'max_objects', 'default_ttl_days', 'lifecycle'],
+      at,
+    )
+    if (!['data', 'object'].includes(String(bucket.kind))) throw invalid('schema', `${at}.kind is data or object`)
+    const policy = String(bucket.data_policy)
+    if (!BUCKET_POLICIES.includes(policy)) throw invalid('schema', `${at}.data_policy is invalid`)
+    if (bucket.scope !== undefined && !['user', 'zone'].includes(String(bucket.scope))) {
+      throw invalid('schema', `${at}.scope is user or zone`)
+    }
+    optionalBoolean(bucket.versioning, `${at}.versioning`)
+    const userOwned = policy === 'documents' || policy === 'collected'
+    if (bucket.quota_mib !== undefined) {
+      expectUint(bucket.quota_mib, `${at}.quota_mib`, Number.MAX_SAFE_INTEGER)
+      if (userOwned) throw invalid('schema', `${at}: a ${policy} bucket uses the user's quota`)
+    }
+    if (bucket.max_objects !== undefined) expectUint(bucket.max_objects, `${at}.max_objects`, Number.MAX_SAFE_INTEGER)
+    if (bucket.versioning === true && !['documents', 'app_data', 'collected'].includes(policy)) {
+      throw invalid('schema', `${at}: a ${policy} bucket cannot be versioned`)
+    }
+    if (bucket.default_ttl_days !== undefined) {
+      expectUint(bucket.default_ttl_days, `${at}.default_ttl_days`, 0xffffffff)
+      if (!['ambient', 'temp', 'cache'].includes(policy)) {
+        throw invalid('schema', `${at}: a ${policy} bucket cannot declare default_ttl_days`)
+      }
+    }
+    if (policy === 'temp') {
+      const days = bucket.default_ttl_days
+      if (typeof days !== 'number' || days < 1 || days > 30) {
+        throw invalid('schema', `${at}: a temp bucket declares default_ttl_days 1..30`)
+      }
+    }
+    if (bucket.lifecycle !== undefined) {
+      if (!Array.isArray(bucket.lifecycle)) throw invalid('schema', `${at}.lifecycle must be an array`)
+      for (const [index, rule] of bucket.lifecycle.entries()) {
+        const kind = String(expectObject(rule, `${at}.lifecycle[${index}]`).rule)
+        if (!['expire', 'noncurrent_expire', 'expired_delete_marker'].includes(kind)) {
+          throw invalid('schema', `${at}.lifecycle[${index}].rule is invalid`)
+        }
+        if (policy === 'temp' || (userOwned && kind !== 'noncurrent_expire')) {
+          throw invalid('schema', `${at}: a ${policy} bucket does not accept the ${kind} rule`)
+        }
+      }
+    }
+    needsAppPool ||= policy === 'app_data' || policy === 'temp'
+  }
+  if (needsAppPool && config.storage_quota_mib === undefined) {
+    throw invalid('schema', `${label}.storage_quota_mib is required when app_data or temp buckets are declared`)
+  }
+}
+
 export function validateServiceConfigTips(
   value: unknown,
   label: string,
@@ -390,6 +456,7 @@ export function validateServiceConfigTips(
     }
     optionalString(database.connection, `${label}.rdb_instances.${name}.connection`)
   }
+  validateBuckets(config, label)
   if (config.instance_volume !== undefined) {
     const volume = expectObject(config.instance_volume, `${label}.instance_volume`)
     assertKnownFields(

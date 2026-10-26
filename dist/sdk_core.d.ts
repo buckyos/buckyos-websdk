@@ -1,4 +1,5 @@
 import type { AiWorkspaceClient } from './aiworkspace_client';
+import type { BucketClient } from './bucket_client';
 import { kRPCClient } from './krpc_client';
 import { AuthClient } from './auth_client';
 import type { CurrentIdentity } from './hybrid_sso';
@@ -74,6 +75,7 @@ export declare class BuckyOSSDK {
     getWorkflowClient(): WorkflowClient;
     getAiccClient(): AiccClient;
     getAiWorkspaceClient(): AiWorkspaceClient;
+    getBucketClient(): BucketClient;
     getMsgQueueClient(): MsgQueueClient;
     getMsgCenterClient(): MsgCenterClient;
     getRepoClient(): RepoClient;
@@ -122,6 +124,7 @@ export declare function createSDKModule(target: SDKTarget): {
         getWorkflowClient: () => WorkflowClient;
         getAiccClient: () => AiccClient;
         getAiWorkspaceClient: () => AiWorkspaceClient;
+        getBucketClient: () => BucketClient;
         getMsgQueueClient: () => MsgQueueClient;
         getMsgCenterClient: () => MsgCenterClient;
         getRepoClient: () => RepoClient;
@@ -163,6 +166,7 @@ export declare function createSDKModule(target: SDKTarget): {
     getWorkflowClient: () => WorkflowClient;
     getAiccClient: () => AiccClient;
     getAiWorkspaceClient: () => AiWorkspaceClient;
+    getBucketClient: () => BucketClient;
     getMsgQueueClient: () => MsgQueueClient;
     getMsgCenterClient: () => MsgCenterClient;
     getRepoClient: () => RepoClient;

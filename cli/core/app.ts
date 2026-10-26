@@ -38,6 +38,7 @@ import { createSkillModule } from '../modules/skill.ts'
 import { createAgentModule } from '../modules/agent.ts'
 import { createAiModule } from '../modules/ai.ts'
 import { createShareModule } from '../modules/share.ts'
+import { createBucketModule } from '../modules/bucket.ts'
 import { createExecutorModule } from '../modules/executor.ts'
 import { createAiwsModule } from '../modules/aiws.ts'
 import {
@@ -483,6 +484,7 @@ export function createRegistry(
   registry.register(createAgentModule())
   registry.register(createAiModule())
   registry.register(createShareModule())
+  registry.register(createBucketModule())
   registry.register(createExecutorModule())
   registry.register(createAiwsModule())
   return registry

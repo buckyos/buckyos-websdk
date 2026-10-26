@@ -408,6 +408,203 @@ class AiWorkspaceClient {
     return this.call("proc.cancel", { workspace_id, run_id });
   }
 }
+const BUCKET_SERVICE_NAME = "nfs-server";
+const BUCKET_DATA_PATH = "/bucket/v1/";
+const BUCKET_MAX_PUT_BYTES = 32 * 1024 * 1024;
+class BucketError extends Error {
+  constructor(code, message, status, data) {
+    super(message);
+    this.code = code;
+    this.status = status;
+    this.data = data;
+    this.name = "BucketError";
+  }
+}
+function bucketDataPlaneBase(serviceUrl) {
+  const at = serviceUrl.indexOf("/kapi/");
+  return at >= 0 ? serviceUrl.slice(0, at) : "";
+}
+function bucketObjectPath(bucketId, key) {
+  return `${BUCKET_DATA_PATH}${bucketId}/${key.split("/").map(encodeURIComponent).join("/")}`;
+}
+class BucketClient {
+  constructor(rpcClient, options = { dataPlaneBase: "" }) {
+    this.rpcClient = rpcClient;
+    this.options = options;
+  }
+  call(method, params) {
+    return this.rpcClient.call(method, params);
+  }
+  list(filter = {}) {
+    return this.call("bucket.list", { ...filter });
+  }
+  stat(bucketId) {
+    return this.call("bucket.stat", { bucket_id: bucketId });
+  }
+  put(bucketId, req) {
+    return this.call("bucket.put", { bucket_id: bucketId, ...req });
+  }
+  get(bucketId, key, version2) {
+    return this.call("bucket.get", { bucket_id: bucketId, key, version: version2 });
+  }
+  head(bucketId, key, version2) {
+    return this.call("bucket.head", { bucket_id: bucketId, key, version: version2 });
+  }
+  delete(bucketId, key, options = {}) {
+    return this.call("bucket.delete", { bucket_id: bucketId, key, version: options.version, if_match: options.ifMatch });
+  }
+  listObjects(bucketId, req = {}) {
+    return this.call("bucket.list_objects", { bucket_id: bucketId, ...req });
+  }
+  listVersions(bucketId, key) {
+    return this.call("bucket.list_versions", { bucket_id: bucketId, key });
+  }
+  copy(req) {
+    return this.call("bucket.copy", { ...req });
+  }
+  batch(bucketId, ops) {
+    return this.call("bucket.batch", { bucket_id: bucketId, ops });
+  }
+  setMetadata(bucketId, key, update) {
+    return this.call("bucket.set_metadata", { bucket_id: bucketId, key, ...update });
+  }
+  grant(bucketId, req) {
+    return this.call("bucket.grant", { bucket_id: bucketId, ...req });
+  }
+  revoke(grantId) {
+    return this.call("bucket.revoke", { grant_id: grantId });
+  }
+  listGrants(bucketId) {
+    return this.call("bucket.list_grants", { bucket_id: bucketId });
+  }
+  createAccessToken(bucketId, req) {
+    return this.call("bucket.create_access_token", { bucket_id: bucketId, ...req });
+  }
+  revokeAccessToken(tokenId) {
+    return this.call("bucket.revoke_access_token", { token_id: tokenId });
+  }
+  listAccessTokens(bucketId) {
+    return this.call("bucket.list_access_tokens", { bucket_id: bucketId });
+  }
+  checkAccess(bucketId, action, target = {}) {
+    return this.call("bucket.check_access", { bucket_id: bucketId, action, ...target });
+  }
+  getQuota(bucketId) {
+    return this.call("bucket.get_quota", { bucket_id: bucketId });
+  }
+  setQuota(bucketId, update) {
+    return this.call("bucket.set_quota", { bucket_id: bucketId, ...update });
+  }
+  getPoolQuota(kind, id2) {
+    return this.call("bucket.get_pool_quota", { kind, id: id2 });
+  }
+  usageReport(kind, id2, days) {
+    return this.call("bucket.usage_report", { kind, id: id2, days });
+  }
+  getLifecycle(bucketId) {
+    return this.call("bucket.get_lifecycle", { bucket_id: bucketId });
+  }
+  setLifecycle(bucketId, rules) {
+    return this.call("bucket.set_lifecycle", { bucket_id: bucketId, rules });
+  }
+  snapshot(bucketId, options = {}) {
+    return this.call("bucket.snapshot", { bucket_id: bucketId, label: options.label, include_noncurrent: options.includeNoncurrent });
+  }
+  listSnapshots(bucketId) {
+    return this.call("bucket.list_snapshots", { bucket_id: bucketId });
+  }
+  deleteSnapshot(bucketId, snapshotId) {
+    return this.call("bucket.delete_snapshot", { bucket_id: bucketId, snapshot_id: snapshotId });
+  }
+  restoreFromSnapshot(bucketId, rootObjId) {
+    return this.call("bucket.restore_from_snapshot", { bucket_id: bucketId, root_obj_id: rootObjId });
+  }
+  exportSnapshot(bucketId, snapshotId, target) {
+    return this.call("bucket.export", { bucket_id: bucketId, snapshot_id: snapshotId, target });
+  }
+  verifyReferences(bucketId, refs) {
+    return this.call("bucket.verify_references", { bucket_id: bucketId, refs });
+  }
+  /** Issues an S3 access key for the signed-in user and `appid` (the user's own session only). */
+  createS3Key(appid, options = {}) {
+    return this.call("bucket.create_s3_key", { appid, scope: options.scope, expires_at: options.expiresAt });
+  }
+  listS3Keys() {
+    return this.call("bucket.list_s3_keys", {});
+  }
+  revokeS3Key(accessKeyId) {
+    return this.call("bucket.revoke_s3_key", { access_key_id: accessKeyId });
+  }
+  /** URL of a key on the data plane; same-origin browser pages read it with the SSO cookie. */
+  objectUrl(bucketId, key, options = {}) {
+    const query = new URLSearchParams();
+    if (options.version !== void 0)
+      query.set("version", String(options.version));
+    if (options.token)
+      query.set("token", options.token);
+    const qs = query.toString();
+    return `${this.options.dataPlaneBase}${bucketObjectPath(bucketId, key)}${qs ? `?${qs}` : ""}`;
+  }
+  async authHeaders() {
+    const token = this.options.sessionTokenProvider ? await this.options.sessionTokenProvider() : null;
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  }
+  /** `PUT /bucket/v1/...`: stores up to 32 MiB and binds it; success means it is retained. */
+  async putBytes(bucketId, key, body, options = {}) {
+    const headers = { ...await this.authHeaders() };
+    if (options.contentType)
+      headers["Content-Type"] = options.contentType;
+    for (const [k, v] of Object.entries(options.metadata ?? {}))
+      headers[`x-bucky-meta-${k}`] = v;
+    if (options.tags)
+      headers["x-bucky-tags"] = JSON.stringify(options.tags);
+    if (options.expiresAt !== void 0)
+      headers["x-bucky-expires-at"] = String(options.expiresAt);
+    if (options.origin)
+      headers["x-bucky-origin"] = JSON.stringify(options.origin);
+    if (options.if_none_match)
+      headers["If-None-Match"] = options.if_none_match;
+    if (options.if_match)
+      headers["If-Match"] = options.if_match;
+    if (options.if_version !== void 0)
+      headers["x-bucky-if-version"] = String(options.if_version);
+    const response = await (this.options.fetcher ?? fetch)(this.objectUrl(bucketId, key), {
+      method: "PUT",
+      credentials: "include",
+      headers,
+      body
+    });
+    return this.json(response);
+  }
+  /** Reads a key's content (a `Response` to stream or `.blob()`). */
+  async fetchObject(bucketId, key, options = {}) {
+    const headers = options.token ? {} : await this.authHeaders();
+    if (options.range)
+      headers.Range = options.range;
+    const response = await (this.options.fetcher ?? fetch)(this.objectUrl(bucketId, key, options), { credentials: "include", headers });
+    if (!response.ok)
+      await this.json(response);
+    return response;
+  }
+  async json(response) {
+    const text = await response.text();
+    const body = text ? JSON.parse(text) : {};
+    if (!response.ok) {
+      throw new BucketError(String(body.error ?? response.status), String(body.message ?? response.statusText), response.status, body.data);
+    }
+    return body;
+  }
+}
+const bucket_client = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
+  __proto__: null,
+  BUCKET_DATA_PATH,
+  BUCKET_MAX_PUT_BYTES,
+  BUCKET_SERVICE_NAME,
+  BucketClient,
+  BucketError,
+  bucketDataPlaneBase,
+  bucketObjectPath
+}, Symbol.toStringTag, { value: "Module" }));
 function serializeAuthTarget(target) {
   if (!target || typeof target !== "object") {
     throw new RPCError("verify-hub auth target is required");
@@ -3526,6 +3723,12 @@ class BuckyOSRuntime {
   getAiWorkspaceClient() {
     return new AiWorkspaceClient(this.getServiceRpcClient(AIWORKSPACE_SERVICE_NAME));
   }
+  getBucketClient() {
+    return new BucketClient(this.getServiceRpcClient(BUCKET_SERVICE_NAME), {
+      dataPlaneBase: bucketDataPlaneBase(this.getZoneServiceURL(BUCKET_SERVICE_NAME)),
+      sessionTokenProvider: this.ensureSessionTokenReady.bind(this)
+    });
+  }
   getMsgQueueClient() {
     return new MsgQueueClient(this.getServiceRpcClient("kmsg"));
   }
@@ -5479,6 +5682,12 @@ class BuckyOSSDK {
     }
     return this.currentRuntime.getAiWorkspaceClient();
   }
+  getBucketClient() {
+    if (this.currentRuntime == null) {
+      throw new Error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
+    }
+    return this.currentRuntime.getBucketClient();
+  }
   getMsgQueueClient() {
     if (this.currentRuntime == null) {
       throw new Error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
@@ -5663,6 +5872,7 @@ function createSDKModule(target) {
     getWorkflowClient: sdk.getWorkflowClient.bind(sdk),
     getAiccClient: sdk.getAiccClient.bind(sdk),
     getAiWorkspaceClient: sdk.getAiWorkspaceClient.bind(sdk),
+    getBucketClient: sdk.getBucketClient.bind(sdk),
     getMsgQueueClient: sdk.getMsgQueueClient.bind(sdk),
     getMsgCenterClient: sdk.getMsgCenterClient.bind(sdk),
     getRepoClient: sdk.getRepoClient.bind(sdk)
@@ -28564,6 +28774,7 @@ async function getImportSessionStatus(sessionId) {
   collect(session.items);
   return {
     sessionId,
+    ...session.binding ? { binding: session.binding } : {},
     materializationStatus: session.materializationStatus,
     uploadStatus: session.uploadStatus,
     objectStatus: session.objectStatus,
@@ -28697,6 +28908,11 @@ async function startUpload(sessionId, options = {}) {
   session.objectStatus = "pending";
   session.error = void 0;
   session.onProgress = options.onProgress;
+  if (options.bind) {
+    if (session.items.length !== 1)
+      throw new NdmError("UPLOAD_FAILED", "bind needs exactly one imported root");
+    session.bind = options.bind;
+  }
   session.uploadStartTime = Date.now();
   session.uploadPromise = doUpload(session, concurrency).catch((error) => {
     var _a3;
@@ -28803,7 +29019,12 @@ async function doUpload(session, concurrency) {
     credentials: "include",
     signal: options.signal,
     headers: { ...options.headers, "Content-Type": "application/json", ...token ? { Authorization: `Bearer ${token}` } : {} },
-    body: JSON.stringify({ objects: [...session.manifest.values()], roots: session.items.map((item) => item.objectId), qcid_links: session.qcidLinks })
+    body: JSON.stringify({
+      objects: [...session.manifest.values()],
+      roots: session.items.map((item) => item.objectId),
+      qcid_links: session.qcidLinks,
+      ...session.bind ? { auto_bind: autoBindBody(session.bind) } : {}
+    })
   });
   const body = await response.json();
   if (!response.ok)
@@ -28814,10 +29035,30 @@ async function doUpload(session, concurrency) {
   if (body.ready !== true || !Array.isArray(body.roots) || session.items.some((item) => !body.roots.some((root) => root.obj_id === item.objectId && root.ready === true))) {
     throw new NdmError("OBJECT_NOT_READY", "NDM did not confirm all root objects and their dependencies are ready");
   }
+  if (session.bind)
+    session.binding = body.binding;
   session.objectStatus = "ready";
   session.uploadStatus = session.transmittedBytes === 0 ? "not_required" : "completed";
   session.materializationStatus = "all_in_store";
   emitProgress(session);
+}
+function autoBindBody(bind) {
+  const body = { bucket_id: bind.bucketId, key: bind.key };
+  if (bind.contentType !== void 0)
+    body.content_type = bind.contentType;
+  if (bind.metadata !== void 0)
+    body.metadata = bind.metadata;
+  if (bind.tags !== void 0)
+    body.tags = bind.tags;
+  if (bind.expiresAt !== void 0)
+    body.expires_at = bind.expiresAt;
+  if (bind.origin !== void 0)
+    body.origin = bind.origin;
+  if (bind.ifNoneMatch !== void 0)
+    body.if_none_match = bind.ifNoneMatch;
+  if (bind.ifMatch !== void 0)
+    body.if_match = bind.ifMatch;
+  return body;
 }
 async function uploadMissingChunk(session, state, chunk, chunkIndex) {
   var _a2, _b;
@@ -29713,212 +29954,213 @@ class ExecutorCommandStream {
   }
 }
 export {
-  CONTACT_TAG_HOMESTATION_FOLLOWING as $,
-  NOTIFY_ACTION_DISMISS as A,
+  CONTACT_TAG_ZONE_AGENT as $,
+  NOTIFY_ACTION_ANSWER as A,
   BS_SERVICE_VERIFY_HUB as B,
-  NOTIFY_LINK_PATH as C,
-  isNotifyClosed as D,
+  NOTIFY_ACTION_DISMISS as C,
+  NOTIFY_LINK_PATH as D,
   EXTERNAL_PRINCIPAL_CLAIM as E,
-  notifyCategorySessionId as F,
-  notifyCategoryFromSessionId as G,
-  inputPrompt as H,
-  promptOptions as I,
-  notifyAnswerToTaskResult as J,
-  validateNotifyAnswer as K,
-  notifyUrl as L,
+  isNotifyClosed as F,
+  notifyCategorySessionId as G,
+  notifyCategoryFromSessionId as H,
+  inputPrompt as I,
+  promptOptions as J,
+  notifyAnswerToTaskResult as K,
+  validateNotifyAnswer as L,
   MsgQueueClient as M,
   NOTIFY_INTENT as N,
-  msgMachineData as O,
-  notifyMessageData as P,
-  commitNotifyAnswer as Q,
+  notifyUrl as O,
+  msgMachineData as P,
+  notifyMessageData as Q,
   RuntimeType as R,
   SystemConfigClient as S,
-  answerNotify as T,
-  waitNotify as U,
+  commitNotifyAnswer as T,
+  answerNotify as U,
   VerifyHubClient as V,
   WEB3_BRIDGE_HOST as W,
-  FRIEND_INTENT as X,
-  CONTACT_TAG_ZONE_USER as Y,
+  waitNotify as X,
+  FRIEND_INTENT as Y,
   ZONE_USER_TYPES as Z,
-  CONTACT_TAG_ZONE_AGENT as _,
+  CONTACT_TAG_ZONE_USER as _,
   ndm_proxy as a,
-  TASK_ERR_CONTROL_ALREADY_PENDING as a$,
-  CONTACT_CHANGED_EVENT_BOX as a0,
-  WELL_KNOWN_CONTACT_TAGS as a1,
-  USER_TYPE_GROUP_REF_PREFIX as a2,
-  USER_GROUP_REF_PREFIX as a3,
-  contactTagApp as a4,
-  contactTagKind as a5,
-  isUserGroupRefTag as a6,
-  DENY_REASONS as a7,
-  ACCESS_DENIED_ERROR_CODE as a8,
-  parseAccessDenial as a9,
-  DOWNLOAD_TASK_SCHEMA_ID as aA,
-  SCHEDULER_DISPATCH_THUNK_TASK_SCHEMA_ID as aB,
-  WORKFLOW_RUN_TREE_TASK_SCHEMA_ID as aC,
-  WORKFLOW_STEP_TASK_SCHEMA_ID as aD,
-  WORKFLOW_MAP_SHARD_TASK_SCHEMA_ID as aE,
-  WORKFLOW_THUNK_TASK_SCHEMA_ID as aF,
-  WORKFLOW_SCHEDULE_TASK_SCHEMA_ID as aG,
-  WORKFLOW_SEND_MESSAGE_TASK_SCHEMA_ID as aH,
-  WORKFLOW_EXECUTE_RPC_TASK_SCHEMA_ID as aI,
-  WORKFLOW_RUN_TARGET_TASK_SCHEMA_ID as aJ,
-  AGENT_DELEGATE_TASK_SCHEMA_ID as aK,
-  HUMAN_INPUT_TASK_SCHEMA_ID as aL,
-  OPENDAN_ASYNC_TOOL_TASK_SCHEMA_ID as aM,
-  OPENDAN_COMMAND_TASK_SCHEMA_ID as aN,
-  TOOL_EXEC_BASH_TASK_SCHEMA_ID as aO,
-  AICC_COMPUTE_TASK_SCHEMA_ID as aP,
-  APP_INSTALL_TASK_SCHEMA_ID as aQ,
-  APP_UNINSTALL_TASK_SCHEMA_ID as aR,
-  APP_START_TASK_SCHEMA_ID as aS,
-  APP_UPDATE_TASK_SCHEMA_ID as aT,
-  APP_UPDATE_BATCH_TASK_SCHEMA_ID as aU,
-  TASK_ERR_NOT_FOUND as aV,
-  TASK_ERR_PERMISSION_DENIED as aW,
-  TASK_ERR_REVISION_CONFLICT as aX,
-  TASK_ERR_STALE_RUNNER_EPOCH as aY,
-  TASK_ERR_INVALID_PHASE as aZ,
-  TASK_ERR_CONTROL_NOT_AVAILABLE as a_,
-  accessDenialOf as aa,
-  ANONYMOUS_IDENTITY as ab,
-  parseCurrentIdentity as ac,
-  identityKey as ad,
-  identityAllows as ae,
-  DEFAULT_JUMP_BASE_URL as af,
-  JUMP_ACTION_PATHS as ag,
-  normalizeZoneHostname as ah,
-  zoneActionUrl as ai,
-  buildJumpUrl as aj,
-  APP_LOGIN_ISSUE_METHOD as ak,
-  APP_LOGIN_EXCHANGE_METHOD as al,
-  APP_LOGIN_SETTINGS_GET_METHOD as am,
-  APP_LOGIN_SETTINGS_SET_METHOD as an,
-  issueAppLoginCode as ao,
-  issueAppCustomerLink as ap,
-  parseAppLoginExchangeResult as aq,
-  randomAppLoginNonce as ar,
-  loginByAppAccessToken as as,
-  completeAppAccessTokenLogin as at,
-  TASK_MANAGER_SERVICE_UNIQUE_ID as au,
-  TASK_MANAGER_SERVICE_NAME as av,
-  TASK_MANAGER_SERVICE_PORT as aw,
-  TASK_POLICY_PRESET_COLLABORATIVE_TREE_V1 as ax,
-  RAW_TASK_SCHEMA_ID as ay,
-  HUMAN_APPROVAL_SCHEMA_ID as az,
+  TASK_ERR_CONTROL_NOT_AVAILABLE as a$,
+  CONTACT_TAG_HOMESTATION_FOLLOWING as a0,
+  CONTACT_CHANGED_EVENT_BOX as a1,
+  WELL_KNOWN_CONTACT_TAGS as a2,
+  USER_TYPE_GROUP_REF_PREFIX as a3,
+  USER_GROUP_REF_PREFIX as a4,
+  contactTagApp as a5,
+  contactTagKind as a6,
+  isUserGroupRefTag as a7,
+  DENY_REASONS as a8,
+  ACCESS_DENIED_ERROR_CODE as a9,
+  HUMAN_APPROVAL_SCHEMA_ID as aA,
+  DOWNLOAD_TASK_SCHEMA_ID as aB,
+  SCHEDULER_DISPATCH_THUNK_TASK_SCHEMA_ID as aC,
+  WORKFLOW_RUN_TREE_TASK_SCHEMA_ID as aD,
+  WORKFLOW_STEP_TASK_SCHEMA_ID as aE,
+  WORKFLOW_MAP_SHARD_TASK_SCHEMA_ID as aF,
+  WORKFLOW_THUNK_TASK_SCHEMA_ID as aG,
+  WORKFLOW_SCHEDULE_TASK_SCHEMA_ID as aH,
+  WORKFLOW_SEND_MESSAGE_TASK_SCHEMA_ID as aI,
+  WORKFLOW_EXECUTE_RPC_TASK_SCHEMA_ID as aJ,
+  WORKFLOW_RUN_TARGET_TASK_SCHEMA_ID as aK,
+  AGENT_DELEGATE_TASK_SCHEMA_ID as aL,
+  HUMAN_INPUT_TASK_SCHEMA_ID as aM,
+  OPENDAN_ASYNC_TOOL_TASK_SCHEMA_ID as aN,
+  OPENDAN_COMMAND_TASK_SCHEMA_ID as aO,
+  TOOL_EXEC_BASH_TASK_SCHEMA_ID as aP,
+  AICC_COMPUTE_TASK_SCHEMA_ID as aQ,
+  APP_INSTALL_TASK_SCHEMA_ID as aR,
+  APP_UNINSTALL_TASK_SCHEMA_ID as aS,
+  APP_START_TASK_SCHEMA_ID as aT,
+  APP_UPDATE_TASK_SCHEMA_ID as aU,
+  APP_UPDATE_BATCH_TASK_SCHEMA_ID as aV,
+  TASK_ERR_NOT_FOUND as aW,
+  TASK_ERR_PERMISSION_DENIED as aX,
+  TASK_ERR_REVISION_CONFLICT as aY,
+  TASK_ERR_STALE_RUNNER_EPOCH as aZ,
+  TASK_ERR_INVALID_PHASE as a_,
+  parseAccessDenial as aa,
+  accessDenialOf as ab,
+  ANONYMOUS_IDENTITY as ac,
+  parseCurrentIdentity as ad,
+  identityKey as ae,
+  identityAllows as af,
+  DEFAULT_JUMP_BASE_URL as ag,
+  JUMP_ACTION_PATHS as ah,
+  normalizeZoneHostname as ai,
+  zoneActionUrl as aj,
+  buildJumpUrl as ak,
+  APP_LOGIN_ISSUE_METHOD as al,
+  APP_LOGIN_EXCHANGE_METHOD as am,
+  APP_LOGIN_SETTINGS_GET_METHOD as an,
+  APP_LOGIN_SETTINGS_SET_METHOD as ao,
+  issueAppLoginCode as ap,
+  issueAppCustomerLink as aq,
+  parseAppLoginExchangeResult as ar,
+  randomAppLoginNonce as as,
+  loginByAppAccessToken as at,
+  completeAppAccessTokenLogin as au,
+  TASK_MANAGER_SERVICE_UNIQUE_ID as av,
+  TASK_MANAGER_SERVICE_NAME as aw,
+  TASK_MANAGER_SERVICE_PORT as ax,
+  TASK_POLICY_PRESET_COLLABORATIVE_TREE_V1 as ay,
+  RAW_TASK_SCHEMA_ID as az,
   bns_client as b,
-  KEventClient as b$,
-  TASK_ERR_ALREADY_COMPLETED as b0,
-  TASK_ERR_INPUT_SCHEMA_MISMATCH as b1,
-  TASK_ERR_RESULT_SCHEMA_MISMATCH as b2,
-  TASK_ERR_IDEMPOTENCY_CONFLICT as b3,
-  TASK_ERR_SCHEMA_NOT_FOUND as b4,
-  TASK_MGR_ERROR_CODES as b5,
-  taskMgrTaskEventPath as b6,
-  taskMgrTreeEventPath as b7,
-  taskMgrErrorCode as b8,
-  TaskExecutorKind as b9,
-  AICC_SERVICE_UNIQUE_ID as bA,
-  AICC_SERVICE_SERVICE_NAME as bB,
-  AICC_SERVICE_SERVICE_PORT as bC,
-  AICC_AI_METHODS as bD,
-  AICC_CORE_METHODS as bE,
-  AICC_MANAGEMENT_METHODS as bF,
-  AICC_QUOTA_METHODS as bG,
-  AICC_METHODS as bH,
-  AICC_FEATURES as bI,
-  AICC_EXECUTION_MODES as bJ,
-  AICC_POLICY_REFUSAL_CODES as bK,
-  aiccRefusalOf as bL,
-  isAiccAiMethod as bM,
-  aiccTextMessage as bN,
-  aiccMessageTextContent as bO,
-  aiccMessageFirstText as bP,
-  validateAiccMessage as bQ,
-  AiccClient as bR,
-  decisionRequirements as bS,
-  validateDecisionRequest as bT,
-  validateDecisionAnswers as bU,
-  parseVideoPrompt as bV,
-  validateVideoOutput as bW,
-  validateVideoGeneration as bX,
-  validateVideoEdit as bY,
-  videoGenerationRequirement as bZ,
-  KEventReader as b_,
-  TaskPhase as ba,
-  isTerminalTaskPhase as bb,
-  TaskWaitReasonKind as bc,
-  TaskOutcome as bd,
-  TaskControlAction as be,
-  baselineTaskControlProfile as bf,
-  DEFAULT_CHILD_CONTROL_POLICY as bg,
-  TaskAction as bh,
-  TaskGrantScope as bi,
-  TaskDataScope as bj,
-  StorageDomain as bk,
-  TaskEventType as bl,
-  TaskManagerClient as bm,
-  WORKFLOW_SERVICE_NAME as bn,
-  WorkflowStepType as bo,
-  WorkflowOutputMode as bp,
-  WorkflowJoinMode as bq,
-  WorkflowRetryFallback as br,
-  WorkflowDefinitionStatus as bs,
-  WorkflowRunStatus as bt,
-  WorkflowNodeRunState as bu,
-  WorkflowHumanActionKind as bv,
-  WorkflowScheduledTaskStatus as bw,
-  WorkflowScheduledTaskMisfirePolicy as bx,
-  WorkflowScheduledTaskFireStatus as by,
-  WorkflowClient as bz,
+  KEventReader as b$,
+  TASK_ERR_CONTROL_ALREADY_PENDING as b0,
+  TASK_ERR_ALREADY_COMPLETED as b1,
+  TASK_ERR_INPUT_SCHEMA_MISMATCH as b2,
+  TASK_ERR_RESULT_SCHEMA_MISMATCH as b3,
+  TASK_ERR_IDEMPOTENCY_CONFLICT as b4,
+  TASK_ERR_SCHEMA_NOT_FOUND as b5,
+  TASK_MGR_ERROR_CODES as b6,
+  taskMgrTaskEventPath as b7,
+  taskMgrTreeEventPath as b8,
+  taskMgrErrorCode as b9,
+  WorkflowClient as bA,
+  AICC_SERVICE_UNIQUE_ID as bB,
+  AICC_SERVICE_SERVICE_NAME as bC,
+  AICC_SERVICE_SERVICE_PORT as bD,
+  AICC_AI_METHODS as bE,
+  AICC_CORE_METHODS as bF,
+  AICC_MANAGEMENT_METHODS as bG,
+  AICC_QUOTA_METHODS as bH,
+  AICC_METHODS as bI,
+  AICC_FEATURES as bJ,
+  AICC_EXECUTION_MODES as bK,
+  AICC_POLICY_REFUSAL_CODES as bL,
+  aiccRefusalOf as bM,
+  isAiccAiMethod as bN,
+  aiccTextMessage as bO,
+  aiccMessageTextContent as bP,
+  aiccMessageFirstText as bQ,
+  validateAiccMessage as bR,
+  AiccClient as bS,
+  decisionRequirements as bT,
+  validateDecisionRequest as bU,
+  validateDecisionAnswers as bV,
+  parseVideoPrompt as bW,
+  validateVideoOutput as bX,
+  validateVideoGeneration as bY,
+  validateVideoEdit as bZ,
+  videoGenerationRequirement as b_,
+  TaskExecutorKind as ba,
+  TaskPhase as bb,
+  isTerminalTaskPhase as bc,
+  TaskWaitReasonKind as bd,
+  TaskOutcome as be,
+  TaskControlAction as bf,
+  baselineTaskControlProfile as bg,
+  DEFAULT_CHILD_CONTROL_POLICY as bh,
+  TaskAction as bi,
+  TaskGrantScope as bj,
+  TaskDataScope as bk,
+  StorageDomain as bl,
+  TaskEventType as bm,
+  TaskManagerClient as bn,
+  WORKFLOW_SERVICE_NAME as bo,
+  WorkflowStepType as bp,
+  WorkflowOutputMode as bq,
+  WorkflowJoinMode as br,
+  WorkflowRetryFallback as bs,
+  WorkflowDefinitionStatus as bt,
+  WorkflowRunStatus as bu,
+  WorkflowNodeRunState as bv,
+  WorkflowHumanActionKind as bw,
+  WorkflowScheduledTaskStatus as bx,
+  WorkflowScheduledTaskMisfirePolicy as by,
+  WorkflowScheduledTaskFireStatus as bz,
   createSDKModule as c,
-  appIdFromDid as c0,
-  parseAppId as c1,
-  appDidFromId as c2,
-  createAppInstanceId as c3,
-  parseAppInstanceId as c4,
-  BNS_EVM_DEFAULT_GAS_LIMIT as c5,
-  BNS_EVM_DEFAULT_MAX_FEE_PER_GAS as c6,
-  BNS_EVM_DEFAULT_MAX_PRIORITY_FEE_PER_GAS as c7,
-  BNS_MAX_INLINE_DOCUMENT_BYTES as c8,
-  BNS_DNS_TXT_DEFAULT_TTL as c9,
-  BNS_DNS_TXT_DOC_TYPE as ca,
-  BNS_PUBLISH_DOCUMENT_ABI as cb,
-  BnsEvmTxError as cc,
-  BnsEvmTxBuilder as cd,
-  decodeBnsPublishDocumentCalldata as ce,
-  BnsTxExecutorError as cf,
-  walletUserHasSnAccount as cg,
-  BnsTxExecutor as ch,
-  ExecutorClient as ci,
-  ExecutorStreamError as cj,
-  encodeExecutorControl as ck,
-  ExecutorCommandStream as cl,
-  AIWORKSPACE_SERVICE_NAME as cm,
-  AiwsFailure as cn,
-  AiWorkspaceClient as co,
-  BS_SERVICE_TASK_MANAGER as d,
-  getActiveRuntimeType as e,
-  getActiveZoneGatewayOrigin as f,
+  KEventClient as c0,
+  appIdFromDid as c1,
+  parseAppId as c2,
+  appDidFromId as c3,
+  createAppInstanceId as c4,
+  parseAppInstanceId as c5,
+  BNS_EVM_DEFAULT_GAS_LIMIT as c6,
+  BNS_EVM_DEFAULT_MAX_FEE_PER_GAS as c7,
+  BNS_EVM_DEFAULT_MAX_PRIORITY_FEE_PER_GAS as c8,
+  BNS_MAX_INLINE_DOCUMENT_BYTES as c9,
+  BNS_DNS_TXT_DEFAULT_TTL as ca,
+  BNS_DNS_TXT_DOC_TYPE as cb,
+  BNS_PUBLISH_DOCUMENT_ABI as cc,
+  BnsEvmTxError as cd,
+  BnsEvmTxBuilder as ce,
+  decodeBnsPublishDocumentCalldata as cf,
+  BnsTxExecutorError as cg,
+  walletUserHasSnAccount as ch,
+  BnsTxExecutor as ci,
+  ExecutorClient as cj,
+  ExecutorStreamError as ck,
+  encodeExecutorControl as cl,
+  ExecutorCommandStream as cm,
+  AIWORKSPACE_SERVICE_NAME as cn,
+  AiwsFailure as co,
+  AiWorkspaceClient as cp,
+  bucket_client as d,
+  BS_SERVICE_TASK_MANAGER as e,
+  getActiveRuntimeType as f,
   getCurrentWalletUserFromHost as g,
-  getActiveSessionToken as h,
-  BuckyOSSDK as i,
-  RepoClient as j,
-  parseZoneUserType as k,
-  isExternalPrincipal as l,
-  RPCError as m,
+  getActiveZoneGatewayOrigin as h,
+  getActiveSessionToken as i,
+  BuckyOSSDK as j,
+  RepoClient as k,
+  parseZoneUserType as l,
+  isExternalPrincipal as m,
   ndm_client as n,
-  MsgCenterClient as o,
+  RPCError as o,
   parseSessionTokenClaims as p,
-  mailboxAddress as q,
+  MsgCenterClient as q,
   resolveDidFromHost as r,
   sn_client as s,
-  mailboxResource as t,
-  NOTIFY_DELIVERED_INTENT as u,
-  NOTIFY_DATA_VERSION as v,
-  NOTIFY_SESSION_PREFIX as w,
-  NOTIFY_CHOICE_CONTROL_ID as x,
-  NOTIFY_TEXT_CONTROL_ID as y,
-  NOTIFY_ACTION_ANSWER as z
+  mailboxAddress as t,
+  mailboxResource as u,
+  NOTIFY_DELIVERED_INTENT as v,
+  NOTIFY_DATA_VERSION as w,
+  NOTIFY_SESSION_PREFIX as x,
+  NOTIFY_CHOICE_CONTROL_ID as y,
+  NOTIFY_TEXT_CONTROL_ID as z
 };
-//# sourceMappingURL=executor_client-4fbf0c3c.mjs.map
+//# sourceMappingURL=executor_client-06dad8a8.mjs.map

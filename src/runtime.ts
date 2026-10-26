@@ -1,4 +1,5 @@
 import { AiWorkspaceClient, AIWORKSPACE_SERVICE_NAME } from './aiworkspace_client'
+import { BucketClient, BUCKET_SERVICE_NAME, bucketDataPlaneBase } from './bucket_client'
 import { kRPCClient } from './krpc_client'
 import { AuthTarget, getAuthTargetAppId, VerifyHubClient } from './verify-hub-client'
 import { TaskManagerClient } from './task_mgr_client'
@@ -671,6 +672,13 @@ export class BuckyOSRuntime {
 
   getAiWorkspaceClient(): AiWorkspaceClient {
     return new AiWorkspaceClient(this.getServiceRpcClient(AIWORKSPACE_SERVICE_NAME))
+  }
+
+  getBucketClient(): BucketClient {
+    return new BucketClient(this.getServiceRpcClient(BUCKET_SERVICE_NAME), {
+      dataPlaneBase: bucketDataPlaneBase(this.getZoneServiceURL(BUCKET_SERVICE_NAME)),
+      sessionTokenProvider: this.ensureSessionTokenReady.bind(this),
+    })
   }
 
   getMsgQueueClient(): MsgQueueClient {

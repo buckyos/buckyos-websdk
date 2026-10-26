@@ -39,6 +39,7 @@ export const getTaskManagerClient = sdkModule.getTaskManagerClient
 export const getWorkflowClient = sdkModule.getWorkflowClient
 export const getAiccClient = sdkModule.getAiccClient
 export const getAiWorkspaceClient = sdkModule.getAiWorkspaceClient
+export const getBucketClient = sdkModule.getBucketClient
 export const getMsgQueueClient = sdkModule.getMsgQueueClient
 export const getMsgCenterClient = sdkModule.getMsgCenterClient
 export const getRepoClient = sdkModule.getRepoClient
@@ -58,3 +59,4 @@ export * as ndm_proxy from './ndm_proxy'
 
 export * from './executor_client'
 export * from './aiworkspace_client'
+export * as bucket from './bucket_client'

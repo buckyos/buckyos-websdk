@@ -112,8 +112,18 @@ export interface PerObjectProgress {
     totalBytes: number;
     state: 'pending' | 'uploading' | 'completed' | 'failed';
 }
+/** Where `finalize` bound the single imported root (`StartUploadOptions.bind`). */
+export interface UploadBinding {
+    bucket_id: string;
+    key: string;
+    obj_id: string;
+    version: number;
+    etag: string;
+    created: boolean;
+}
 export interface ImportSessionStatus {
     sessionId: string;
+    binding?: UploadBinding;
     materializationStatus: MaterializationStatus;
     uploadStatus: UploadStatus;
     objectStatus: ObjectStatus;
@@ -147,6 +157,26 @@ export interface StartUploadOptions {
      * sends cookies only.
      */
     sessionToken?: string | null;
+    /**
+     * Bind the imported root (exactly one) into an application object bucket
+     * as part of finalize; success means the content is retained by the bucket.
+     */
+    bind?: {
+        bucketId: string;
+        key: string;
+        contentType?: string;
+        metadata?: Record<string, string>;
+        tags?: Record<string, string>;
+        expiresAt?: number;
+        origin?: {
+            author: string;
+            source: string;
+            collected_at: number;
+            proof?: string;
+        };
+        ifNoneMatch?: string;
+        ifMatch?: string;
+    };
     extra?: Record<string, unknown>;
 }
 export interface UploadProgress {
