@@ -1,5 +1,5 @@
 import { KRPCClientOptions } from './krpc_client';
-export type ExecutorOperation = 'open_stream' | 'describe' | 'exec' | 'read' | 'write' | 'edit' | 'mkdir' | 'stat' | 'computer_inspect' | 'computer_observe' | 'computer_act' | 'query' | 'cancel';
+export type ExecutorOperation = 'open_stream' | 'describe' | 'exec' | 'read' | 'write' | 'edit' | 'mkdir' | 'stat' | 'rename' | 'remove' | 'computer_inspect' | 'computer_observe' | 'computer_act' | 'query' | 'cancel';
 export interface ExecutorProfile {
     run_as?: {
         uid: number;
