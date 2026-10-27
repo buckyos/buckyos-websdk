@@ -28043,7 +28043,8 @@ const browserProvider = {
       let settled = false;
       const cleanup = () => {
         var _a3;
-        window.removeEventListener("focus", onFocus);
+        input.removeEventListener("change", onChange);
+        input.removeEventListener("cancel", onCancel);
         (_a3 = options.signal) == null ? void 0 : _a3.removeEventListener("abort", onAbort);
       };
       const fail2 = (error) => {
@@ -28054,13 +28055,8 @@ const browserProvider = {
         reject(error);
       };
       const onAbort = () => fail2(new NdmError("USER_CANCELLED", "Import cancelled"));
-      const onFocus = () => {
-        setTimeout(() => {
-          if (!settled)
-            fail2(new NdmError("USER_CANCELLED", "User cancelled file selection"));
-        }, 500);
-      };
-      input.addEventListener("change", () => {
+      const onCancel = () => fail2(new NdmError("USER_CANCELLED", "User cancelled file selection"));
+      const onChange = () => {
         if (settled)
           return;
         const files = input.files;
@@ -28071,9 +28067,9 @@ const browserProvider = {
         settled = true;
         cleanup();
         resolve(Array.from(files));
-      });
-      input.addEventListener("cancel", onAbort);
-      window.addEventListener("focus", onFocus);
+      };
+      input.addEventListener("change", onChange);
+      input.addEventListener("cancel", onCancel);
       if ((_a2 = options.signal) == null ? void 0 : _a2.aborted) {
         onAbort();
         return;
@@ -30222,4 +30218,4 @@ export {
   NOTIFY_CHOICE_CONTROL_ID as y,
   NOTIFY_TEXT_CONTROL_ID as z
 };
-//# sourceMappingURL=executor_client-84d7a70d.mjs.map
+//# sourceMappingURL=executor_client-dde508e1.mjs.map
