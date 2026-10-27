@@ -75,6 +75,8 @@ export interface PickupAndImportOptions<TMode extends ImportMode = ImportMode> {
     accept?: string[];
     thumbnails?: ThumbnailOptions;
     autoStartUpload?: boolean;
+    /** With `autoStartUpload`: bind the single imported root into a bucket at finalize. */
+    bind?: StartUploadOptions['bind'];
     endpoint?: string;
     sessionToken?: string | null;
     headers?: Record<string, string>;

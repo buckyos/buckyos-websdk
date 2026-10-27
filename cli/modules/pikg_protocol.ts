@@ -290,6 +290,8 @@ function validateBuckets(config: Record<string, unknown>, label: string): void {
     if (bucket.scope !== undefined && !['user', 'zone'].includes(String(bucket.scope))) {
       throw invalid('schema', `${at}.scope is user or zone`)
     }
+    // The AppDoc carries the declaration without defaults, as BuckyOS serializes it.
+    if (bucket.scope === 'user') delete bucket.scope
     optionalBoolean(bucket.versioning, `${at}.versioning`)
     const userOwned = policy === 'documents' || policy === 'collected'
     if (bucket.quota_mib !== undefined) {
@@ -313,8 +315,10 @@ function validateBuckets(config: Record<string, unknown>, label: string): void {
       }
     }
     if (bucket.lifecycle !== undefined) {
-      if (!Array.isArray(bucket.lifecycle)) throw invalid('schema', `${at}.lifecycle must be an array`)
-      for (const [index, rule] of bucket.lifecycle.entries()) {
+      const lifecycle = bucket.lifecycle
+      if (!Array.isArray(lifecycle)) throw invalid('schema', `${at}.lifecycle must be an array`)
+      if (lifecycle.length === 0) delete bucket.lifecycle
+      for (const [index, rule] of lifecycle.entries()) {
         const kind = String(expectObject(rule, `${at}.lifecycle[${index}]`).rule)
         if (!['expire', 'noncurrent_expire', 'expired_delete_marker'].includes(kind)) {
           throw invalid('schema', `${at}.lifecycle[${index}].rule is invalid`)

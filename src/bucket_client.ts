@@ -210,6 +210,20 @@ export interface SnapshotInfo {
 
 export type Reference = { key: string; version?: number } | { obj_id: string }
 
+/** What `bucket.release_app` did with one bucket of an uninstalled app instance. */
+export interface ReleasedBucket {
+  bucket_id: string
+  data_policy: DataPolicy
+  unique_bytes: number
+  action: 'deleted' | 'orphaned'
+}
+
+export interface AppRelease {
+  appid: string
+  owner: string
+  buckets: ReleasedBucket[]
+}
+
 /** An S3 access key of the S3 compatible face (`https://<zone>/s3` or `https://s3.<zone>`), bound to (user, app). */
 export interface S3Key {
   access_key_id: string
@@ -252,6 +266,56 @@ export function bucketDataPlaneBase(serviceUrl: string): string {
   return at >= 0 ? serviceUrl.slice(0, at) : ''
 }
 
+export const ZONE_BUCKET_OWNER = '_'
+const BUCKET_COMPONENT = /^[A-Za-z0-9._-]{1,128}$/
+
+function bucketComponent(what: string, value: string): string {
+  if (!BUCKET_COMPONENT.test(value) || value === '.' || value === '..') throw new BucketError('invalid_argument', `invalid bucket ${what} '${value}'`)
+  return value
+}
+
+/** `user/<appid>/<owner>/<name>`: a per-user bucket an app or service declared. */
+export function userBucketId(appid: string, owner: string, name: string): string {
+  if (owner === ZONE_BUCKET_OWNER) throw new BucketError('invalid_argument', 'a user bucket needs a user owner')
+  return `user/${bucketComponent('appid', appid)}/${bucketComponent('owner', owner)}/${bucketComponent('name', name)}`
+}
+
+/** `zone/<appid>/_/<name>`: a bucket owned by a service, not by a user. */
+export function zoneBucketId(appid: string, name: string): string {
+  return `zone/${bucketComponent('appid', appid)}/${ZONE_BUCKET_OWNER}/${bucketComponent('name', name)}`
+}
+
+export interface ParsedBucketId {
+  scope: BucketScope
+  appid: string
+  owner: string
+  name: string
+}
+
+/** Splits `<scope>/<appid>/<owner>/<name>[/<key>]`; `null` when it is not one. */
+export function parseBucketPath(path: string): { bucketId: string; parts: ParsedBucketId; key: string } | null {
+  const segments = path.split('/')
+  if (segments.length < 4) return null
+  const [scope, appid, owner, name] = segments
+  if (scope !== 'user' && scope !== 'zone') return null
+  if (![appid, owner, name].every(v => BUCKET_COMPONENT.test(v) && v !== '.' && v !== '..')) return null
+  if ((scope === 'zone') !== (owner === ZONE_BUCKET_OWNER)) return null
+  return { bucketId: `${scope}/${appid}/${owner}/${name}`, parts: { scope, appid, owner, name }, key: segments.slice(4).join('/') }
+}
+
+export const BUCKET_OBJ_URL_PREFIX = 'obj://bucket/'
+
+/** `obj://bucket/<bucket_id>/<key>`: how Agents, CLIs and stored references name a binding. */
+export function bucketObjUrl(bucketId: string, key: string): string {
+  return `${BUCKET_OBJ_URL_PREFIX}${bucketId}/${key}`
+}
+
+export function parseBucketObjUrl(url: string): { bucketId: string; key: string } | null {
+  if (!url.startsWith(BUCKET_OBJ_URL_PREFIX)) return null
+  const parsed = parseBucketPath(url.slice(BUCKET_OBJ_URL_PREFIX.length))
+  return parsed && parsed.key ? { bucketId: parsed.bucketId, key: parsed.key } : null
+}
+
 export function bucketObjectPath(bucketId: string, key: string): string {
   return `${BUCKET_DATA_PATH}${bucketId}/${key.split('/').map(encodeURIComponent).join('/')}`
 }
@@ -270,6 +334,19 @@ export class BucketClient {
 
   stat(bucketId: string): Promise<BucketInfo & { issues: unknown[] }> {
     return this.call('bucket.stat', { bucket_id: bucketId })
+  }
+
+  /** Unbinds everything and drops the bucket; a documents / collected bucket takes the user's sudo session token. */
+  deleteBucket(bucketId: string, options: { sessionToken?: string | null } = {}): Promise<{ deleted: boolean }> {
+    return this.rpcClient.call('bucket.delete_bucket', { bucket_id: bucketId }, options.sessionToken ? { sessionToken: options.sessionToken } : {})
+  }
+
+  /**
+   * Disposes of an uninstalled app instance's buckets by data policy (control-panel or a Zone admin):
+   * documents / collected (and app_data with `keepAppData`) become orphans, the rest are deleted.
+   */
+  releaseApp(appid: string, owner: string, options: { keepAppData?: boolean } = {}): Promise<AppRelease> {
+    return this.call('bucket.release_app', { appid, owner, keep_app_data: options.keepAppData ?? false })
   }
 
   put(bucketId: string, req: PutRequest): Promise<PutResult> {

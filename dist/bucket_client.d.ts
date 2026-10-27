@@ -207,6 +207,18 @@ export type Reference = {
 } | {
     obj_id: string;
 };
+/** What `bucket.release_app` did with one bucket of an uninstalled app instance. */
+export interface ReleasedBucket {
+    bucket_id: string;
+    data_policy: DataPolicy;
+    unique_bytes: number;
+    action: 'deleted' | 'orphaned';
+}
+export interface AppRelease {
+    appid: string;
+    owner: string;
+    buckets: ReleasedBucket[];
+}
 /** An S3 access key of the S3 compatible face (`https://<zone>/s3` or `https://s3.<zone>`), bound to (user, app). */
 export interface S3Key {
     access_key_id: string;
@@ -245,6 +257,30 @@ export declare class BucketError extends Error {
 }
 /** Derives the data-plane base from a service kRPC URL (`…/kapi/nfs-server`). */
 export declare function bucketDataPlaneBase(serviceUrl: string): string;
+export declare const ZONE_BUCKET_OWNER = "_";
+/** `user/<appid>/<owner>/<name>`: a per-user bucket an app or service declared. */
+export declare function userBucketId(appid: string, owner: string, name: string): string;
+/** `zone/<appid>/_/<name>`: a bucket owned by a service, not by a user. */
+export declare function zoneBucketId(appid: string, name: string): string;
+export interface ParsedBucketId {
+    scope: BucketScope;
+    appid: string;
+    owner: string;
+    name: string;
+}
+/** Splits `<scope>/<appid>/<owner>/<name>[/<key>]`; `null` when it is not one. */
+export declare function parseBucketPath(path: string): {
+    bucketId: string;
+    parts: ParsedBucketId;
+    key: string;
+} | null;
+export declare const BUCKET_OBJ_URL_PREFIX = "obj://bucket/";
+/** `obj://bucket/<bucket_id>/<key>`: how Agents, CLIs and stored references name a binding. */
+export declare function bucketObjUrl(bucketId: string, key: string): string;
+export declare function parseBucketObjUrl(url: string): {
+    bucketId: string;
+    key: string;
+} | null;
 export declare function bucketObjectPath(bucketId: string, key: string): string;
 /** kRPC client of the bucket service plus the `/bucket/v1` data plane. */
 export declare class BucketClient {
@@ -259,6 +295,19 @@ export declare class BucketClient {
     stat(bucketId: string): Promise<BucketInfo & {
         issues: unknown[];
     }>;
+    /** Unbinds everything and drops the bucket; a documents / collected bucket takes the user's sudo session token. */
+    deleteBucket(bucketId: string, options?: {
+        sessionToken?: string | null;
+    }): Promise<{
+        deleted: boolean;
+    }>;
+    /**
+     * Disposes of an uninstalled app instance's buckets by data policy (control-panel or a Zone admin):
+     * documents / collected (and app_data with `keepAppData`) become orphans, the rest are deleted.
+     */
+    releaseApp(appid: string, owner: string, options?: {
+        keepAppData?: boolean;
+    }): Promise<AppRelease>;
     put(bucketId: string, req: PutRequest): Promise<PutResult>;
     get(bucketId: string, key: string, version?: number): Promise<Binding>;
     head(bucketId: string, key: string, version?: number): Promise<{

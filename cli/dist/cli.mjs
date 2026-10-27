@@ -4286,6 +4286,8 @@ function validateBuckets(config, label) {
     if (bucket.scope !== void 0 && !["user", "zone"].includes(String(bucket.scope))) {
       throw invalid("schema", `${at}.scope is user or zone`);
     }
+    if (bucket.scope === "user")
+      delete bucket.scope;
     optionalBoolean(bucket.versioning, `${at}.versioning`);
     const userOwned = policy2 === "documents" || policy2 === "collected";
     if (bucket.quota_mib !== void 0) {
@@ -4311,9 +4313,12 @@ function validateBuckets(config, label) {
       }
     }
     if (bucket.lifecycle !== void 0) {
-      if (!Array.isArray(bucket.lifecycle))
+      const lifecycle = bucket.lifecycle;
+      if (!Array.isArray(lifecycle))
         throw invalid("schema", `${at}.lifecycle must be an array`);
-      for (const [index, rule] of bucket.lifecycle.entries()) {
+      if (lifecycle.length === 0)
+        delete bucket.lifecycle;
+      for (const [index, rule] of lifecycle.entries()) {
         const kind = String(expectObject$3(rule, `${at}.lifecycle[${index}]`).rule);
         if (!["expire", "noncurrent_expire", "expired_delete_marker"].includes(kind)) {
           throw invalid("schema", `${at}.lifecycle[${index}].rule is invalid`);
@@ -5174,7 +5179,7 @@ function validateContentHandlers(value, permissions) {
   }
   return value;
 }
-const PACKAGE_VERSION = "0.7.149";
+const PACKAGE_VERSION = "0.7.150";
 const TOOL_VERSION = PACKAGE_VERSION;
 const SDK_VERSION = PACKAGE_VERSION;
 const PROTOCOL_VERSION = "1";

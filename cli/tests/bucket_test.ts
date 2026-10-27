@@ -69,4 +69,6 @@ Deno.test('pikg install config validates declared buckets (D17)', async () => {
   await assertRejects(() => validateServiceConfigTips({ buckets: { d: { kind: 'data', data_policy: 'documents', quota_mib: 1 } } }, 'tips'))
   await assertRejects(() => validateServiceConfigTips({ buckets: { t: { kind: 'data', data_policy: 'temp' } } }, 'tips'))
   await assertRejects(() => validateServiceConfigTips({ buckets: { c: { kind: 'blob', data_policy: 'cache' } } }, 'tips'))
+  const defaults = validateServiceConfigTips({ buckets: { c: { kind: 'data', data_policy: 'cache', scope: 'user', lifecycle: [] }, z: { kind: 'data', data_policy: 'cache', scope: 'zone' } } }, 'tips')
+  assertEquals(defaults.buckets, { c: { kind: 'data', data_policy: 'cache' }, z: { kind: 'data', data_policy: 'cache', scope: 'zone' } })
 })

@@ -424,6 +424,44 @@ function bucketDataPlaneBase(serviceUrl) {
   const at = serviceUrl.indexOf("/kapi/");
   return at >= 0 ? serviceUrl.slice(0, at) : "";
 }
+const ZONE_BUCKET_OWNER = "_";
+const BUCKET_COMPONENT = /^[A-Za-z0-9._-]{1,128}$/;
+function bucketComponent(what, value) {
+  if (!BUCKET_COMPONENT.test(value) || value === "." || value === "..")
+    throw new BucketError("invalid_argument", `invalid bucket ${what} '${value}'`);
+  return value;
+}
+function userBucketId(appid, owner, name) {
+  if (owner === ZONE_BUCKET_OWNER)
+    throw new BucketError("invalid_argument", "a user bucket needs a user owner");
+  return `user/${bucketComponent("appid", appid)}/${bucketComponent("owner", owner)}/${bucketComponent("name", name)}`;
+}
+function zoneBucketId(appid, name) {
+  return `zone/${bucketComponent("appid", appid)}/${ZONE_BUCKET_OWNER}/${bucketComponent("name", name)}`;
+}
+function parseBucketPath(path) {
+  const segments = path.split("/");
+  if (segments.length < 4)
+    return null;
+  const [scope, appid, owner, name] = segments;
+  if (scope !== "user" && scope !== "zone")
+    return null;
+  if (![appid, owner, name].every((v) => BUCKET_COMPONENT.test(v) && v !== "." && v !== ".."))
+    return null;
+  if (scope === "zone" !== (owner === ZONE_BUCKET_OWNER))
+    return null;
+  return { bucketId: `${scope}/${appid}/${owner}/${name}`, parts: { scope, appid, owner, name }, key: segments.slice(4).join("/") };
+}
+const BUCKET_OBJ_URL_PREFIX = "obj://bucket/";
+function bucketObjUrl(bucketId, key) {
+  return `${BUCKET_OBJ_URL_PREFIX}${bucketId}/${key}`;
+}
+function parseBucketObjUrl(url) {
+  if (!url.startsWith(BUCKET_OBJ_URL_PREFIX))
+    return null;
+  const parsed = parseBucketPath(url.slice(BUCKET_OBJ_URL_PREFIX.length));
+  return parsed && parsed.key ? { bucketId: parsed.bucketId, key: parsed.key } : null;
+}
 function bucketObjectPath(bucketId, key) {
   return `${BUCKET_DATA_PATH}${bucketId}/${key.split("/").map(encodeURIComponent).join("/")}`;
 }
@@ -440,6 +478,17 @@ class BucketClient {
   }
   stat(bucketId) {
     return this.call("bucket.stat", { bucket_id: bucketId });
+  }
+  /** Unbinds everything and drops the bucket; a documents / collected bucket takes the user's sudo session token. */
+  deleteBucket(bucketId, options = {}) {
+    return this.rpcClient.call("bucket.delete_bucket", { bucket_id: bucketId }, options.sessionToken ? { sessionToken: options.sessionToken } : {});
+  }
+  /**
+   * Disposes of an uninstalled app instance's buckets by data policy (control-panel or a Zone admin):
+   * documents / collected (and app_data with `keepAppData`) become orphans, the rest are deleted.
+   */
+  releaseApp(appid, owner, options = {}) {
+    return this.call("bucket.release_app", { appid, owner, keep_app_data: options.keepAppData ?? false });
   }
   put(bucketId, req) {
     return this.call("bucket.put", { bucket_id: bucketId, ...req });
@@ -599,11 +648,18 @@ const bucket_client = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defin
   __proto__: null,
   BUCKET_DATA_PATH,
   BUCKET_MAX_PUT_BYTES,
+  BUCKET_OBJ_URL_PREFIX,
   BUCKET_SERVICE_NAME,
   BucketClient,
   BucketError,
+  ZONE_BUCKET_OWNER,
   bucketDataPlaneBase,
-  bucketObjectPath
+  bucketObjUrl,
+  bucketObjectPath,
+  parseBucketObjUrl,
+  parseBucketPath,
+  userBucketId,
+  zoneBucketId
 }, Symbol.toStringTag, { value: "Module" }));
 function serializeAuthTarget(target) {
   if (!target || typeof target !== "object") {
@@ -28744,7 +28800,7 @@ async function importSelectedFiles(selectedFiles, options, tree) {
     summary
   };
   if (options.autoStartUpload && uploadStatus === "not_started") {
-    startUpload(sessionId, { endpoint: options.endpoint, sessionToken: options.sessionToken, fetcher: options.fetcher, headers: options.headers, signal: options.signal }).catch(() => {
+    startUpload(sessionId, { endpoint: options.endpoint, sessionToken: options.sessionToken, fetcher: options.fetcher, headers: options.headers, signal: options.signal, bind: options.bind }).catch(() => {
     });
     snapshot.uploadStatus = "uploading";
   }
@@ -29035,8 +29091,11 @@ async function doUpload(session, concurrency) {
   if (body.ready !== true || !Array.isArray(body.roots) || session.items.some((item) => !body.roots.some((root) => root.obj_id === item.objectId && root.ready === true))) {
     throw new NdmError("OBJECT_NOT_READY", "NDM did not confirm all root objects and their dependencies are ready");
   }
-  if (session.bind)
+  if (session.bind) {
+    if (!body.binding || typeof body.binding.obj_id !== "string")
+      throw new NdmError("UPLOAD_FAILED", "finalize did not bind the imported root");
     session.binding = body.binding;
+  }
   session.objectStatus = "ready";
   session.uploadStatus = session.transmittedBytes === 0 ? "not_required" : "completed";
   session.materializationStatus = "all_in_store";
@@ -30163,4 +30222,4 @@ export {
   NOTIFY_CHOICE_CONTROL_ID as y,
   NOTIFY_TEXT_CONTROL_ID as z
 };
-//# sourceMappingURL=executor_client-06dad8a8.mjs.map
+//# sourceMappingURL=executor_client-84d7a70d.mjs.map

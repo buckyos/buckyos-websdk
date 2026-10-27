@@ -619,6 +619,24 @@ describe('unified import lifecycle', () => {
         expect((await getImportSessionStatus(result.sessionId)).objectStatus).toBe('ready')
     })
 
+    it('autoStartUpload passes bind to finalize and requires the binding back', async () => {
+        const binding = { bucket_id: 'user/app/alice/assets', key: 'k/a.txt', obj_id: '', version: 1, etag: '', created: true }
+        const binder = async (input: RequestInfo | URL, init?: RequestInit) => {
+            if (!String(input).endsWith('/import/finalize')) return fetcher(input, init)
+            const body = JSON.parse(init!.body as string)
+            finalizations.push(body)
+            const root = body.roots[0]
+            return jsonResponse({ ready: true, roots: [{ obj_id: root, ready: true }], warnings: [], ...(body.auto_bind ? { binding: { ...binding, obj_id: root, etag: root } } : {}) })
+        }
+        const bind = { bucketId: 'user/app/alice/assets', key: 'k/a.txt', ifNoneMatch: '*' }
+        const result = remember(await importFiles([makeFile('a.txt', 'A')], { ...options, fetcher: binder, mode: 'single_file', autoStartUpload: true, bind }))
+        const status = await ensureUploaded(result.sessionId)
+        expect(finalizations[0].auto_bind).toEqual({ bucket_id: 'user/app/alice/assets', key: 'k/a.txt', if_none_match: '*' })
+        expect(status.binding?.obj_id).toBe(result.selection.objectId)
+        const second = remember(await importFiles([makeFile('b.txt', 'B')], { ...options, mode: 'single_file' }))
+        await expect(ensureUploaded(second.sessionId, { bind })).rejects.toThrow('finalize did not bind')
+    })
+
     it('never marks incomplete dependencies ready', async () => {
         const incomplete = async (input: RequestInfo | URL, init?: RequestInit) => String(input).endsWith('/import/finalize')
             ? jsonResponse({ ready: false, roots: [] }) : fetcher(input, init)

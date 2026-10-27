@@ -1,5 +1,5 @@
 import { kRPCClient } from '../src/krpc_client'
-import { BucketClient, BucketError, bucketDataPlaneBase, bucketObjectPath } from '../src/bucket_client'
+import { BucketClient, BucketError, bucketDataPlaneBase, bucketObjectPath, bucketObjUrl, parseBucketObjUrl, parseBucketPath, userBucketId, zoneBucketId } from '../src/bucket_client'
 
 function rpcResponse(body: unknown, seq: number = 1) {
   return { ok: true, status: 200, json: async () => ({ result: body, sys: [seq] }) }
@@ -10,6 +10,21 @@ function bodyOf(fetcher: jest.Mock, callIdx = 0) {
 }
 
 describe('BucketClient', () => {
+  it('builds and parses bucket ids and obj://bucket urls', () => {
+    expect(userBucketId('photos', 'alice', 'library')).toBe('user/photos/alice/library')
+    expect(zoneBucketId('msg-center', 'attachments')).toBe('zone/msg-center/_/attachments')
+    expect(() => userBucketId('photos', '_', 'library')).toThrow(BucketError)
+    expect(() => userBucketId('a/b', 'alice', 'library')).toThrow(BucketError)
+    expect(parseBucketPath('zone/msg-center/_/attachments/s/1/0')).toEqual({ bucketId: 'zone/msg-center/_/attachments', parts: { scope: 'zone', appid: 'msg-center', owner: '_', name: 'attachments' }, key: 's/1/0' })
+    expect(parseBucketPath('zone/msg-center/alice/attachments')).toBeNull()
+    expect(parseBucketPath('user/x/a')).toBeNull()
+    const url = bucketObjUrl('user/photos/alice/library', '2026/a.jpg')
+    expect(url).toBe('obj://bucket/user/photos/alice/library/2026/a.jpg')
+    expect(parseBucketObjUrl(url)).toEqual({ bucketId: 'user/photos/alice/library', key: '2026/a.jpg' })
+    expect(parseBucketObjUrl('obj://bucket/user/photos/alice/library')).toBeNull()
+    expect(parseBucketObjUrl('cyfile:abc')).toBeNull()
+  })
+
   it('derives the data plane from the service URL', () => {
     expect(bucketDataPlaneBase('/kapi/nfs-server/')).toBe('')
     expect(bucketDataPlaneBase('https://zone.example/kapi/nfs-server')).toBe('https://zone.example')
@@ -27,6 +42,21 @@ describe('BucketClient', () => {
       params: { bucket_id: 'user/photos/alice/library', key: 'a.jpg', obj_id: 'cyfile:aa', if_none_match: '*' },
       sys: [1],
     })
+  })
+
+  it('releases an app and deletes a bucket with an explicit session token', async () => {
+    const release = { appid: 'photos', owner: 'alice', buckets: [{ bucket_id: 'user/photos/alice/library', data_policy: 'documents', unique_bytes: 5, action: 'orphaned' }] }
+    const fetcher = jest.fn()
+      .mockResolvedValueOnce(rpcResponse(release))
+      .mockResolvedValueOnce(rpcResponse({ deleted: true }, 2))
+      .mockResolvedValueOnce(rpcResponse({ deleted: true }, 3))
+    const client = new BucketClient(new kRPCClient('/kapi/nfs-server/', 'session', 1, { fetcher }))
+    expect(await client.releaseApp('photos', 'alice')).toEqual(release)
+    expect(bodyOf(fetcher)).toEqual({ method: 'bucket.release_app', params: { appid: 'photos', owner: 'alice', keep_app_data: false }, sys: [1, 'session'] })
+    expect(await client.deleteBucket('user/photos/alice/library', { sessionToken: 'sudo' })).toEqual({ deleted: true })
+    expect(bodyOf(fetcher, 1)).toEqual({ method: 'bucket.delete_bucket', params: { bucket_id: 'user/photos/alice/library' }, sys: [2, 'sudo'] })
+    await client.deleteBucket('user/photos/alice/index', { sessionToken: null })
+    expect(bodyOf(fetcher, 2).sys).toEqual([3, 'session'])
   })
 
   it('PUTs bytes with metadata, conditions and the session token', async () => {

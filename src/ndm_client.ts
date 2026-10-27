@@ -137,6 +137,8 @@ export interface PickupAndImportOptions<TMode extends ImportMode = ImportMode> {
     accept?: string[]
     thumbnails?: ThumbnailOptions
     autoStartUpload?: boolean
+    /** With `autoStartUpload`: bind the single imported root into a bucket at finalize. */
+    bind?: StartUploadOptions['bind']
     endpoint?: string
     sessionToken?: string | null
     headers?: Record<string, string>
@@ -1619,7 +1621,7 @@ async function importSelectedFiles<TMode extends ImportMode>(
     // Auto-start upload if requested
     if (options.autoStartUpload && uploadStatus === 'not_started') {
         // Fire and forget — the session transitions to 'uploading'
-        startUpload(sessionId, { endpoint: options.endpoint, sessionToken: options.sessionToken, fetcher: options.fetcher, headers: options.headers, signal: options.signal }).catch(() => { /* session state already tracks failure */ })
+        startUpload(sessionId, { endpoint: options.endpoint, sessionToken: options.sessionToken, fetcher: options.fetcher, headers: options.headers, signal: options.signal, bind: options.bind }).catch(() => { /* session state already tracks failure */ })
         snapshot.uploadStatus = 'uploading'
     }
 
@@ -1919,7 +1921,10 @@ async function doUpload(session: ImportSession, concurrency: number): Promise<vo
     if (body.ready !== true || !Array.isArray(body.roots) || session.items.some(item => !body.roots.some((root: { obj_id: string; ready: boolean }) => root.obj_id === item.objectId && root.ready === true))) {
         throw new NdmError('OBJECT_NOT_READY', 'NDM did not confirm all root objects and their dependencies are ready')
     }
-    if (session.bind) session.binding = body.binding as UploadBinding
+    if (session.bind) {
+        if (!body.binding || typeof body.binding.obj_id !== 'string') throw new NdmError('UPLOAD_FAILED', 'finalize did not bind the imported root')
+        session.binding = body.binding as UploadBinding
+    }
     session.objectStatus = 'ready'
     session.uploadStatus = session.transmittedBytes === 0 ? 'not_required' : 'completed'
     session.materializationStatus = 'all_in_store'

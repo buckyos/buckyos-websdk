@@ -343,7 +343,8 @@ export interface ShareAuditEntry {
 }
 
 export interface ShareDetail extends ShareInfo {
-  retention: { obj_id: string; pin_owner: string; pinned_at: number; released_at?: number | null }[]
+  /** The bucket binding that retains the snapshot (`zone/nfs-server/_/shares`); empty once released. */
+  retention: { bucket_id: string; key: string; obj_id: string; version: number; bound_at: number }[]
   audit: ShareAuditEntry[]
   related?: ShareInfo
 }
