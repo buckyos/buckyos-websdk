@@ -1325,7 +1325,15 @@ export interface ProviderValidationErrorDetail {
     kind: ProviderValidationErrorKind;
     message: string;
 }
+export interface FilteredProviderCapability {
+    provider_model_id: string;
+    protocol_adapter_id: string;
+    api_type: string;
+    operation_id: string | null;
+    reason: string;
+}
 export interface ProviderValidateResponse {
+    filtered_capabilities: FilteredProviderCapability[];
     models_recognized: string[];
     unmatched_models: JsonValue[];
     unavailable_presets: JsonValue[];
@@ -1382,6 +1390,7 @@ export interface ProviderInstanceAuthView {
 }
 export type ProviderInstanceInventoryState = 'disabled' | 'not_loaded' | 'loaded';
 export interface ProviderInstanceInventoryView {
+    filtered_capabilities: FilteredProviderCapability[];
     state: ProviderInstanceInventoryState;
     revision?: string;
     model_count: number;
