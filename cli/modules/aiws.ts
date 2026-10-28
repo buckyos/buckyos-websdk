@@ -285,10 +285,100 @@ const runReportCommand: CommandDefinition = {
   },
 }
 
+// Block-controls (a mind map…): the catalogue each control describes itself in, and its exchange formats
+// (脑图方案 §8.1). The service dispatches by control kind: `control.*` in buckyos/src/frame/aiworkspace/README.md.
+const controlsCommand: CommandDefinition = {
+  verb: 'controls',
+  summary: 'Block-controls a canvas offers: `list` (kind, what it is, when to use it), `describe <kind>` (the full self-description to follow)',
+  positionals: [{ name: 'action', description: 'list | describe', required: true }, { name: 'kind', description: 'Control kind for describe, e.g. mindmap', required: false }],
+  options: [],
+  inputSchema: { type: 'object', properties: { action: { type: 'string', enum: ['list', 'describe'] }, kind: { type: 'string' } }, required: ['action'], additionalProperties: false },
+  outputSchema: OBJECT_OUTPUT,
+  resultSchemaVersion: 1,
+  access: { mode: 'fixed', level: 'read' },
+  asyncMode: 'sync',
+  requiresSession: true,
+  examples: ['buckyos aiws controls list', 'buckyos aiws controls describe mindmap'],
+  handler: (ctx, input) => {
+    const action = requiredInputString(input, 'action')
+    if (action === 'list') return aiws(ctx, 'control.list', {})
+    if (action !== 'describe') throw new UsageError('AIWS_USAGE', 'controls: list or describe <kind>')
+    return aiws(ctx, 'control.describe', { kind: requiredInputString(input, 'kind') })
+  },
+}
+
+/** `markdown` / `opml` from an explicit option or the file name. */
+function exchangeFormat(explicit: string | undefined, file: string): string {
+  if (explicit) return explicit
+  return /\.(opml|xml)$/i.test(file) ? 'opml' : 'markdown'
+}
+
+const importCommand: CommandDefinition = {
+  verb: 'import',
+  summary: 'Create a Block-control from an exchange file: a mind map from a Markdown outline (nested list) or OPML',
+  positionals: [{ name: 'file', description: 'Local file (.md / .opml)', required: true }],
+  options: [
+    WORKSPACE_OPTION,
+    { name: 'parent', property: 'parent_id', description: 'Surface (or group) id to put the control on', type: 'string', required: true },
+    { name: 'kind', property: 'kind', description: 'Control kind (default mindmap)', type: 'string' },
+    { name: 'format', property: 'format', description: 'markdown | opml (default: by the file extension)', type: 'string', enum: ['markdown', 'opml'] },
+    { name: 'at', property: 'at', description: 'x,y on a free canvas: where the first root goes', type: 'string' },
+    { name: 'title', property: 'title', description: 'Title of the control (default: the single root, or the OPML title)', type: 'string' },
+  ],
+  inputSchema: workspaceInput({ file: { type: 'string', minLength: 1 }, parent_id: { type: 'string', minLength: 1 }, kind: { type: 'string' }, format: { type: 'string' }, at: { type: 'string' }, title: { type: 'string' } }, ['file', 'parent_id']),
+  outputSchema: OBJECT_OUTPUT,
+  resultSchemaVersion: 1,
+  access: { mode: 'fixed', level: 'write' },
+  asyncMode: 'sync',
+  requiresSession: true,
+  examples: ['buckyos aiws import plan.md --workspace ws_abc --parent sf_main --at 100,80', 'buckyos aiws import ideas.opml --workspace ws_abc --parent sf_main'],
+  handler: async (ctx, input) => {
+    const file = requiredInputString(input, 'file')
+    const params: Record<string, unknown> = {
+      workspace_id: requiredInputString(input, 'workspace_id'), parent_id: requiredInputString(input, 'parent_id'),
+      kind: inputString(input, 'kind') ?? 'mindmap', format: exchangeFormat(inputString(input, 'format'), file), text: await getHost().readTextFile(file),
+    }
+    const at = inputString(input, 'at')
+    if (at) {
+      const [x, y] = at.split(',').map(Number)
+      if (!Number.isFinite(x) || !Number.isFinite(y)) throw new UsageError('AIWS_USAGE', '--at is x,y')
+      params.at = { x, y }
+    }
+    const title = inputString(input, 'title')
+    if (title) params.title = title
+    return aiws(ctx, 'control.import', params)
+  },
+}
+
+const exportCommand: CommandDefinition = {
+  verb: 'export',
+  summary: 'A Block-control in an exchange format: a mind map as a Markdown outline or OPML',
+  positionals: [{ name: 'entity_id', description: 'The control (container) id', required: true }],
+  options: [
+    WORKSPACE_OPTION,
+    { name: 'format', property: 'format', description: 'markdown (default) | opml', type: 'string', enum: ['markdown', 'opml'] },
+    { name: 'out', property: 'out', description: 'Write the text to this file instead of answering it', type: 'string' },
+  ],
+  inputSchema: workspaceInput({ entity_id: { type: 'string', minLength: 1 }, format: { type: 'string' }, out: { type: 'string' } }, ['entity_id']),
+  outputSchema: OBJECT_OUTPUT,
+  resultSchemaVersion: 1,
+  access: { mode: 'fixed', level: 'read' },
+  asyncMode: 'sync',
+  requiresSession: true,
+  examples: ['buckyos aiws export mm_plan --workspace ws_abc', 'buckyos aiws export mm_plan --workspace ws_abc --format opml --out plan.opml'],
+  handler: async (ctx, input) => {
+    const result = await aiws(ctx, 'control.export', { workspace_id: requiredInputString(input, 'workspace_id'), entity_id: requiredInputString(input, 'entity_id'), format: inputString(input, 'format') ?? 'markdown' })
+    const out = inputString(input, 'out')
+    if (!out) return result
+    await getHost().writeTextFile(out, String(result.text ?? ''))
+    return { ok: true, format: result.format, kind: result.kind, path: out }
+  },
+}
+
 export function createAiwsModule(): CommandModule {
   return {
     name: 'aiws',
-    summary: 'AI Workspace: read a workspace, and execute wish runs as their executor (claim, heartbeat, report)',
-    commands: [infoCommand, readCommand, queryCommand, runGetCommand, runClaimCommand, runHeartbeatCommand, runFilesCommand, runToolCommand, runProgramCommand, runReportCommand],
+    summary: 'AI Workspace: read a workspace, Block-controls (catalogue, import, export), and execute wish runs as their executor (claim, heartbeat, report)',
+    commands: [infoCommand, readCommand, queryCommand, controlsCommand, importCommand, exportCommand, runGetCommand, runClaimCommand, runHeartbeatCommand, runFilesCommand, runToolCommand, runProgramCommand, runReportCommand],
   }
 }

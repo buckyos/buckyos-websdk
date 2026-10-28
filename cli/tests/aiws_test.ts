@@ -1,5 +1,6 @@
 import './setup.ts'
 import { createRegistry } from '../core/app.ts'
+import { parseCommandArgs } from '../core/argv.ts'
 import { ConfigStore } from '../core/config.ts'
 import { createMockCommandContext } from '../core/context.ts'
 import type { RpcCallOptions, ServiceClientRegistry } from '../core/runtime.ts'
@@ -18,6 +19,9 @@ Deno.test('aiws verbs are registered with their access levels', () => {
       ['info', 'read'],
       ['read', 'read'],
       ['query', 'read'],
+      ['controls', 'read'],
+      ['import', 'write'],
+      ['export', 'read'],
       ['run-get', 'read'],
       ['run-files', 'read'],
       ['run-claim', 'write'],
@@ -31,6 +35,12 @@ Deno.test('aiws verbs are registered with their access levels', () => {
     assertEquals(described.access, { mode: 'fixed', level })
     assertEquals(described.requires_session, true)
   }
+})
+
+Deno.test('controls takes its kind only for describe', () => {
+  const command = createRegistry().get('aiws', 'controls')
+  assertEquals(parseCommandArgs(command, ['list'], undefined).input, { action: 'list' })
+  assertEquals(parseCommandArgs(command, ['describe', 'mindmap'], undefined).input, { action: 'describe', kind: 'mindmap' })
 })
 
 Deno.test('the executor protocol maps onto proc.* with the attempt and the service answers as they are', async () => {
@@ -62,6 +72,27 @@ Deno.test('a service failure becomes a tool error carrying its code', async () =
   let code: string | undefined
   await assertRejects(() => run('run-heartbeat', { workspace_id: 'ws_a', run_id: 'run_1', attempt: 1 }, clients).catch((error: unknown) => { code = (error as { code?: string }).code; throw error }))
   assertEquals(code, 'RUN_REVOKED')
+})
+
+Deno.test('Block-controls: the catalogue, import from an outline file and export dispatch to control.*', async () => {
+  const calls: RecordedCall[] = []
+  const clients = clientsFor(calls, (method, params) => {
+    if (method === 'control.list') return { ok: true, controls: [{ kind: 'mindmap', summary: 'A tree of ideas' }] }
+    if (method === 'control.describe') return { ok: true, control: { kind: params.kind, agent: '# mindmap' } }
+    if (method === 'control.import') return { ok: true, container_id: 'm1', nodes: 3 }
+    if (method === 'control.export') return { ok: true, kind: 'mindmap', format: params.format, text: '- Root\n  - A\n' }
+    throw new Error(method)
+  })
+  assertEquals((await run('controls', { action: 'list' }, clients)).controls, [{ kind: 'mindmap', summary: 'A tree of ideas' }])
+  assertEquals(((await run('controls', { action: 'describe', kind: 'mindmap' }, clients)).control as Record<string, unknown>).agent, '# mindmap')
+  const dir = await Deno.makeTempDir()
+  await Deno.writeTextFile(`${dir}/plan.opml`, '<opml version="2.0"><body><outline text="Root"/></body></opml>')
+  await run('import', { workspace_id: 'ws', parent_id: 'sf', file: `${dir}/plan.opml`, at: '10,20' }, clients)
+  assertEquals(calls.at(-1)?.params, { workspace_id: 'ws', parent_id: 'sf', kind: 'mindmap', format: 'opml', text: '<opml version="2.0"><body><outline text="Root"/></body></opml>', at: { x: 10, y: 20 } })
+  const written = await run('export', { workspace_id: 'ws', entity_id: 'm1', out: `${dir}/plan.md` }, clients)
+  assertEquals(written, { ok: true, format: 'markdown', kind: 'mindmap', path: `${dir}/plan.md` })
+  assertEquals(await Deno.readTextFile(`${dir}/plan.md`), '- Root\n  - A\n')
+  await assertRejects(() => run('controls', { action: 'show' }, clients))
 })
 
 function clientsFor(

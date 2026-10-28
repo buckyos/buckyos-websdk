@@ -96,12 +96,12 @@ Agent 模板没有独立 init kind，参考 [Jarvis 元数据](https://github.co
   "summary": {},
   "description": {},
   "icons": {},
-  "links": {"app_icon_url": "/icon.svg"},
+  "links": {"app_icon_url": "./icon.svg"},
   "license": "MIT"
 }
 ```
 
-Desktop 使用 `links.app_icon_url`，支持相对于应用地址的路径、HTTPS 地址或小图片 data URL；`/icon.svg` 需要随应用提供。网页 favicon 不会自动成为应用图标。此元数据控制应用的展示图标，不会自动在 Desktop 创建快捷方式。
+Desktop 使用 `links.app_icon_url`，支持 HTTPS 地址、小图片 data URL，或在应用有 Web 地址时使用相对路径。`./icon.svg` 相对于应用的 Web 地址，文件需要随应用提供；`/icon.svg` 则相对于 Desktop 所在站点。网页 favicon 不会自动成为应用图标。此元数据控制应用的展示图标，不会自动在 Desktop 创建快捷方式。
 
 ## 4. `dapp_meta/pikg.json`
 
