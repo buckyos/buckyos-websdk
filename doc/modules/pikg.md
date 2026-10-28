@@ -81,9 +81,27 @@ Agent 模板没有独立 init kind，参考 [Jarvis 元数据](https://github.co
 | `categories` | 必填非空字符串数组；首项生成 AppDoc `app_type` |
 | `permissions` | 缺省 `[]`；条目和授权语义见 [App 包配置](https://github.com/buckyos/buckyos/blob/main/doc/sdk/app-package-config.md) |
 | `content_handlers` | 可选；打包时校验，与 App permissions 一起处理 |
+| `presentation` | 可选，原样进入 AppDoc；完整字段和图标示例见下文。 |
 | `service_config_tips` | 缺省 `{}`；端点、挂载、数据库等字段见 [App 包配置](https://github.com/buckyos/buckyos/blob/main/doc/sdk/app-package-config.md) |
 
 根对象严格拒绝未知字段。不得手工加入 `pkg_list/pkg_id/pkg_objid`、PackageMeta、payload size/digest、Object ID、签名、`deps` 或 `source_url`。这些派生内容由 build 构造。build 不改写两个开发输入文件。
+
+`presentation` 遵循现有 [AppPresentation](https://github.com/buckyos/buckyos/blob/main/src/kernel/buckyos-api/src/app_doc.rs)：提供时六个字段均必填，映射可以为空。`title/summary/description/links` 的值为字符串，`icons` 的值为序列化 ObjectId，`license` 为字符串；未知字段和非法值会在 build 时拒绝。
+
+例如，在上面的 `app.json` 中增加：
+
+```json
+"presentation": {
+  "title": {"en": "Demo", "zh-CN": "示例"},
+  "summary": {},
+  "description": {},
+  "icons": {},
+  "links": {"app_icon_url": "/icon.svg"},
+  "license": "MIT"
+}
+```
+
+Desktop 使用 `links.app_icon_url`，支持相对于应用地址的路径、HTTPS 地址或小图片 data URL；`/icon.svg` 需要随应用提供。网页 favicon 不会自动成为应用图标。此元数据控制应用的展示图标，不会自动在 Desktop 创建快捷方式。
 
 ## 4. `dapp_meta/pikg.json`
 

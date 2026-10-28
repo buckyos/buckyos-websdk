@@ -4816,7 +4816,33 @@ function validateObjectGraph(appDoc, packageMeta, payloads, hasJson, hasSigned, 
     canonicalMatch
   };
 }
+function validateAppPresentation(value, label) {
+  const presentation = expectObject$3(value, label);
+  rejectUnknown(presentation, ["title", "summary", "description", "icons", "links", "license"], label);
+  for (const field of ["title", "summary", "description", "icons", "links"]) {
+    const values = expectObject$3(presentation[field], `${label}.${field}`);
+    for (const [key, item] of Object.entries(values)) {
+      if (typeof item !== "string") {
+        throw invalid("appdoc", `${label}.${field}.${key} must be a string`);
+      }
+      if (field === "icons") {
+        try {
+          ndn.ObjId.fromString(item);
+        } catch {
+          throw invalid("appdoc", `${label}.${field}.${key} must be an ObjectId`);
+        }
+      }
+    }
+  }
+  if (typeof presentation.license !== "string") {
+    throw invalid("appdoc", `${label}.license must be a string`);
+  }
+  return presentation;
+}
 function validateAppDocShape(appDoc) {
+  if (appDoc.presentation !== void 0 && appDoc.presentation !== null) {
+    validateAppPresentation(appDoc.presentation, "APPDOC.presentation");
+  }
   rejectUnknown(
     appDoc,
     [
@@ -5748,6 +5774,7 @@ async function buildCommand(ctx, input, docker, now) {
       categories: appMeta.categories,
       pkg_list: pkgList,
       show_name: appMeta.show_name,
+      ...appMeta.presentation ? { presentation: appMeta.presentation } : {},
       ...appMeta.permissions.length ? { permissions: appMeta.permissions } : {},
       ...appMeta.content_handlers?.length ? { content_handlers: appMeta.content_handlers } : {},
       selector_type: appMeta.selector_type,
@@ -5911,6 +5938,7 @@ function parseAppMeta(value) {
       "owner",
       "author",
       "show_name",
+      "presentation",
       "categories",
       "permissions",
       "content_handlers",
@@ -5953,6 +5981,11 @@ function parseAppMeta(value) {
     owner,
     author: developmentString(value.author, "app.json.author"),
     show_name: developmentString(value.show_name, "app.json.show_name"),
+    ...value.presentation === void 0 ? {} : {
+      presentation: developmentValidation(
+        () => validateAppPresentation(value.presentation, "app.json.presentation")
+      )
+    },
     categories,
     permissions,
     ...value.content_handlers === void 0 ? {} : { content_handlers: developmentValidation(() => validateContentHandlers(value.content_handlers, permissions)) },

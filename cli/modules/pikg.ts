@@ -23,6 +23,7 @@ import {
   rejectUnknown,
   stableJsonDigest,
   validatePermissions,
+  validateAppPresentation,
   validateContentHandlers,
   validateServiceConfigTips,
   validateSnapshot,
@@ -85,6 +86,7 @@ interface AppMeta {
   owner: string
   author: string
   show_name: string
+  presentation?: Record<string, unknown>
   categories: string[]
   permissions: unknown[]
   content_handlers?: unknown[]
@@ -718,6 +720,7 @@ async function buildCommand(
       categories: appMeta.categories,
       pkg_list: pkgList,
       show_name: appMeta.show_name,
+      ...(appMeta.presentation ? { presentation: appMeta.presentation } : {}),
       ...(appMeta.permissions.length ? { permissions: appMeta.permissions } : {}),
       ...(appMeta.content_handlers?.length ? { content_handlers: appMeta.content_handlers } : {}),
       selector_type: appMeta.selector_type,
@@ -893,6 +896,7 @@ function parseAppMeta(value: Record<string, unknown>): AppMeta {
       'owner',
       'author',
       'show_name',
+      'presentation',
       'categories',
       'permissions',
       'content_handlers',
@@ -938,6 +942,11 @@ function parseAppMeta(value: Record<string, unknown>): AppMeta {
     owner,
     author: developmentString(value.author, 'app.json.author'),
     show_name: developmentString(value.show_name, 'app.json.show_name'),
+    ...(value.presentation === undefined ? {} : {
+      presentation: developmentValidation(() =>
+        validateAppPresentation(value.presentation, 'app.json.presentation')
+      ),
+    }),
     categories: categories as string[],
     permissions,
     ...(value.content_handlers === undefined ? {} : { content_handlers: developmentValidation(() => validateContentHandlers(value.content_handlers, permissions)) }),
