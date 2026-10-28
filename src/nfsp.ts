@@ -147,7 +147,7 @@ export interface NodeInfo {
   stale?: boolean
 }
 
-export type EntryBinding = 'native' | 'reference' | 'member' | 'derived'
+export type EntryBinding = 'native' | 'reference' | 'member' | 'derived' | 'projection'
 
 /** Compact target of a listing entry (not a full NodeInfo). */
 export interface EntryTarget {
