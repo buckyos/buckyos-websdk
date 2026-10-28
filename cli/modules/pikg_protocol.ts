@@ -874,7 +874,34 @@ function validateObjectGraph(
   }
 }
 
+export function validateAppPresentation(value: unknown, label: string): Record<string, unknown> {
+  const presentation = expectObject(value, label)
+  rejectUnknown(presentation, ['title', 'summary', 'description', 'icons', 'links', 'license'], label)
+  for (const field of ['title', 'summary', 'description', 'icons', 'links']) {
+    const values = expectObject(presentation[field], `${label}.${field}`)
+    for (const [key, item] of Object.entries(values)) {
+      if (typeof item !== 'string') {
+        throw invalid('appdoc', `${label}.${field}.${key} must be a string`)
+      }
+      if (field === 'icons') {
+        try {
+          ndn.ObjId.fromString(item)
+        } catch {
+          throw invalid('appdoc', `${label}.${field}.${key} must be an ObjectId`)
+        }
+      }
+    }
+  }
+  if (typeof presentation.license !== 'string') {
+    throw invalid('appdoc', `${label}.license must be a string`)
+  }
+  return presentation
+}
+
 export function validateAppDocShape(appDoc: Record<string, unknown>): void {
+  if (appDoc.presentation !== undefined && appDoc.presentation !== null) {
+    validateAppPresentation(appDoc.presentation, 'APPDOC.presentation')
+  }
   rejectUnknown(
     appDoc,
     [

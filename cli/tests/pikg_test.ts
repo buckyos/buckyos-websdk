@@ -103,6 +103,19 @@ Deno.test('pikg path workflow is offline, self-verifying, and safely cleanable',
     envelope = io.takeEnvelope()
     assertEquals(envelope.error.code, 'SCHEMA_VALIDATION_FAILED')
     delete appMeta.pkg_list
+    appMeta.presentation = 'invalid'
+    await Deno.writeTextFile(appMetaPath, `${JSON.stringify(appMeta, null, 2)}\n`)
+    assertEquals(await app.run(['pikg', 'build']), 2)
+    envelope = io.takeEnvelope()
+    assertEquals(envelope.error.code, 'SCHEMA_VALIDATION_FAILED')
+    appMeta.presentation = {
+      title: { en: 'Demo', 'zh-CN': '示例' },
+      summary: {},
+      description: {},
+      icons: { small: `cyfile:${'ab'.repeat(32)}` },
+      links: { app_icon_url: '/icon.svg' },
+      license: 'MIT',
+    }
     await Deno.writeTextFile(appMetaPath, `${JSON.stringify(appMeta, null, 2)}\n`)
 
     const pikgMetaPath = join(project, 'dapp_meta', 'pikg.json')
@@ -127,6 +140,7 @@ Deno.test('pikg path workflow is offline, self-verifying, and safely cleanable',
     assertEquals(appDoc.exp, 1_957_680_000)
     assertEquals(appDoc.name, 'demo')
     assertEquals(appDoc.categories, ['web'])
+    assertEquals(appDoc.presentation, appMeta.presentation)
     assertEquals(appDoc.pkg_list.web.pkg_id, 'all.web.demo.root.bns.did#0.1.0')
 
     const packExit = await app.run(['pikg', 'pack'])
@@ -252,6 +266,51 @@ Deno.test('AppDoc accepts BaseContentObject metadata but rejects PackageMeta fie
   assert(appDocObjectId(contentDoc) !== appDocObjectId(appDoc))
   await assertRejects(() => validateAppDocShape({ ...contentDoc, deps: {} }))
   await assertRejects(() => validateAppDocShape({ ...contentDoc, size: 0, content: '' }))
+})
+
+Deno.test('AppDoc presentation follows the Rust field types and rejects malformed metadata', async () => {
+  const fixture = new URL('../fixtures/appdoc-v1.json', import.meta.url)
+  const appDoc = JSON.parse(await Deno.readTextFile(fixture))
+  const presentation: Record<string, unknown> = {
+    title: { en: 'Demo', 'zh-CN': '示例' },
+    summary: {},
+    description: {},
+    icons: { small: `cyfile:${'ab'.repeat(32)}` },
+    links: { app_icon_url: '/icon.svg' },
+    license: 'MIT',
+  }
+  validateAppDocShape({ ...appDoc, presentation })
+  validateAppDocShape({ ...appDoc, presentation: null })
+  for (const url of ['https://example.com/icon.svg', 'data:image/png;base64,aWNvbg==']) {
+    validateAppDocShape({ ...appDoc, presentation: { ...presentation, links: { app_icon_url: url } } })
+  }
+  for (const field of Object.keys(presentation)) {
+    const incomplete = { ...presentation }
+    delete incomplete[field]
+    await assertRejects(
+      () => validateAppDocShape({ ...appDoc, presentation: incomplete }),
+      'INVALID_PACKAGE',
+    )
+  }
+  await assertRejects(
+    () => validateAppDocShape({ ...appDoc, presentation: { ...presentation, unknown: true } }),
+    'SCHEMA_VALIDATION_FAILED',
+  )
+  for (const invalid of [
+    'invalid',
+    [],
+    { ...presentation, title: [] },
+    { ...presentation, summary: { en: 1 } },
+    { ...presentation, description: null },
+    { ...presentation, icons: { small: '/icon.svg' } },
+    { ...presentation, links: { app_icon_url: 1 } },
+    { ...presentation, license: false },
+  ]) {
+    await assertRejects(
+      () => validateAppDocShape({ ...appDoc, presentation: invalid }),
+      'INVALID_PACKAGE',
+    )
+  }
 })
 
 Deno.test('pikg clean rejects protected, symlinked, and unmanaged targets', async () => {
