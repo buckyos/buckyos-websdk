@@ -402,13 +402,13 @@ export interface VisibilityPreviewResponse { user_id: string;
   grants: { provider_instance_name: string; exact_model?: string; sources: string[] }[];
   added?: string[]; removed?: string[]; affected_users?: string[]; caller_loses?: string[] }
 export interface ProviderCatalogEntry { provider_profile_id: string; display_name: string; base_url: string;
-  protocol_adapter_id: string; provider_rules_id?: string; ui_hints?: Record<string, JsonValue> }
+  protocol_adapter_id: string; provider_rules_id?: string; model_driver_overrides?: Record<string, string>; ui_hints?: Record<string, JsonValue> }
 export interface ProviderCatalogResponse { catalog_revision: number; providers: ProviderCatalogEntry[] }
 export type ProtocolAdapterStatus = 'stable' | 'preview' | 'deprecated'
 export type ProtocolExecutionMode = 'immediate' | 'stream' | 'native_task'
 export interface ProtocolAdapterOperation { operation_id: string; api_types: ApiType[]; capabilities: Capability[];
   supported_features: string[]; execution_modes: ProtocolExecutionMode[]; supports_cancel: boolean; supports_webhook: boolean }
-export interface ProtocolAdapterView { protocol_family_id: string; protocol_adapter_id: string; interface_generation: string;
+export interface ProtocolAdapterView { default_operations?: Record<string, string>; protocol_family_id: string; protocol_adapter_id: string; interface_generation: string;
   status: ProtocolAdapterStatus; probe_priority: number; base_adapter_id?: string; operations: ProtocolAdapterOperation[] }
 export interface ProtocolAdapterListResponse { adapters: ProtocolAdapterView[] }
 interface ProviderConfig { provider_type: string; provider_profile_id: string; protocol_family_id?: string; protocol_adapter_id?: string;
@@ -436,7 +436,10 @@ export interface ProviderInstanceInventoryView { filtered_capabilities: Filtered
   updated_at_ms?: number }
 export type ProviderInstanceHealthState = 'disabled' | 'not_loaded' | 'unknown' | 'healthy' | 'degraded' | 'unavailable'
 export interface ProviderInstanceHealthView { state: ProviderInstanceHealthState; checked_at_ms?: number }
-export interface ProviderInstanceView { provider_rules_id?: string; instance_rules?: JsonValue; provider_instance_name: string; provider_type: string; provider_profile_id: string;
+export interface ProviderInstanceView {
+  discovered_model_ids?: string[]; rules_catalog?: JsonValue;
+  resolved_model_rules?: Record<string, JsonValue>;
+  provider_rules_id?: string; instance_rules?: JsonValue; provider_instance_name: string; provider_type: string; provider_profile_id: string;
   protocol_adapter_id: string; base_url: string; enabled: boolean; auth: ProviderInstanceAuthView;
   inventory: ProviderInstanceInventoryView; health: ProviderInstanceHealthView }
 export interface ProviderListResponse { providers: ProviderInstanceView[]; settings_revision: number; inventory_revision: string }
