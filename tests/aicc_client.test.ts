@@ -191,6 +191,9 @@ describe('canonical AICC contract', () => {
       [AICC_MANAGEMENT_METHODS.ROUTING_GET, () => client.getRouting()],
       [AICC_MANAGEMENT_METHODS.ROUTING_PREVIEW, () => client.previewRouting({ paths: ['decision'], requirements: {decision: {question_types: ['choice', 'score', 'boolean']}} })],
       [AICC_MANAGEMENT_METHODS.ROUTING_UPDATE, () => client.updateRouting({ settings_revision: 1, provider_weights: {} })],
+      [AICC_MANAGEMENT_METHODS.PROVIDER_PREVIEW_RULES, () => client.previewProviderRules({
+        provider_instance_name: 'custom', rules_catalog: { format: 'buckyos.aicc.provider-rules-catalog' }, model_ids: ['openai/gpt-6-sol'],
+      })],
       [AICC_MANAGEMENT_METHODS.PROVIDER_CATALOG, () => client.providerCatalog()],
       [AICC_MANAGEMENT_METHODS.PROTOCOL_ADAPTER_LIST, () => client.listProtocolAdapters()],
       [AICC_MANAGEMENT_METHODS.PROVIDER_VALIDATE, () => client.validateProvider({ provider_type: 'openai', provider_profile_id: 'openai', base_url: 'https://example.test', credentials: {} })],
