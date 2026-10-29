@@ -202,7 +202,106 @@ export interface HelloResult {
         user_id: string | null;
         role: 'admin' | 'user' | 'anonymous';
     };
+    /** The Preview Pipeline's converter, also when `repr` is not advertised. */
+    repr?: ReprCapability;
 }
+/** What the node converts with: ffmpeg / ffprobe found on it, or why not. */
+export type ReprCapability = {
+    available: true;
+    ffmpeg: {
+        path: string;
+        version: string;
+    };
+    ffprobe: {
+        path: string;
+        version: string;
+    };
+    tonemap: boolean;
+    h264_encoder: boolean;
+    heif: boolean;
+    profiles: string[];
+} | {
+    available: false;
+    missing?: string[];
+    detail?: string;
+};
+/** Content that is not an NFSP path / ref (those go in `at`). */
+export type ReprSource = {
+    bucket: {
+        bucket_id: string;
+        key: string;
+        version?: number;
+        access_token?: string;
+    };
+} | {
+    obj_id: string;
+};
+/** Runtime capability hints; `video_codecs.hevc` lets the node remux instead of transcoding. */
+export interface ReprRuntime {
+    accept?: string[];
+    image?: string[];
+    video?: string[];
+    audio?: string[];
+    video_codecs?: {
+        h264: boolean;
+        hevc: boolean;
+    };
+    heic?: boolean;
+    pdf_inline?: boolean;
+}
+export interface ReprArgs {
+    purpose?: 'preview' | 'thumbnail';
+    source?: ReprSource;
+    runtime?: ReprRuntime;
+    /** Explicit Retry: a new attempt only if `expected_attempt_id` is still the current one. */
+    retry?: boolean;
+    expected_attempt_id?: string;
+}
+export interface ReprResult {
+    media_type: string;
+    result_type: 'image' | 'video' | 'audio';
+    /** Bucket data-plane URL with a short-lived read token (Range supported). */
+    read_url: string;
+    result_obj_id: string;
+    source_version: string;
+    width?: number;
+    height?: number;
+    duration?: number;
+    fidelity?: string;
+    size: number;
+    plan: string;
+}
+/** `unsupported` is a planning result (`reason` + `detail`), `failed` an execution failure. */
+export type ReprRecord = {
+    state: 'unsupported';
+    reason: 'no-pipeline' | 'no-renderer' | 'not-content';
+    detail?: string;
+} | {
+    work_key: string;
+    state: 'processing';
+    attempt_id: string;
+    retry_after_ms?: number;
+    progress?: {
+        completed: number;
+        total?: number;
+        message?: string;
+    };
+} | {
+    work_key: string;
+    state: 'completed';
+    attempt_id: string;
+    result: ReprResult;
+} | {
+    work_key: string;
+    state: 'failed';
+    attempt_id: string;
+    error: {
+        code: string;
+        message: string;
+        retryable: boolean;
+        retry_after?: number;
+    };
+};
 export type BatchOp = {
     m: 'walk';
     args: {
@@ -603,6 +702,8 @@ export declare class NfspClient {
     private helloResult;
     constructor(opts: NfspClientOptions);
     get sessionId(): string | null;
+    /** The Preview Pipeline converter reported by hello (null before hello). */
+    get reprCapability(): ReprCapability | null;
     /** Features advertised by the server in hello (empty before hello). */
     get features(): string[];
     get limits(): HelloResult['limits'] | null;
@@ -776,6 +877,10 @@ export declare class NfspClient {
         zone_owner: string | null;
         is_admin: boolean;
     }>;
+    /** Ensures a preview of `at` (or `args.source`); idempotent per work key. */
+    repr(at: LocatorLike | null, args?: ReprArgs): Promise<ReprRecord>;
+    /** Queries a work this principal ensured; never starts an attempt. */
+    getRepr(workKey: string): Promise<ReprRecord>;
     shareCapabilities(): Promise<ShareCapabilities>;
     /** Side-effect free: size, exclusions, existing links, Public state, target fit. */
     sharePlan(source: LocatorLike, opts?: {
