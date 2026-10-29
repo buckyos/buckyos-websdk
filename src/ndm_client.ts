@@ -586,7 +586,8 @@ const browserProvider: ImportProvider = {
 
             let settled = false
             const cleanup = () => {
-                window.removeEventListener('focus', onFocus)
+                input.removeEventListener('change', onChange)
+                input.removeEventListener('cancel', onCancel)
                 options.signal?.removeEventListener('abort', onAbort)
             }
             const fail = (error: NdmError) => {
@@ -596,12 +597,8 @@ const browserProvider: ImportProvider = {
                 reject(error)
             }
             const onAbort = () => fail(new NdmError('USER_CANCELLED', 'Import cancelled'))
-            const onFocus = () => {
-                setTimeout(() => {
-                    if (!settled) fail(new NdmError('USER_CANCELLED', 'User cancelled file selection'))
-                }, 500)
-            }
-            input.addEventListener('change', () => {
+            const onCancel = () => fail(new NdmError('USER_CANCELLED', 'User cancelled file selection'))
+            const onChange = () => {
                 if (settled) return
                 const files = input.files
                 if (!files || files.length === 0) {
@@ -611,9 +608,9 @@ const browserProvider: ImportProvider = {
                 settled = true
                 cleanup()
                 resolve(Array.from(files))
-            })
-            input.addEventListener('cancel', onAbort)
-            window.addEventListener('focus', onFocus)
+            }
+            input.addEventListener('change', onChange)
+            input.addEventListener('cancel', onCancel)
             if (options.signal?.aborted) { onAbort(); return }
             options.signal?.addEventListener('abort', onAbort, { once: true })
 

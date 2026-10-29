@@ -147,7 +147,7 @@ export interface NodeInfo {
   stale?: boolean
 }
 
-export type EntryBinding = 'native' | 'reference' | 'member' | 'derived'
+export type EntryBinding = 'native' | 'reference' | 'member' | 'derived' | 'projection'
 
 /** Compact target of a listing entry (not a full NodeInfo). */
 export interface EntryTarget {
@@ -203,7 +203,82 @@ export interface HelloResult {
   realms: { id: string; writable: boolean }[]
   /** Who this session acts as (`admin` = the zone owner or a trusted service). */
   identity?: { user_id: string | null; role: 'admin' | 'user' | 'anonymous' }
+  /** The Preview Pipeline's converter, also when `repr` is not advertised. */
+  repr?: ReprCapability
 }
+
+// ---------- Preview Pipeline (`repr` / `get_repr`) ----------
+
+/** What the node converts with: ffmpeg / ffprobe found on it, or why not. */
+export type ReprCapability =
+  | {
+      available: true
+      ffmpeg: { path: string; version: string }
+      ffprobe: { path: string; version: string }
+      tonemap: boolean
+      h264_encoder: boolean
+      heif: boolean
+      profiles: string[]
+    }
+  | { available: false; missing?: string[]; detail?: string }
+
+/** Content that is not an NFSP path / ref (those go in `at`). */
+export type ReprSource =
+  | { bucket: { bucket_id: string; key: string; version?: number; access_token?: string } }
+  | { obj_id: string }
+
+/** Runtime capability hints; `video_codecs.hevc` lets the node remux instead of transcoding. */
+export interface ReprRuntime {
+  accept?: string[]
+  image?: string[]
+  video?: string[]
+  audio?: string[]
+  video_codecs?: { h264: boolean; hevc: boolean }
+  heic?: boolean
+  pdf_inline?: boolean
+}
+
+export interface ReprArgs {
+  purpose?: 'preview' | 'thumbnail'
+  source?: ReprSource
+  runtime?: ReprRuntime
+  /** Explicit Retry: a new attempt only if `expected_attempt_id` is still the current one. */
+  retry?: boolean
+  expected_attempt_id?: string
+}
+
+export interface ReprResult {
+  media_type: string
+  result_type: 'image' | 'video' | 'audio'
+  /** Bucket data-plane URL with a short-lived read token (Range supported). */
+  read_url: string
+  result_obj_id: string
+  source_version: string
+  width?: number
+  height?: number
+  duration?: number
+  fidelity?: string
+  size: number
+  plan: string
+}
+
+/** `unsupported` is a planning result (`reason` + `detail`), `failed` an execution failure. */
+export type ReprRecord =
+  | { state: 'unsupported'; reason: 'no-pipeline' | 'no-renderer' | 'not-content'; detail?: string }
+  | {
+      work_key: string
+      state: 'processing'
+      attempt_id: string
+      retry_after_ms?: number
+      progress?: { completed: number; total?: number; message?: string }
+    }
+  | { work_key: string; state: 'completed'; attempt_id: string; result: ReprResult }
+  | {
+      work_key: string
+      state: 'failed'
+      attempt_id: string
+      error: { code: string; message: string; retryable: boolean; retry_after?: number }
+    }
 
 export type BatchOp =
   | { m: 'walk'; args: { name?: string; names?: string[]; entry_ref?: string } }
@@ -563,6 +638,11 @@ export class NfspClient {
 
   get sessionId(): string | null {
     return this.session
+  }
+
+  /** The Preview Pipeline converter reported by hello (null before hello). */
+  get reprCapability(): ReprCapability | null {
+    return this.helloResult?.repr ?? null
   }
 
   /** Features advertised by the server in hello (empty before hello). */
@@ -966,6 +1046,18 @@ export class NfspClient {
   /** Every ACL record the caller may manage (all of them for the zone owner). */
   async listAcls(): Promise<{ records: AclRecordInfo[]; zone_owner: string | null; is_admin: boolean }> {
     return (await this.call('list_acls', {})) as { records: AclRecordInfo[]; zone_owner: string | null; is_admin: boolean }
+  }
+
+  // ---------- Preview Pipeline ----------
+
+  /** Ensures a preview of `at` (or `args.source`); idempotent per work key. */
+  async repr(at: LocatorLike | null, args: ReprArgs = {}): Promise<ReprRecord> {
+    return (await this.call('repr', { at: at ? toLocator(at) : undefined, args: { ...args } })) as ReprRecord
+  }
+
+  /** Queries a work this principal ensured; never starts an attempt. */
+  async getRepr(workKey: string): Promise<ReprRecord> {
+    return (await this.call('get_repr', { args: { work_key: workKey } })) as ReprRecord
   }
 
   // ---------- shares (`share.*`) ----------

@@ -37,6 +37,11 @@ class NfspClient {
   get sessionId() {
     return this.session;
   }
+  /** The Preview Pipeline converter reported by hello (null before hello). */
+  get reprCapability() {
+    var _a;
+    return ((_a = this.helloResult) == null ? void 0 : _a.repr) ?? null;
+  }
   /** Features advertised by the server in hello (empty before hello). */
   get features() {
     var _a;
@@ -328,6 +333,15 @@ class NfspClient {
   /** Every ACL record the caller may manage (all of them for the zone owner). */
   async listAcls() {
     return await this.call("list_acls", {});
+  }
+  // ---------- Preview Pipeline ----------
+  /** Ensures a preview of `at` (or `args.source`); idempotent per work key. */
+  async repr(at, args = {}) {
+    return await this.call("repr", { at: at ? toLocator(at) : void 0, args: { ...args } });
+  }
+  /** Queries a work this principal ensured; never starts an attempt. */
+  async getRepr(workKey) {
+    return await this.call("get_repr", { args: { work_key: workKey } });
   }
   // ---------- shares (`share.*`) ----------
   async shareCapabilities() {

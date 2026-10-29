@@ -55,6 +55,14 @@ async function runPikgWorkflow(host) {
   await rm(join(project, 'dapp_meta'), { recursive: true, force: true })
   await rm(join(project, 'dapp_dist'), { recursive: true, force: true })
   const invoke = host === 'node' ? runNode : runDeno
+  const presentation = {
+    title: { en: 'Demo', 'zh-CN': '示例' },
+    summary: {},
+    description: {},
+    icons: {},
+    links: { app_icon_url: '/icon.svg' },
+    license: 'MIT',
+  }
   const commands = [
     [
       '--non-interactive',
@@ -77,10 +85,17 @@ async function runPikgWorkflow(host) {
   ]
   const results = []
   for (const args of commands) {
+    if (args.at(-1) === 'build') {
+      const metadataPath = join(project, 'dapp_meta', 'app.json')
+      const metadata = JSON.parse(await readFile(metadataPath, 'utf8'))
+      await writeFile(metadataPath, JSON.stringify({ ...metadata, presentation }))
+    }
     const result = invoke(args, project)
     assertSuccess(args, result)
     results.push(normalizeResult(result))
   }
+  const appDoc = JSON.parse(await readFile(join(project, 'dapp_dist', 'APPDOC.json'), 'utf8'))
+  assertDeepEqual(appDoc.presentation, presentation, `${host}: presentation round-trip`)
   const pikg = (await readdir(join(project, 'dapp_dist'))).find((name) => name.endsWith('.pikg'))
   if (!pikg) throw new Error(`${host}: pikg pack did not create a .pikg file`)
   const infoArgs = [

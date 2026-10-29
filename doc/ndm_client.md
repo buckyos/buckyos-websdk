@@ -30,6 +30,8 @@ try {
 
 `pickupAndImport({ mode })` 使用 picker，再进入相同导入路径。可用 `provider` 参数进行单次 picker 注入；已选文件、拖拽、粘贴使用 `importFiles` / `importDirectory`，不修改全局 `setImportProvider`，并行应用不会串文件。`single_file` 必须且仅包含一个文件；`multi_file` 返回独立文件数组。
 
+浏览器 picker 通过原生 `cancel` 事件或传入的 `AbortSignal` 取消。窗口恢复焦点后仍可能在枚举目录或等待上传确认，SDK 会继续等待 `change`，不以焦点恢复后的固定超时推断取消。
+
 ## 目录与空目录
 
 `importFiles(files, { mode: 'single_dir' })` 要求每个 `File.webkitRelativePath` 包含同一个根目录，并保留根、嵌套目录和相对路径。FileList 无法表示空目录，snapshot 的 `warnings` 明确说明这一限制；空 FileList 产生 `EMPTY_DIRECTORY_UNAVAILABLE`，不能当作成功导入一个空目录。
