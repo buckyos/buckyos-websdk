@@ -168,7 +168,8 @@ export interface EntryResource {
   kind: string
   title: string
   owner_name?: string
-  /** Zone-relative path of the resource page. */
+  /** The resource page: an absolute URL when the resource lives on its own origin (an AI Workspace on
+   * `aiws-<id>.<zone>`), else a Zone-relative path. */
   path: string
 }
 
