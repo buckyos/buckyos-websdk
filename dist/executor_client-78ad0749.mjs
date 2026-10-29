@@ -35,7 +35,7 @@ var __privateMethod = (obj, member, method) => {
   return method;
 };
 var _listener, _listeners, _cancelled, _allowInsecure, _gzip, _headers, _method, _timeout, _url, _body, _bodyType, _creds, _preflight, _process, _retry, _signal, _throttle, _getUrlFunc, _send, send_fn, _statusCode, _statusMessage, _headers2, _body2, _request, _error, _names, _data, _dataLength, _writeData, writeData_fn, _data2, _offset, _bytesRead, _parent, _maxInflation, _incrementBytesRead, incrementBytesRead_fn, _peekBytes, peekBytes_fn, _r, _s, _v, _networkV, _privateKey, _options, _type, _to, _data3, _nonce, _gasLimit, _gasPrice, _maxPriorityFeePerGas, _maxFeePerGas, _value, _chainId, _sig, _accessList, _maxFeePerBlobGas, _blobVersionedHashes, _kzg, _blobs, _auths, _blobWrapperVersion, _getSerialized, getSerialized_fn, _types, _fullTypes, _encoderCache, _getEncoder, getEncoder_fn, _offset2, _tokens, _subTokenString, subTokenString_fn, _walkAsync, walkAsync_fn, _getCoder, getCoder_fn, _errors, _events, _functions, _abiCoder, _getFunction, getFunction_fn, _getEvent, getEvent_fn, _transactions, _logs, _startBlock, _iface, _iface2, _filter, _a, _supports2544, _resolver, _fetch, fetch_fn, _getResolver, getResolver_fn, _url2, _processFunc, _name, _chainId2, _plugins, _provider, _poller, _interval, _blockNumber, _poll, poll_fn, _provider2, _poll2, _running, _tag, _lastBlock, _filter2, _hash, _provider3, _filter3, _poller2, _running2, _blockNumber2, _poll3, poll_fn2, _subs, _plugins2, _pausedState, _destroyed, _networkPromise, _anyNetwork, _performCache, _lastBlockNumber, _nextTimer, _timers, _disableCcipRead, _requestRate, _requestTimes, _options2, _getDelay, getDelay_fn, _perform, perform_fn, _call, call_fn, _checkNetwork, checkNetwork_fn, _getAccountValue, getAccountValue_fn, _getBlock, getBlock_fn, _hasSub, hasSub_fn, _getSub, getSub_fn, _throwUnsupported, throwUnsupported_fn, _provider4, _filterIdPromise, _poller3, _running3, _network, _hault, _poll4, poll_fn3, _teardown, teardown_fn, _event, _options3, _nextId, _payloads, _drainTimer, _notReady, _network2, _pendingDetectNetwork, _scheduleDrain, scheduleDrain_fn, _pollingInterval, _connect, _signingKey, _data4, _checksum, _words, _loadWords, loadWords_fn, _account, account_fn, _fromSeed, fromSeed_fn, _fromAccount, fromAccount_fn;
-import { u as DID, v as getBrowserIdentityRaw, w as clearBrowserUserInfo, x as saveBrowserIdentity, y as saveBrowserUserInfo, z as getBrowserUserInfo, A as clearBrowserIdentity, N as NODE_IDENTITY_SCHEMA_V2, f as isBuckyOSLocalNodeIdentityConfig, o as parseBuckyOSOwnerDocument, h as hashPassword, B as saveLocalAccountInfo, C as cleanLocalAccountInfo, E as canonicalize, F as signJwtEdDSA, G as ChunkId, H as sha256Bytes, I as FileObject, O as ObjId, J as DirObject, S as SimpleChunkList } from "./ndn_types-bbb1f6a6.mjs";
+import { O as ObjId, u as DID, v as getBrowserIdentityRaw, w as clearBrowserUserInfo, x as saveBrowserIdentity, y as saveBrowserUserInfo, z as getBrowserUserInfo, A as clearBrowserIdentity, N as NODE_IDENTITY_SCHEMA_V2, f as isBuckyOSLocalNodeIdentityConfig, o as parseBuckyOSOwnerDocument, h as hashPassword, B as saveLocalAccountInfo, C as cleanLocalAccountInfo, E as canonicalize, F as signJwtEdDSA, G as ChunkId, H as sha256Bytes, I as FileObject, J as DirObject, S as SimpleChunkList } from "./namelib-b41b10cc.mjs";
 class RPCError extends Error {
   constructor(message, code, data) {
     super(message);
@@ -323,6 +323,381 @@ function buildJumpUrl(action, params, jumpBase = DEFAULT_JUMP_BASE_URL) {
   const fragment = new URLSearchParams(params).toString();
   return `${base.origin}${path}${fragment ? `#${fragment}` : ""}`;
 }
+const OBJ_SERVICE_NAMES = [
+  "config",
+  "dfs",
+  "taskmgr",
+  "kmsg",
+  "bucket",
+  "ndm",
+  "msg-center",
+  "aiworkspace",
+  "homestation",
+  "opendan",
+  "aicc"
+];
+const OBJECT_EVENT_PREFIX = "/obj";
+class ObjectUrlError extends Error {
+}
+function isObjServiceName(name) {
+  return OBJ_SERVICE_NAMES.includes(name);
+}
+function parseObjectUrl(input) {
+  input = input.trim();
+  const sep = input.indexOf("://");
+  if (sep < 0)
+    throw new ObjectUrlError(`'${input}' has no scheme`);
+  const scheme = input.slice(0, sep).toLowerCase();
+  const rest = input.slice(sep + 3);
+  switch (scheme) {
+    case "https":
+    case "http": {
+      try {
+        return { kind: "web", url: new URL(input).toString() };
+      } catch (e) {
+        throw new ObjectUrlError(`invalid web url '${input}': ${e}`);
+      }
+    }
+    case "buckyos":
+      return { kind: "buckyos", url: input };
+    case "file": {
+      const { authority, path, query } = splitAuthority(rest);
+      if (query !== null)
+        throw new ObjectUrlError("file url does not take query or fragment");
+      const host = authority.toLowerCase();
+      let deviceId;
+      if (host === "" || host === "localhost")
+        deviceId = null;
+      else if (isHostname(host))
+        deviceId = host;
+      else
+        throw new ObjectUrlError(`invalid device id '${host}' in file url`);
+      if (path === "")
+        throw new ObjectUrlError("file url requires an absolute path");
+      return { kind: "file", deviceId, path: normalizePath(path, false) };
+    }
+    case "cyfs": {
+      const { authority: rawAuthority, path, query } = splitAuthority(rest);
+      if (query !== null)
+        throw new ObjectUrlError("cyfs url does not take query or fragment");
+      const authority = rawAuthority.toLowerCase();
+      if (authority === "" || authority === "_") {
+        if (path === "")
+          throw new ObjectUrlError("cyfs path url requires a path");
+        return { kind: "cyfs_path", zone: null, path: normalizePath(path, false) };
+      }
+      const dot = authority.indexOf(".");
+      const firstLabel = dot < 0 ? authority : authority.slice(0, dot);
+      const restLabels = dot < 0 ? null : authority.slice(dot + 1);
+      const objId = strictObjIdLabel(firstLabel);
+      if (objId) {
+        if (restLabels !== null && !isHostname(restLabels)) {
+          throw new ObjectUrlError(`invalid source zone '${restLabels}'`);
+        }
+        return {
+          kind: "cyfs_object",
+          objId,
+          sourceZone: restLabels,
+          innerPath: path === "" || path === "/" ? "" : normalizePath(path, false)
+        };
+      }
+      if (!isHostname(authority) || !authority.includes(".")) {
+        throw new ObjectUrlError(`'${authority}' is neither a zone host nor an ObjId`);
+      }
+      if (path === "")
+        throw new ObjectUrlError("cyfs path url requires a path");
+      return { kind: "cyfs_path", zone: authority, path: normalizePath(path, false) };
+    }
+    case "obj": {
+      const { authority, path, query } = splitAuthority(rest);
+      const host = parseObjHost(authority.toLowerCase());
+      return {
+        kind: "obj",
+        host,
+        path: path === "" || path === "/" ? "" : normalizePath(path, true),
+        query: query === null ? {} : parseQuery(query)
+      };
+    }
+    default:
+      throw new ObjectUrlError(`unsupported scheme '${scheme}'`);
+  }
+}
+function expandInputShorthand(input) {
+  input = input.trim();
+  if (input.startsWith("//")) {
+    const rest = input.slice(2);
+    const service = rest.split(/[/?]/)[0] ?? "";
+    return isObjServiceName(service) ? `obj://${rest}` : input;
+  }
+  if (input.startsWith("/"))
+    return `file://${input}`;
+  return input;
+}
+function parseObjHost(host) {
+  if (host === "")
+    throw new ObjectUrlError("obj url requires a host");
+  if (isObjServiceName(host))
+    return { kind: "service", name: host };
+  if (!host.includes(".")) {
+    throw new ObjectUrlError(
+      `'${host}' is not a registered obj:// service name; type shorthands are not supported`
+    );
+  }
+  if (!isHostname(host))
+    throw new ObjectUrlError(`'${host}' is not a valid entity hostname`);
+  const firstLabel = host.split(".")[0];
+  if (isObjServiceName(firstLabel)) {
+    throw new ObjectUrlError(
+      `'${host}' expands a service name; write obj://${firstLabel}/ for the current zone or use https across zones`
+    );
+  }
+  if (strictObjIdLabel(firstLabel)) {
+    throw new ObjectUrlError("NamedObject ids do not go into obj:// host; use cyfs://<objid>/");
+  }
+  return { kind: "entity", name: host };
+}
+function formatObjectUrl(url) {
+  switch (url.kind) {
+    case "file":
+      return `file://${url.deviceId ?? ""}${url.path}`;
+    case "cyfs_path":
+      return `cyfs://${url.zone ?? ""}${url.path}`;
+    case "cyfs_object":
+      return `cyfs://${url.objId.toBase32()}${url.sourceZone ? `.${url.sourceZone}` : ""}${url.innerPath || "/"}`;
+    case "obj": {
+      const keys = Object.keys(url.query).sort();
+      const query = keys.map((k) => `${encodeObjQueryComponent(k)}=${encodeObjQueryComponent(url.query[k])}`).join("&");
+      return `obj://${url.host.name}${url.path}${query ? `?${query}` : ""}`;
+    }
+    case "web":
+    case "buckyos":
+      return url.url;
+  }
+}
+function normalizeObjectUrl(input) {
+  return formatObjectUrl(parseObjectUrl(input));
+}
+function rbacResourceKey(url, currentZone) {
+  if (url.kind === "obj")
+    return `obj://${url.host.name}${url.path}`;
+  if (url.kind === "cyfs_path") {
+    const local = url.zone === null || currentZone !== void 0 && url.zone === currentZone.toLowerCase();
+    return local ? `obj://dfs${url.path}` : null;
+  }
+  return null;
+}
+function objectSegments(url) {
+  return url.kind === "obj" ? decodedSegments(url.path) : [];
+}
+function objectEventKey(url, event) {
+  if (url.kind !== "obj")
+    throw new ObjectUrlError("object events are only defined for obj:// urls");
+  if (!/^[A-Za-z0-9_-]+$/.test(event) || event.startsWith("x")) {
+    throw new ObjectUrlError(`invalid object event name '${event}'`);
+  }
+  const key = `${objectEventBase(url.host, url.path)}/${event}`;
+  if (key.length > 256 || key.split("/").length - 1 > 8) {
+    throw new ObjectUrlError(`object event key too long: ${key}`);
+  }
+  return key;
+}
+function objectEventPattern(url) {
+  if (url.kind !== "obj")
+    throw new ObjectUrlError("object events are only defined for obj:// urls");
+  return `${objectEventBase(url.host, url.path)}/**`;
+}
+function keventSegment(segment) {
+  if (segment !== "" && /^[A-Za-z0-9_-]+$/.test(segment) && !segment.startsWith("x"))
+    return segment;
+  let out = "x";
+  for (const byte of new TextEncoder().encode(segment))
+    out += byte.toString(16).padStart(2, "0");
+  return out;
+}
+function objEventKey(host, segments, event) {
+  return `${objEventBase(host, segments)}/${event}`;
+}
+function objEventPattern(host, segments) {
+  return `${objEventBase(host, segments)}/**`;
+}
+function objEventBase(host, segments) {
+  return [OBJECT_EVENT_PREFIX, keventSegment(host), ...segments.map(keventSegment)].join("/");
+}
+function objectDid(url, zoneDid, entityDid) {
+  if (url.kind !== "obj")
+    return null;
+  const segments = url.path.split("/").filter((s) => s !== "").map((s) => s.replace(/:/g, "%3A"));
+  const base = url.host.kind === "service" ? zoneDid : entityDid ?? `did:web:${url.host.name}`;
+  const all = url.host.kind === "service" ? [url.host.name, ...segments] : segments;
+  return all.length ? `${base}:${all.join(":")}` : base;
+}
+function objServiceUrl(service, segments) {
+  return `obj://${service}${segments.map((s) => `/${encodeObjSegment(s)}`).join("")}`;
+}
+function objEntityUrl(entityHost, segments) {
+  return `obj://${entityHost}${segments.map((s) => `/${encodeObjSegment(s)}`).join("")}`;
+}
+function configKeyFromUrl(input) {
+  let key = input.startsWith("obj://config/") ? input.slice("obj://config/".length) : input;
+  if (key.startsWith("/config/"))
+    key = key.slice("/config/".length);
+  return key.replace(/^[/\\]+/, "");
+}
+function canonicalJson(value) {
+  if (Array.isArray(value))
+    return `[${value.map(canonicalJson).join(",")}]`;
+  if (value !== null && typeof value === "object") {
+    const entries = Object.keys(value).sort().map((k) => `${JSON.stringify(k)}:${canonicalJson(value[k])}`);
+    return `{${entries.join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+function encodeObjSegment(segment) {
+  return encodeWith(segment, (b2) => isUnreserved(b2) || "!$&'()*+,;=:@".includes(String.fromCharCode(b2)));
+}
+function encodeObjQueryComponent(component) {
+  return encodeWith(component, (b2) => isUnreserved(b2) || "!$'()*,;:@/".includes(String.fromCharCode(b2)));
+}
+function encodeWith(input, keep) {
+  let out = "";
+  for (const byte of new TextEncoder().encode(input)) {
+    out += keep(byte) ? String.fromCharCode(byte) : `%${byte.toString(16).toUpperCase().padStart(2, "0")}`;
+  }
+  return out;
+}
+function isUnreserved(byte) {
+  const ch = String.fromCharCode(byte);
+  return /[A-Za-z0-9]/.test(ch) || "-._~".includes(ch);
+}
+function objectEventBase(host, path) {
+  return objEventBase(host.name, decodedSegments(path));
+}
+function splitAuthority(rest) {
+  const qpos = rest.search(/[?#]/);
+  const beforeQuery = qpos < 0 ? rest : rest.slice(0, qpos);
+  let query = null;
+  if (qpos >= 0) {
+    const q = rest.slice(qpos).split("#")[0];
+    query = q.startsWith("?") ? q.slice(1) : q;
+    if (query === "")
+      query = null;
+  }
+  const slash = beforeQuery.indexOf("/");
+  return slash < 0 ? { authority: beforeQuery, path: "", query } : { authority: beforeQuery.slice(0, slash), path: beforeQuery.slice(slash), query };
+}
+function normalizePath(path, trimTrailingSlash) {
+  if (!path.startsWith("/"))
+    throw new ObjectUrlError(`path '${path}' must be absolute`);
+  let body = path.slice(1);
+  if (trimTrailingSlash && body.endsWith("/"))
+    body = body.slice(0, -1);
+  const raw = body.split("/");
+  let out = "";
+  raw.forEach((segment, index) => {
+    if (segment === "" && index === raw.length - 1 && !trimTrailingSlash) {
+      out += "/";
+      return;
+    }
+    const decoded = percentDecode(segment);
+    if (decoded === "" || decoded === "." || decoded === "..") {
+      throw new ObjectUrlError(`ambiguous path segment in '${path}'`);
+    }
+    out += `/${encodeObjSegment(decoded)}`;
+  });
+  return out;
+}
+function decodedSegments(path) {
+  return path.split("/").filter((s) => s !== "").map((s) => {
+    try {
+      return percentDecode(s);
+    } catch {
+      return s;
+    }
+  });
+}
+function parseQuery(query) {
+  const out = {};
+  for (const pair of query.split("&")) {
+    if (pair === "")
+      continue;
+    const eq = pair.indexOf("=");
+    const key = percentDecode((eq < 0 ? pair : pair.slice(0, eq)).replace(/\+/g, " "));
+    let value = percentDecode((eq < 0 ? "" : pair.slice(eq + 1)).replace(/\+/g, " "));
+    if (key === "selector") {
+      try {
+        value = canonicalJson(JSON.parse(value));
+      } catch (e) {
+        throw new ObjectUrlError(`selector must be JSON: ${e}`);
+      }
+    }
+    if (Object.prototype.hasOwnProperty.call(out, key)) {
+      throw new ObjectUrlError(`query key '${key}' repeats`);
+    }
+    out[key] = value;
+  }
+  return out;
+}
+function percentDecode(input) {
+  const raw = new TextEncoder().encode(input);
+  const bytes2 = [];
+  for (let i = 0; i < raw.length; ) {
+    if (raw[i] === 37) {
+      const hex = String.fromCharCode(raw[i + 1] ?? 0, raw[i + 2] ?? 0);
+      if (!/^[0-9A-Fa-f]{2}$/.test(hex))
+        throw new ObjectUrlError(`invalid escape in '${input}'`);
+      bytes2.push(parseInt(hex, 16));
+      i += 3;
+    } else {
+      bytes2.push(raw[i]);
+      i += 1;
+    }
+  }
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(new Uint8Array(bytes2));
+  } catch {
+    throw new ObjectUrlError(`'${input}' is not UTF-8`);
+  }
+}
+function isHostname(host) {
+  return host !== "" && host.length <= 253 && host.split(".").every((label) => label !== "" && label.length <= 63 && /^[a-z0-9-]+$/.test(label) && !label.startsWith("-") && !label.endsWith("-"));
+}
+function strictObjIdLabel(label) {
+  if (label.length < 26)
+    return null;
+  try {
+    const objId = ObjId.fromString(label);
+    const typeOk = /^[a-z0-9_-]+$/.test(objId.objType);
+    return typeOk && objId.objHash.length >= 16 && objId.toBase32() === label ? objId : null;
+  } catch {
+    return null;
+  }
+}
+const object_url = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
+  __proto__: null,
+  OBJECT_EVENT_PREFIX,
+  OBJ_SERVICE_NAMES,
+  ObjectUrlError,
+  canonicalJson,
+  configKeyFromUrl,
+  encodeObjQueryComponent,
+  encodeObjSegment,
+  expandInputShorthand,
+  formatObjectUrl,
+  isObjServiceName,
+  keventSegment,
+  normalizeObjectUrl,
+  objEntityUrl,
+  objEventKey,
+  objEventPattern,
+  objServiceUrl,
+  objectDid,
+  objectEventKey,
+  objectEventPattern,
+  objectSegments,
+  parseObjHost,
+  parseObjectUrl,
+  rbacResourceKey
+}, Symbol.toStringTag, { value: "Module" }));
 const AIWORKSPACE_SERVICE_NAME = "aiworkspace";
 class AiwsFailure extends Error {
   constructor(error) {
@@ -332,6 +707,37 @@ class AiwsFailure extends Error {
     this.subCode = error.sub_code;
     this.data = error.data;
   }
+}
+function aiwsReferenceUrl(reference, workspaceId) {
+  const ws = reference.workspace_id ?? workspaceId;
+  if (!ws)
+    throw new Error("reference names no workspace");
+  const query = [];
+  if (reference.mode === "fixed")
+    query.push("mode=fixed");
+  if (reference.selector != null)
+    query.push(`selector=${encodeObjQueryComponent(canonicalJson(reference.selector))}`);
+  if (reference.version != null)
+    query.push(`version=${encodeObjQueryComponent(canonicalJson(reference.version))}`);
+  const base = objServiceUrl("aiworkspace", [ws, "entities", reference.entity_id]);
+  return normalizeObjectUrl(query.length ? `${base}?${query.join("&")}` : base);
+}
+function parseAiwsReferenceUrl(url) {
+  const parsed = parseObjectUrl(url);
+  const segments = objectSegments(parsed);
+  if (parsed.kind !== "obj" || parsed.host.name !== "aiworkspace" || segments.length !== 3 || segments[1] !== "entities") {
+    throw new Error(`${url} is not an AI Workspace entity url`);
+  }
+  const reference = {
+    workspace_id: segments[0],
+    entity_id: segments[2],
+    mode: parsed.query.mode === "fixed" ? "fixed" : "live"
+  };
+  if (parsed.query.selector !== void 0)
+    reference.selector = JSON.parse(parsed.query.selector);
+  if (parsed.query.version !== void 0)
+    reference.version = JSON.parse(parsed.query.version);
+  return reference;
 }
 class AiWorkspaceClient {
   constructor(rpcClient) {
@@ -805,10 +1211,10 @@ const TASK_MGR_ERROR_CODES = [
   TASK_ERR_SCHEMA_NOT_FOUND
 ];
 function taskMgrTaskEventPath(taskId) {
-  return `/task_mgr/${taskId}`;
+  return objEventKey("taskmgr", [String(taskId)], "changed");
 }
 function taskMgrTreeEventPath(rootId) {
-  return `/task_mgr/tree/${rootId}`;
+  return objEventKey("taskmgr", [String(rootId)], "tree");
 }
 function taskMgrErrorCode(error) {
   const message = error instanceof Error ? error.message : String(error);
@@ -2458,7 +2864,7 @@ const FRIEND_INTENT = "buckyos.friend";
 const CONTACT_TAG_ZONE_USER = "zone_user";
 const CONTACT_TAG_ZONE_AGENT = "zone_agent";
 const CONTACT_TAG_HOMESTATION_FOLLOWING = "homestation.following";
-const CONTACT_CHANGED_EVENT_BOX = "CONTACTS";
+const CONTACT_CHANGED_EVENT_PATTERN = "/obj/msg-center/owners/*/contacts/changed";
 const WELL_KNOWN_CONTACT_TAGS = [
   { key: CONTACT_TAG_ZONE_USER, kind: "system", user_editable: false },
   { key: CONTACT_TAG_ZONE_AGENT, kind: "system", user_editable: false },
@@ -28874,7 +29280,7 @@ async function uploadChunkViaTus(endpoint, file, chunkInfo, chunkIndex, fileHash
   const logicalPath = chunkInfo.chunkId;
   let tusModule;
   try {
-    tusModule = await import("./tus_client-d313689e.mjs");
+    tusModule = await import("./tus_client-04080b1e.mjs");
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new NdmError("UPLOAD_FAILED", `Failed to load tus-js-client: ${message}`);
@@ -30009,191 +30415,194 @@ class ExecutorCommandStream {
   }
 }
 export {
-  CONTACT_TAG_ZONE_AGENT as $,
-  NOTIFY_ACTION_ANSWER as A,
+  CONTACT_TAG_ZONE_USER as $,
+  NOTIFY_TEXT_CONTROL_ID as A,
   BS_SERVICE_VERIFY_HUB as B,
-  NOTIFY_ACTION_DISMISS as C,
-  NOTIFY_LINK_PATH as D,
+  NOTIFY_ACTION_ANSWER as C,
+  NOTIFY_ACTION_DISMISS as D,
   EXTERNAL_PRINCIPAL_CLAIM as E,
-  isNotifyClosed as F,
-  notifyCategorySessionId as G,
-  notifyCategoryFromSessionId as H,
-  inputPrompt as I,
-  promptOptions as J,
-  notifyAnswerToTaskResult as K,
-  validateNotifyAnswer as L,
+  NOTIFY_LINK_PATH as F,
+  isNotifyClosed as G,
+  notifyCategorySessionId as H,
+  notifyCategoryFromSessionId as I,
+  inputPrompt as J,
+  promptOptions as K,
+  notifyAnswerToTaskResult as L,
   MsgQueueClient as M,
   NOTIFY_INTENT as N,
-  notifyUrl as O,
-  msgMachineData as P,
-  notifyMessageData as Q,
+  validateNotifyAnswer as O,
+  notifyUrl as P,
+  msgMachineData as Q,
   RuntimeType as R,
   SystemConfigClient as S,
-  commitNotifyAnswer as T,
-  answerNotify as U,
+  notifyMessageData as T,
+  commitNotifyAnswer as U,
   VerifyHubClient as V,
   WEB3_BRIDGE_HOST as W,
-  waitNotify as X,
-  FRIEND_INTENT as Y,
+  answerNotify as X,
+  waitNotify as Y,
   ZONE_USER_TYPES as Z,
-  CONTACT_TAG_ZONE_USER as _,
+  FRIEND_INTENT as _,
   ndm_proxy as a,
-  TASK_ERR_CONTROL_NOT_AVAILABLE as a$,
-  CONTACT_TAG_HOMESTATION_FOLLOWING as a0,
-  CONTACT_CHANGED_EVENT_BOX as a1,
-  WELL_KNOWN_CONTACT_TAGS as a2,
-  USER_TYPE_GROUP_REF_PREFIX as a3,
-  USER_GROUP_REF_PREFIX as a4,
-  contactTagApp as a5,
-  contactTagKind as a6,
-  isUserGroupRefTag as a7,
-  DENY_REASONS as a8,
-  ACCESS_DENIED_ERROR_CODE as a9,
-  HUMAN_APPROVAL_SCHEMA_ID as aA,
-  DOWNLOAD_TASK_SCHEMA_ID as aB,
-  SCHEDULER_DISPATCH_THUNK_TASK_SCHEMA_ID as aC,
-  WORKFLOW_RUN_TREE_TASK_SCHEMA_ID as aD,
-  WORKFLOW_STEP_TASK_SCHEMA_ID as aE,
-  WORKFLOW_MAP_SHARD_TASK_SCHEMA_ID as aF,
-  WORKFLOW_THUNK_TASK_SCHEMA_ID as aG,
-  WORKFLOW_SCHEDULE_TASK_SCHEMA_ID as aH,
-  WORKFLOW_SEND_MESSAGE_TASK_SCHEMA_ID as aI,
-  WORKFLOW_EXECUTE_RPC_TASK_SCHEMA_ID as aJ,
-  WORKFLOW_RUN_TARGET_TASK_SCHEMA_ID as aK,
-  AGENT_DELEGATE_TASK_SCHEMA_ID as aL,
-  HUMAN_INPUT_TASK_SCHEMA_ID as aM,
-  OPENDAN_ASYNC_TOOL_TASK_SCHEMA_ID as aN,
-  OPENDAN_COMMAND_TASK_SCHEMA_ID as aO,
-  TOOL_EXEC_BASH_TASK_SCHEMA_ID as aP,
-  AICC_COMPUTE_TASK_SCHEMA_ID as aQ,
-  APP_INSTALL_TASK_SCHEMA_ID as aR,
-  APP_UNINSTALL_TASK_SCHEMA_ID as aS,
-  APP_START_TASK_SCHEMA_ID as aT,
-  APP_UPDATE_TASK_SCHEMA_ID as aU,
-  APP_UPDATE_BATCH_TASK_SCHEMA_ID as aV,
-  TASK_ERR_NOT_FOUND as aW,
-  TASK_ERR_PERMISSION_DENIED as aX,
-  TASK_ERR_REVISION_CONFLICT as aY,
-  TASK_ERR_STALE_RUNNER_EPOCH as aZ,
-  TASK_ERR_INVALID_PHASE as a_,
-  parseAccessDenial as aa,
-  accessDenialOf as ab,
-  ANONYMOUS_IDENTITY as ac,
-  parseCurrentIdentity as ad,
-  identityKey as ae,
-  identityAllows as af,
-  DEFAULT_JUMP_BASE_URL as ag,
-  JUMP_ACTION_PATHS as ah,
-  normalizeZoneHostname as ai,
-  zoneActionUrl as aj,
-  buildJumpUrl as ak,
-  APP_LOGIN_ISSUE_METHOD as al,
-  APP_LOGIN_EXCHANGE_METHOD as am,
-  APP_LOGIN_SETTINGS_GET_METHOD as an,
-  APP_LOGIN_SETTINGS_SET_METHOD as ao,
-  issueAppLoginCode as ap,
-  issueAppCustomerLink as aq,
-  parseAppLoginExchangeResult as ar,
-  randomAppLoginNonce as as,
-  loginByAppAccessToken as at,
-  completeAppAccessTokenLogin as au,
-  TASK_MANAGER_SERVICE_UNIQUE_ID as av,
-  TASK_MANAGER_SERVICE_NAME as aw,
-  TASK_MANAGER_SERVICE_PORT as ax,
-  TASK_POLICY_PRESET_COLLABORATIVE_TREE_V1 as ay,
-  RAW_TASK_SCHEMA_ID as az,
+  TASK_ERR_INVALID_PHASE as a$,
+  CONTACT_TAG_ZONE_AGENT as a0,
+  CONTACT_TAG_HOMESTATION_FOLLOWING as a1,
+  CONTACT_CHANGED_EVENT_PATTERN as a2,
+  WELL_KNOWN_CONTACT_TAGS as a3,
+  USER_TYPE_GROUP_REF_PREFIX as a4,
+  USER_GROUP_REF_PREFIX as a5,
+  contactTagApp as a6,
+  contactTagKind as a7,
+  isUserGroupRefTag as a8,
+  DENY_REASONS as a9,
+  RAW_TASK_SCHEMA_ID as aA,
+  HUMAN_APPROVAL_SCHEMA_ID as aB,
+  DOWNLOAD_TASK_SCHEMA_ID as aC,
+  SCHEDULER_DISPATCH_THUNK_TASK_SCHEMA_ID as aD,
+  WORKFLOW_RUN_TREE_TASK_SCHEMA_ID as aE,
+  WORKFLOW_STEP_TASK_SCHEMA_ID as aF,
+  WORKFLOW_MAP_SHARD_TASK_SCHEMA_ID as aG,
+  WORKFLOW_THUNK_TASK_SCHEMA_ID as aH,
+  WORKFLOW_SCHEDULE_TASK_SCHEMA_ID as aI,
+  WORKFLOW_SEND_MESSAGE_TASK_SCHEMA_ID as aJ,
+  WORKFLOW_EXECUTE_RPC_TASK_SCHEMA_ID as aK,
+  WORKFLOW_RUN_TARGET_TASK_SCHEMA_ID as aL,
+  AGENT_DELEGATE_TASK_SCHEMA_ID as aM,
+  HUMAN_INPUT_TASK_SCHEMA_ID as aN,
+  OPENDAN_ASYNC_TOOL_TASK_SCHEMA_ID as aO,
+  OPENDAN_COMMAND_TASK_SCHEMA_ID as aP,
+  TOOL_EXEC_BASH_TASK_SCHEMA_ID as aQ,
+  AICC_COMPUTE_TASK_SCHEMA_ID as aR,
+  APP_INSTALL_TASK_SCHEMA_ID as aS,
+  APP_UNINSTALL_TASK_SCHEMA_ID as aT,
+  APP_START_TASK_SCHEMA_ID as aU,
+  APP_UPDATE_TASK_SCHEMA_ID as aV,
+  APP_UPDATE_BATCH_TASK_SCHEMA_ID as aW,
+  TASK_ERR_NOT_FOUND as aX,
+  TASK_ERR_PERMISSION_DENIED as aY,
+  TASK_ERR_REVISION_CONFLICT as aZ,
+  TASK_ERR_STALE_RUNNER_EPOCH as a_,
+  ACCESS_DENIED_ERROR_CODE as aa,
+  parseAccessDenial as ab,
+  accessDenialOf as ac,
+  ANONYMOUS_IDENTITY as ad,
+  parseCurrentIdentity as ae,
+  identityKey as af,
+  identityAllows as ag,
+  DEFAULT_JUMP_BASE_URL as ah,
+  JUMP_ACTION_PATHS as ai,
+  normalizeZoneHostname as aj,
+  zoneActionUrl as ak,
+  buildJumpUrl as al,
+  APP_LOGIN_ISSUE_METHOD as am,
+  APP_LOGIN_EXCHANGE_METHOD as an,
+  APP_LOGIN_SETTINGS_GET_METHOD as ao,
+  APP_LOGIN_SETTINGS_SET_METHOD as ap,
+  issueAppLoginCode as aq,
+  issueAppCustomerLink as ar,
+  parseAppLoginExchangeResult as as,
+  randomAppLoginNonce as at,
+  loginByAppAccessToken as au,
+  completeAppAccessTokenLogin as av,
+  TASK_MANAGER_SERVICE_UNIQUE_ID as aw,
+  TASK_MANAGER_SERVICE_NAME as ax,
+  TASK_MANAGER_SERVICE_PORT as ay,
+  TASK_POLICY_PRESET_COLLABORATIVE_TREE_V1 as az,
   bns_client as b,
-  KEventReader as b$,
-  TASK_ERR_CONTROL_ALREADY_PENDING as b0,
-  TASK_ERR_ALREADY_COMPLETED as b1,
-  TASK_ERR_INPUT_SCHEMA_MISMATCH as b2,
-  TASK_ERR_RESULT_SCHEMA_MISMATCH as b3,
-  TASK_ERR_IDEMPOTENCY_CONFLICT as b4,
-  TASK_ERR_SCHEMA_NOT_FOUND as b5,
-  TASK_MGR_ERROR_CODES as b6,
-  taskMgrTaskEventPath as b7,
-  taskMgrTreeEventPath as b8,
-  taskMgrErrorCode as b9,
-  WorkflowClient as bA,
-  AICC_SERVICE_UNIQUE_ID as bB,
-  AICC_SERVICE_SERVICE_NAME as bC,
-  AICC_SERVICE_SERVICE_PORT as bD,
-  AICC_AI_METHODS as bE,
-  AICC_CORE_METHODS as bF,
-  AICC_MANAGEMENT_METHODS as bG,
-  AICC_QUOTA_METHODS as bH,
-  AICC_METHODS as bI,
-  AICC_FEATURES as bJ,
-  AICC_EXECUTION_MODES as bK,
-  AICC_POLICY_REFUSAL_CODES as bL,
-  aiccRefusalOf as bM,
-  isAiccAiMethod as bN,
-  aiccTextMessage as bO,
-  aiccMessageTextContent as bP,
-  aiccMessageFirstText as bQ,
-  validateAiccMessage as bR,
-  AiccClient as bS,
-  decisionRequirements as bT,
-  validateDecisionRequest as bU,
-  validateDecisionAnswers as bV,
-  parseVideoPrompt as bW,
-  validateVideoOutput as bX,
-  validateVideoGeneration as bY,
-  validateVideoEdit as bZ,
-  videoGenerationRequirement as b_,
-  TaskExecutorKind as ba,
-  TaskPhase as bb,
-  isTerminalTaskPhase as bc,
-  TaskWaitReasonKind as bd,
-  TaskOutcome as be,
-  TaskControlAction as bf,
-  baselineTaskControlProfile as bg,
-  DEFAULT_CHILD_CONTROL_POLICY as bh,
-  TaskAction as bi,
-  TaskGrantScope as bj,
-  TaskDataScope as bk,
-  StorageDomain as bl,
-  TaskEventType as bm,
-  TaskManagerClient as bn,
-  WORKFLOW_SERVICE_NAME as bo,
-  WorkflowStepType as bp,
-  WorkflowOutputMode as bq,
-  WorkflowJoinMode as br,
-  WorkflowRetryFallback as bs,
-  WorkflowDefinitionStatus as bt,
-  WorkflowRunStatus as bu,
-  WorkflowNodeRunState as bv,
-  WorkflowHumanActionKind as bw,
-  WorkflowScheduledTaskStatus as bx,
-  WorkflowScheduledTaskMisfirePolicy as by,
-  WorkflowScheduledTaskFireStatus as bz,
+  videoGenerationRequirement as b$,
+  TASK_ERR_CONTROL_NOT_AVAILABLE as b0,
+  TASK_ERR_CONTROL_ALREADY_PENDING as b1,
+  TASK_ERR_ALREADY_COMPLETED as b2,
+  TASK_ERR_INPUT_SCHEMA_MISMATCH as b3,
+  TASK_ERR_RESULT_SCHEMA_MISMATCH as b4,
+  TASK_ERR_IDEMPOTENCY_CONFLICT as b5,
+  TASK_ERR_SCHEMA_NOT_FOUND as b6,
+  TASK_MGR_ERROR_CODES as b7,
+  taskMgrTaskEventPath as b8,
+  taskMgrTreeEventPath as b9,
+  WorkflowScheduledTaskFireStatus as bA,
+  WorkflowClient as bB,
+  AICC_SERVICE_UNIQUE_ID as bC,
+  AICC_SERVICE_SERVICE_NAME as bD,
+  AICC_SERVICE_SERVICE_PORT as bE,
+  AICC_AI_METHODS as bF,
+  AICC_CORE_METHODS as bG,
+  AICC_MANAGEMENT_METHODS as bH,
+  AICC_QUOTA_METHODS as bI,
+  AICC_METHODS as bJ,
+  AICC_FEATURES as bK,
+  AICC_EXECUTION_MODES as bL,
+  AICC_POLICY_REFUSAL_CODES as bM,
+  aiccRefusalOf as bN,
+  isAiccAiMethod as bO,
+  aiccTextMessage as bP,
+  aiccMessageTextContent as bQ,
+  aiccMessageFirstText as bR,
+  validateAiccMessage as bS,
+  AiccClient as bT,
+  decisionRequirements as bU,
+  validateDecisionRequest as bV,
+  validateDecisionAnswers as bW,
+  parseVideoPrompt as bX,
+  validateVideoOutput as bY,
+  validateVideoGeneration as bZ,
+  validateVideoEdit as b_,
+  taskMgrErrorCode as ba,
+  TaskExecutorKind as bb,
+  TaskPhase as bc,
+  isTerminalTaskPhase as bd,
+  TaskWaitReasonKind as be,
+  TaskOutcome as bf,
+  TaskControlAction as bg,
+  baselineTaskControlProfile as bh,
+  DEFAULT_CHILD_CONTROL_POLICY as bi,
+  TaskAction as bj,
+  TaskGrantScope as bk,
+  TaskDataScope as bl,
+  StorageDomain as bm,
+  TaskEventType as bn,
+  TaskManagerClient as bo,
+  WORKFLOW_SERVICE_NAME as bp,
+  WorkflowStepType as bq,
+  WorkflowOutputMode as br,
+  WorkflowJoinMode as bs,
+  WorkflowRetryFallback as bt,
+  WorkflowDefinitionStatus as bu,
+  WorkflowRunStatus as bv,
+  WorkflowNodeRunState as bw,
+  WorkflowHumanActionKind as bx,
+  WorkflowScheduledTaskStatus as by,
+  WorkflowScheduledTaskMisfirePolicy as bz,
   createSDKModule as c,
-  KEventClient as c0,
-  appIdFromDid as c1,
-  parseAppId as c2,
-  appDidFromId as c3,
-  createAppInstanceId as c4,
-  parseAppInstanceId as c5,
-  BNS_EVM_DEFAULT_GAS_LIMIT as c6,
-  BNS_EVM_DEFAULT_MAX_FEE_PER_GAS as c7,
-  BNS_EVM_DEFAULT_MAX_PRIORITY_FEE_PER_GAS as c8,
-  BNS_MAX_INLINE_DOCUMENT_BYTES as c9,
-  BNS_DNS_TXT_DEFAULT_TTL as ca,
-  BNS_DNS_TXT_DOC_TYPE as cb,
-  BNS_PUBLISH_DOCUMENT_ABI as cc,
-  BnsEvmTxError as cd,
-  BnsEvmTxBuilder as ce,
-  decodeBnsPublishDocumentCalldata as cf,
-  BnsTxExecutorError as cg,
-  walletUserHasSnAccount as ch,
-  BnsTxExecutor as ci,
-  ExecutorClient as cj,
-  ExecutorStreamError as ck,
-  encodeExecutorControl as cl,
-  ExecutorCommandStream as cm,
-  AIWORKSPACE_SERVICE_NAME as cn,
-  AiwsFailure as co,
-  AiWorkspaceClient as cp,
+  KEventReader as c0,
+  KEventClient as c1,
+  appIdFromDid as c2,
+  parseAppId as c3,
+  appDidFromId as c4,
+  createAppInstanceId as c5,
+  parseAppInstanceId as c6,
+  BNS_EVM_DEFAULT_GAS_LIMIT as c7,
+  BNS_EVM_DEFAULT_MAX_FEE_PER_GAS as c8,
+  BNS_EVM_DEFAULT_MAX_PRIORITY_FEE_PER_GAS as c9,
+  BNS_MAX_INLINE_DOCUMENT_BYTES as ca,
+  BNS_DNS_TXT_DEFAULT_TTL as cb,
+  BNS_DNS_TXT_DOC_TYPE as cc,
+  BNS_PUBLISH_DOCUMENT_ABI as cd,
+  BnsEvmTxError as ce,
+  BnsEvmTxBuilder as cf,
+  decodeBnsPublishDocumentCalldata as cg,
+  BnsTxExecutorError as ch,
+  walletUserHasSnAccount as ci,
+  BnsTxExecutor as cj,
+  ExecutorClient as ck,
+  ExecutorStreamError as cl,
+  encodeExecutorControl as cm,
+  ExecutorCommandStream as cn,
+  AIWORKSPACE_SERVICE_NAME as co,
+  AiwsFailure as cp,
+  aiwsReferenceUrl as cq,
+  parseAiwsReferenceUrl as cr,
+  AiWorkspaceClient as cs,
   bucket_client as d,
   BS_SERVICE_TASK_MANAGER as e,
   getActiveRuntimeType as f,
@@ -30205,17 +30614,17 @@ export {
   parseZoneUserType as l,
   isExternalPrincipal as m,
   ndm_client as n,
-  RPCError as o,
+  object_url as o,
   parseSessionTokenClaims as p,
-  MsgCenterClient as q,
+  RPCError as q,
   resolveDidFromHost as r,
   sn_client as s,
-  mailboxAddress as t,
-  mailboxResource as u,
-  NOTIFY_DELIVERED_INTENT as v,
-  NOTIFY_DATA_VERSION as w,
-  NOTIFY_SESSION_PREFIX as x,
-  NOTIFY_CHOICE_CONTROL_ID as y,
-  NOTIFY_TEXT_CONTROL_ID as z
+  MsgCenterClient as t,
+  mailboxAddress as u,
+  mailboxResource as v,
+  NOTIFY_DELIVERED_INTENT as w,
+  NOTIFY_DATA_VERSION as x,
+  NOTIFY_SESSION_PREFIX as y,
+  NOTIFY_CHOICE_CONTROL_ID as z
 };
-//# sourceMappingURL=executor_client-dde508e1.mjs.map
+//# sourceMappingURL=executor_client-78ad0749.mjs.map

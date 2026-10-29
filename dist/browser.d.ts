@@ -89,5 +89,6 @@ export * as ndn from './ndn_types';
 export * as ndm from './ndm_client';
 export * as ndm_proxy from './ndm_proxy';
 export * as bucket from './bucket_client';
+export * as objectUrl from './object_url';
 export * from './executor_client';
 //# sourceMappingURL=browser.d.ts.map

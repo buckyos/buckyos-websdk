@@ -39,6 +39,7 @@ import { createAgentModule } from '../modules/agent.ts'
 import { createAiModule } from '../modules/ai.ts'
 import { createShareModule } from '../modules/share.ts'
 import { createBucketModule } from '../modules/bucket.ts'
+import { createObjModule } from '../modules/obj.ts'
 import { createExecutorModule } from '../modules/executor.ts'
 import { createAiwsModule } from '../modules/aiws.ts'
 import {
@@ -485,6 +486,7 @@ export function createRegistry(
   registry.register(createAiModule())
   registry.register(createShareModule())
   registry.register(createBucketModule())
+  registry.register(createObjModule())
   registry.register(createExecutorModule())
   registry.register(createAiwsModule())
   return registry

@@ -341,7 +341,8 @@ export const FRIEND_INTENT = 'buckyos.friend'
 export const CONTACT_TAG_ZONE_USER = 'zone_user'
 export const CONTACT_TAG_ZONE_AGENT = 'zone_agent'
 export const CONTACT_TAG_HOMESTATION_FOLLOWING = 'homestation.following'
-export const CONTACT_CHANGED_EVENT_BOX = 'CONTACTS'
+/** Contact changes of every owner (`/obj/msg-center/owners/<owner>/contacts/changed`). */
+export const CONTACT_CHANGED_EVENT_PATTERN = '/obj/msg-center/owners/*/contacts/changed'
 
 export type ContactTagKind = 'system' | 'app' | 'user'
 
@@ -493,7 +494,7 @@ export interface ListFriendRequestsReq {
   contact_mgr_owner?: DID
 }
 
-/** Payload of the `/msg_center/<owner>/CONTACTS/changed` kevent. */
+/** Payload of the `/obj/msg-center/owners/<owner>/contacts/changed` kevent. */
 export interface ContactChangedEvent {
   owner: DID
   operation: 'upsert' | 'remove' | 'friend_request'
@@ -1496,7 +1497,7 @@ export async function answerNotify(
 
 export interface WaitNotifyOptions {
   /**
-   * When given, `/task_mgr/<task_id>` events of an `input` wake the wait
+   * When given, `/obj/taskmgr/<task_id>/changed` events of an `input` wake the wait
    * early; without it (or if the reader cannot be opened) it only polls.
    */
   kevent?: Pick<KEventClient, 'createEventReader'> | null

@@ -140,7 +140,7 @@ Deno.test('task wait uses KEvent only as wakeup and returns terminal failures', 
       } as T)
     },
     createEventReader: (pattern) => {
-      assertEquals(pattern, '/task_mgr/t-1')
+      assertEquals(pattern, '/obj/taskmgr/t-1/changed')
       return Promise.resolve({
         pullEvent: () => {
           pulls += 1

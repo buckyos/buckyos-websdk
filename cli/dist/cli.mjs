@@ -2,7 +2,7 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 import * as nodePath from "node:path";
 import { resolve as resolve$5, dirname as dirname$3 } from "node:path";
-import { BuckyOSSDK, RuntimeType, buckyos, namelib, VerifyHubClient, createAppInstanceId, parseSessionTokenClaims, ndn, ndm_proxy, ExecutorCommandStream } from "buckyos/node";
+import { BuckyOSSDK, RuntimeType, buckyos, namelib, VerifyHubClient, createAppInstanceId, parseSessionTokenClaims, ndn, taskMgrTaskEventPath, ndm_proxy, objectUrl as objectUrl$1, ExecutorCommandStream } from "buckyos/node";
 import * as provisionSdk from "buckyos/provision";
 import { createHash } from "node:crypto";
 import { readFile, writeFile, readdir, stat, lstat, realpath, mkdtemp, rename, rm, mkdir, chmod, symlink, copyFile, open } from "node:fs/promises";
@@ -2498,7 +2498,7 @@ function replPrompt(config) {
   return `buckyos[${profile}|${zone}|${identity}]> `;
 }
 const EMPTY_INPUT$3 = { type: "object", properties: {}, additionalProperties: false };
-const OBJECT_OUTPUT$e = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$f = { type: "object", additionalProperties: true };
 function createAuthModule() {
   return {
     name: "auth",
@@ -2508,7 +2508,7 @@ function createAuthModule() {
         verb: "whoami",
         summary: "Show the effective principal and application identity",
         inputSchema: EMPTY_INPUT$3,
-        outputSchema: OBJECT_OUTPUT$e,
+        outputSchema: OBJECT_OUTPUT$f,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -2526,7 +2526,7 @@ function createAuthModule() {
         verb: "session-status",
         summary: "Show the in-memory session state without exposing credentials",
         inputSchema: EMPTY_INPUT$3,
-        outputSchema: OBJECT_OUTPUT$e,
+        outputSchema: OBJECT_OUTPUT$f,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -2547,7 +2547,7 @@ const EMPTY_INPUT$2 = {
   properties: {},
   additionalProperties: false
 };
-const OBJECT_OUTPUT$d = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$e = { type: "object", additionalProperties: true };
 function createCoreModules(registry) {
   return [createCommandModule(registry), createConfigModule(), createCompletionModule(registry)];
 }
@@ -2560,7 +2560,7 @@ function createCommandModule(registry) {
         verb: "list",
         summary: "List registered modules and commands",
         inputSchema: EMPTY_INPUT$2,
-        outputSchema: OBJECT_OUTPUT$d,
+        outputSchema: OBJECT_OUTPUT$e,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -2593,7 +2593,7 @@ function createCommandModule(registry) {
           required: ["target_module", "target_verb"],
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$d,
+        outputSchema: OBJECT_OUTPUT$e,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -2615,7 +2615,7 @@ function createConfigModule() {
         verb: "list",
         summary: "List the global configuration and available profiles",
         inputSchema: EMPTY_INPUT$2,
-        outputSchema: OBJECT_OUTPUT$d,
+        outputSchema: OBJECT_OUTPUT$e,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -2646,7 +2646,7 @@ function createConfigModule() {
           },
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$d,
+        outputSchema: OBJECT_OUTPUT$e,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -2692,7 +2692,7 @@ function createConfigModule() {
           required: ["key", "value"],
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$d,
+        outputSchema: OBJECT_OUTPUT$e,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "write" },
         asyncMode: "sync",
@@ -2732,7 +2732,7 @@ function createConfigModule() {
           required: ["profile_name"],
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$d,
+        outputSchema: OBJECT_OUTPUT$e,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "write" },
         asyncMode: "sync",
@@ -2764,7 +2764,7 @@ function createConfigModule() {
           properties: { effective: { type: "boolean" } },
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$d,
+        outputSchema: OBJECT_OUTPUT$e,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -3006,7 +3006,7 @@ async function buckyosInfo(ctx) {
   );
 }
 const SERVICE_NAME = "system_config";
-const OBJECT_OUTPUT$c = { type: "object", additionalProperties: false };
+const OBJECT_OUTPUT$d = { type: "object", additionalProperties: false };
 const KEY_INPUT = {
   type: "object",
   properties: { key: { type: "string", minLength: 1 } },
@@ -3024,7 +3024,7 @@ function createSystemConfigModule() {
         positionals: [{ name: "key", description: "System-config key" }],
         inputSchema: KEY_INPUT,
         outputSchema: {
-          ...OBJECT_OUTPUT$c,
+          ...OBJECT_OUTPUT$d,
           properties: {
             key: { type: "string" },
             value: { type: "string" },
@@ -3067,7 +3067,7 @@ function createSystemConfigModule() {
           additionalProperties: false
         },
         outputSchema: {
-          ...OBJECT_OUTPUT$c,
+          ...OBJECT_OUTPUT$d,
           properties: {
             key: { type: "string" },
             items: { type: "array", items: { type: "string" } }
@@ -3121,7 +3121,7 @@ function setCommand() {
       additionalProperties: false
     },
     outputSchema: {
-      ...OBJECT_OUTPUT$c,
+      ...OBJECT_OUTPUT$d,
       properties: { key: { type: "string" }, updated: { type: "boolean" } },
       required: ["key", "updated"]
     },
@@ -3160,7 +3160,7 @@ function setFileCommand() {
       additionalProperties: false
     },
     outputSchema: {
-      ...OBJECT_OUTPUT$c,
+      ...OBJECT_OUTPUT$d,
       properties: { key: { type: "string" }, updated: { type: "boolean" } },
       required: ["key", "updated"]
     },
@@ -3197,7 +3197,7 @@ function mutationCommand(options) {
       additionalProperties: false
     },
     outputSchema: {
-      ...OBJECT_OUTPUT$c,
+      ...OBJECT_OUTPUT$d,
       properties: {
         key: { type: "string" },
         [options.resultProperty]: { type: "boolean" }
@@ -5205,7 +5205,7 @@ function validateContentHandlers(value, permissions) {
   }
   return value;
 }
-const PACKAGE_VERSION = "0.7.154";
+const PACKAGE_VERSION = "0.7.155";
 const TOOL_VERSION = PACKAGE_VERSION;
 const SDK_VERSION = PACKAGE_VERSION;
 const PROTOCOL_VERSION = "1";
@@ -5222,7 +5222,7 @@ const VERSION$1 = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 const SHA256_ID = /^sha256:[0-9a-f]{64}$/;
 const OBJECT_ID = /^(?:appdoc|pkg):[0-9a-f]{64}$/;
 const SAFE_GENERATED_FILE = /^[A-Za-z0-9._-]+$/;
-const OBJECT_OUTPUT$b = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$c = { type: "object", additionalProperties: true };
 const APP_KINDS = ["static-web", "script", "docker", "agent-skills"];
 const PATH_KINDS = {
   "static-web": { key: "web", category: "web", selectorType: "static" },
@@ -5265,7 +5265,7 @@ function createPikgModule(dependencies = {}) {
           properties: { meta_dir: { type: "string", minLength: 1 } },
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$b,
+        outputSchema: OBJECT_OUTPUT$c,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -5312,7 +5312,7 @@ function createPikgModule(dependencies = {}) {
           },
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$b,
+        outputSchema: OBJECT_OUTPUT$c,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "write" },
         asyncMode: "sync",
@@ -5337,7 +5337,7 @@ function createPikgModule(dependencies = {}) {
           properties: { meta_dir: { type: "string", minLength: 1 } },
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$b,
+        outputSchema: OBJECT_OUTPUT$c,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "write" },
         asyncMode: "sync",
@@ -5358,7 +5358,7 @@ function createPikgModule(dependencies = {}) {
           properties: { dist_dir: { type: "string", minLength: 1 } },
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$b,
+        outputSchema: OBJECT_OUTPUT$c,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "write" },
         asyncMode: "sync",
@@ -5378,7 +5378,7 @@ function createPikgModule(dependencies = {}) {
           required: ["pikg_path"],
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$b,
+        outputSchema: OBJECT_OUTPUT$c,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -5399,7 +5399,7 @@ function createPikgModule(dependencies = {}) {
           properties: { meta_dir: { type: "string", minLength: 1 } },
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$b,
+        outputSchema: OBJECT_OUTPUT$c,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "destructive" },
         asyncMode: "sync",
@@ -6532,7 +6532,7 @@ async function waitForTask(ctx, taskId, options = {}) {
   try {
     const remaining = Math.max(1, (ctx.deadline ?? Date.now()) - Date.now());
     const eventSignal = AbortSignal.any([ctx.signal, AbortSignal.timeout(remaining)]);
-    reader = await ctx.clients.createEventReader?.(`/task_mgr/${taskId}`, eventSignal);
+    reader = await ctx.clients.createEventReader?.(taskMgrTaskEventPath(taskId), eventSignal);
   } catch {
     reader = void 0;
   }
@@ -6669,7 +6669,7 @@ const CONTROL_PANEL_SERVICE = "control-panel";
 const PLAN_SCHEMA_VERSION = 4;
 const STAGING_RELEASE_TIMEOUT_MS = 5e3;
 const ZIP_LOCAL_MAGIC = [80, 75, 3, 4];
-const OBJECT_OUTPUT$a = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$b = { type: "object", additionalProperties: true };
 const INSTALL_POLICIES = [
   "strict-public",
   "normal",
@@ -6720,7 +6720,7 @@ function cancelCommand$1() {
       required: ["task_id"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$a,
+    outputSchema: OBJECT_OUTPUT$b,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "sync",
@@ -6755,7 +6755,7 @@ function fetchCommand(dependencies) {
       target: { type: "object", additionalProperties: true },
       install_params: { type: "object", additionalProperties: true }
     }),
-    outputSchema: OBJECT_OUTPUT$a,
+    outputSchema: OBJECT_OUTPUT$b,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -6772,7 +6772,7 @@ function listCommand$2() {
     verb: "list",
     summary: "List visible installed Apps",
     inputSchema: emptyInputSchema(),
-    outputSchema: OBJECT_OUTPUT$a,
+    outputSchema: OBJECT_OUTPUT$b,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -6830,7 +6830,7 @@ function installCommand(dependencies) {
       no_wait: { type: "boolean" },
       policy: { type: "string", enum: [...INSTALL_POLICIES] }
     }),
-    outputSchema: OBJECT_OUTPUT$a,
+    outputSchema: OBJECT_OUTPUT$b,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "either",
@@ -6874,7 +6874,7 @@ function upgradeCommand(dependencies) {
       },
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$a,
+    outputSchema: OBJECT_OUTPUT$b,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "either",
@@ -7003,7 +7003,7 @@ function statusCommand$1() {
       properties: { app_name: { type: "string", minLength: 1 } },
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$a,
+    outputSchema: OBJECT_OUTPUT$b,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -7074,7 +7074,7 @@ function publishCommand() {
       required: ["local_dir", "app_doc"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$a,
+    outputSchema: OBJECT_OUTPUT$b,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "sync",
@@ -7591,7 +7591,7 @@ async function stagePikg(ctx, snapshot, purpose) {
     throw new ToolError("AUTH_REQUIRED", "authenticated session is required", 3);
   const token = (await session.ensureValid()).token;
   const proxy = ndm_proxy.createNdmProxyClient({
-    endpoint: gatewayOrigin$2(ctx.connection.endpoint),
+    endpoint: gatewayOrigin$3(ctx.connection.endpoint),
     sessionToken: token,
     fetcher: (request, init) => fetch(normalizeNdmRequestUrl(request), { ...init, signal: ctx.signal })
   });
@@ -8128,7 +8128,7 @@ function validatePikgSnapshot(bytes) {
     throw new UsageError("INVALID_PIKG", "PIKG magic mismatch: expected a ZIP container");
   }
 }
-function gatewayOrigin$2(endpoint) {
+function gatewayOrigin$3(endpoint) {
   const url = new URL(endpoint);
   const marker = url.pathname.indexOf("/kapi");
   url.pathname = marker >= 0 ? url.pathname.slice(0, marker) || "/" : "/";
@@ -8200,7 +8200,7 @@ function selectorCommand(options) {
       required: ["app_name"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$a,
+    outputSchema: OBJECT_OUTPUT$b,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: options.access },
     asyncMode: options.asyncMode,
@@ -8364,7 +8364,7 @@ function toHex(bytes) {
   return [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 const CONTROL_PANEL$3 = "control-panel";
-const OBJECT_OUTPUT$9 = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$a = { type: "object", additionalProperties: true };
 function createDiagnosticModule(dependencies = {}) {
   return {
     name: "diagnostic",
@@ -8403,7 +8403,7 @@ function collectCommand() {
       required: ["services"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$9,
+    outputSchema: OBJECT_OUTPUT$a,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "privileged" },
     asyncMode: "task",
@@ -8457,7 +8457,7 @@ function exportCommand$2(dependencies) {
       required: ["bundle_id", "path"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$9,
+    outputSchema: OBJECT_OUTPUT$a,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "privileged" },
     asyncMode: "sync",
@@ -8499,7 +8499,7 @@ function compact$2(value) {
   return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== void 0));
 }
 const CONTROL_PANEL$2 = "control-panel";
-const OBJECT_OUTPUT$8 = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$9 = { type: "object", additionalProperties: true };
 const LOG_LEVELS = ["error", "warning", "info", "debug", "trace"];
 function createLogModule(dependencies = {}) {
   return {
@@ -8520,7 +8520,7 @@ function servicesCommand() {
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
     outputSchema: {
       type: "object",
-      properties: { services: { type: "array", items: OBJECT_OUTPUT$8 } },
+      properties: { services: { type: "array", items: OBJECT_OUTPUT$9 } },
       required: ["services"],
       additionalProperties: false
     },
@@ -8593,7 +8593,7 @@ function tailCommand(dependencies) {
       }
     ],
     inputSchema: filterSchema({ from: { type: "string", enum: ["start", "end"] } }),
-    outputSchema: OBJECT_OUTPUT$8,
+    outputSchema: OBJECT_OUTPUT$9,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "stream",
@@ -8649,7 +8649,7 @@ function exportCommand$1(dependencies) {
       ...filterSchema({ path: { type: "string", minLength: 1 } }),
       required: ["path"]
     },
-    outputSchema: OBJECT_OUTPUT$8,
+    outputSchema: OBJECT_OUTPUT$9,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -8801,7 +8801,7 @@ function abortableSleep(milliseconds, signal) {
 }
 const TASK_MANAGER = "task-manager";
 const CONTROL_PANEL$1 = "control-panel";
-const OBJECT_OUTPUT$7 = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$8 = { type: "object", additionalProperties: true };
 function createTaskModule() {
   return {
     name: "task",
@@ -8904,7 +8904,7 @@ function getCommand$2() {
       required: ["task_id"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$7,
+    outputSchema: OBJECT_OUTPUT$8,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -8945,7 +8945,7 @@ function waitCommand() {
     summary: "Stream changes until a Task becomes terminal",
     positionals: [{ name: "task_id", description: "Opaque Task ID", required: true }],
     inputSchema: taskIdSchema(),
-    outputSchema: OBJECT_OUTPUT$7,
+    outputSchema: OBJECT_OUTPUT$8,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "stream",
@@ -8996,7 +8996,7 @@ function cancelCommand() {
       required: ["task_id"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$7,
+    outputSchema: OBJECT_OUTPUT$8,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "sync",
@@ -9039,7 +9039,7 @@ function retryCommand() {
       required: ["task_id"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$7,
+    outputSchema: OBJECT_OUTPUT$8,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "either",
@@ -9113,7 +9113,7 @@ function invalidResponse$1(label) {
   throw new ToolError("INVALID_SERVICE_RESPONSE", `${label} is invalid`, EXIT_INTERNAL);
 }
 const sdk = provisionSdk;
-const OBJECT_OUTPUT$6 = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$7 = { type: "object", additionalProperties: true };
 const ROOT_OPTION = {
   name: "root",
   description: "Installed BuckyOS root on this machine (BUCKYOS_ROOT); read by status/check, written by activate",
@@ -9197,7 +9197,7 @@ function statusCommand(deps) {
       additionalProperties: false
     },
     outputSchema: {
-      ...OBJECT_OUTPUT$6,
+      ...OBJECT_OUTPUT$7,
       properties: {
         root: { type: "string" },
         state: {
@@ -9235,7 +9235,7 @@ function checkCommand(deps) {
       additionalProperties: false
     },
     outputSchema: {
-      ...OBJECT_OUTPUT$6,
+      ...OBJECT_OUTPUT$7,
       properties: {
         ready: { type: "boolean" },
         root: { type: "string" },
@@ -9283,7 +9283,7 @@ function activateCommand(deps) {
       additionalProperties: false
     },
     outputSchema: {
-      ...OBJECT_OUTPUT$6,
+      ...OBJECT_OUTPUT$7,
       properties: {
         root: { type: "string" },
         state: { type: "string", enum: ["configured"] },
@@ -9565,7 +9565,7 @@ function inputFingerprint(input) {
   hash.update(new TextEncoder().encode(JSON.stringify(material)));
   return hash.digestHex();
 }
-const OBJECT_OUTPUT$5 = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$6 = { type: "object", additionalProperties: true };
 const SKILL_KINDS = ["cmd", "goal"];
 const SKILLS_SUB_PKG = "agent_skills";
 const SKILL_DIRS = ["cmd_skills", "goal_skills", "tools"];
@@ -9602,7 +9602,7 @@ function createSkillModule() {
           required: ["agent_id"],
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$5,
+        outputSchema: OBJECT_OUTPUT$6,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -9641,7 +9641,7 @@ function createSkillModule() {
           required: ["pikg_path", "agent_id"],
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$5,
+        outputSchema: OBJECT_OUTPUT$6,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "write" },
         asyncMode: "sync",
@@ -9668,7 +9668,7 @@ function createSkillModule() {
           required: ["name", "agent_id"],
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$5,
+        outputSchema: OBJECT_OUTPUT$6,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "destructive" },
         asyncMode: "sync",
@@ -9789,7 +9789,7 @@ function base64(bytes) {
   return btoa(binary);
 }
 const CONTROL_PANEL = "control-panel";
-const OBJECT_OUTPUT$4 = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$5 = { type: "object", additionalProperties: true };
 const AGENT_POSITIONAL = {
   name: "agent_id",
   description: "Agent ID as `agent list` prints it (raw host name, e.g. jarvis.example.zone)"
@@ -9813,7 +9813,7 @@ function createAgentModule() {
         inputSchema: { type: "object", properties: {}, additionalProperties: false },
         outputSchema: {
           type: "object",
-          properties: { agents: { type: "array", items: OBJECT_OUTPUT$4 } },
+          properties: { agents: { type: "array", items: OBJECT_OUTPUT$5 } },
           required: ["agents"],
           additionalProperties: false
         },
@@ -9839,7 +9839,7 @@ function createAgentModule() {
         summary: "Get one Agent: profile, settings, install state, template, and runtime",
         positionals: [AGENT_POSITIONAL],
         inputSchema: AGENT_INPUT,
-        outputSchema: OBJECT_OUTPUT$4,
+        outputSchema: OBJECT_OUTPUT$5,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -9852,7 +9852,7 @@ function createAgentModule() {
         summary: "Get the public profile (display name, bio, avatar) of an Agent",
         positionals: [AGENT_POSITIONAL],
         inputSchema: AGENT_INPUT,
-        outputSchema: OBJECT_OUTPUT$4,
+        outputSchema: OBJECT_OUTPUT$5,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -9893,8 +9893,8 @@ function createAgentModule() {
           type: "object",
           properties: {
             agent_id: { type: "string" },
-            before: OBJECT_OUTPUT$4,
-            profile: OBJECT_OUTPUT$4
+            before: OBJECT_OUTPUT$5,
+            profile: OBJECT_OUTPUT$5
           },
           required: ["agent_id", "before", "profile"],
           additionalProperties: false
@@ -9939,7 +9939,7 @@ async function callAgent(ctx, method, params) {
   }
 }
 const AICC = "aicc";
-const OBJECT_OUTPUT$3 = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$4 = { type: "object", additionalProperties: true };
 const EMPTY_INPUT = { type: "object", properties: {}, additionalProperties: false };
 const RANGES = ["last1d", "last7d", "last30d"];
 const GROUPS = [
@@ -9957,13 +9957,13 @@ function createAiModule() {
     name: "ai",
     summary: "Read AI provider, routing, usage and token quota state of the AICC service",
     commands: [
-      readCommand$1({
+      readCommand$2({
         verb: "providers",
         summary: "List configured AI provider instances with auth, health, and model inventory",
         method: "provider.list",
         description: "Credentials are reported only as configured/kind; secrets are never returned."
       }),
-      readCommand$1({
+      readCommand$2({
         verb: "routing",
         summary: "Get the AICC routing overlay and its settings revision",
         method: "routing.get",
@@ -9987,7 +9987,7 @@ function quotaCommand() {
       properties: { app: { type: "string", minLength: 1 } },
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$3,
+    outputSchema: OBJECT_OUTPUT$4,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -9999,13 +9999,13 @@ function quotaCommand() {
     )
   };
 }
-function readCommand$1(options) {
+function readCommand$2(options) {
   return {
     verb: options.verb,
     summary: options.summary,
     description: options.description,
     inputSchema: EMPTY_INPUT,
-    outputSchema: OBJECT_OUTPUT$3,
+    outputSchema: OBJECT_OUTPUT$4,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -10057,7 +10057,7 @@ function usageCommand() {
       },
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$3,
+    outputSchema: OBJECT_OUTPUT$4,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -10102,7 +10102,7 @@ function timeRange(input) {
   }
   return { kind: "explicit", start_time_ms: since, end_time_ms: until ?? Date.now() };
 }
-const OBJECT_OUTPUT$2 = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$3 = { type: "object", additionalProperties: true };
 const DAY_MS$1 = 864e5;
 const EXPIRES_HELP = "1d, 7d (default), 30d, none, or an RFC 3339 time";
 function createShareModule() {
@@ -10124,7 +10124,7 @@ async function openNfsp(ctx) {
   if (!session)
     throw new ToolError("AUTH_REQUIRED", "authenticated session is required", 3);
   const token = (await session.ensureValid()).token;
-  const base = gatewayOrigin$1(ctx.connection.endpoint);
+  const base = gatewayOrigin$2(ctx.connection.endpoint);
   let seq = 0;
   const post = async (method, body) => {
     const response = await fetch(`${base}/nfs/v1/${method}`, {
@@ -10155,7 +10155,7 @@ async function openNfsp(ctx) {
     call: (method, args, write = false) => post(method, { session: sessionId, args: { ...args, source_hint: "cli" }, ...write ? { seq: ++seq } : {} })
   };
 }
-function gatewayOrigin$1(endpoint) {
+function gatewayOrigin$2(endpoint) {
   const url = new URL(endpoint);
   const marker = url.pathname.indexOf("/kapi");
   url.pathname = marker >= 0 ? url.pathname.slice(0, marker) || "/" : "/";
@@ -10213,7 +10213,7 @@ function createCommand() {
       required: ["path"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$2,
+    outputSchema: OBJECT_OUTPUT$3,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "either",
@@ -10282,7 +10282,7 @@ function listCommand() {
       },
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$2,
+    outputSchema: OBJECT_OUTPUT$3,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -10314,7 +10314,7 @@ function getCommand$1() {
       required: ["share_id"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$2,
+    outputSchema: OBJECT_OUTPUT$3,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -10351,7 +10351,7 @@ function updateCommand() {
       required: ["share_id"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$2,
+    outputSchema: OBJECT_OUTPUT$3,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "sync",
@@ -10395,7 +10395,7 @@ function stopCommand() {
       required: ["share_id"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$2,
+    outputSchema: OBJECT_OUTPUT$3,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "destructive" },
     asyncMode: "sync",
@@ -10427,7 +10427,7 @@ function statsCommand() {
       },
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$2,
+    outputSchema: OBJECT_OUTPUT$3,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -10446,7 +10446,7 @@ function statsCommand() {
     }
   };
 }
-const OBJECT_OUTPUT$1 = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$2 = { type: "object", additionalProperties: true };
 const SERVICE$1 = "nfs-server";
 const MAX_PUT_BYTES = 32 * 1024 * 1024;
 const DAY_MS = 864e5;
@@ -10501,7 +10501,7 @@ async function call$1(ctx, method, params) {
     throw error;
   }
 }
-function gatewayOrigin(endpoint) {
+function gatewayOrigin$1(endpoint) {
   const url = new URL(endpoint);
   const marker = url.pathname.indexOf("/kapi");
   url.pathname = marker >= 0 ? url.pathname.slice(0, marker) || "/" : "/";
@@ -10512,7 +10512,7 @@ function gatewayOrigin(endpoint) {
 function objectUrl(ctx, target, query = {}) {
   const qs = new URLSearchParams(query).toString();
   const key = target.key.split("/").map(encodeURIComponent).join("/");
-  return `${gatewayOrigin(ctx.connection.endpoint)}/bucket/v1/${target.bucketId}/${key}${qs ? `?${qs}` : ""}`;
+  return `${gatewayOrigin$1(ctx.connection.endpoint)}/bucket/v1/${target.bucketId}/${key}${qs ? `?${qs}` : ""}`;
 }
 async function bearer(ctx) {
   if (!ctx.session)
@@ -10551,7 +10551,7 @@ function lsCommand() {
       },
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$1,
+    outputSchema: OBJECT_OUTPUT$2,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -10584,7 +10584,7 @@ function statCommand() {
       required: ["target"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$1,
+    outputSchema: OBJECT_OUTPUT$2,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -10625,7 +10625,7 @@ function putCommand() {
       required: ["target", "file"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$1,
+    outputSchema: OBJECT_OUTPUT$2,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "sync",
@@ -10674,7 +10674,7 @@ function getCommand() {
       required: ["target", "output"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$1,
+    outputSchema: OBJECT_OUTPUT$2,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -10712,7 +10712,7 @@ function rmCommand() {
       required: ["target"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$1,
+    outputSchema: OBJECT_OUTPUT$2,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "sync",
@@ -10743,7 +10743,7 @@ function linkCommand() {
       required: ["target"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$1,
+    outputSchema: OBJECT_OUTPUT$2,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "sync",
@@ -10763,7 +10763,7 @@ function linkCommand() {
         expires_at: expiresAt,
         max_uses: input.max_uses
       });
-      return { ...issued, url: `${gatewayOrigin(ctx.connection.endpoint)}${String(issued.path)}` };
+      return { ...issued, url: `${gatewayOrigin$1(ctx.connection.endpoint)}${String(issued.path)}` };
     }
   };
 }
@@ -10772,7 +10772,7 @@ function s3KeysCommand() {
     verb: "s3-keys",
     summary: "List your S3 access keys (secrets are shown only when created)",
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
-    outputSchema: OBJECT_OUTPUT$1,
+    outputSchema: OBJECT_OUTPUT$2,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -10796,7 +10796,7 @@ function s3KeyCreateCommand() {
       required: ["app"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$1,
+    outputSchema: OBJECT_OUTPUT$2,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "sync",
@@ -10812,7 +10812,7 @@ function s3KeyCreateCommand() {
         scope: prefix ? { prefix } : void 0,
         expires_at: expiresAt
       });
-      return { ...key, endpoint: `${gatewayOrigin(ctx.connection.endpoint)}/s3`, region: "us-east-1", path_style: true };
+      return { ...key, endpoint: `${gatewayOrigin$1(ctx.connection.endpoint)}/s3`, region: "us-east-1", path_style: true };
     }
   };
 }
@@ -10827,13 +10827,153 @@ function s3KeyRevokeCommand() {
       required: ["access_key_id"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$1,
+    outputSchema: OBJECT_OUTPUT$2,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "sync",
     requiresSession: true,
     examples: ["buckyos bucket s3-key-revoke BKABCDEFGHIJKLMNOPQR"],
     handler: async (ctx, input) => await call$1(ctx, "bucket.revoke_s3_key", { access_key_id: requiredInputString(input, "access_key_id") })
+  };
+}
+const OBJECT_OUTPUT$1 = { type: "object", additionalProperties: true };
+const URL_ARG = { name: "url", description: "obj:// cyfs:// file:// https:// url, or //<service>/... /abs/path shorthand", required: true };
+function createObjModule() {
+  return {
+    name: "obj",
+    summary: "Resolve system URLs and read DID Objects (obj://, cyfs://, file://, https://)",
+    commands: [resolveCommand(), readCommand$1()]
+  };
+}
+function gatewayOrigin(endpoint) {
+  const url = new URL(endpoint);
+  const marker = url.pathname.indexOf("/kapi");
+  url.pathname = marker >= 0 ? url.pathname.slice(0, marker) || "/" : "/";
+  url.search = "";
+  url.hash = "";
+  return url.toString().replace(/\/$/, "");
+}
+function parse(raw) {
+  try {
+    return objectUrl$1.parseObjectUrl(objectUrl$1.expandInputShorthand(raw));
+  } catch (error) {
+    throw new UsageError("INVALID_ARGUMENT", error instanceof Error ? error.message : String(error));
+  }
+}
+function endpointOf(ctx, url) {
+  const origin = gatewayOrigin(ctx.connection.endpoint);
+  if (url.kind === "obj") {
+    const query = objectUrl$1.formatObjectUrl(url).split("?")[1];
+    return `${origin}/kapi/${url.host.name}/obj${url.path}${query ? `?${query}` : ""}`;
+  }
+  if (url.kind === "cyfs_path" && (url.zone === null || url.zone === ctx.connection.zone)) {
+    return `${origin}/kapi/dfs/obj${url.path.replace(/\/$/, "")}`;
+  }
+  if (url.kind === "web")
+    return url.url;
+  return null;
+}
+function describe(ctx, url) {
+  const out = {
+    canonical: objectUrl$1.formatObjectUrl(url),
+    kind: url.kind === "obj" ? `obj_${url.host.kind}` : url.kind,
+    rbac_resource_key: objectUrl$1.rbacResourceKey(url, ctx.connection.zone),
+    endpoint: endpointOf(ctx, url)
+  };
+  if (url.kind === "obj") {
+    out.host = url.host.name;
+    out.event_pattern = objectUrl$1.objectEventPattern(url);
+  }
+  if (url.kind === "file")
+    out.device = url.deviceId ?? "(empty host: the source runtime, else the Zone default device)";
+  if (url.kind === "cyfs_object")
+    out.obj_id = url.objId.toString();
+  return out;
+}
+function resolveCommand() {
+  return {
+    verb: "resolve",
+    summary: "Normalize a URL and show its identity, RBAC key, events and endpoint (no access check)",
+    positionals: [URL_ARG],
+    inputSchema: { type: "object", properties: { url: { type: "string", minLength: 1 } }, required: ["url"], additionalProperties: false },
+    outputSchema: OBJECT_OUTPUT$1,
+    resultSchemaVersion: 1,
+    access: { mode: "fixed", level: "read" },
+    asyncMode: "sync",
+    requiresSession: false,
+    examples: ["buckyos obj resolve obj://msg-center/owners/did:bns:alice/sessions", "buckyos obj resolve //config/boot/config", "buckyos obj resolve cyfs:///home/alice/a.md"],
+    handler: async (ctx, input) => describe(ctx, parse(requiredInputString(input, "url")))
+  };
+}
+async function getJson(ctx, url) {
+  const headers = { accept: "application/json" };
+  if (ctx.session)
+    headers.authorization = `Bearer ${(await ctx.session.ensureValid()).token}`;
+  const response = await fetch(url, { headers, signal: ctx.signal });
+  const text2 = await response.text();
+  if (!response.ok) {
+    const code = response.status === 403 || response.status === 401 ? "PERMISSION_DENIED" : response.status === 404 ? "NOT_FOUND" : "OBJECT_READ_FAILED";
+    throw new ToolError(code, `${url}: HTTP ${response.status} ${text2.slice(0, 300)}`);
+  }
+  try {
+    return JSON.parse(text2);
+  } catch {
+    throw new ToolError("INVALID_SERVICE_RESPONSE", `${url} did not answer JSON`, EXIT_INTERNAL);
+  }
+}
+function readCommand$1() {
+  return {
+    verb: "read",
+    summary: "Read a DID Object: its Card, Profile (properties, actions, events) and summary properties",
+    positionals: [URL_ARG],
+    options: [{ name: "property", description: "Read these properties instead of the summary ones (comma separated)", type: "string" }],
+    inputSchema: {
+      type: "object",
+      properties: { url: { type: "string", minLength: 1 }, property: { type: "string", minLength: 1 } },
+      required: ["url"],
+      additionalProperties: false
+    },
+    outputSchema: OBJECT_OUTPUT$1,
+    resultSchemaVersion: 1,
+    access: { mode: "fixed", level: "read" },
+    asyncMode: "sync",
+    requiresSession: true,
+    examples: ["buckyos obj read obj://aiworkspace/ws_1/entities/e_1", "buckyos obj read obj://xiaobai.test.buckyos.io/sessions/s-1 --property report"],
+    handler: async (ctx, input) => {
+      const url = parse(requiredInputString(input, "url"));
+      const endpoint = endpointOf(ctx, url);
+      if (!endpoint)
+        throw new ToolError("UNSUPPORTED_OBJECT", `${objectUrl$1.formatObjectUrl(url)} has no DID Object endpoint; read it as a file or content object`);
+      const card = await getJson(ctx, endpoint);
+      const service = (card.service ?? []).find((s) => s.type === "DIDObjectService");
+      if (!service)
+        throw new ToolError("INVALID_SERVICE_RESPONSE", `${endpoint} answered no DID Object Card`, EXIT_INTERNAL);
+      const serviceEndpoint = String(service.serviceEndpoint).replace(/\/$/, "");
+      const profileUrl = new URL(String(service.profile), `${serviceEndpoint}/`).toString();
+      const profile = await getJson(ctx, profileUrl);
+      const wanted = typeof input.property === "string" ? input.property.split(",").map((p) => p.trim()).filter(Boolean) : profile["x-buckyos:summary_props"] ?? [];
+      const properties = {};
+      for (const name of wanted) {
+        if (!profile.properties?.[name])
+          throw new UsageError("INVALID_ARGUMENT", `property ${name} is not declared by the object`);
+        properties[name] = await getJson(ctx, `${serviceEndpoint}/props/${encodeURIComponent(name)}`);
+      }
+      return {
+        ...describe(ctx, url),
+        object_did: card.id,
+        also_known_as: card.alsoKnownAs ?? [],
+        title: profile.title,
+        description: profile.description,
+        kind: service.kind ?? profile["x-buckyos:kind"],
+        traits: profile["x-buckyos:traits"] ?? [],
+        declared: {
+          properties: Object.keys(profile.properties ?? {}),
+          actions: Object.fromEntries(Object.entries(profile.actions ?? {}).map(([name, a]) => [name, { risk: a["x-buckyos:risk"], rbac: a["x-buckyos:rbac"] }])),
+          events: Object.fromEntries(Object.entries(profile.events ?? {}).map(([name, e]) => [name, e["x-buckyos:kevent"]]))
+        },
+        properties
+      };
+    }
   };
 }
 const text = { type: "string", minLength: 1 };
@@ -11715,6 +11855,7 @@ function createRegistry(pikgDependencies, appDependencies, logDependencies, diag
   registry.register(createAiModule());
   registry.register(createShareModule());
   registry.register(createBucketModule());
+  registry.register(createObjModule());
   registry.register(createExecutorModule());
   registry.register(createAiwsModule());
   return registry;

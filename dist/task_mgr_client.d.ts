@@ -42,7 +42,9 @@ export declare const TASK_ERR_IDEMPOTENCY_CONFLICT = "idempotency_conflict";
 export declare const TASK_ERR_SCHEMA_NOT_FOUND = "task_schema_not_found";
 export declare const TASK_MGR_ERROR_CODES: readonly ["task_not_found", "permission_denied", "revision_conflict", "stale_runner_epoch", "invalid_task_phase", "control_not_available", "control_already_pending", "task_already_completed", "input_schema_mismatch", "result_schema_mismatch", "idempotency_conflict", "task_schema_not_found"];
 export type TaskMgrErrorCode = typeof TASK_MGR_ERROR_CODES[number];
+/** `obj://taskmgr/<task_id>` event `changed` (buckyos doc/key url.md §7). */
 export declare function taskMgrTaskEventPath(taskId: TaskId): string;
+/** `obj://taskmgr/<root_id>` event `tree`: every event under the task tree. */
 export declare function taskMgrTreeEventPath(rootId: TaskId): string;
 export declare function taskMgrErrorCode(error: unknown): TaskMgrErrorCode | null;
 export interface ActorRef {

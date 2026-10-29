@@ -1,3 +1,4 @@
+import { objEventKey } from './object_url'
 import { kRPCClient, RPCError } from './krpc_client'
 
 // TaskMgr 2.0 client. The public DTOs mirror
@@ -66,12 +67,14 @@ export const TASK_MGR_ERROR_CODES = [
 
 export type TaskMgrErrorCode = typeof TASK_MGR_ERROR_CODES[number]
 
+/** `obj://taskmgr/<task_id>` event `changed` (buckyos doc/key url.md §7). */
 export function taskMgrTaskEventPath(taskId: TaskId): string {
-  return `/task_mgr/${taskId}`
+  return objEventKey('taskmgr', [String(taskId)], 'changed')
 }
 
+/** `obj://taskmgr/<root_id>` event `tree`: every event under the task tree. */
 export function taskMgrTreeEventPath(rootId: TaskId): string {
-  return `/task_mgr/tree/${rootId}`
+  return objEventKey('taskmgr', [String(rootId)], 'tree')
 }
 
 export function taskMgrErrorCode(error: unknown): TaskMgrErrorCode | null {

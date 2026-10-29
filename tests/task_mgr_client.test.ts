@@ -432,8 +432,8 @@ describe('TaskManagerClient 2.0', () => {
     expect(taskMgrErrorCode(new RPCError('RPC call error: revision_conflict: stale write')))
       .toBe(TASK_ERR_REVISION_CONFLICT)
     expect(taskMgrErrorCode(new Error('unrelated'))).toBeNull()
-    expect(taskMgrTaskEventPath('task-01')).toBe('/task_mgr/task-01')
-    expect(taskMgrTreeEventPath('root-01')).toBe('/task_mgr/tree/root-01')
+    expect(taskMgrTaskEventPath('task-01')).toBe('/obj/taskmgr/task-01/changed')
+    expect(taskMgrTreeEventPath('root-01')).toBe('/obj/taskmgr/root-01/tree')
     expect(TaskWaitReasonKind.HumanInput).toBe('HumanInput')
   })
 

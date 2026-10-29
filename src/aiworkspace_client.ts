@@ -1,3 +1,4 @@
+import { canonicalJson, encodeObjQueryComponent, normalizeObjectUrl, objectSegments, objServiceUrl, parseObjectUrl } from './object_url'
 import type { kRPCClient } from './krpc_client'
 
 export const AIWORKSPACE_SERVICE_NAME = 'aiworkspace'
@@ -27,6 +28,40 @@ export interface AiwsReference {
   selector?: Record<string, unknown>
   mode: 'live' | 'fixed'
   version?: { epoch: string; seq: number } | { content_root: string; path?: string }
+}
+
+/**
+ * The Object URL of a Reference (buckyos doc/key url.md §6): the default
+ * `obj://aiworkspace/<ws>/entities/<entity_id>` for a live reference without
+ * selector; `mode=fixed`, `selector` and `version` go into the query as canonical
+ * JSON, so one Reference has exactly one URL. Same rules as buckyos-api `aiws_reference_url`.
+ */
+export function aiwsReferenceUrl(reference: AiwsReference, workspaceId?: string): string {
+  const ws = reference.workspace_id ?? workspaceId
+  if (!ws) throw new Error('reference names no workspace')
+  const query: string[] = []
+  if (reference.mode === 'fixed') query.push('mode=fixed')
+  if (reference.selector != null) query.push(`selector=${encodeObjQueryComponent(canonicalJson(reference.selector))}`)
+  if (reference.version != null) query.push(`version=${encodeObjQueryComponent(canonicalJson(reference.version))}`)
+  const base = objServiceUrl('aiworkspace', [ws, 'entities', reference.entity_id])
+  return normalizeObjectUrl(query.length ? `${base}?${query.join('&')}` : base)
+}
+
+/** The Reference an `obj://aiworkspace/<ws>/entities/<entity_id>[?...]` URL projects. */
+export function parseAiwsReferenceUrl(url: string): AiwsReference {
+  const parsed = parseObjectUrl(url)
+  const segments = objectSegments(parsed)
+  if (parsed.kind !== 'obj' || parsed.host.name !== 'aiworkspace' || segments.length !== 3 || segments[1] !== 'entities') {
+    throw new Error(`${url} is not an AI Workspace entity url`)
+  }
+  const reference: AiwsReference = {
+    workspace_id: segments[0],
+    entity_id: segments[2],
+    mode: parsed.query.mode === 'fixed' ? 'fixed' : 'live',
+  }
+  if (parsed.query.selector !== undefined) reference.selector = JSON.parse(parsed.query.selector)
+  if (parsed.query.version !== undefined) reference.version = JSON.parse(parsed.query.version)
+  return reference
 }
 
 /** What an executor outside the service reports for a run (M3): results in the Mock executor's shape, or an analysis. */

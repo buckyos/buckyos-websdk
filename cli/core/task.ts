@@ -1,3 +1,4 @@
+import { taskMgrTaskEventPath } from 'buckyos/node'
 import type { CommandContext } from './context.ts'
 import { EXIT_OPERATION, EXIT_TIMEOUT, ToolError } from './errors.ts'
 
@@ -43,7 +44,7 @@ export async function waitForTask(
   try {
     const remaining = Math.max(1, (ctx.deadline ?? Date.now()) - Date.now())
     const eventSignal = AbortSignal.any([ctx.signal, AbortSignal.timeout(remaining)])
-    reader = await ctx.clients.createEventReader?.(`/task_mgr/${taskId}`, eventSignal)
+    reader = await ctx.clients.createEventReader?.(taskMgrTaskEventPath(taskId), eventSignal)
   } catch {
     reader = undefined
   }

@@ -1097,7 +1097,7 @@ describe('System Notify', () => {
     expect(gets).toBe(3)
     // 0.5 s sleep before the reader is up, then the task event instead of 1 s.
     expect(Date.now() - start).toBeLessThan(1200)
-    expect(kevent.createEventReader).toHaveBeenCalledWith(['/task_mgr/t1'])
+    expect(kevent.createEventReader).toHaveBeenCalledWith(['/obj/taskmgr/t1/changed'])
     expect(reader.pullEvent).toHaveBeenCalled()
     expect(reader.close).toHaveBeenCalled()
   })

@@ -35,6 +35,15 @@ export interface AiwsReference {
         path?: string;
     };
 }
+/**
+ * The Object URL of a Reference (buckyos doc/key url.md §6): the default
+ * `obj://aiworkspace/<ws>/entities/<entity_id>` for a live reference without
+ * selector; `mode=fixed`, `selector` and `version` go into the query as canonical
+ * JSON, so one Reference has exactly one URL. Same rules as buckyos-api `aiws_reference_url`.
+ */
+export declare function aiwsReferenceUrl(reference: AiwsReference, workspaceId?: string): string;
+/** The Reference an `obj://aiworkspace/<ws>/entities/<entity_id>[?...]` URL projects. */
+export declare function parseAiwsReferenceUrl(url: string): AiwsReference;
 /** What an executor outside the service reports for a run (M3): results in the Mock executor's shape, or an analysis. */
 export interface AiwsRunReport {
     run_id: string;
