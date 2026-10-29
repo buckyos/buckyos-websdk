@@ -42,6 +42,7 @@ export declare const AICC_MANAGEMENT_METHODS: {
     readonly ROUTING_GET: "routing.get";
     readonly ROUTING_PREVIEW: "routing.preview";
     readonly ROUTING_UPDATE: "routing.update";
+    readonly PROVIDER_PREVIEW_RULES: "provider.preview_rules";
     readonly PROVIDER_CATALOG: "provider.catalog";
     readonly PROTOCOL_ADAPTER_LIST: "protocol_adapter.list";
     readonly PROVIDER_VALIDATE: "provider.validate";
@@ -90,6 +91,7 @@ export declare const AICC_METHODS: {
     readonly ROUTING_GET: "routing.get";
     readonly ROUTING_PREVIEW: "routing.preview";
     readonly ROUTING_UPDATE: "routing.update";
+    readonly PROVIDER_PREVIEW_RULES: "provider.preview_rules";
     readonly PROVIDER_CATALOG: "provider.catalog";
     readonly PROTOCOL_ADAPTER_LIST: "protocol_adapter.list";
     readonly PROVIDER_VALIDATE: "provider.validate";
@@ -1271,7 +1273,17 @@ export interface ProviderCatalogEntry {
     base_url: string;
     protocol_adapter_id: string;
     provider_rules_id?: string;
+    rules_catalog?: JsonValue;
+    model_driver_overrides?: Record<string, string>;
     ui_hints?: Record<string, JsonValue>;
+}
+export interface ProviderRulesPreviewRequest {
+    provider_instance_name: string;
+    rules_catalog: JsonValue;
+    model_ids: string[];
+}
+export interface ProviderRulesPreviewResponse {
+    resolved_model_rules: Record<string, JsonValue>;
 }
 export interface ProviderCatalogResponse {
     catalog_revision: number;
@@ -1289,6 +1301,7 @@ export interface ProtocolAdapterOperation {
     supports_webhook: boolean;
 }
 export interface ProtocolAdapterView {
+    default_operations?: Record<string, string>;
     protocol_family_id: string;
     protocol_adapter_id: string;
     interface_generation: string;
@@ -1325,7 +1338,15 @@ export interface ProviderValidationErrorDetail {
     kind: ProviderValidationErrorKind;
     message: string;
 }
+export interface FilteredProviderCapability {
+    provider_model_id: string;
+    protocol_adapter_id: string;
+    api_type: string;
+    operation_id: string | null;
+    reason: string;
+}
 export interface ProviderValidateResponse {
+    filtered_capabilities: FilteredProviderCapability[];
     models_recognized: string[];
     unmatched_models: JsonValue[];
     unavailable_presets: JsonValue[];
@@ -1382,6 +1403,7 @@ export interface ProviderInstanceAuthView {
 }
 export type ProviderInstanceInventoryState = 'disabled' | 'not_loaded' | 'loaded';
 export interface ProviderInstanceInventoryView {
+    filtered_capabilities: FilteredProviderCapability[];
     state: ProviderInstanceInventoryState;
     revision?: string;
     model_count: number;
@@ -1393,6 +1415,9 @@ export interface ProviderInstanceHealthView {
     checked_at_ms?: number;
 }
 export interface ProviderInstanceView {
+    discovered_model_ids?: string[];
+    rules_catalog?: JsonValue;
+    resolved_model_rules?: Record<string, JsonValue>;
     provider_rules_id?: string;
     instance_rules?: JsonValue;
     provider_instance_name: string;
@@ -1662,6 +1687,7 @@ export declare class AiccClient {
     previewRouting(r?: RoutingPreviewRequest): Promise<RoutingPreviewResponse>;
     getRouting(): Promise<RoutingGetResponse>;
     updateRouting(r: RoutingUpdateRequest): Promise<RoutingUpdateResponse>;
+    previewProviderRules(request: ProviderRulesPreviewRequest): Promise<ProviderRulesPreviewResponse>;
     providerCatalog(): Promise<ProviderCatalogResponse>;
     listProtocolAdapters(): Promise<ProtocolAdapterListResponse>;
     validateProvider(r: ProviderValidateRequest): Promise<ProviderValidateResponse>;
