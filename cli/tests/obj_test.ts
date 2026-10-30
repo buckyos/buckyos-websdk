@@ -21,7 +21,8 @@ Deno.test('obj resolve names identity, rbac key and endpoint without an access c
 })
 
 Deno.test('obj resolve without a session gives the gateway-relative endpoint', async () => {
-  const local = { connection: { zone: 'local', endpoint: 'local://', defaultProtocol: 'https://' } } as any
+  const local = ctx()
+  local.connection = { zone: 'local', endpoint: 'local://', defaultProtocol: 'https://' }
   const out = (await resolve.handler(local, { url: 'obj://dfs/home/alice' })) as Record<string, unknown>
   assertEquals(out.endpoint, '/kapi/dfs/obj/home/alice')
 })
