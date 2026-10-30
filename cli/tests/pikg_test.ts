@@ -462,3 +462,67 @@ Deno.test('content handler declarations reject unsafe entries and preserve norma
   try { validateContentHandlers(duplicate, []) } catch { rejected = true }
   assert(rejected)
 })
+
+Deno.test('aiws-controls packages: init writes a control skeleton, pack checks the bundle, info reports it', async () => {
+  const root = await Deno.makeTempDir()
+  try {
+    const project = join(root, 'kpi-pack')
+    await Deno.mkdir(project, { recursive: true })
+    const io = new CaptureStdio()
+    const app = new BuckyOSToolApplication({
+      cwd: project,
+      homeDir: join(root, 'home'),
+      environment: { HOME: join(root, 'home') },
+      stdio: io,
+      pikg: { now: () => 1_800_000_000 },
+      createAuthentication: () => {
+        throw new Error('PIKG must not create authentication')
+      },
+    })
+    assertEquals(await app.run(['--non-interactive', 'pikg', 'init', '.', '--owner', 'did:bns:alice', '--kind', 'aiws-controls', '--source', './aiws']), 0, io.stdoutText)
+    let envelope = io.takeEnvelope()
+    assertEquals(envelope.data.subpackage.key, 'aiws')
+    assertEquals(envelope.data.app.categories, ['aiws'])
+    const manifest = JSON.parse(await Deno.readTextFile(join(project, 'aiws', 'aiws-manifest.json')))
+    assertEquals(manifest.controls[0].ident, 'did:bns:alice#kpi-pack')
+    assertEquals(await app.run(['pikg', 'build']), 0, io.stdoutText)
+    envelope = io.takeEnvelope()
+    const appDoc = JSON.parse(await Deno.readTextFile(join(envelope.data.dist_dir, 'APPDOC.json')))
+    assertEquals(appDoc.app_type, 'aiws')
+    assertEquals(Object.keys(appDoc.pkg_list), ['aiws'])
+    assertEquals(await app.run(['pikg', 'pack', envelope.data.dist_dir]), 0, io.stdoutText)
+    envelope = io.takeEnvelope()
+    const pikgPath = envelope.data.pikg_path
+    assertEquals(await app.run(['pikg', 'info', pikgPath]), 0, io.stdoutText)
+    envelope = io.takeEnvelope()
+    assertEquals(envelope.data.app.app_type, 'aiws')
+    assertEquals(envelope.data.aiws.controls[0].ident, 'did:bns:alice#kpi-pack')
+
+    // a control changed behind the manifest's digest: the snapshot no longer builds
+    await Deno.writeTextFile(join(project, 'aiws', 'controls', 'kpi-pack', 'declarative.json'), '{"items":[]}')
+    assertEquals(await app.run(['pikg', 'build']), 6, io.stdoutText)
+    envelope = io.takeEnvelope()
+    assertEquals(envelope.error.code, 'INVALID_PACKAGE')
+    assert(String(envelope.error.message).includes('digest'), envelope.error.message)
+  } finally {
+    await Deno.remove(root, { recursive: true })
+  }
+})
+
+Deno.test('an aiws AppDoc carries exactly the aiws sub package', () => {
+  const appDoc: Record<string, unknown> = {
+    schema_version: 1, doc_type: 'app', did: 'did:bns:kpi.alice', name: 'kpi', version: '0.1.0', app_type: 'aiws', owner: 'did:bns:alice',
+    controller: 'did:bns:alice', author: 'did:bns:alice', show_name: 'kpi', selector_type: 'single', categories: ['aiws'],
+    create_time: 1, last_update_time: 1, exp: 2, service_config_tips: {}, permissions: [],
+    pkg_list: { aiws: { pkg_objid: `pkg:${'0'.repeat(64)}` } },
+  }
+  validateAppDocShape(appDoc)
+  appDoc.pkg_list = { aiws: { pkg_objid: `pkg:${'0'.repeat(64)}` }, web: { pkg_objid: `pkg:${'1'.repeat(64)}` } }
+  let failed = false
+  try {
+    validateAppDocShape(appDoc)
+  } catch {
+    failed = true
+  }
+  assert(failed, 'an aiws package with another sub package must be refused')
+})

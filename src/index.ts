@@ -59,5 +59,6 @@ export * as ndm_proxy from './ndm_proxy'
 
 export * from './executor_client'
 export * from './aiworkspace_client'
+export * from './aiws_ext'
 export * as bucket from './bucket_client'
 export * as objectUrl from './object_url'

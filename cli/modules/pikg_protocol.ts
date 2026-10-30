@@ -1,10 +1,11 @@
-import { ndn } from 'buckyos/node'
+import { ndn, verifyBundle } from 'buckyos/node'
 import { ToolError, UsageError } from '../core/errors.ts'
 import { getHost } from '../runtime/host.ts'
 import {
   digestFile,
   type FileDigest,
   openZip,
+  readTarGz,
   readZipEntry,
   sha256Bytes,
   verifyZipEntry,
@@ -69,6 +70,8 @@ export interface ValidatedPikg {
 
 export interface PikgInspectionResult {
   schema_version: 1
+  /** An `aiws` package: its bundle checked like the AI Workspace library does. */
+  aiws?: Record<string, unknown>
   protocol: string
   pikg_path: string
   size: number
@@ -141,6 +144,7 @@ export function derivedSelector(key: string): Record<string, string> | undefined
     agent: {},
     agent_skills: {},
     agent_tools: {},
+    aiws: {},
     script: {},
   }
   return selectors[key]
@@ -505,6 +509,27 @@ export function appDocObjectId(value: Record<string, unknown>): string {
   return ndn.buildNamedObjectByJson('appdoc', value)[0].toString()
 }
 
+/** The sub-package of an `aiws` package: the AIWS bundle (aiws-manifest.json plus controls/<dir>/<file>). */
+export const AIWS_SUB_PACKAGE = 'aiws'
+const MAX_AIWS_PAYLOAD_BYTES = 256 * 1024 * 1024
+
+/** Check the bundle inside an `aiws` payload the way the AI Workspace library does (digests, component.json). */
+export async function verifyAiwsPayload(tarGz: Uint8Array): Promise<Record<string, unknown>> {
+  const files = new Map<string, Uint8Array>()
+  for (const entry of await readTarGz(tarGz, MAX_AIWS_PAYLOAD_BYTES)) files.set(entry.path, entry.bytes)
+  let checked
+  try {
+    checked = await verifyBundle(files)
+  } catch (error) {
+    throw invalid('aiws', `aiws bundle: ${error instanceof Error ? error.message : String(error)}`)
+  }
+  const errors = checked.diagnostics.filter((d: { severity: string }) => d.severity === 'error')
+  if (errors.length > 0) {
+    throw invalid('aiws', `aiws bundle: ${errors.map((d: { file: string; message: string }) => `${d.file}: ${d.message}`).join('; ')}`)
+  }
+  return { manifest_version: checked.manifest.manifest_version, controls: checked.manifest.controls.map((c: Record<string, unknown>) => ({ ident: c.ident, kind: c.kind, version: c.version, digest: c.digest })) }
+}
+
 export async function validateSnapshot(
   distDir: string,
   appDoc: Record<string, unknown>,
@@ -517,7 +542,11 @@ export async function validateSnapshot(
     const digest = await digestFile(path)
     payloads.set(entry.path, digest)
   }
-  return validateObjectGraph(appDoc, packageMeta, payloads, true, false, true)
+  const validated = validateObjectGraph(appDoc, packageMeta, payloads, true, false, true)
+  if (appDoc.app_type === 'aiws') {
+    for (const sub of validated.subpackages) await verifyAiwsPayload(await getHost().readFile(join(distDir, sub.payload_path)))
+  }
+  return validated
 }
 
 export async function packSnapshot(
@@ -636,9 +665,15 @@ export async function inspectPikg(path: string): Promise<PikgInspectionResult> {
     Boolean(jwtEntry),
     !jsonDoc || !jwtDoc || appDocObjectId(jsonDoc) === appDocObjectId(jwtDoc),
   )
+  let aiws: Record<string, unknown> | undefined
+  if (appDoc.app_type === 'aiws') {
+    const sub = validated.subpackages[0]
+    aiws = await verifyAiwsPayload(await readZipEntry(archive, archive.byName.get(sub.payload_path)!, MAX_AIWS_PAYLOAD_BYTES))
+  }
   const pikgDigest = await digestFile(path)
   return {
     schema_version: 1,
+    ...(aiws ? { aiws } : {}),
     protocol: PACKAGE_META_SCHEMA,
     pikg_path: resolve(path),
     size: pikgDigest.size,
@@ -954,7 +989,7 @@ export function validateAppDocShape(appDoc: Record<string, unknown>): void {
     expectNonEmptyString(appDoc[field], `APPDOC.${field}`)
   }
   if (appDoc.doc_type !== 'app') throw invalid('appdoc', 'APPDOC.doc_type must be app')
-  if (!['service', 'dapp', 'web', 'agent', 'agent_skills'].includes(String(appDoc.app_type))) {
+  if (!['service', 'dapp', 'web', 'agent', 'agent_skills', 'aiws'].includes(String(appDoc.app_type))) {
     throw invalid('appdoc', 'APPDOC.app_type is invalid')
   }
   if (appDoc.name !== undefined) expectNonEmptyString(appDoc.name, 'APPDOC.name')
@@ -1013,6 +1048,10 @@ export function validateAppDocShape(appDoc: Record<string, unknown>): void {
     if (Object.keys(pkgList).join() !== 'agent_skills') {
       throw invalid('appdoc', 'an agent_skills App must contain only the agent_skills sub package')
     }
+  }
+  // AI Workspace controls (buckyos aiworkspace README “Extension controls”): one bundle, nothing to run
+  if (appDoc.app_type === 'aiws' && Object.keys(pkgList).join() !== AIWS_SUB_PACKAGE) {
+    throw invalid('appdoc', 'an aiws package must contain only the aiws sub package')
   }
   deriveNamespaceForPackage(appDoc)
 }

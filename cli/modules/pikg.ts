@@ -1,6 +1,7 @@
 import type { CommandContext } from '../core/context.ts'
 import type { CommandModule } from '../core/command.ts'
 import { EXIT_PERMISSION, EXIT_UNAVAILABLE, ToolError, UsageError } from '../core/errors.ts'
+import { AIWS_MANIFEST_FILE, AIWS_MANIFEST_VERSION, aiwsContentDigest, controlSkeleton } from 'buckyos/node'
 import { createDeterministicTarGz, digestFile, sha256Bytes } from './pikg_archive.ts'
 import {
   APPDOC_ENTRY,
@@ -55,11 +56,13 @@ const SHA256_ID = /^sha256:[0-9a-f]{64}$/
 const OBJECT_ID = /^(?:appdoc|pkg):[0-9a-f]{64}$/
 const SAFE_GENERATED_FILE = /^[A-Za-z0-9._-]+$/
 const OBJECT_OUTPUT = { type: 'object' as const, additionalProperties: true }
-const APP_KINDS = ['static-web', 'script', 'docker', 'agent-skills']
+const APP_KINDS = ['static-web', 'script', 'docker', 'agent-skills', 'aiws-controls']
 const PATH_KINDS: Record<string, { key: string; category: string; selectorType: string }> = {
   'static-web': { key: 'web', category: 'web', selectorType: 'static' },
   script: { key: 'script', category: 'dapp', selectorType: 'single' },
   'agent-skills': { key: 'agent_skills', category: 'agent_skills', selectorType: 'single' },
+  // AI Workspace controls: one bundle (aiws-manifest.json + controls/<dir>/), installed into the AI Workspace library
+  'aiws-controls': { key: 'aiws', category: 'aiws', selectorType: 'single' },
 }
 
 export interface DockerImageInfo {
@@ -243,6 +246,7 @@ export function createPikgModule(dependencies: PikgModuleDependencies = {}): Com
           'buckyos pikg init .',
           'buckyos --non-interactive pikg init . --owner did:bns:root --kind static-web --source ./web/dist',
           'buckyos --non-interactive pikg init . --owner did:bns:root --kind agent-skills --source ./skills',
+          'buckyos --non-interactive pikg init . --owner did:bns:alice --kind aiws-controls --source ./aiws',
         ],
         handler: async (ctx, input) => await initCommand(ctx, input, docker),
       },
@@ -493,9 +497,13 @@ async function initCommand(
     try {
       await getHost().lstat(absoluteSource)
     } catch (error) {
-      if (isHostError(error, 'NotFound')) {
+      if (!isHostError(error, 'NotFound')) throw error
+      if (kind === 'aiws-controls') {
+        await writeAiwsSkeleton(absoluteSource, owner, name)
+        sourceSummary.skeleton = true
+      } else {
         await ctx.io.stderr(`warning: source does not exist yet: ${sourceSummary.path}\n`)
-      } else throw error
+      }
     }
   }
 
@@ -555,6 +563,24 @@ async function initCommand(
     pikg_file: pikgMeta.pikg_file,
     next_command: `buckyos pikg build ${metaDir}`,
   }
+}
+
+/** A control package skeleton: one declarative control under controls/<name>/ and its manifest (digest included). */
+async function writeAiwsSkeleton(dir: string, ownerDid: string, name: string): Promise<void> {
+  const files = controlSkeleton({ authorDid: ownerDid, name, title: name })
+  const encoder = new TextEncoder()
+  const host = getHost()
+  await host.mkdir(join(dir, 'controls', name), { recursive: true })
+  for (const [file, text] of Object.entries(files)) await host.writeTextFile(join(dir, 'controls', name, file), text)
+  const digest = await aiwsContentDigest(Object.entries(files).map(([file, text]) => [file, encoder.encode(text)] as [string, Uint8Array]))
+  const manifest = {
+    manifest_version: AIWS_MANIFEST_VERSION,
+    purpose: 'aiws',
+    host_api: { declarative: 1 },
+    controls: [{ ident: `${ownerDid}#${name}`, name, kind: 'declarative', version: 1, digest, dir: `controls/${name}/`, title: name }],
+    workspace_templates: [],
+  }
+  await host.writeTextFile(join(dir, AIWS_MANIFEST_FILE), `${JSON.stringify(manifest, null, 2)}\n`)
 }
 
 async function buildCommand(

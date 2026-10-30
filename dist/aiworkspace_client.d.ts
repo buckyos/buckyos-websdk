@@ -44,6 +44,68 @@ export interface AiwsReference {
 export declare function aiwsReferenceUrl(reference: AiwsReference, workspaceId?: string): string;
 /** The Reference an `obj://aiworkspace/<ws>/entities/<entity_id>[?...]` URL projects. */
 export declare function parseAiwsReferenceUrl(url: string): AiwsReference;
+export interface AiwsExtBuildParams {
+    files: ({
+        name: string;
+        obj_id: string;
+    } | {
+        name: string;
+        base64: string;
+    })[];
+    folder_id?: string;
+    expect?: {
+        def_rev: number;
+        dir_rev: number;
+    };
+    force?: boolean;
+    dry_run?: boolean;
+    provenance?: {
+        pkg_id?: string;
+        version?: string;
+        digest?: string;
+    };
+    idempotency_key?: string;
+}
+/** `ext.build` / `ext.import`: one entry per control (`created | rebuilt | unchanged | satisfied`), the first also at the top. */
+export interface AiwsExtBuildResult {
+    status: 'accepted' | 'unchanged' | 'checked';
+    commit_id?: string;
+    seq?: number;
+    unchanged?: boolean;
+    ident?: string;
+    def_entity_id?: string;
+    dir_entity_id?: string;
+    version?: number;
+    def_rev?: number;
+    dir_rev?: number;
+    action?: string;
+    build?: {
+        input_digest: string;
+        builder_version: string;
+        built_at: string;
+    };
+    controls: Record<string, unknown>[];
+    diagnostics: Record<string, unknown>[];
+}
+export interface AiwsLibraryPackage {
+    pkg_id: string;
+    version: string;
+    title: string;
+    author: string;
+    mode: string;
+    installed_at: string;
+    controls: {
+        ident: string;
+        name: string;
+        kind: string;
+        version: number;
+        digest: string;
+        dir: string;
+        title?: string;
+        description?: string;
+        catalog?: Record<string, unknown>;
+    }[];
+}
 /** What an executor outside the service reports for a run (M3): results in the Mock executor's shape, or an analysis. */
 export interface AiwsRunReport {
     run_id: string;
@@ -82,6 +144,87 @@ export declare class AiWorkspaceClient {
     /** The three-state commit result (`status: accepted | conflict | rejected`), never thrown. */
     commit(workspace_id: string, request: Record<string, unknown>): Promise<Record<string, unknown>>;
     getSubmission(workspace_id: string, epoch: string, idempotency_key: string): Promise<Record<string, unknown>>;
+    /** Changes after `after_seq` (`filter.detail: "touched"` for the touched entities only). */
+    getChanges(workspace_id: string, epoch: string, after_seq: number, opts?: {
+        limit?: number;
+        touchedOnly?: boolean;
+    }): Promise<Record<string, unknown>>;
+    /** Long poll until the head passes `after_seq` (or `timeout_ms`). */
+    waitChanges(workspace_id: string, after_seq: number, opts?: {
+        epoch?: string;
+        timeout_ms?: number;
+    }): Promise<{
+        epoch: string;
+        head_seq: number;
+        timed_out: boolean;
+    }>;
+    /** A whole-Workspace package (`.bcanvas`): `download` names it in the owner's exports bucket. */
+    exportDoc(workspace_id: string, mode: 'share' | 'personal_backup', self_contained: boolean, include_notes?: boolean): Promise<Record<string, unknown>>;
+    /** Register a FileObject as a staged asset: `{ bucket_id, key }` (the uploader's binding) or `{ obj_id }`. */
+    assetImportObject(workspace_id: string, source: {
+        bucket_id: string;
+        key: string;
+    } | {
+        obj_id: string;
+    }): Promise<{
+        object_id: string;
+        media_type: string;
+        size: number;
+    }>;
+    controlsList(): Promise<Record<string, unknown>>;
+    controlsDescribe(kind: string): Promise<Record<string, unknown>>;
+    controlsImport(workspace_id: string, params: Record<string, unknown>): Promise<Record<string, unknown>>;
+    controlsExport(workspace_id: string, entity_id: string, format?: 'markdown' | 'opml'): Promise<Record<string, unknown>>;
+    /** Build one control's source files into the Workspace; `BUILD_FAILED` carries `data.diagnostics`. */
+    extBuild(workspace_id: string, params: AiwsExtBuildParams): Promise<AiwsExtBuildResult>;
+    /** The bundle of definitions (`purpose: pull` needs read only and synthesizes the source of never-built ones). */
+    extExport(workspace_id: string, entity_ids: string[], purpose?: 'package' | 'pull'): Promise<{
+        manifest: Record<string, unknown>;
+        controls: Record<string, unknown>[];
+        files: {
+            path: string;
+            obj_id?: string;
+            size: number;
+            text?: string;
+        }[];
+    }>;
+    /** Into the caller's library: a `.pikg` object, or definitions of a Workspace (`from` + `package`). */
+    extInstall(params: {
+        pikg?: {
+            obj_id: string;
+        };
+        from?: {
+            workspace_id: string;
+            entity_ids: string[];
+        };
+        package?: {
+            name: string;
+            version?: string;
+            title?: string;
+        };
+        mode?: 'dev';
+    }): Promise<{
+        pkg_id: string;
+        version: string;
+        action: string;
+        controls: Record<string, unknown>[];
+    }>;
+    extListLibrary(): Promise<{
+        packages: AiwsLibraryPackage[];
+    }>;
+    extUninstall(pkg_id: string): Promise<Record<string, unknown>>;
+    /** A library package's controls with their bytes (base64): what a client relays into a Workspace of another Zone. */
+    extLibraryBundle(pkg_id: string, idents?: string[]): Promise<{
+        pkg_id: string;
+        controls: Record<string, unknown>[];
+    }>;
+    /** Bring library controls into a Workspace of this Zone (one Commit). */
+    extImport(workspace_id: string, items: {
+        pkg_id: string;
+        ident: string;
+    }[], opts?: {
+        folder_id?: string;
+    }): Promise<AiwsExtBuildResult>;
     runStart(workspace_id: string, program: string, params: Record<string, unknown>, idempotency_key: string): Promise<Record<string, unknown>>;
     runGet(workspace_id: string, run_id: string, choices?: Record<string, unknown>): Promise<Record<string, unknown>>;
     runList(workspace_id: string, wish_id?: string, limit?: number): Promise<Record<string, unknown>>;

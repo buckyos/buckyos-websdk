@@ -64,6 +64,44 @@ export function parseAiwsReferenceUrl(url: string): AiwsReference {
   return reference
 }
 
+export interface AiwsExtBuildParams {
+  files: ({ name: string; obj_id: string } | { name: string; base64: string })[]
+  folder_id?: string
+  expect?: { def_rev: number; dir_rev: number }
+  force?: boolean
+  dry_run?: boolean
+  provenance?: { pkg_id?: string; version?: string; digest?: string }
+  idempotency_key?: string
+}
+
+/** `ext.build` / `ext.import`: one entry per control (`created | rebuilt | unchanged | satisfied`), the first also at the top. */
+export interface AiwsExtBuildResult {
+  status: 'accepted' | 'unchanged' | 'checked'
+  commit_id?: string
+  seq?: number
+  unchanged?: boolean
+  ident?: string
+  def_entity_id?: string
+  dir_entity_id?: string
+  version?: number
+  def_rev?: number
+  dir_rev?: number
+  action?: string
+  build?: { input_digest: string; builder_version: string; built_at: string }
+  controls: Record<string, unknown>[]
+  diagnostics: Record<string, unknown>[]
+}
+
+export interface AiwsLibraryPackage {
+  pkg_id: string
+  version: string
+  title: string
+  author: string
+  mode: string
+  installed_at: string
+  controls: { ident: string; name: string; kind: string; version: number; digest: string; dir: string; title?: string; description?: string; catalog?: Record<string, unknown> }[]
+}
+
 /** What an executor outside the service reports for a run (M3): results in the Mock executor's shape, or an analysis. */
 export interface AiwsRunReport {
   run_id: string
@@ -116,6 +154,50 @@ export class AiWorkspaceClient {
     return this.rpcClient.call<Record<string, unknown>, Record<string, unknown>>('doc.commit', { workspace_id, ...request })
   }
   getSubmission(workspace_id: string, epoch: string, idempotency_key: string) { return this.call('doc.get_submission', { workspace_id, epoch, idempotency_key }) }
+  /** Changes after `after_seq` (`filter.detail: "touched"` for the touched entities only). */
+  getChanges(workspace_id: string, epoch: string, after_seq: number, opts: { limit?: number; touchedOnly?: boolean } = {}) {
+    return this.call('doc.get_changes', { workspace_id, epoch, after_seq, ...(opts.limit ? { limit: opts.limit } : {}), ...(opts.touchedOnly ? { filter: { detail: 'touched' } } : {}) })
+  }
+  /** Long poll until the head passes `after_seq` (or `timeout_ms`). */
+  waitChanges(workspace_id: string, after_seq: number, opts: { epoch?: string; timeout_ms?: number } = {}) {
+    return this.call<{ epoch: string; head_seq: number; timed_out: boolean }>('doc.wait_changes', { workspace_id, after_seq, ...opts })
+  }
+  /** A whole-Workspace package (`.bcanvas`): `download` names it in the owner's exports bucket. */
+  exportDoc(workspace_id: string, mode: 'share' | 'personal_backup', self_contained: boolean, include_notes?: boolean) {
+    return this.call('doc.export', { workspace_id, mode, self_contained, ...(include_notes === undefined ? {} : { include_notes }) })
+  }
+
+  // ---- assets
+  /** Register a FileObject as a staged asset: `{ bucket_id, key }` (the uploader's binding) or `{ obj_id }`. */
+  assetImportObject(workspace_id: string, source: { bucket_id: string; key: string } | { obj_id: string }) {
+    return this.call<{ object_id: string; media_type: string; size: number }>('asset.import_object', { workspace_id, ...source })
+  }
+
+  // ---- Block-controls (code-registered layouts such as the mind map)
+  controlsList() { return this.call('control.list', {}) }
+  controlsDescribe(kind: string) { return this.call('control.describe', { kind }) }
+  controlsImport(workspace_id: string, params: Record<string, unknown>) { return this.call('control.import', { workspace_id, ...params }) }
+  controlsExport(workspace_id: string, entity_id: string, format?: 'markdown' | 'opml') { return this.call('control.export', { workspace_id, entity_id, ...(format ? { format } : {}) }) }
+
+  // ---- extension controls (README “Extension controls”; buckyos-websdk src/aiws_ext.ts drives them)
+  /** Build one control's source files into the Workspace; `BUILD_FAILED` carries `data.diagnostics`. */
+  extBuild(workspace_id: string, params: AiwsExtBuildParams) { return this.call<AiwsExtBuildResult>('ext.build', { workspace_id, ...params }) }
+  /** The bundle of definitions (`purpose: pull` needs read only and synthesizes the source of never-built ones). */
+  extExport(workspace_id: string, entity_ids: string[], purpose: 'package' | 'pull' = 'package') {
+    return this.call<{ manifest: Record<string, unknown>; controls: Record<string, unknown>[]; files: { path: string; obj_id?: string; size: number; text?: string }[] }>('ext.export', { workspace_id, entity_ids, purpose })
+  }
+  /** Into the caller's library: a `.pikg` object, or definitions of a Workspace (`from` + `package`). */
+  extInstall(params: { pikg?: { obj_id: string }; from?: { workspace_id: string; entity_ids: string[] }; package?: { name: string; version?: string; title?: string }; mode?: 'dev' }) {
+    return this.call<{ pkg_id: string; version: string; action: string; controls: Record<string, unknown>[] }>('ext.install', params)
+  }
+  extListLibrary() { return this.call<{ packages: AiwsLibraryPackage[] }>('ext.list_library', {}) }
+  extUninstall(pkg_id: string) { return this.call('ext.uninstall', { pkg_id }) }
+  /** A library package's controls with their bytes (base64): what a client relays into a Workspace of another Zone. */
+  extLibraryBundle(pkg_id: string, idents?: string[]) { return this.call<{ pkg_id: string; controls: Record<string, unknown>[] }>('ext.library_bundle', { pkg_id, ...(idents ? { idents } : {}) }) }
+  /** Bring library controls into a Workspace of this Zone (one Commit). */
+  extImport(workspace_id: string, items: { pkg_id: string; ident: string }[], opts: { folder_id?: string } = {}) {
+    return this.call<AiwsExtBuildResult>('ext.import', { workspace_id, items, ...opts })
+  }
 
   // ---- runs (M3 executor protocol)
   runStart(workspace_id: string, program: string, params: Record<string, unknown>, idempotency_key: string) {

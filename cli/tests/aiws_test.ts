@@ -123,3 +123,65 @@ async function run(verb: string, input: Record<string, unknown>, clients: Servic
   context.deadline = Date.now() + 10_000
   return await command.handler(context, input) as Record<string, unknown>
 }
+
+Deno.test('extension control verbs: registered, and library / ext-import map onto ext.*', async () => {
+  const registry = createRegistry()
+  for (const [verb, level] of [['build', 'write'], ['pull', 'write'], ['ext-export', 'write'], ['library', 'write'], ['ext-import', 'write']]) {
+    assertEquals(registry.describe('aiws', verb).access, { mode: 'fixed', level })
+  }
+  assertEquals(parseCommandArgs(registry.get('aiws', 'build'), ['/home/alice/AI Workspace/Demo/controls/kpi', '--workspace', 'ws_a', '--dry-run'], undefined).input, {
+    dir: '/home/alice/AI Workspace/Demo/controls/kpi', workspace_id: 'ws_a', dry_run: true,
+  })
+  const calls: RecordedCall[] = []
+  const clients = clientsFor(calls, (method) => {
+    if (method === 'ext.list_library') return { ok: true, packages: [] }
+    if (method === 'ext.import') return { ok: true, status: 'accepted', controls: [{ action: 'created' }] }
+    if (method === 'ext.uninstall') return { ok: false, error: { code: 'NOT_FOUND', detail: 'not in your library' } }
+    throw new Error(method)
+  })
+  assertEquals((await run('library', { action: 'list' }, clients)).packages, [])
+  await run('ext-import', { workspace_id: 'ws_a', items: 'kpi.alice.bns.did#did:bns:alice#kpi, other#did:bns:bob#gauge' }, clients)
+  assertEquals(calls.at(-1)?.params, { workspace_id: 'ws_a', items: [{ pkg_id: 'kpi.alice.bns.did', ident: 'did:bns:alice#kpi' }, { pkg_id: 'other', ident: 'did:bns:bob#gauge' }] })
+  await assertRejects(() => run('ext-import', { workspace_id: 'ws_a', items: 'no-ident' }, clients))
+  let code: string | undefined
+  await assertRejects(() => run('library', { action: 'remove', target: 'x' }, clients).catch((error: unknown) => { code = (error as { code?: string }).code; throw error }))
+  assertEquals(code, 'NOT_FOUND')
+})
+
+Deno.test('a build failure carries the service diagnostics in the error details', async () => {
+  const diagnostics = [{ file: 'component.json', line: 3, col: 2, severity: 'error', message: 'expected value' }]
+  const clients = clientsFor([], () => ({ ok: false, error: { code: 'BUILD_FAILED', detail: 'the control does not build', data: { diagnostics } } }))
+  const command = createRegistry().get('aiws', 'ext-import')
+  const context = createMockCommandContext({ command, config: testConfig(), configStore: new ConfigStore('/tmp/buckyos-tool-aiws-test'), clients, traceId: 'aiws-test' })
+  context.deadline = Date.now() + 10_000
+  let details: Record<string, unknown> | undefined
+  await assertRejects(() => (command.handler(context, { workspace_id: 'ws', items: 'p#did:bns:a#k' }) as Promise<unknown>).catch((error: unknown) => { details = (error as { details?: Record<string, unknown> }).details; throw error }))
+  assertEquals((details?.data as { diagnostics: unknown[] }).diagnostics, diagnostics)
+})
+
+Deno.test('build and pull work on a local folder: files inline, the base kept in .aiws-build.json', async () => {
+  const dir = await Deno.makeTempDir()
+  await Deno.writeTextFile(`${dir}/component.json`, '{"manifest_version":1}')
+  await Deno.writeTextFile(`${dir}/declarative.json`, '{"items":[]}')
+  const calls: RecordedCall[] = []
+  const clients = clientsFor(calls, (method, params) => {
+    if (method === 'ext.build') return { ok: true, status: 'accepted', def_entity_id: 'def1', def_rev: 7, dir_rev: 7, ident: 'did:bns:a#k', controls: [] }
+    if (method === 'ext.export') return { ok: true, controls: [{ entity_id: params.entity_ids && 'def1', ident: 'did:bns:a#k', def_rev: 7, dir_rev: 7, files: [{ name: 'component.json', text: '{}' }] }] }
+    throw new Error(method)
+  })
+  await run('build', { workspace_id: 'ws_a', dir }, clients)
+  const files = calls[0].params.files as { name: string; base64: string }[]
+  assertEquals(files.map((f) => f.name), ['component.json', 'declarative.json'])
+  assertEquals(atob(files[0].base64), '{"manifest_version":1}')
+  assertEquals(calls[0].params.expect, undefined)
+  const state = JSON.parse(await Deno.readTextFile(`${dir}/.aiws-build.json`))
+  assertEquals([state.def_rev, state.dir_rev], [7, 7])
+  // the next build sends the base; the state file itself is not a source file
+  await run('build', { workspace_id: 'ws_a', dir }, clients)
+  assertEquals(calls[1].params.expect, { def_rev: 7, dir_rev: 7 })
+  assertEquals((calls[1].params.files as unknown[]).length, 2)
+  const out = await Deno.makeTempDir()
+  await run('pull', { workspace_id: 'ws_a', def: 'def1', out, local: true }, clients)
+  assertEquals(await Deno.readTextFile(`${out}/component.json`), '{}')
+  assertEquals(JSON.parse(await Deno.readTextFile(`${out}/.aiws-build.json`)).def_entity_id, 'def1')
+})

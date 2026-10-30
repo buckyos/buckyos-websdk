@@ -65,7 +65,8 @@ async function openNfsp(ctx: CommandContext): Promise<NfspSession> {
   }
 }
 
-function gatewayOrigin(endpoint: string): string {
+/** The Zone gateway origin of a service endpoint (`…/kapi/<service>`): where `/nfs/v1` and other routes live. */
+export function gatewayOrigin(endpoint: string): string {
   const url = new URL(endpoint)
   const marker = url.pathname.indexOf('/kapi')
   url.pathname = marker >= 0 ? url.pathname.slice(0, marker) || '/' : '/'

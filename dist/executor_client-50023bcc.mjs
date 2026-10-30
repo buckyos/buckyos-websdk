@@ -799,6 +799,63 @@ class AiWorkspaceClient {
   getSubmission(workspace_id, epoch, idempotency_key) {
     return this.call("doc.get_submission", { workspace_id, epoch, idempotency_key });
   }
+  /** Changes after `after_seq` (`filter.detail: "touched"` for the touched entities only). */
+  getChanges(workspace_id, epoch, after_seq, opts = {}) {
+    return this.call("doc.get_changes", { workspace_id, epoch, after_seq, ...opts.limit ? { limit: opts.limit } : {}, ...opts.touchedOnly ? { filter: { detail: "touched" } } : {} });
+  }
+  /** Long poll until the head passes `after_seq` (or `timeout_ms`). */
+  waitChanges(workspace_id, after_seq, opts = {}) {
+    return this.call("doc.wait_changes", { workspace_id, after_seq, ...opts });
+  }
+  /** A whole-Workspace package (`.bcanvas`): `download` names it in the owner's exports bucket. */
+  exportDoc(workspace_id, mode, self_contained, include_notes) {
+    return this.call("doc.export", { workspace_id, mode, self_contained, ...include_notes === void 0 ? {} : { include_notes } });
+  }
+  // ---- assets
+  /** Register a FileObject as a staged asset: `{ bucket_id, key }` (the uploader's binding) or `{ obj_id }`. */
+  assetImportObject(workspace_id, source) {
+    return this.call("asset.import_object", { workspace_id, ...source });
+  }
+  // ---- Block-controls (code-registered layouts such as the mind map)
+  controlsList() {
+    return this.call("control.list", {});
+  }
+  controlsDescribe(kind) {
+    return this.call("control.describe", { kind });
+  }
+  controlsImport(workspace_id, params) {
+    return this.call("control.import", { workspace_id, ...params });
+  }
+  controlsExport(workspace_id, entity_id, format) {
+    return this.call("control.export", { workspace_id, entity_id, ...format ? { format } : {} });
+  }
+  // ---- extension controls (README “Extension controls”; buckyos-websdk src/aiws_ext.ts drives them)
+  /** Build one control's source files into the Workspace; `BUILD_FAILED` carries `data.diagnostics`. */
+  extBuild(workspace_id, params) {
+    return this.call("ext.build", { workspace_id, ...params });
+  }
+  /** The bundle of definitions (`purpose: pull` needs read only and synthesizes the source of never-built ones). */
+  extExport(workspace_id, entity_ids, purpose = "package") {
+    return this.call("ext.export", { workspace_id, entity_ids, purpose });
+  }
+  /** Into the caller's library: a `.pikg` object, or definitions of a Workspace (`from` + `package`). */
+  extInstall(params) {
+    return this.call("ext.install", params);
+  }
+  extListLibrary() {
+    return this.call("ext.list_library", {});
+  }
+  extUninstall(pkg_id) {
+    return this.call("ext.uninstall", { pkg_id });
+  }
+  /** A library package's controls with their bytes (base64): what a client relays into a Workspace of another Zone. */
+  extLibraryBundle(pkg_id, idents) {
+    return this.call("ext.library_bundle", { pkg_id, ...idents ? { idents } : {} });
+  }
+  /** Bring library controls into a Workspace of this Zone (one Commit). */
+  extImport(workspace_id, items, opts = {}) {
+    return this.call("ext.import", { workspace_id, items, ...opts });
+  }
   // ---- runs (M3 executor protocol)
   runStart(workspace_id, program, params, idempotency_key) {
     return this.call("proc.start", { workspace_id, program, params, idempotency_key });
@@ -30643,4 +30700,4 @@ export {
   NOTIFY_SESSION_PREFIX as y,
   NOTIFY_CHOICE_CONTROL_ID as z
 };
-//# sourceMappingURL=executor_client-24076936.mjs.map
+//# sourceMappingURL=executor_client-50023bcc.mjs.map

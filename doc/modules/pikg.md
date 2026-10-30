@@ -47,6 +47,7 @@ npx buckyos pikg info ./dapp_dist/demo-0.1.0.pikg
 | `script` | `dapp` | `script` | 已构建目录或 `.tar.gz` |
 | `docker` | `dapp` | `amd64_docker_image` / `aarch64_docker_image` | 本地 Docker image name/tag/ID |
 | `agent-skills` | `agent_skills` | `agent_skills` | skill 内容目录或 `.tar.gz` |
+| `aiws-controls` | `aiws` | `aiws` | AIWS bundle 目录（`aiws-manifest.json` + `controls/<dir>/`）；不存在时写一个 declarative 控件骨架 |
 
 Agent 模板没有独立 init kind，参考 [Jarvis 元数据](https://github.com/buckyos/buckyos/tree/main/src/apps/jarvis_agent/dapp_meta) 或 [Agent fixture](https://github.com/buckyos/buckyos/tree/main/test/app_installer_test/pikg_samples/agent)。
 
@@ -165,7 +166,11 @@ pack 不重新读取 `dapp_meta`、源目录或 Docker tag。它核对快照所�
 
 不返回“存在 JWT 就签名有效”的结果。校验阶段和信任层次详见 [格式规范](https://github.com/buckyos/buckyos/blob/main/doc/pikg/format.md)。
 
-## 7. Agent skill 包
+## 7. AI Workspace 控件包（`aiws`）
+
+`categories:["aiws"]`，`pkg_list` 只能含 `aiws`，payload 是 AIWS bundle：`aiws-manifest.json`（`manifest_version`、`purpose: "aiws"`、`controls[]`、`workspace_templates: []`）加每个控件的平铺目录 `controls/<dir>/`（`component.json` 与其文件）。`build` / `pack` / `info` 都按清单重算每个控件的内容摘要（`[[文件名, sha256], …]` 排序后的规范 JSON 的 sha256）并预检 `component.json`，与 AI Workspace 服务安装时的校验一致；`info` 在结果里多出 `aiws`。安装：`buckyos app install <x.pikg>`（control-panel 转交 aiworkspace `ext.install`，不建 AppSpec、不起服务）或开发态 `buckyos aiws library install <x.pikg>`。从工作区导出见 `buckyos aiws ext-export --pikg`；协议见 buckyos `src/frame/aiworkspace/README.md` “Extension controls”。
+
+## 8. Agent skill 包
 
 独立 skill 包使用 `categories:["agent_skills"]`，必须有 App name，且 `pkg_list` 只能含 `agent_skills`。source 按 `cmd_skills/<name>.md`、`goal_skills/<name>.md`、`tools/<cmd_skill>/...` 组织。手册 front matter 为 `name/description/requires`。
 
@@ -177,7 +182,7 @@ skill CLI 用 TypeScript reader 严格验证，再将认可的普通文件/目�
 
 包样例与 Session 冻结语义见 [skill 样例](https://github.com/buckyos/buckyos/blob/main/test/skills_pikg_sample/README.md) 和 [OpenDAN 开发指南](https://github.com/buckyos/buckyos/blob/main/doc/sdk/OpenDAN_Agent_Dev_Guide.md)。
 
-## 8. 实现、失败与验证
+## 9. 实现、失败与验证
 
 实现入口为 [pikg.ts](../../cli/modules/pikg.ts)、[pikg_protocol.ts](../../cli/modules/pikg_protocol.ts)、[pikg_archive.ts](../../cli/modules/pikg_archive.ts)，离线回归在 [pikg_test.ts](../../cli/tests/pikg_test.ts)。Rust reader 是另一份实现，普通 App 的交集通过协议和 golden fixtures 对齐。
 

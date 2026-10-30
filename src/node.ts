@@ -54,3 +54,5 @@ export * as bucket from './bucket_client'
 export * as objectUrl from './object_url'
 
 export * from './executor_client'
+export * from './aiws_ext'
+export { NfspClient } from './nfsp'

@@ -1,8 +1,18 @@
+import {
+  AiwsSourceError,
+  buildControl,
+  exportBundle,
+  NfspClient,
+  pullControl,
+  watchControl,
+} from 'buckyos/node'
 import type { CommandDefinition, CommandModule, JsonSchema, OptionDefinition, PositionalDefinition } from '../core/command.ts'
 import type { CommandContext } from '../core/context.ts'
-import { ToolError, UsageError } from '../core/errors.ts'
+import { EXIT_AUTH, ToolError, UsageError } from '../core/errors.ts'
 import { callService, expectObject, inputString, requiredInputString } from '../core/service.ts'
 import { getHost } from '../runtime/host.ts'
+import { createPikgModule } from './pikg.ts'
+import { gatewayOrigin } from './share.ts'
 
 // AI Workspace (`/kapi/aiworkspace`): reading a workspace, and the executor protocol of a wish run
 // (内核架构改进 M3): claim → heartbeat → report. Source of truth for the methods:
@@ -23,7 +33,11 @@ async function aiws(ctx: CommandContext, method: string, params: Record<string, 
     const error = expectObject(result.error, `${method}.error`)
     const code = typeof error.code === 'string' ? error.code : 'AIWS_ERROR'
     const detail = typeof error.detail === 'string' ? error.detail : code
-    throw new ToolError(code, `${code}${typeof error.sub_code === 'string' ? `/${error.sub_code}` : ''}: ${detail}`)
+    // the structured part (a build's diagnostics, a conflict's revisions) travels in the error's details
+    const details: Record<string, unknown> = {}
+    if (typeof error.sub_code === 'string') details.sub_code = error.sub_code
+    if (error.data !== undefined) details.data = error.data
+    throw new ToolError(code, `${code}${typeof error.sub_code === 'string' ? `/${error.sub_code}` : ''}: ${detail}`, undefined, false, details)
   }
   return result
 }
@@ -375,10 +389,319 @@ const exportCommand: CommandDefinition = {
   },
 }
 
+// ---- extension controls (buckyos aiworkspace README “Extension controls”): source in the Zone's home folders,
+// built into a Workspace, exported as a bundle / `aiws` PIKG, installed into the caller's library, imported elsewhere.
+// The drivers are buckyos-websdk src/aiws_ext.ts, shared with the Desktop.
+
+async function sessionToken(ctx: CommandContext): Promise<string> {
+  const session = ctx.session
+  if (!session) throw new ToolError('AUTH_REQUIRED', 'authenticated session is required', EXIT_AUTH)
+  return (await session.ensureValid()).token
+}
+
+/** The Zone file service (NFSP) with the caller's session: where control sources live. */
+async function openHome(ctx: CommandContext): Promise<NfspClient> {
+  const session = ctx.session
+  if (!session) throw new ToolError('AUTH_REQUIRED', 'authenticated session is required', EXIT_AUTH)
+  const nfsp = new NfspClient({ baseUrl: gatewayOrigin(ctx.connection.endpoint), sessionToken: async () => (await session.ensureValid()).token })
+  await nfsp.hello(['cli'])
+  return nfsp
+}
+
+/** The two calls the shared drivers make (`AiwsExtRpc` of buckyos-websdk src/aiws_ext.ts). */
+function extRpc(ctx: CommandContext) {
+  return {
+    extBuild: (workspace_id: string, params: Record<string, unknown>) => aiws(ctx, 'ext.build', { workspace_id, ...params }) as never,
+    extExport: (workspace_id: string, entity_ids: string[], purpose: string = 'package') => aiws(ctx, 'ext.export', { workspace_id, entity_ids, purpose }) as never,
+  }
+}
+
+/** Bytes of a Workspace object (`GET /kapi/aiworkspace/asset/<ws>/<obj_id>`, authorized through what references it). */
+function assetFetcher(ctx: CommandContext): (workspaceId: string, objId: string) => Promise<Uint8Array> {
+  return async (workspaceId, objId) => {
+    const response = await fetch(`${gatewayOrigin(ctx.connection.endpoint)}/kapi/aiworkspace/asset/${encodeURIComponent(workspaceId)}/${encodeURIComponent(objId)}`, {
+      headers: { Authorization: `Bearer ${await sessionToken(ctx)}` },
+      signal: ctx.signal,
+    })
+    if (!response.ok) throw new ToolError('AIWS_ASSET_UNAVAILABLE', `asset ${objId}: HTTP ${response.status}`)
+    return new Uint8Array(await response.arrayBuffer())
+  }
+}
+
+/** Source problems (not refusals of the service) as a build failure with diagnostics. */
+async function sourceErrors<T>(run: () => Promise<T>): Promise<T> {
+  try {
+    return await run()
+  } catch (error) {
+    if (error instanceof AiwsSourceError) throw new ToolError('BUILD_FAILED', `BUILD_FAILED: ${error.message}`, undefined, false, { data: { diagnostics: error.diagnostics } })
+    throw error
+  }
+}
+
+function list(input: Record<string, unknown>, key: string): string[] {
+  return requiredInputString(input, key).split(',').map((s) => s.trim()).filter(Boolean)
+}
+
+// ---- local source folders: a developer's or an Agent's own disk (files go inline, ≤ 4 MiB per build)
+
+const LOCAL_STATE = '.aiws-build.json'
+
+async function isLocalDir(path: string): Promise<boolean> {
+  try { return (await getHost().stat(path)).isDirectory } catch { return false }
+}
+
+/** The files of a local (flat) source folder as `ext.build` takes them inline. */
+async function localFiles(dir: string): Promise<{ name: string; base64: string }[]> {
+  const host = getHost()
+  const files: { name: string; base64: string }[] = []
+  const problems: { file: string; severity: 'error'; message: string }[] = []
+  let total = 0
+  for (const entry of await host.readDir(dir)) {
+    if (entry.name.startsWith('.')) continue
+    if (!entry.isFile) { problems.push({ file: entry.name, severity: 'error', message: 'a control source folder is flat: move files out of sub-folders' }); continue }
+    const bytes = await host.readFile(host.path.join(dir, entry.name))
+    total += bytes.length
+    files.push({ name: entry.name, base64: btoa(Array.from(bytes, (b) => String.fromCharCode(b)).join('')) })
+  }
+  if (files.length === 0) problems.push({ file: '', severity: 'error', message: `${dir} holds no files` })
+  if (total > 4 * 1024 * 1024) problems.push({ file: '', severity: 'error', message: 'a control is limited to 4 MiB per build from a local folder' })
+  if (problems.length > 0) throw new ToolError('BUILD_FAILED', `BUILD_FAILED: ${problems.map((p) => `${p.file}: ${p.message}`).join('; ')}`, undefined, false, { data: { diagnostics: problems } })
+  return files.sort((a, b) => a.name.localeCompare(b.name))
+}
+
+async function localState(dir: string): Promise<Record<string, unknown> | null> {
+  try { return JSON.parse(await getHost().readTextFile(getHost().path.join(dir, LOCAL_STATE))) as Record<string, unknown> } catch { return null }
+}
+
+/** Build a local folder into a Workspace; the base it was built on is kept in its `.aiws-build.json`. */
+async function buildLocal(ctx: CommandContext, ws: string, dir: string, opts: { folderId?: string; force?: boolean; dryRun?: boolean }): Promise<Record<string, unknown>> {
+  const state = await localState(dir)
+  const result = await aiws(ctx, 'ext.build', {
+    workspace_id: ws, files: await localFiles(dir),
+    ...(opts.folderId ? { folder_id: opts.folderId } : {}),
+    ...(state && state.workspace_id === ws ? { expect: { def_rev: state.def_rev, dir_rev: state.dir_rev } } : {}),
+    ...(opts.force ? { force: true } : {}), ...(opts.dryRun ? { dry_run: true } : {}),
+  })
+  if (!opts.dryRun && typeof result.def_entity_id === 'string' && typeof result.def_rev === 'number') {
+    await getHost().writeTextFile(getHost().path.join(dir, LOCAL_STATE), `${JSON.stringify({ workspace_id: ws, def_entity_id: result.def_entity_id, def_rev: result.def_rev, dir_rev: result.dir_rev ?? 0, ident: result.ident, at: new Date().toISOString() }, null, 2)}\n`)
+  }
+  return result
+}
+
+const buildCommand: CommandDefinition = {
+  verb: 'build',
+  summary: 'Build a control from its source folder (local, or in the Zone; component.json + files) into a Workspace; instances update, a failure commits nothing',
+  description: 'The folder is a local folder (when it exists here; its files are sent inline, ≤ 4 MiB) or a Zone path (e.g. /home/alice/AI Workspace/Demo/controls/kpi-card; --zone-path forces it), flat. The base of the last build or pull is kept in its .aiws-build.json; building over a newer Workspace version is refused (pull first, or --force). --watch rebuilds on every change until interrupted.',
+  positionals: [{ name: 'dir', description: 'Local folder, or Zone path of the control source folder', required: true }],
+  options: [
+    WORKSPACE_OPTION,
+    { name: 'folder', property: 'folder_id', description: 'Data folder for the definition (default: data/extensions)', type: 'string' },
+    { name: 'watch', property: 'watch', description: 'Rebuild whenever the folder changes', type: 'boolean' },
+    { name: 'dry-run', property: 'dry_run', description: 'Check only: diagnostics, nothing committed', type: 'boolean' },
+    { name: 'force', property: 'force', description: 'Build over whatever the Workspace holds now', type: 'boolean' },
+    { name: 'zone-path', property: 'zone_path', description: 'Treat the folder as a Zone path even if a local folder has that name', type: 'boolean' },
+  ],
+  inputSchema: workspaceInput({ dir: { type: 'string', minLength: 1 }, folder_id: { type: 'string' }, watch: { type: 'boolean' }, dry_run: { type: 'boolean' }, force: { type: 'boolean' }, zone_path: { type: 'boolean' } }, ['dir']),
+  outputSchema: OBJECT_OUTPUT,
+  resultSchemaVersion: 1,
+  access: { mode: 'fixed', level: 'write' },
+  asyncMode: 'sync',
+  requiresSession: true,
+  examples: ['buckyos aiws build "/home/alice/AI Workspace/Demo/controls/kpi-card" --workspace ws_abc', 'buckyos aiws build "/home/alice/AI Workspace/Demo/controls/kpi-card" --workspace ws_abc --watch'],
+  handler: async (ctx, input) => {
+    const ws = requiredInputString(input, 'workspace_id')
+    const dir = requiredInputString(input, 'dir')
+    const opts = { folderId: inputString(input, 'folder_id'), force: input.force === true, dryRun: input.dry_run === true }
+    if (input.zone_path !== true && await isLocalDir(getHost().path.resolve(ctx.cwd, dir))) {
+      const local = getHost().path.resolve(ctx.cwd, dir)
+      if (input.watch === true) throw new UsageError('AIWS_USAGE', '--watch follows a Zone folder; rebuild a local folder yourself')
+      return buildLocal(ctx, ws, local, opts)
+    }
+    const nfsp = await openHome(ctx)
+    if (input.watch !== true) return sourceErrors(() => buildControl(extRpc(ctx), nfsp, ws, dir, opts))
+    let builds = 0
+    let failures = 0
+    await watchControl(nfsp, dir, async () => {
+      try {
+        const r = await sourceErrors(() => buildControl(extRpc(ctx), nfsp, ws, dir, opts))
+        builds++
+        await ctx.io.stderr(`built ${r.ident} v${r.version ?? '?'} (${r.unchanged ? 'unchanged' : r.status})\n`)
+      } catch (error) {
+        failures++
+        const diagnostics = error instanceof ToolError ? (error.details.data as { diagnostics?: unknown[] } | undefined)?.diagnostics : undefined
+        await ctx.io.stderr(`build failed: ${error instanceof Error ? error.message : String(error)}\n${diagnostics ? `${JSON.stringify(diagnostics, null, 2)}\n` : ''}`)
+      }
+    }, { signal: ctx.signal })
+    return { ok: true, watched: dir, builds, failures }
+  },
+}
+
+const pullCommand: CommandDefinition = {
+  verb: 'pull',
+  summary: 'Write a control definition’s Workspace snapshot into a folder — a Zone path (default) or a local one (--local) — as the base of the next build',
+  positionals: [{ name: 'def', description: 'Definition (buckyos.block-def) id', required: true }],
+  options: [WORKSPACE_OPTION, { name: 'out', property: 'out', description: 'Folder to write (created)', type: 'string', required: true }, { name: 'local', property: 'local', description: 'Write into a local folder instead of the Zone', type: 'boolean' }],
+  inputSchema: workspaceInput({ def: { type: 'string', minLength: 1 }, out: { type: 'string', minLength: 1 }, local: { type: 'boolean' } }, ['def', 'out']),
+  outputSchema: OBJECT_OUTPUT,
+  resultSchemaVersion: 1,
+  access: { mode: 'fixed', level: 'write' },
+  asyncMode: 'sync',
+  requiresSession: true,
+  examples: ['buckyos aiws pull def_abc --workspace ws_abc --out "/home/alice/AI Workspace/Demo/controls/kpi-card"'],
+  handler: async (ctx, input) => {
+    if (input.local === true) {
+      const ws = requiredInputString(input, 'workspace_id')
+      const host = getHost()
+      const out = host.path.resolve(ctx.cwd, requiredInputString(input, 'out'))
+      const r = await aiws(ctx, 'ext.export', { workspace_id: ws, entity_ids: [requiredInputString(input, 'def')], purpose: 'pull' })
+      const control = expectObject((r.controls as unknown[])[0], 'ext.export.controls[0]')
+      await host.mkdir(out, { recursive: true })
+      const fetchAsset = assetFetcher(ctx)
+      const files: string[] = []
+      for (const f of control.files as { name: string; obj_id?: string; text?: string }[]) {
+        const target = host.path.join(out, f.name)
+        if (f.text !== undefined) await host.writeTextFile(target, f.text)
+        else await host.writeFile(target, await fetchAsset(ws, String(f.obj_id)))
+        files.push(f.name)
+      }
+      await host.writeTextFile(host.path.join(out, LOCAL_STATE), `${JSON.stringify({ workspace_id: ws, def_entity_id: control.entity_id, def_rev: control.def_rev, dir_rev: control.dir_rev, ident: control.ident, at: new Date().toISOString() }, null, 2)}\n`)
+      return { ok: true, out, files }
+    }
+    const nfsp = await openHome(ctx)
+    const r = await pullControl(extRpc(ctx), nfsp, requiredInputString(input, 'workspace_id'), requiredInputString(input, 'def'), requiredInputString(input, 'out'), assetFetcher(ctx))
+    return { ok: true, out: requiredInputString(input, 'out'), ...r }
+  },
+}
+
+/** Run a verb of the pikg module (init / build / pack) with this command's context. */
+async function pikgVerb(ctx: CommandContext, verb: string, input: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const command = createPikgModule().commands.find((c) => c.verb === verb)
+  if (!command) throw new ToolError('INTERNAL', `pikg ${verb} is missing`)
+  return expectObject(await command.handler(ctx, input), `pikg ${verb}`)
+}
+
+/** Bind a local `.pikg` into the caller's own `user/aiworkspace/<user>/exports` bucket (the data plane PUT, ≤ 32 MiB):
+ * what `ext.install { pikg: { bucket_id, key } }` takes (and consumes once installed). */
+async function uploadPackage(ctx: CommandContext, path: string): Promise<{ bucket_id: string; key: string }> {
+  const bucket_id = `user/aiworkspace/${ctx.principal.id}/exports`
+  const key = `aiws/${Date.now()}-${getHost().path.basename(path)}`
+  const bytes = await getHost().readFile(path)
+  if (bytes.byteLength > 32 * 1024 * 1024) throw new UsageError('FILE_TOO_LARGE', 'a control package installed from the CLI is limited to 32 MiB')
+  const url = `${gatewayOrigin(ctx.connection.endpoint)}/bucket/v1/${bucket_id}/${key.split('/').map(encodeURIComponent).join('/')}`
+  const response = await fetch(url, { method: 'PUT', headers: { Authorization: `Bearer ${await sessionToken(ctx)}` }, body: new Blob([bytes as Uint8Array<ArrayBuffer>]), signal: ctx.signal })
+  if (!response.ok) throw new ToolError('AIWS_UPLOAD_FAILED', `upload of ${path}: HTTP ${response.status} ${await response.text().catch(() => '')}`)
+  return { bucket_id, key }
+}
+
+const extExportCommand: CommandDefinition = {
+  verb: 'ext-export',
+  summary: 'Export Workspace controls as a bundle in a local folder; optionally pack it as an aiws PIKG and install it into your library',
+  description: 'Writes <out>/aiws/ (aiws-manifest.json + controls/<dir>/). --pikg (or --install) also runs pikg init/build/pack in <out> (kind aiws-controls); --install binds the .pikg into your aiworkspace exports bucket and calls ext.install.',
+  positionals: [{ name: 'defs', description: 'Definition (or instance) ids, comma-separated', required: true }],
+  options: [
+    WORKSPACE_OPTION,
+    { name: 'out', property: 'out', description: 'Local folder to write into (created)', type: 'string', required: true },
+    { name: 'name', property: 'name', description: 'Package name (default: the first control’s)', type: 'string' },
+    { name: 'version', property: 'version', description: 'Package version (default 0.1.0)', type: 'string' },
+    { name: 'owner', property: 'owner', description: 'Owner DID of the package (default did:bns:<you>)', type: 'string' },
+    { name: 'pikg', property: 'pikg', description: 'Also pack the bundle as an aiws PIKG', type: 'boolean' },
+    { name: 'install', property: 'install', description: 'Pack, then install into your AI Workspace library (dev mode)', type: 'boolean' },
+  ],
+  inputSchema: workspaceInput({ defs: { type: 'string', minLength: 1 }, out: { type: 'string', minLength: 1 }, name: { type: 'string' }, version: { type: 'string' }, owner: { type: 'string' }, pikg: { type: 'boolean' }, install: { type: 'boolean' } }, ['defs', 'out']),
+  outputSchema: OBJECT_OUTPUT,
+  resultSchemaVersion: 1,
+  access: { mode: 'fixed', level: 'write' },
+  asyncMode: 'sync',
+  requiresSession: true,
+  examples: ['buckyos aiws ext-export def_abc,def_xyz --workspace ws_abc --out ./kpi-pack --install'],
+  handler: async (ctx, input) => {
+    const ws = requiredInputString(input, 'workspace_id')
+    const host = getHost()
+    const out = host.path.resolve(ctx.cwd, requiredInputString(input, 'out'))
+    const bundle = await exportBundle(extRpc(ctx), ws, list(input, 'defs'), assetFetcher(ctx))
+    const root = host.path.join(out, 'aiws')
+    // a previous export's controls must not linger in the bundle
+    await host.remove(root, { recursive: true }).catch(() => undefined)
+    for (const [path, bytes] of bundle.files) {
+      const target = host.path.join(root, path)
+      await host.mkdir(host.path.dirname(target), { recursive: true })
+      await host.writeFile(target, bytes)
+    }
+    const result: Record<string, unknown> = { ok: true, bundle: root, controls: bundle.manifest.controls.map((c: Record<string, unknown>) => ({ ident: c.ident, kind: c.kind, version: c.version, digest: c.digest })) }
+    if (input.pikg !== true && input.install !== true) return result
+    const name = inputString(input, 'name') ?? bundle.manifest.controls[0]?.name.replace(/[._]/g, '-') ?? 'controls'
+    const owner = inputString(input, 'owner') ?? `did:bns:${ctx.principal.id}`
+    const version = inputString(input, 'version') ?? '0.1.0'
+    const appJson = host.path.join(out, 'dapp_meta', 'app.json')
+    const existing = await host.readTextFile(appJson).then((t) => JSON.parse(t) as Record<string, unknown>).catch(() => null)
+    if (!existing) {
+      await pikgVerb(ctx, 'init', { project_dir: out, name, owner, kind: 'aiws-controls', source: './aiws', version })
+    } else if (inputString(input, 'version') && existing.version !== version) {
+      // a re-export at a new version: the same project, the new version (a library refuses other content at an old one)
+      await host.writeTextFile(appJson, `${JSON.stringify({ ...existing, version }, null, 2)}\n`)
+      const pikgJson = host.path.join(out, 'dapp_meta', 'pikg.json')
+      const meta = JSON.parse(await host.readTextFile(pikgJson)) as Record<string, unknown>
+      await host.writeTextFile(pikgJson, `${JSON.stringify({ ...meta, pikg_file: `${existing.name}-${version}.pikg` }, null, 2)}\n`)
+    }
+    await pikgVerb(ctx, 'build', { meta_dir: host.path.join(out, 'dapp_meta') })
+    const packed = await pikgVerb(ctx, 'pack', { dist_dir: host.path.join(out, 'dapp_dist') })
+    const pikgPath = String(packed.pikg_path)
+    result.pikg = pikgPath
+    if (input.install !== true) return result
+    result.install = await aiws(ctx, 'ext.install', { pikg: await uploadPackage(ctx, pikgPath), mode: 'dev' })
+    return result
+  },
+}
+
+const libraryCommand: CommandDefinition = {
+  verb: 'library',
+  summary: 'Your AI Workspace control library: `list`, `install <file.pikg>` (an aiws package, dev mode), `remove <pkg_id>`',
+  positionals: [{ name: 'action', description: 'list | install | remove', required: true }, { name: 'target', description: 'install: local .pikg path; remove: package id', required: false }],
+  options: [],
+  inputSchema: { type: 'object', properties: { action: { type: 'string', enum: ['list', 'install', 'remove'] }, target: { type: 'string' } }, required: ['action'], additionalProperties: false },
+  outputSchema: OBJECT_OUTPUT,
+  resultSchemaVersion: 1,
+  access: { mode: 'fixed', level: 'write' },
+  asyncMode: 'sync',
+  requiresSession: true,
+  examples: ['buckyos aiws library list', 'buckyos aiws library install ./kpi-pack-0.1.0.pikg', 'buckyos aiws library remove kpi-pack.alice.bns.did'],
+  handler: async (ctx, input) => {
+    const action = requiredInputString(input, 'action')
+    if (action === 'list') return aiws(ctx, 'ext.list_library', {})
+    if (action === 'remove') return aiws(ctx, 'ext.uninstall', { pkg_id: requiredInputString(input, 'target') })
+    if (action !== 'install') throw new UsageError('AIWS_USAGE', 'library: list, install <file.pikg> or remove <pkg_id>')
+    const path = getHost().path.resolve(ctx.cwd, requiredInputString(input, 'target'))
+    return aiws(ctx, 'ext.install', { pikg: await uploadPackage(ctx, path), mode: 'dev' })
+  },
+}
+
+const extImportCommand: CommandDefinition = {
+  verb: 'ext-import',
+  summary: 'Bring controls of your library into a Workspace (one Commit): <pkg_id>#<ident>, comma-separated',
+  positionals: [{ name: 'items', description: '<pkg_id>#<author_did>#<name>[,…] (ext.list_library names them)', required: true }],
+  options: [WORKSPACE_OPTION, { name: 'folder', property: 'folder_id', description: 'Data folder for the definitions (default: data/extensions)', type: 'string' }],
+  inputSchema: workspaceInput({ items: { type: 'string', minLength: 1 }, folder_id: { type: 'string' } }, ['items']),
+  outputSchema: OBJECT_OUTPUT,
+  resultSchemaVersion: 1,
+  access: { mode: 'fixed', level: 'write' },
+  asyncMode: 'sync',
+  requiresSession: true,
+  examples: ['buckyos aiws ext-import kpi-pack.alice.bns.did#did:bns:alice#kpi-card --workspace ws_abc'],
+  handler: (ctx, input) => {
+    const items = list(input, 'items').map((item) => {
+      const cut = item.indexOf('#')
+      if (cut <= 0) throw new UsageError('AIWS_USAGE', `${item}: <pkg_id>#<ident>`)
+      return { pkg_id: item.slice(0, cut), ident: item.slice(cut + 1) }
+    })
+    const folder = inputString(input, 'folder_id')
+    return aiws(ctx, 'ext.import', { workspace_id: requiredInputString(input, 'workspace_id'), items, ...(folder ? { folder_id: folder } : {}) })
+  },
+}
+
 export function createAiwsModule(): CommandModule {
   return {
     name: 'aiws',
-    summary: 'AI Workspace: read a workspace, Block-controls (catalogue, import, export), and execute wish runs as their executor (claim, heartbeat, report)',
-    commands: [infoCommand, readCommand, queryCommand, controlsCommand, importCommand, exportCommand, runGetCommand, runClaimCommand, runHeartbeatCommand, runFilesCommand, runToolCommand, runProgramCommand, runReportCommand],
+    summary: 'AI Workspace: read a workspace, Block-controls (catalogue, import, export), extension controls (build, pull, export, library, import), and execute wish runs as their executor (claim, heartbeat, report)',
+    commands: [infoCommand, readCommand, queryCommand, controlsCommand, importCommand, exportCommand, buildCommand, pullCommand, extExportCommand, libraryCommand, extImportCommand, runGetCommand, runClaimCommand, runHeartbeatCommand, runFilesCommand, runToolCommand, runProgramCommand, runReportCommand],
   }
 }
