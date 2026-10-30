@@ -46,6 +46,7 @@ export const AICC_MANAGEMENT_METHODS = {
   ROUTING_GET: 'routing.get',
   ROUTING_PREVIEW: 'routing.preview',
   ROUTING_UPDATE: 'routing.update',
+  PROVIDER_PREVIEW_RULES: 'provider.preview_rules',
   PROVIDER_CATALOG: 'provider.catalog',
   PROTOCOL_ADAPTER_LIST: 'protocol_adapter.list',
   PROVIDER_VALIDATE: 'provider.validate',
@@ -402,13 +403,15 @@ export interface VisibilityPreviewResponse { user_id: string;
   grants: { provider_instance_name: string; exact_model?: string; sources: string[] }[];
   added?: string[]; removed?: string[]; affected_users?: string[]; caller_loses?: string[] }
 export interface ProviderCatalogEntry { provider_profile_id: string; display_name: string; base_url: string;
-  protocol_adapter_id: string; provider_rules_id?: string; ui_hints?: Record<string, JsonValue> }
+  protocol_adapter_id: string; provider_rules_id?: string; rules_catalog?: JsonValue; model_driver_overrides?: Record<string, string>; ui_hints?: Record<string, JsonValue> }
+export interface ProviderRulesPreviewRequest { provider_instance_name: string; rules_catalog: JsonValue; model_ids: string[] }
+export interface ProviderRulesPreviewResponse { resolved_model_rules: Record<string, JsonValue> }
 export interface ProviderCatalogResponse { catalog_revision: number; providers: ProviderCatalogEntry[] }
 export type ProtocolAdapterStatus = 'stable' | 'preview' | 'deprecated'
 export type ProtocolExecutionMode = 'immediate' | 'stream' | 'native_task'
 export interface ProtocolAdapterOperation { operation_id: string; api_types: ApiType[]; capabilities: Capability[];
   supported_features: string[]; execution_modes: ProtocolExecutionMode[]; supports_cancel: boolean; supports_webhook: boolean }
-export interface ProtocolAdapterView { protocol_family_id: string; protocol_adapter_id: string; interface_generation: string;
+export interface ProtocolAdapterView { default_operations?: Record<string, string>; protocol_family_id: string; protocol_adapter_id: string; interface_generation: string;
   status: ProtocolAdapterStatus; probe_priority: number; base_adapter_id?: string; operations: ProtocolAdapterOperation[] }
 export interface ProtocolAdapterListResponse { adapters: ProtocolAdapterView[] }
 interface ProviderConfig { provider_type: string; provider_profile_id: string; protocol_family_id?: string; protocol_adapter_id?: string;
@@ -417,7 +420,9 @@ interface ProviderConfig { provider_type: string; provider_profile_id: string; p
 export interface ProviderValidateRequest extends ProviderConfig { provider_instance_name?: string }
 export type ProviderValidationErrorKind = 'configuration' | 'base_url' | 'authentication' | 'protocol' | 'models' | 'balance'
 export interface ProviderValidationErrorDetail { kind: ProviderValidationErrorKind; message: string }
-export interface ProviderValidateResponse { models_recognized: string[]; unmatched_models: JsonValue[]; unavailable_presets: JsonValue[]; routing_candidates: Record<string, string[]>; warnings: string[]; base_url_reachable: boolean; auth_valid: boolean; models_discovered: string[];
+export interface FilteredProviderCapability { provider_model_id: string; protocol_adapter_id: string; api_type: string;
+  operation_id: string | null; reason: string }
+export interface ProviderValidateResponse { filtered_capabilities: FilteredProviderCapability[]; models_recognized: string[]; unmatched_models: JsonValue[]; unavailable_presets: JsonValue[]; routing_candidates: Record<string, string[]>; warnings: string[]; base_url_reachable: boolean; auth_valid: boolean; models_discovered: string[];
   balance_available: boolean; errors: string[]; error_details: ProviderValidationErrorDetail[]; resolved_protocol_adapter_id?: string }
 export interface ProviderAddRequest extends ProviderConfig { provider_instance_name: string }
 export interface ProviderReloadResult { ok: boolean; providers_registered: number }
@@ -430,11 +435,14 @@ export interface ProviderListRequest { method?: string; view?: AiccListView }
 export type ProviderInstanceAuthMode = 'api_key' | 'dynamic_login'
 export interface ProviderInstanceAuthView { mode?: ProviderInstanceAuthMode; credential_kind?: string; configured: boolean }
 export type ProviderInstanceInventoryState = 'disabled' | 'not_loaded' | 'loaded'
-export interface ProviderInstanceInventoryView { state: ProviderInstanceInventoryState; revision?: string; model_count: number;
+export interface ProviderInstanceInventoryView { filtered_capabilities: FilteredProviderCapability[]; state: ProviderInstanceInventoryState; revision?: string; model_count: number;
   updated_at_ms?: number }
 export type ProviderInstanceHealthState = 'disabled' | 'not_loaded' | 'unknown' | 'healthy' | 'degraded' | 'unavailable'
 export interface ProviderInstanceHealthView { state: ProviderInstanceHealthState; checked_at_ms?: number }
-export interface ProviderInstanceView { provider_rules_id?: string; instance_rules?: JsonValue; provider_instance_name: string; provider_type: string; provider_profile_id: string;
+export interface ProviderInstanceView {
+  discovered_model_ids?: string[]; rules_catalog?: JsonValue;
+  resolved_model_rules?: Record<string, JsonValue>;
+  provider_rules_id?: string; instance_rules?: JsonValue; provider_instance_name: string; provider_type: string; provider_profile_id: string;
   protocol_adapter_id: string; base_url: string; enabled: boolean; auth: ProviderInstanceAuthView;
   inventory: ProviderInstanceInventoryView; health: ProviderInstanceHealthView }
 export interface ProviderListResponse { providers: ProviderInstanceView[]; settings_revision: number; inventory_revision: string }
@@ -567,6 +575,7 @@ const schemas: Partial<Record<AiccMethod, string[]>> = {
   [AICC_MANAGEMENT_METHODS.ROUTING_GET]: [],
   [AICC_MANAGEMENT_METHODS.ROUTING_PREVIEW]: ['paths', 'explain', 'requirements'],
   [AICC_MANAGEMENT_METHODS.ROUTING_UPDATE]: ['settings_revision', 'provider_weights'],
+  [AICC_MANAGEMENT_METHODS.PROVIDER_PREVIEW_RULES]: ['provider_instance_name', 'rules_catalog', 'model_ids'],
   [AICC_MANAGEMENT_METHODS.PROVIDER_CATALOG]: [],
   [AICC_MANAGEMENT_METHODS.PROTOCOL_ADAPTER_LIST]: [],
   [AICC_MANAGEMENT_METHODS.PROVIDER_VALIDATE]: ['provider_instance_name', 'provider_type', 'provider_profile_id', 'protocol_family_id', 'protocol_adapter_id', 'base_url', 'credentials', 'region', 'workspace', 'account', 'provider_rules_id', 'auth', 'discovery', 'instance_rules', 'timeout_ms', 'auto_sync_models'],
@@ -639,6 +648,7 @@ export class AiccClient {
   previewRouting(r: RoutingPreviewRequest = {}) { return this.call<RoutingPreviewResponse, RoutingPreviewRequest>(AICC_MANAGEMENT_METHODS.ROUTING_PREVIEW, r) }
   getRouting() { return this.call<RoutingGetResponse, EmptyRequest>(AICC_MANAGEMENT_METHODS.ROUTING_GET, {}) }
   updateRouting(r: RoutingUpdateRequest) { return this.call<RoutingUpdateResponse, RoutingUpdateRequest>(AICC_MANAGEMENT_METHODS.ROUTING_UPDATE, r) }
+  previewProviderRules(request: ProviderRulesPreviewRequest) { return this.call<ProviderRulesPreviewResponse, ProviderRulesPreviewRequest>(AICC_MANAGEMENT_METHODS.PROVIDER_PREVIEW_RULES, request) }
   providerCatalog() { return this.call<ProviderCatalogResponse, EmptyRequest>(AICC_MANAGEMENT_METHODS.PROVIDER_CATALOG, {}) }
   listProtocolAdapters() { return this.call<ProtocolAdapterListResponse, EmptyRequest>(AICC_MANAGEMENT_METHODS.PROTOCOL_ADAPTER_LIST, {}) }
   validateProvider(r: ProviderValidateRequest) { return this.call<ProviderValidateResponse, ProviderValidateRequest>(AICC_MANAGEMENT_METHODS.PROVIDER_VALIDATE, r) }

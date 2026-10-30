@@ -191,6 +191,9 @@ describe('canonical AICC contract', () => {
       [AICC_MANAGEMENT_METHODS.ROUTING_GET, () => client.getRouting()],
       [AICC_MANAGEMENT_METHODS.ROUTING_PREVIEW, () => client.previewRouting({ paths: ['decision'], requirements: {decision: {question_types: ['choice', 'score', 'boolean']}} })],
       [AICC_MANAGEMENT_METHODS.ROUTING_UPDATE, () => client.updateRouting({ settings_revision: 1, provider_weights: {} })],
+      [AICC_MANAGEMENT_METHODS.PROVIDER_PREVIEW_RULES, () => client.previewProviderRules({
+        provider_instance_name: 'custom', rules_catalog: { format: 'buckyos.aicc.provider-rules-catalog' }, model_ids: ['openai/gpt-6-sol'],
+      })],
       [AICC_MANAGEMENT_METHODS.PROVIDER_CATALOG, () => client.providerCatalog()],
       [AICC_MANAGEMENT_METHODS.PROTOCOL_ADAPTER_LIST, () => client.listProtocolAdapters()],
       [AICC_MANAGEMENT_METHODS.PROVIDER_VALIDATE, () => client.validateProvider({ provider_type: 'openai', provider_profile_id: 'openai', base_url: 'https://example.test', credentials: {} })],
@@ -294,7 +297,7 @@ describe('canonical AICC contract', () => {
       details: { expected_revision: 1, actual_revision: 2 } }
     const provider: ProviderInstanceView = { provider_instance_name: 'openai-main', provider_type: 'openai',
       provider_profile_id: 'openai', protocol_adapter_id: 'openai-responses', base_url: 'https://example.test', enabled: true,
-      auth: { mode: 'api_key', configured: true }, inventory: { state: 'loaded', model_count: 1 },
+      auth: { mode: 'api_key', configured: true }, inventory: { state: 'loaded', model_count: 1, filtered_capabilities: [] },
       health: { state: 'healthy' } }
     const trace: AiccRouteTraceEvent = { trace_id: 'trace-1', tenant_id: 'tenant-1', task_id: 'task-1',
       request_model: 'llm.chat', api_type: 'llm', route_trace_json: { attempts: [] }, created_at_ms: 1 }

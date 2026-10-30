@@ -2053,6 +2053,7 @@ const AICC_MANAGEMENT_METHODS = {
   ROUTING_GET: "routing.get",
   ROUTING_PREVIEW: "routing.preview",
   ROUTING_UPDATE: "routing.update",
+  PROVIDER_PREVIEW_RULES: "provider.preview_rules",
   PROVIDER_CATALOG: "provider.catalog",
   PROTOCOL_ADAPTER_LIST: "protocol_adapter.list",
   PROVIDER_VALIDATE: "provider.validate",
@@ -2194,6 +2195,7 @@ const schemas = {
   [AICC_MANAGEMENT_METHODS.ROUTING_GET]: [],
   [AICC_MANAGEMENT_METHODS.ROUTING_PREVIEW]: ["paths", "explain", "requirements"],
   [AICC_MANAGEMENT_METHODS.ROUTING_UPDATE]: ["settings_revision", "provider_weights"],
+  [AICC_MANAGEMENT_METHODS.PROVIDER_PREVIEW_RULES]: ["provider_instance_name", "rules_catalog", "model_ids"],
   [AICC_MANAGEMENT_METHODS.PROVIDER_CATALOG]: [],
   [AICC_MANAGEMENT_METHODS.PROTOCOL_ADAPTER_LIST]: [],
   [AICC_MANAGEMENT_METHODS.PROVIDER_VALIDATE]: ["provider_instance_name", "provider_type", "provider_profile_id", "protocol_family_id", "protocol_adapter_id", "base_url", "credentials", "region", "workspace", "account", "provider_rules_id", "auth", "discovery", "instance_rules", "timeout_ms", "auto_sync_models"],
@@ -2345,6 +2347,9 @@ class AiccClient {
   }
   updateRouting(r) {
     return this.call(AICC_MANAGEMENT_METHODS.ROUTING_UPDATE, r);
+  }
+  previewProviderRules(request) {
+    return this.call(AICC_MANAGEMENT_METHODS.PROVIDER_PREVIEW_RULES, request);
   }
   providerCatalog() {
     return this.call(AICC_MANAGEMENT_METHODS.PROVIDER_CATALOG, {});
@@ -30638,4 +30643,4 @@ export {
   NOTIFY_SESSION_PREFIX as y,
   NOTIFY_CHOICE_CONTROL_ID as z
 };
-//# sourceMappingURL=executor_client-28e017a3.mjs.map
+//# sourceMappingURL=executor_client-24076936.mjs.map
