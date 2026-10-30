@@ -61,6 +61,16 @@ describe('canonical AICC contract', () => {
     expect(isAiccAiMethod('llm.chat')).toBe(false)
   })
 
+  it('sends advanced provider rules and supports explicitly clearing channel presets', async () => {
+    const fetcher = echoingFetcher({ ok: true, settings_revision: 2 })
+    const client = new AiccClient(new kRPCClient('/kapi/aicc/', null, 1, { fetcher }))
+    await client.updateProvider({ provider_instance_name: 'custom', settings_revision: 1,
+      provider_rules_id: '', instance_rules: { model_driver_overrides: { local: 'qwen/qwen3.7-plus' },
+        server_default_routes: { local: ['llm.chat'] } } })
+    expect(sent(fetcher).params.provider_rules_id).toBe('')
+    expect(sent(fetcher).params.instance_rules.server_default_routes).toEqual({ local: ['llm.chat'] })
+  })
+
   it('dispatches canonical chat request without an envelope', async () => {
     const fetcher = jest.fn().mockResolvedValue(response({
       task_id: 't1', status: 'succeeded', message: aiccTextMessage('assistant', 'hello'),

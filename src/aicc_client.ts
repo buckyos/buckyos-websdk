@@ -417,7 +417,7 @@ interface ProviderConfig { provider_type: string; provider_profile_id: string; p
 export interface ProviderValidateRequest extends ProviderConfig { provider_instance_name?: string }
 export type ProviderValidationErrorKind = 'configuration' | 'base_url' | 'authentication' | 'protocol' | 'models' | 'balance'
 export interface ProviderValidationErrorDetail { kind: ProviderValidationErrorKind; message: string }
-export interface ProviderValidateResponse { base_url_reachable: boolean; auth_valid: boolean; models_discovered: string[];
+export interface ProviderValidateResponse { models_recognized: string[]; unmatched_models: JsonValue[]; unavailable_presets: JsonValue[]; routing_candidates: Record<string, string[]>; warnings: string[]; base_url_reachable: boolean; auth_valid: boolean; models_discovered: string[];
   balance_available: boolean; errors: string[]; error_details: ProviderValidationErrorDetail[]; resolved_protocol_adapter_id?: string }
 export interface ProviderAddRequest extends ProviderConfig { provider_instance_name: string }
 export interface ProviderReloadResult { ok: boolean; providers_registered: number }
@@ -434,13 +434,13 @@ export interface ProviderInstanceInventoryView { state: ProviderInstanceInventor
   updated_at_ms?: number }
 export type ProviderInstanceHealthState = 'disabled' | 'not_loaded' | 'unknown' | 'healthy' | 'degraded' | 'unavailable'
 export interface ProviderInstanceHealthView { state: ProviderInstanceHealthState; checked_at_ms?: number }
-export interface ProviderInstanceView { provider_instance_name: string; provider_type: string; provider_profile_id: string;
+export interface ProviderInstanceView { provider_rules_id?: string; instance_rules?: JsonValue; provider_instance_name: string; provider_type: string; provider_profile_id: string;
   protocol_adapter_id: string; base_url: string; enabled: boolean; auth: ProviderInstanceAuthView;
   inventory: ProviderInstanceInventoryView; health: ProviderInstanceHealthView }
 export interface ProviderListResponse { providers: ProviderInstanceView[]; settings_revision: number; inventory_revision: string }
 export interface ProviderHealthRequest { exact_model: string }
 export interface ProviderHealthResponse { health: JsonValue }
-export interface ProviderUpdateRequest { provider_instance_name: string; settings_revision: number; enabled?: boolean; base_url?: string;
+export interface ProviderUpdateRequest { provider_rules_id?: string; provider_instance_name: string; settings_revision: number; enabled?: boolean; base_url?: string;
   credential?: JsonValue; provider_profile_id?: string; protocol_adapter_id?: string; discovery?: JsonValue; instance_rules?: JsonValue }
 export interface ProviderUpdateResponse { ok: boolean; settings_revision: number; provider?: JsonValue }
 export interface CancelResponse { task_id: string; accepted: boolean }
@@ -573,7 +573,7 @@ const schemas: Partial<Record<AiccMethod, string[]>> = {
   [AICC_MANAGEMENT_METHODS.PROVIDER_ADD]: ['provider_instance_name', 'provider_type', 'provider_profile_id', 'protocol_family_id', 'protocol_adapter_id', 'base_url', 'credentials', 'region', 'workspace', 'account', 'provider_rules_id', 'auth', 'discovery', 'instance_rules', 'timeout_ms', 'auto_sync_models'],
   [AICC_MANAGEMENT_METHODS.PROVIDER_LIST]: ['method', 'view'],
   [AICC_MANAGEMENT_METHODS.PROVIDER_HEALTH]: ['exact_model'],
-  [AICC_MANAGEMENT_METHODS.PROVIDER_UPDATE]: ['provider_instance_name', 'settings_revision', 'enabled', 'base_url', 'credential', 'provider_profile_id', 'protocol_adapter_id', 'discovery', 'instance_rules'],
+  [AICC_MANAGEMENT_METHODS.PROVIDER_UPDATE]: ['provider_rules_id', 'provider_instance_name', 'settings_revision', 'enabled', 'base_url', 'credential', 'provider_profile_id', 'protocol_adapter_id', 'discovery', 'instance_rules'],
   [AICC_MANAGEMENT_METHODS.PROVIDER_DELETE]: ['provider_instance_name'],
   [AICC_MANAGEMENT_METHODS.PROVIDER_REFRESH_MODELS]: ['provider_instance_name'],
   [AICC_MANAGEMENT_METHODS.MODELS_LIST]: ['view'],

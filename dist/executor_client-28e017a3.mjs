@@ -2200,7 +2200,7 @@ const schemas = {
   [AICC_MANAGEMENT_METHODS.PROVIDER_ADD]: ["provider_instance_name", "provider_type", "provider_profile_id", "protocol_family_id", "protocol_adapter_id", "base_url", "credentials", "region", "workspace", "account", "provider_rules_id", "auth", "discovery", "instance_rules", "timeout_ms", "auto_sync_models"],
   [AICC_MANAGEMENT_METHODS.PROVIDER_LIST]: ["method", "view"],
   [AICC_MANAGEMENT_METHODS.PROVIDER_HEALTH]: ["exact_model"],
-  [AICC_MANAGEMENT_METHODS.PROVIDER_UPDATE]: ["provider_instance_name", "settings_revision", "enabled", "base_url", "credential", "provider_profile_id", "protocol_adapter_id", "discovery", "instance_rules"],
+  [AICC_MANAGEMENT_METHODS.PROVIDER_UPDATE]: ["provider_rules_id", "provider_instance_name", "settings_revision", "enabled", "base_url", "credential", "provider_profile_id", "protocol_adapter_id", "discovery", "instance_rules"],
   [AICC_MANAGEMENT_METHODS.PROVIDER_DELETE]: ["provider_instance_name"],
   [AICC_MANAGEMENT_METHODS.PROVIDER_REFRESH_MODELS]: ["provider_instance_name"],
   [AICC_MANAGEMENT_METHODS.MODELS_LIST]: ["view"],
@@ -30638,4 +30638,4 @@ export {
   NOTIFY_SESSION_PREFIX as y,
   NOTIFY_CHOICE_CONTROL_ID as z
 };
-//# sourceMappingURL=executor_client-ef98b975.mjs.map
+//# sourceMappingURL=executor_client-28e017a3.mjs.map
