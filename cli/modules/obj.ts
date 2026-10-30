@@ -49,7 +49,9 @@ function parse(raw: string): ParsedUrl {
 
 /** The HTTP endpoint of a DID Object, when it has one: Provider routes for obj:// (and cyfs:///, its DFS object), https as is. */
 function endpointOf(ctx: CommandContext, url: ParsedUrl): string | null {
-  const origin = gatewayOrigin(ctx.connection.endpoint)
+  // Without a session the connection is a placeholder: give the gateway-relative path.
+  const origin = /^https?:\/\//.test(ctx.connection.endpoint) ? gatewayOrigin(ctx.connection.endpoint) : ''
+
   if (url.kind === 'obj') {
     const query = objectUrl.formatObjectUrl(url).split('?')[1]
     return `${origin}/kapi/${url.host!.name}/obj${url.path}${query ? `?${query}` : ''}`
