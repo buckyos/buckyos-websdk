@@ -1,3 +1,4 @@
+import process from 'node:process'
 import { rm } from 'node:fs/promises'
 
 const target = process.argv[2]

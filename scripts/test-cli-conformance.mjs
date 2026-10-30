@@ -1,3 +1,4 @@
+import process from 'node:process'
 import { createHash } from 'node:crypto'
 import { mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'

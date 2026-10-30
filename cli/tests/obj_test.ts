@@ -1,10 +1,11 @@
+import type { CommandContext } from '../core/context.ts'
 import { assertEquals } from './test_helpers.ts'
 import { createObjModule } from '../modules/obj.ts'
 
 const resolve = createObjModule().commands.find((c) => c.verb === 'resolve')!
 
 function ctx() {
-  return { connection: { zone: 'test.buckyos.io', endpoint: 'https://test.buckyos.io/kapi/system_config', defaultProtocol: 'https://' } } as any
+  return { connection: { zone: 'test.buckyos.io', endpoint: 'https://test.buckyos.io/kapi/system_config', defaultProtocol: 'https://' } } as CommandContext
 }
 
 Deno.test('obj resolve names identity, rbac key and endpoint without an access check', async () => {

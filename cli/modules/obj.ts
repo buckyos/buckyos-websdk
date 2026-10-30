@@ -8,6 +8,17 @@ import { requiredInputString } from '../core/service.ts'
 // says where it lives, `read` follows a DID Object Card to its Profile and summary
 // properties. Resolving a url never implies the caller may read it.
 const OBJECT_OUTPUT: JsonSchema = { type: 'object', additionalProperties: true }
+interface ObjectCard extends Record<string, unknown> {
+  service?: Array<Record<string, unknown>>
+}
+
+interface ObjectProfile extends Record<string, unknown> {
+  properties?: Record<string, unknown>
+  actions?: Record<string, Record<string, unknown>>
+  events?: Record<string, Record<string, unknown>>
+  'x-buckyos:summary_props'?: string[]
+}
+
 type ParsedUrl = ReturnType<typeof objectUrl.parseObjectUrl>
 const URL_ARG = { name: 'url', description: 'obj:// cyfs:// file:// https:// url, or //<service>/... /abs/path shorthand', required: true }
 
@@ -78,7 +89,7 @@ function resolveCommand(): CommandDefinition {
     asyncMode: 'sync',
     requiresSession: false,
     examples: ['buckyos obj resolve obj://msg-center/owners/did:bns:alice/sessions', 'buckyos obj resolve //config/boot/config', 'buckyos obj resolve cyfs:///home/alice/a.md'],
-    handler: async (ctx, input) => describe(ctx, parse(requiredInputString(input, 'url'))),
+    handler: (ctx, input) => Promise.resolve(describe(ctx, parse(requiredInputString(input, 'url')))),
   }
 }
 
@@ -120,12 +131,12 @@ function readCommand(): CommandDefinition {
       const url = parse(requiredInputString(input, 'url'))
       const endpoint = endpointOf(ctx, url)
       if (!endpoint) throw new ToolError('UNSUPPORTED_OBJECT', `${objectUrl.formatObjectUrl(url)} has no DID Object endpoint; read it as a file or content object`)
-      const card = (await getJson(ctx, endpoint)) as Record<string, any>
+      const card = (await getJson(ctx, endpoint)) as ObjectCard
       const service = (card.service ?? []).find((s: Record<string, unknown>) => s.type === 'DIDObjectService')
       if (!service) throw new ToolError('INVALID_SERVICE_RESPONSE', `${endpoint} answered no DID Object Card`, EXIT_INTERNAL)
       const serviceEndpoint = String(service.serviceEndpoint).replace(/\/$/, '')
       const profileUrl = new URL(String(service.profile), `${serviceEndpoint}/`).toString()
-      const profile = (await getJson(ctx, profileUrl)) as Record<string, any>
+      const profile = (await getJson(ctx, profileUrl)) as ObjectProfile
       const wanted = typeof input.property === 'string' ? input.property.split(',').map((p) => p.trim()).filter(Boolean) : (profile['x-buckyos:summary_props'] ?? [])
       const properties: Record<string, unknown> = {}
       for (const name of wanted) {
@@ -142,8 +153,8 @@ function readCommand(): CommandDefinition {
         traits: profile['x-buckyos:traits'] ?? [],
         declared: {
           properties: Object.keys(profile.properties ?? {}),
-          actions: Object.fromEntries(Object.entries(profile.actions ?? {}).map(([name, a]: [string, any]) => [name, { risk: a['x-buckyos:risk'], rbac: a['x-buckyos:rbac'] }])),
-          events: Object.fromEntries(Object.entries(profile.events ?? {}).map(([name, e]: [string, any]) => [name, e['x-buckyos:kevent']])),
+          actions: Object.fromEntries(Object.entries(profile.actions ?? {}).map(([name, a]) => [name, { risk: a['x-buckyos:risk'], rbac: a['x-buckyos:rbac'] }])),
+          events: Object.fromEntries(Object.entries(profile.events ?? {}).map(([name, e]) => [name, e['x-buckyos:kevent']])),
         },
         properties,
       }
