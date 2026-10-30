@@ -40,6 +40,12 @@ export declare function parseObjectUrl(input: string): ObjectUrl;
 export declare function expandInputShorthand(input: string): string;
 export declare function parseObjHost(host: string): ObjHost;
 export declare function formatObjectUrl(url: ObjectUrl): string;
+/**
+ * DID Object endpoint (TODO §1.4): `obj://<host>/<p>?<q>` is `<origin>/kapi/<host>/obj/<p>?<q>`; a path-type cyfs URL
+ * of the current Zone is its DFS object `<origin>/kapi/dfs/obj/<p>`; https / http as is. `origin` is a gateway
+ * origin (the Zone host or a node gateway). Anything else (files, ObjIds, paths of other Zones) has none.
+ */
+export declare function objectEndpoint(url: ObjectUrl, origin: string, currentZone?: string | null): string | null;
 export declare function normalizeObjectUrl(input: string): string;
 /** RBAC resource key: unique after alias normalization, without query. */
 export declare function rbacResourceKey(url: ObjectUrl, currentZone?: string): string | null;

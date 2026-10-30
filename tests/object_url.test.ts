@@ -6,6 +6,7 @@ import {
   expandInputShorthand,
   formatObjectUrl,
   objectDid,
+  objectEndpoint,
   objectEventKey,
   objServiceUrl,
   parseObjectUrl,
@@ -22,6 +23,8 @@ type Vector = {
   resource_key?: string
   event?: string
   event_key?: string
+  endpoint?: string
+  no_endpoint?: boolean
 }
 
 const fixture = join(__dirname, 'fixtures', 'object_url_vectors.json')
@@ -55,6 +58,8 @@ describe('object_url shared vectors', () => {
       if (v.kind) expect(kindOf(parsed)).toBe(v.kind)
       if (v.resource_key) expect(rbacResourceKey(parsed, 'test.buckyos.io')).toBe(v.resource_key)
       if (v.event && v.event_key) expect(objectEventKey(parsed, v.event)).toBe(v.event_key)
+      if (v.endpoint) expect(objectEndpoint(parsed, 'http://gw:3180', 'test.buckyos.io')).toBe(v.endpoint)
+      if (v.no_endpoint) expect(objectEndpoint(parsed, 'http://gw:3180', 'test.buckyos.io')).toBeNull()
     })
   }
 })

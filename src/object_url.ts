@@ -164,6 +164,19 @@ export function formatObjectUrl(url: ObjectUrl): string {
   }
 }
 
+/**
+ * DID Object endpoint (TODO §1.4): `obj://<host>/<p>?<q>` is `<origin>/kapi/<host>/obj/<p>?<q>`; a path-type cyfs URL
+ * of the current Zone is its DFS object `<origin>/kapi/dfs/obj/<p>`; https / http as is. `origin` is a gateway
+ * origin (the Zone host or a node gateway). Anything else (files, ObjIds, paths of other Zones) has none.
+ */
+export function objectEndpoint(url: ObjectUrl, origin: string, currentZone?: string | null): string | null {
+  const base = origin.replace(/\/+$/, '')
+  if (url.kind === 'obj') return `${base}/kapi/${url.host.name}/obj${formatObjectUrl(url).slice(`obj://${url.host.name}`.length)}`
+  if (url.kind === 'cyfs_path' && (url.zone === null || url.zone === currentZone)) return `${base}/kapi/dfs/obj${url.path.replace(/\/+$/, '')}`
+  if (url.kind === 'web') return url.url
+  return null
+}
+
 export function normalizeObjectUrl(input: string): string {
   return formatObjectUrl(parseObjectUrl(input))
 }

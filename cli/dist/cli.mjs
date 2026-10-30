@@ -5205,7 +5205,7 @@ function validateContentHandlers(value, permissions) {
   }
   return value;
 }
-const PACKAGE_VERSION = "0.7.156";
+const PACKAGE_VERSION = "0.7.157";
 const TOOL_VERSION = PACKAGE_VERSION;
 const SDK_VERSION = PACKAGE_VERSION;
 const PROTOCOL_VERSION = "1";
@@ -10862,16 +10862,7 @@ function parse(raw) {
 }
 function endpointOf(ctx, url) {
   const origin = /^https?:\/\//.test(ctx.connection.endpoint) ? gatewayOrigin(ctx.connection.endpoint) : "";
-  if (url.kind === "obj") {
-    const query = objectUrl$1.formatObjectUrl(url).split("?")[1];
-    return `${origin}/kapi/${url.host.name}/obj${url.path}${query ? `?${query}` : ""}`;
-  }
-  if (url.kind === "cyfs_path" && (url.zone === null || url.zone === ctx.connection.zone)) {
-    return `${origin}/kapi/dfs/obj${url.path.replace(/\/$/, "")}`;
-  }
-  if (url.kind === "web")
-    return url.url;
-  return null;
+  return objectUrl$1.objectEndpoint(url, origin, ctx.connection.zone);
 }
 function describe(ctx, url) {
   const out = {

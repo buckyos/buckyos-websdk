@@ -474,6 +474,16 @@ function formatObjectUrl(url) {
       return url.url;
   }
 }
+function objectEndpoint(url, origin, currentZone) {
+  const base = origin.replace(/\/+$/, "");
+  if (url.kind === "obj")
+    return `${base}/kapi/${url.host.name}/obj${formatObjectUrl(url).slice(`obj://${url.host.name}`.length)}`;
+  if (url.kind === "cyfs_path" && (url.zone === null || url.zone === currentZone))
+    return `${base}/kapi/dfs/obj${url.path.replace(/\/+$/, "")}`;
+  if (url.kind === "web")
+    return url.url;
+  return null;
+}
 function normalizeObjectUrl(input) {
   return formatObjectUrl(parseObjectUrl(input));
 }
@@ -691,6 +701,7 @@ const object_url = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.definePr
   objEventPattern,
   objServiceUrl,
   objectDid,
+  objectEndpoint,
   objectEventKey,
   objectEventPattern,
   objectSegments,
@@ -30627,4 +30638,4 @@ export {
   NOTIFY_SESSION_PREFIX as y,
   NOTIFY_CHOICE_CONTROL_ID as z
 };
-//# sourceMappingURL=executor_client-78ad0749.mjs.map
+//# sourceMappingURL=executor_client-ef98b975.mjs.map

@@ -52,15 +52,7 @@ function endpointOf(ctx: CommandContext, url: ParsedUrl): string | null {
   // Without a session the connection is a placeholder: give the gateway-relative path.
   const origin = /^https?:\/\//.test(ctx.connection.endpoint) ? gatewayOrigin(ctx.connection.endpoint) : ''
 
-  if (url.kind === 'obj') {
-    const query = objectUrl.formatObjectUrl(url).split('?')[1]
-    return `${origin}/kapi/${url.host!.name}/obj${url.path}${query ? `?${query}` : ''}`
-  }
-  if (url.kind === 'cyfs_path' && (url.zone === null || url.zone === ctx.connection.zone)) {
-    return `${origin}/kapi/dfs/obj${url.path!.replace(/\/$/, '')}`
-  }
-  if (url.kind === 'web') return url.url
-  return null
+  return objectUrl.objectEndpoint(url, origin, ctx.connection.zone)
 }
 
 function describe(ctx: CommandContext, url: ParsedUrl): Record<string, unknown> {
