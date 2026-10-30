@@ -1,6 +1,6 @@
 import type { ZoneUserType } from './runtime';
-export type AuthMethod = 'password' | 'exclusive_invite' | 'did_federation' | 'assertion' | 'app_access_token';
-export type SessionScope = 'account_self' | 'msg_group' | 'aiworkspace' | 'homestation' | 'aicc';
+export type AuthMethod = 'password' | 'exclusive_invite' | 'did_federation' | 'assertion' | 'app_access_token' | 'cross_zone_assertion';
+export type SessionScope = 'account_self' | 'msg_group' | 'aiworkspace' | 'homestation' | 'aicc' | 'msg_inbox';
 export type DenyReason = 'session_kind_not_allowed' | 'session_ceiling_exceeded' | 'resource_grant_missing' | 'entry_unavailable' | 'zone_method_disabled' | 'account_state' | 'credential_state' | 'source_revoked' | 'authorization_unavailable';
 export declare const DENY_REASONS: readonly DenyReason[];
 export type AdjustParty = 'product' | 'self' | 'sharer' | 'admin' | 'none';

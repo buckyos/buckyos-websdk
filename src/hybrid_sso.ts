@@ -5,9 +5,21 @@
 import { RPCError } from './krpc_client'
 import type { ZoneUserType } from './runtime'
 
-export type AuthMethod = 'password' | 'exclusive_invite' | 'did_federation' | 'assertion' | 'app_access_token'
+export type AuthMethod =
+  | 'password'
+  | 'exclusive_invite'
+  | 'did_federation'
+  | 'assertion'
+  | 'app_access_token'
+  | 'cross_zone_assertion'
 
-export type SessionScope = 'account_self' | 'msg_group' | 'aiworkspace' | 'homestation' | 'aicc'
+export type SessionScope =
+  | 'account_self'
+  | 'msg_group'
+  | 'aiworkspace'
+  | 'homestation'
+  | 'aicc'
+  | 'msg_inbox'
 
 export type DenyReason =
   | 'session_kind_not_allowed'
