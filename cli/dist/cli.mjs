@@ -5205,7 +5205,7 @@ function validateContentHandlers(value, permissions) {
   }
   return value;
 }
-const PACKAGE_VERSION = "0.7.155";
+const PACKAGE_VERSION = "0.7.156";
 const TOOL_VERSION = PACKAGE_VERSION;
 const SDK_VERSION = PACKAGE_VERSION;
 const PROTOCOL_VERSION = "1";
@@ -10861,7 +10861,7 @@ function parse(raw) {
   }
 }
 function endpointOf(ctx, url) {
-  const origin = gatewayOrigin(ctx.connection.endpoint);
+  const origin = /^https?:\/\//.test(ctx.connection.endpoint) ? gatewayOrigin(ctx.connection.endpoint) : "";
   if (url.kind === "obj") {
     const query = objectUrl$1.formatObjectUrl(url).split("?")[1];
     return `${origin}/kapi/${url.host.name}/obj${url.path}${query ? `?${query}` : ""}`;
@@ -10902,7 +10902,7 @@ function resolveCommand() {
     asyncMode: "sync",
     requiresSession: false,
     examples: ["buckyos obj resolve obj://msg-center/owners/did:bns:alice/sessions", "buckyos obj resolve //config/boot/config", "buckyos obj resolve cyfs:///home/alice/a.md"],
-    handler: async (ctx, input) => describe(ctx, parse(requiredInputString(input, "url")))
+    handler: (ctx, input) => Promise.resolve(describe(ctx, parse(requiredInputString(input, "url"))))
   };
 }
 async function getJson(ctx, url) {
