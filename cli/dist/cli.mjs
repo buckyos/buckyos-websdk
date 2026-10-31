@@ -2,7 +2,7 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 import * as nodePath from "node:path";
 import { resolve as resolve$5, dirname as dirname$3 } from "node:path";
-import { BuckyOSSDK, RuntimeType, buckyos, namelib, VerifyHubClient, createAppInstanceId, parseSessionTokenClaims, ndn, verifyBundle, controlSkeleton, aiwsContentDigest, AIWS_MANIFEST_VERSION, AIWS_MANIFEST_FILE, taskMgrTaskEventPath, ndm_proxy, objectUrl as objectUrl$1, ExecutorCommandStream, watchControl, buildControl, pullControl, exportBundle, NfspClient, AiwsSourceError } from "buckyos/node";
+import { BuckyOSSDK, RuntimeType, buckyos, namelib, VerifyHubClient, createAppInstanceId, parseSessionTokenClaims, ndn, verifyBundle, controlSkeleton, aiwsContentDigest, AIWS_MANIFEST_VERSION, AIWS_MANIFEST_FILE, taskMgrTaskEventPath, ndm_proxy, objectUrl as objectUrl$1, ExecutorCommandStream, watchControl, buildControl, pullControl, exportBundle, NfspClient, AiwsSourceError, packBuildFiles } from "buckyos/node";
 import * as provisionSdk from "buckyos/provision";
 import { createHash } from "node:crypto";
 import { readFile, writeFile, readdir, stat, lstat, realpath, mkdtemp, rename, rm, mkdir, chmod, symlink, copyFile, open } from "node:fs/promises";
@@ -5238,7 +5238,7 @@ function validateContentHandlers(value, permissions) {
   }
   return value;
 }
-const PACKAGE_VERSION = "0.7.160";
+const PACKAGE_VERSION = "0.7.161";
 const TOOL_VERSION = PACKAGE_VERSION;
 const SDK_VERSION = PACKAGE_VERSION;
 const PROTOCOL_VERSION = "1";
@@ -5332,7 +5332,12 @@ function createPikgModule(dependencies = {}) {
             type: "string"
           },
           { name: "version", description: "Initial App version", type: "string" },
-          { name: "app-did", property: "app_did", description: "Explicit App DID", type: "string" }
+          { name: "app-did", property: "app_did", description: "Explicit App DID", type: "string" },
+          {
+            name: "composite",
+            description: "aiws-controls: start the package with a composite control (a panel of Blocks) instead of a declarative one",
+            type: "boolean"
+          }
         ],
         inputSchema: {
           type: "object",
@@ -5343,7 +5348,8 @@ function createPikgModule(dependencies = {}) {
             kind: { type: "string", enum: APP_KINDS },
             source: { type: "string", minLength: 1 },
             version: { type: "string", minLength: 1 },
-            app_did: { type: "string", minLength: 1 }
+            app_did: { type: "string", minLength: 1 },
+            composite: { type: "boolean" }
           },
           additionalProperties: false
         },
@@ -5358,7 +5364,8 @@ function createPikgModule(dependencies = {}) {
           "buckyos pikg init .",
           "buckyos --non-interactive pikg init . --owner did:bns:root --kind static-web --source ./web/dist",
           "buckyos --non-interactive pikg init . --owner did:bns:root --kind agent-skills --source ./skills",
-          "buckyos --non-interactive pikg init . --owner did:bns:alice --kind aiws-controls --source ./aiws"
+          "buckyos --non-interactive pikg init . --owner did:bns:alice --kind aiws-controls --source ./aiws",
+          "buckyos --non-interactive pikg init . --owner did:bns:alice --kind aiws-controls --source ./aiws --composite"
         ],
         handler: async (ctx, input) => await initCommand(ctx, input, docker)
       },
@@ -5601,7 +5608,7 @@ async function initCommand(ctx, input, docker) {
       if (!isHostError(error, "NotFound"))
         throw error;
       if (kind === "aiws-controls") {
-        await writeAiwsSkeleton(absoluteSource, owner, name);
+        await writeAiwsSkeleton(absoluteSource, owner, name, input.composite === true);
         sourceSummary2.skeleton = true;
       } else {
         await ctx.io.stderr(`warning: source does not exist yet: ${sourceSummary2.path}
@@ -5666,8 +5673,9 @@ async function initCommand(ctx, input, docker) {
     next_command: `buckyos pikg build ${metaDir}`
   };
 }
-async function writeAiwsSkeleton(dir, ownerDid, name) {
-  const files = controlSkeleton({ authorDid: ownerDid, name, title: name });
+async function writeAiwsSkeleton(dir, ownerDid, name, composite) {
+  const kind = composite ? "composite" : "declarative";
+  const files = controlSkeleton({ authorDid: ownerDid, name, title: name, kind });
   const encoder = new TextEncoder();
   const host2 = getHost();
   await host2.mkdir(join(dir, "controls", name), { recursive: true });
@@ -5677,8 +5685,8 @@ async function writeAiwsSkeleton(dir, ownerDid, name) {
   const manifest = {
     manifest_version: AIWS_MANIFEST_VERSION,
     purpose: "aiws",
-    host_api: { declarative: 1 },
-    controls: [{ ident: `${ownerDid}#${name}`, name, kind: "declarative", version: 1, digest, dir: `controls/${name}/`, title: name }],
+    host_api: composite ? {} : { declarative: 1 },
+    controls: [{ ident: `${ownerDid}#${name}`, name, kind, version: 1, digest, dir: `controls/${name}/`, title: name }],
     workspace_templates: []
   };
   await host2.writeTextFile(join(dir, AIWS_MANIFEST_FILE), `${JSON.stringify(manifest, null, 2)}
@@ -11589,25 +11597,42 @@ async function localFiles(dir) {
   const host2 = getHost();
   const files = [];
   const problems = [];
-  let total = 0;
-  for (const entry of await host2.readDir(dir)) {
-    if (entry.name.startsWith("."))
-      continue;
-    if (!entry.isFile) {
-      problems.push({ file: entry.name, severity: "error", message: "a control source folder is flat: move files out of sub-folders" });
-      continue;
+  const walk = async (folder, prefix, depth) => {
+    for (const entry of await host2.readDir(folder)) {
+      if (entry.name.startsWith("."))
+        continue;
+      const name = `${prefix}${entry.name}`;
+      if (entry.isDirectory) {
+        if (depth >= 8)
+          problems.push({ file: name, severity: "error", message: "sub-folders nest at most 8 levels" });
+        else
+          await walk(host2.path.join(folder, entry.name), `${name}/`, depth + 1);
+      } else if (entry.isFile)
+        files.push({ name, bytes: await host2.readFile(host2.path.join(folder, entry.name)) });
+      else
+        problems.push({ file: name, severity: "error", message: "only files and folders belong to a control source" });
     }
-    const bytes = await host2.readFile(host2.path.join(dir, entry.name));
-    total += bytes.length;
-    files.push({ name: entry.name, base64: btoa(Array.from(bytes, (b) => String.fromCharCode(b)).join("")) });
-  }
+  };
+  await walk(dir, "", 0);
   if (files.length === 0)
     problems.push({ file: "", severity: "error", message: `${dir} holds no files` });
-  if (total > 4 * 1024 * 1024)
-    problems.push({ file: "", severity: "error", message: "a control is limited to 4 MiB per build from a local folder" });
   if (problems.length > 0)
     throw new ToolError("BUILD_FAILED", `BUILD_FAILED: ${problems.map((p) => `${p.file}: ${p.message}`).join("; ")}`, void 0, false, { data: { diagnostics: problems } });
-  return files.sort((a, b) => a.name.localeCompare(b.name));
+  return files.sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+}
+function sourceUploader(ctx) {
+  return async (name, bytes) => {
+    const bucket = `user/aiworkspace/${ctx.principal.id}/exports`;
+    const key = `aiws-src/${Date.now()}-${name.replaceAll("/", "_")}`;
+    const url = `${gatewayOrigin$2(ctx.connection.endpoint)}/bucket/v1/${bucket}/${key.split("/").map(encodeURIComponent).join("/")}`;
+    const response = await fetch(url, { method: "PUT", headers: { Authorization: `Bearer ${await sessionToken(ctx)}` }, body: new Blob([bytes]), signal: ctx.signal });
+    if (!response.ok)
+      throw new ToolError("AIWS_UPLOAD_FAILED", `upload of ${name}: HTTP ${response.status} ${await response.text().catch(() => "")}`);
+    const put = await response.json();
+    if (!put.obj_id)
+      throw new ToolError("AIWS_UPLOAD_FAILED", `upload of ${name}: the bucket answered no obj_id`);
+    return put.obj_id;
+  };
 }
 async function localState(dir) {
   try {
@@ -11620,7 +11645,7 @@ async function buildLocal(ctx, ws, dir, opts) {
   const state = await localState(dir);
   const result = await aiws(ctx, "ext.build", {
     workspace_id: ws,
-    files: await localFiles(dir),
+    files: await sourceErrors(async () => packBuildFiles(await localFiles(dir), sourceUploader(ctx))),
     ...opts.folderId ? { folder_id: opts.folderId } : {},
     ...state && state.workspace_id === ws ? { expect: { def_rev: state.def_rev, dir_rev: state.dir_rev } } : {},
     ...opts.force ? { force: true } : {},
@@ -11635,7 +11660,7 @@ async function buildLocal(ctx, ws, dir, opts) {
 const buildCommand = {
   verb: "build",
   summary: "Build a control from its source folder (local, or in the Zone; component.json + files) into a Workspace; instances update, a failure commits nothing",
-  description: "The folder is a local folder (when it exists here; its files are sent inline, ≤ 4 MiB) or a Zone path (e.g. /home/alice/AI Workspace/Demo/controls/kpi-card; --zone-path forces it), flat. The base of the last build or pull is kept in its .aiws-build.json; building over a newer Workspace version is refused (pull first, or --force). --watch rebuilds on every change until interrupted.",
+  description: "The folder is a local folder (when it exists here; its files are sent inline, and past 4 MiB per build the largest are uploaded to your exports bucket and sent by reference) or a Zone path (e.g. /home/alice/AI Workspace/Demo/controls/kpi-card; --zone-path forces it); sub-folders are part of the source (file names are relative paths). The base of the last build or pull is kept in its .aiws-build.json; building over a newer Workspace version is refused (pull first, or --force). --watch rebuilds on every change until interrupted.",
   positionals: [{ name: "dir", description: "Local folder, or Zone path of the control source folder", required: true }],
   options: [
     WORKSPACE_OPTION,
@@ -11655,7 +11680,7 @@ const buildCommand = {
   handler: async (ctx, input) => {
     const ws = requiredInputString(input, "workspace_id");
     const dir = requiredInputString(input, "dir");
-    const opts = { folderId: inputString(input, "folder_id"), force: input.force === true, dryRun: input.dry_run === true };
+    const opts = { folderId: inputString(input, "folder_id"), force: input.force === true, dryRun: input.dry_run === true, upload: sourceUploader(ctx) };
     if (input.zone_path !== true && await isLocalDir(getHost().path.resolve(ctx.cwd, dir))) {
       const local = getHost().path.resolve(ctx.cwd, dir);
       if (input.watch === true)
@@ -11707,7 +11732,8 @@ const pullCommand = {
       const fetchAsset = assetFetcher(ctx);
       const files = [];
       for (const f of control.files) {
-        const target = host2.path.join(out, f.name);
+        const target = host2.path.join(out, ...f.name.split("/"));
+        await host2.mkdir(host2.path.dirname(target), { recursive: true });
         if (f.text !== void 0)
           await host2.writeTextFile(target, f.text);
         else
@@ -11804,7 +11830,7 @@ const extExportCommand = {
 };
 const libraryCommand = {
   verb: "library",
-  summary: "Your AI Workspace control library: `list`, `install <file.pikg>` (an aiws package, dev mode), `remove <pkg_id>`",
+  summary: "Your AI Workspace control library: `list` (each control with the identities it depends on, `deps`), `install <file.pikg>` (an aiws package, dev mode), `remove <pkg_id>`",
   positionals: [{ name: "action", description: "list | install | remove", required: true }, { name: "target", description: "install: local .pikg path; remove: package id", required: false }],
   options: [],
   inputSchema: { type: "object", properties: { action: { type: "string", enum: ["list", "install", "remove"] }, target: { type: "string" } }, required: ["action"], additionalProperties: false },
@@ -11828,7 +11854,7 @@ const libraryCommand = {
 };
 const extImportCommand = {
   verb: "ext-import",
-  summary: "Bring controls of your library into a Workspace (one Commit): <pkg_id>#<ident>, comma-separated",
+  summary: "Bring controls of your library into a Workspace (one Commit): <pkg_id>#<ident>, comma-separated; what they build on (deps) comes along, dependencies first, and an identity the Workspace already has satisfies it",
   positionals: [{ name: "items", description: "<pkg_id>#<author_did>#<name>[,…] (ext.list_library names them)", required: true }],
   options: [WORKSPACE_OPTION, { name: "folder", property: "folder_id", description: "Data folder for the definitions (default: data/extensions)", type: "string" }],
   inputSchema: workspaceInput({ items: { type: "string", minLength: 1 }, folder_id: { type: "string" } }, ["items"]),

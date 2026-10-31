@@ -3,6 +3,7 @@ import {
   buildControl,
   exportBundle,
   NfspClient,
+  packBuildFiles,
   pullControl,
   watchControl,
 } from 'buckyos/node'
@@ -442,7 +443,8 @@ function list(input: Record<string, unknown>, key: string): string[] {
   return requiredInputString(input, key).split(',').map((s) => s.trim()).filter(Boolean)
 }
 
-// ---- local source folders: a developer's or an Agent's own disk (files go inline, ≤ 4 MiB per build)
+// ---- local source folders: a developer's or an Agent's own disk (files go inline; past 4 MiB per build the largest
+// are uploaded and sent by reference, Q22)
 
 const LOCAL_STATE = '.aiws-build.json'
 
@@ -450,23 +452,41 @@ async function isLocalDir(path: string): Promise<boolean> {
   try { return (await getHost().stat(path)).isDirectory } catch { return false }
 }
 
-/** The files of a local (flat) source folder as `ext.build` takes them inline. */
-async function localFiles(dir: string): Promise<{ name: string; base64: string }[]> {
+/** The files of a local source folder, sub-folders included (names are relative paths; dot entries are skipped). */
+async function localFiles(dir: string): Promise<{ name: string; bytes: Uint8Array }[]> {
   const host = getHost()
-  const files: { name: string; base64: string }[] = []
+  const files: { name: string; bytes: Uint8Array }[] = []
   const problems: { file: string; severity: 'error'; message: string }[] = []
-  let total = 0
-  for (const entry of await host.readDir(dir)) {
-    if (entry.name.startsWith('.')) continue
-    if (!entry.isFile) { problems.push({ file: entry.name, severity: 'error', message: 'a control source folder is flat: move files out of sub-folders' }); continue }
-    const bytes = await host.readFile(host.path.join(dir, entry.name))
-    total += bytes.length
-    files.push({ name: entry.name, base64: btoa(Array.from(bytes, (b) => String.fromCharCode(b)).join('')) })
+  const walk = async (folder: string, prefix: string, depth: number): Promise<void> => {
+    for (const entry of await host.readDir(folder)) {
+      if (entry.name.startsWith('.')) continue
+      const name = `${prefix}${entry.name}`
+      if (entry.isDirectory) {
+        if (depth >= 8) problems.push({ file: name, severity: 'error', message: 'sub-folders nest at most 8 levels' })
+        else await walk(host.path.join(folder, entry.name), `${name}/`, depth + 1)
+      } else if (entry.isFile) files.push({ name, bytes: await host.readFile(host.path.join(folder, entry.name)) })
+      else problems.push({ file: name, severity: 'error', message: 'only files and folders belong to a control source' })
+    }
   }
+  await walk(dir, '', 0)
   if (files.length === 0) problems.push({ file: '', severity: 'error', message: `${dir} holds no files` })
-  if (total > 4 * 1024 * 1024) problems.push({ file: '', severity: 'error', message: 'a control is limited to 4 MiB per build from a local folder' })
   if (problems.length > 0) throw new ToolError('BUILD_FAILED', `BUILD_FAILED: ${problems.map((p) => `${p.file}: ${p.message}`).join('; ')}`, undefined, false, { data: { diagnostics: problems } })
-  return files.sort((a, b) => a.name.localeCompare(b.name))
+  return files.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+}
+
+/** Put a source file too big to go inline into the caller's own `exports` bucket: the FileObject the build names (the
+ * service reads it through the NDM gateway with the caller's token). */
+function sourceUploader(ctx: CommandContext): (name: string, bytes: Uint8Array) => Promise<string> {
+  return async (name, bytes) => {
+    const bucket = `user/aiworkspace/${ctx.principal.id}/exports`
+    const key = `aiws-src/${Date.now()}-${name.replaceAll('/', '_')}`
+    const url = `${gatewayOrigin(ctx.connection.endpoint)}/bucket/v1/${bucket}/${key.split('/').map(encodeURIComponent).join('/')}`
+    const response = await fetch(url, { method: 'PUT', headers: { Authorization: `Bearer ${await sessionToken(ctx)}` }, body: new Blob([bytes as Uint8Array<ArrayBuffer>]), signal: ctx.signal })
+    if (!response.ok) throw new ToolError('AIWS_UPLOAD_FAILED', `upload of ${name}: HTTP ${response.status} ${await response.text().catch(() => '')}`)
+    const put = await response.json() as { obj_id?: string }
+    if (!put.obj_id) throw new ToolError('AIWS_UPLOAD_FAILED', `upload of ${name}: the bucket answered no obj_id`)
+    return put.obj_id
+  }
 }
 
 async function localState(dir: string): Promise<Record<string, unknown> | null> {
@@ -477,7 +497,7 @@ async function localState(dir: string): Promise<Record<string, unknown> | null> 
 async function buildLocal(ctx: CommandContext, ws: string, dir: string, opts: { folderId?: string; force?: boolean; dryRun?: boolean }): Promise<Record<string, unknown>> {
   const state = await localState(dir)
   const result = await aiws(ctx, 'ext.build', {
-    workspace_id: ws, files: await localFiles(dir),
+    workspace_id: ws, files: await sourceErrors(async () => packBuildFiles(await localFiles(dir), sourceUploader(ctx))),
     ...(opts.folderId ? { folder_id: opts.folderId } : {}),
     ...(state && state.workspace_id === ws ? { expect: { def_rev: state.def_rev, dir_rev: state.dir_rev } } : {}),
     ...(opts.force ? { force: true } : {}), ...(opts.dryRun ? { dry_run: true } : {}),
@@ -491,7 +511,7 @@ async function buildLocal(ctx: CommandContext, ws: string, dir: string, opts: { 
 const buildCommand: CommandDefinition = {
   verb: 'build',
   summary: 'Build a control from its source folder (local, or in the Zone; component.json + files) into a Workspace; instances update, a failure commits nothing',
-  description: 'The folder is a local folder (when it exists here; its files are sent inline, ≤ 4 MiB) or a Zone path (e.g. /home/alice/AI Workspace/Demo/controls/kpi-card; --zone-path forces it), flat. The base of the last build or pull is kept in its .aiws-build.json; building over a newer Workspace version is refused (pull first, or --force). --watch rebuilds on every change until interrupted.',
+  description: 'The folder is a local folder (when it exists here; its files are sent inline, and past 4 MiB per build the largest are uploaded to your exports bucket and sent by reference) or a Zone path (e.g. /home/alice/AI Workspace/Demo/controls/kpi-card; --zone-path forces it); sub-folders are part of the source (file names are relative paths). The base of the last build or pull is kept in its .aiws-build.json; building over a newer Workspace version is refused (pull first, or --force). --watch rebuilds on every change until interrupted.',
   positionals: [{ name: 'dir', description: 'Local folder, or Zone path of the control source folder', required: true }],
   options: [
     WORKSPACE_OPTION,
@@ -511,7 +531,7 @@ const buildCommand: CommandDefinition = {
   handler: async (ctx, input) => {
     const ws = requiredInputString(input, 'workspace_id')
     const dir = requiredInputString(input, 'dir')
-    const opts = { folderId: inputString(input, 'folder_id'), force: input.force === true, dryRun: input.dry_run === true }
+    const opts = { folderId: inputString(input, 'folder_id'), force: input.force === true, dryRun: input.dry_run === true, upload: sourceUploader(ctx) }
     if (input.zone_path !== true && await isLocalDir(getHost().path.resolve(ctx.cwd, dir))) {
       const local = getHost().path.resolve(ctx.cwd, dir)
       if (input.watch === true) throw new UsageError('AIWS_USAGE', '--watch follows a Zone folder; rebuild a local folder yourself')
@@ -559,7 +579,8 @@ const pullCommand: CommandDefinition = {
       const fetchAsset = assetFetcher(ctx)
       const files: string[] = []
       for (const f of control.files as { name: string; obj_id?: string; text?: string }[]) {
-        const target = host.path.join(out, f.name)
+        const target = host.path.join(out, ...f.name.split('/'))
+        await host.mkdir(host.path.dirname(target), { recursive: true })
         if (f.text !== undefined) await host.writeTextFile(target, f.text)
         else await host.writeFile(target, await fetchAsset(ws, String(f.obj_id)))
         files.push(f.name)
@@ -655,7 +676,7 @@ const extExportCommand: CommandDefinition = {
 
 const libraryCommand: CommandDefinition = {
   verb: 'library',
-  summary: 'Your AI Workspace control library: `list`, `install <file.pikg>` (an aiws package, dev mode), `remove <pkg_id>`',
+  summary: 'Your AI Workspace control library: `list` (each control with the identities it depends on, `deps`), `install <file.pikg>` (an aiws package, dev mode), `remove <pkg_id>`',
   positionals: [{ name: 'action', description: 'list | install | remove', required: true }, { name: 'target', description: 'install: local .pikg path; remove: package id', required: false }],
   options: [],
   inputSchema: { type: 'object', properties: { action: { type: 'string', enum: ['list', 'install', 'remove'] }, target: { type: 'string' } }, required: ['action'], additionalProperties: false },
@@ -677,7 +698,7 @@ const libraryCommand: CommandDefinition = {
 
 const extImportCommand: CommandDefinition = {
   verb: 'ext-import',
-  summary: 'Bring controls of your library into a Workspace (one Commit): <pkg_id>#<ident>, comma-separated',
+  summary: 'Bring controls of your library into a Workspace (one Commit): <pkg_id>#<ident>, comma-separated; what they build on (deps) comes along, dependencies first, and an identity the Workspace already has satisfies it',
   positionals: [{ name: 'items', description: '<pkg_id>#<author_did>#<name>[,…] (ext.list_library names them)', required: true }],
   options: [WORKSPACE_OPTION, { name: 'folder', property: 'folder_id', description: 'Data folder for the definitions (default: data/extensions)', type: 'string' }],
   inputSchema: workspaceInput({ items: { type: 'string', minLength: 1 }, folder_id: { type: 'string' } }, ['items']),

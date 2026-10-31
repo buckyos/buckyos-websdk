@@ -104,7 +104,28 @@ export interface AiwsLibraryPackage {
         title?: string;
         description?: string;
         catalog?: Record<string, unknown>;
+        deps?: string[];
     }[];
+}
+/** `ext.pack`: the `.pikg` the service wrote into the caller's `exports` bucket. */
+export interface AiwsExtPackResult {
+    bucket_id: string;
+    key: string;
+    obj_id: string;
+    size: number;
+    digest: string;
+    app_doc_object_id: string;
+    app_did: string;
+    pkg_id: string;
+    version: string;
+    /** The bucket binding with a read token (as `doc.export`'s `download`). */
+    download: {
+        bucket_id: string;
+        key: string;
+        version: number;
+        obj_id: string;
+        token: string;
+    };
 }
 /** What an executor outside the service reports for a run (M3): results in the Mock executor's shape, or an analysis. */
 export interface AiwsRunReport {
@@ -188,10 +209,14 @@ export declare class AiWorkspaceClient {
             text?: string;
         }[];
     }>;
-    /** Into the caller's library: a `.pikg` object, or definitions of a Workspace (`from` + `package`). */
+    /** Into the caller's library: a `.pikg` object or one bound into the caller's `exports` bucket (consumed), or
+     * definitions of a Workspace (`from` + `package`). */
     extInstall(params: {
         pikg?: {
             obj_id: string;
+        } | {
+            bucket_id: string;
+            key: string;
         };
         from?: {
             workspace_id: string;
@@ -209,6 +234,12 @@ export declare class AiWorkspaceClient {
         action: string;
         controls: Record<string, unknown>[];
     }>;
+    /** Pack definitions (and what they build on) as an `aiws` `.pikg` into the caller's `exports` bucket (unsigned). */
+    extPack(workspace_id: string, entity_ids: string[], pkg: {
+        name: string;
+        version?: string;
+        title?: string;
+    }): Promise<AiwsExtPackResult>;
     extListLibrary(): Promise<{
         packages: AiwsLibraryPackage[];
     }>;

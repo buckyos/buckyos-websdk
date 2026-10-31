@@ -221,6 +221,11 @@ export function createPikgModule(dependencies: PikgModuleDependencies = {}): Com
           },
           { name: 'version', description: 'Initial App version', type: 'string' },
           { name: 'app-did', property: 'app_did', description: 'Explicit App DID', type: 'string' },
+          {
+            name: 'composite',
+            description: 'aiws-controls: start the package with a composite control (a panel of Blocks) instead of a declarative one',
+            type: 'boolean',
+          },
         ],
         inputSchema: {
           type: 'object',
@@ -232,6 +237,7 @@ export function createPikgModule(dependencies: PikgModuleDependencies = {}): Com
             source: { type: 'string', minLength: 1 },
             version: { type: 'string', minLength: 1 },
             app_did: { type: 'string', minLength: 1 },
+            composite: { type: 'boolean' },
           },
           additionalProperties: false,
         },
@@ -247,6 +253,7 @@ export function createPikgModule(dependencies: PikgModuleDependencies = {}): Com
           'buckyos --non-interactive pikg init . --owner did:bns:root --kind static-web --source ./web/dist',
           'buckyos --non-interactive pikg init . --owner did:bns:root --kind agent-skills --source ./skills',
           'buckyos --non-interactive pikg init . --owner did:bns:alice --kind aiws-controls --source ./aiws',
+          'buckyos --non-interactive pikg init . --owner did:bns:alice --kind aiws-controls --source ./aiws --composite',
         ],
         handler: async (ctx, input) => await initCommand(ctx, input, docker),
       },
@@ -499,7 +506,7 @@ async function initCommand(
     } catch (error) {
       if (!isHostError(error, 'NotFound')) throw error
       if (kind === 'aiws-controls') {
-        await writeAiwsSkeleton(absoluteSource, owner, name)
+        await writeAiwsSkeleton(absoluteSource, owner, name, input.composite === true)
         sourceSummary.skeleton = true
       } else {
         await ctx.io.stderr(`warning: source does not exist yet: ${sourceSummary.path}\n`)
@@ -565,9 +572,11 @@ async function initCommand(
   }
 }
 
-/** A control package skeleton: one declarative control under controls/<name>/ and its manifest (digest included). */
-async function writeAiwsSkeleton(dir: string, ownerDid: string, name: string): Promise<void> {
-  const files = controlSkeleton({ authorDid: ownerDid, name, title: name })
+/** A control package skeleton: one declarative control (or a composite one) under controls/<name>/ and its manifest
+ * (digest included). */
+async function writeAiwsSkeleton(dir: string, ownerDid: string, name: string, composite: boolean): Promise<void> {
+  const kind = composite ? 'composite' : 'declarative'
+  const files = controlSkeleton({ authorDid: ownerDid, name, title: name, kind })
   const encoder = new TextEncoder()
   const host = getHost()
   await host.mkdir(join(dir, 'controls', name), { recursive: true })
@@ -576,8 +585,8 @@ async function writeAiwsSkeleton(dir: string, ownerDid: string, name: string): P
   const manifest = {
     manifest_version: AIWS_MANIFEST_VERSION,
     purpose: 'aiws',
-    host_api: { declarative: 1 },
-    controls: [{ ident: `${ownerDid}#${name}`, name, kind: 'declarative', version: 1, digest, dir: `controls/${name}/`, title: name }],
+    host_api: composite ? {} : { declarative: 1 },
+    controls: [{ ident: `${ownerDid}#${name}`, name, kind, version: 1, digest, dir: `controls/${name}/`, title: name }],
     workspace_templates: [],
   }
   await host.writeTextFile(join(dir, AIWS_MANIFEST_FILE), `${JSON.stringify(manifest, null, 2)}\n`)

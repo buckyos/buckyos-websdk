@@ -1,7 +1,7 @@
-import { c as createSDKModule } from "./executor_client-50023bcc.mjs";
-import { aa, aM, bF, aR, bG, bL, bK, bH, bJ, bM, bI, bD, bE, bC, co, ad, aS, an, am, ao, ap, aU, aT, aW, aV, cs, bT, cp, cb, cc, c7, c8, c9, ca, cd, e, B, cf, ce, cj, ch, j, a2, a1, a0, $, bi, ah, a9, aC, E, ck, cn, cl, _, aB, aN, ai, c1, c0, t, M, C, D, z, x, w, N, F, y, A, aO, aP, aA, q, k, R, aD, bm, S, b2, b1, b0, b5, b3, a$, aX, aY, b4, aZ, b6, a_, ax, ay, aw, b7, az, aQ, bj, bg, bl, bn, bb, bk, bo, bf, bc, be, a5, a4, V, W, a3, aK, aG, aL, aE, aI, aJ, bp, aF, aH, bB, bu, bx, bs, bw, br, bt, bv, bA, bz, by, bq, Z, ac, bR, bQ, bN, bP, cq, X, c4, c2, bh, b, d, al, U, av, a6, a7, c5, bU, cg, cm, f, i, h, g, ag, af, J, bO, m, G, bd, a8, ar, aq, au, u, v, Q, n, a, aj, L, I, H, T, P, o, ab, cr, c3, c6, as, ae, p, bX, l, K, at, r, s, ba, b8, b9, bS, bW, bV, O, b_, bZ, bY, b$, Y, ci, ak } from "./executor_client-50023bcc.mjs";
+import { c as createSDKModule } from "./executor_client-d8112f8b.mjs";
+import { aa, aM, bF, aR, bG, bL, bK, bH, bJ, bM, bI, bD, bE, bC, co, ad, aS, an, am, ao, ap, aU, aT, aW, aV, cs, bT, cp, cb, cc, c7, c8, c9, ca, cd, e, B, cf, ce, cj, ch, j, a2, a1, a0, $, bi, ah, a9, aC, E, ck, cn, cl, _, aB, aN, ai, c1, c0, t, M, C, D, z, x, w, N, F, y, A, aO, aP, aA, q, k, R, aD, bm, S, b2, b1, b0, b5, b3, a$, aX, aY, b4, aZ, b6, a_, ax, ay, aw, b7, az, aQ, bj, bg, bl, bn, bb, bk, bo, bf, bc, be, a5, a4, V, W, a3, aK, aG, aL, aE, aI, aJ, bp, aF, aH, bB, bu, bx, bs, bw, br, bt, bv, bA, bz, by, bq, Z, ac, bR, bQ, bN, bP, cq, X, c4, c2, bh, b, d, al, U, av, a6, a7, c5, bU, cg, cm, f, i, h, g, ag, af, J, bO, m, G, bd, a8, ar, aq, au, u, v, Q, n, a, aj, L, I, H, T, P, o, ab, cr, c3, c6, as, ae, p, bX, l, K, at, r, s, ba, b8, b9, bS, bW, bV, O, b_, bZ, bY, b$, Y, ci, ak } from "./executor_client-d8112f8b.mjs";
 import { b as b10, D as D2, N as N2, t as t2, s as s2, h as h2, j as j2, l as l2, g as g2, d as d2, f as f2, c, e as e2, m as m2, k as k2, i as i2, n as n2, a as a10, r as r2, q as q2, o as o2, p as p2 } from "./namelib-b41b10cc.mjs";
-import { AIWS_BUILD_STATE_FILE, AIWS_COMPONENT_FILE, AIWS_DECLARATIVE_API_VERSION, AIWS_HTML_API_VERSION, AIWS_MANIFEST_FILE, AIWS_MANIFEST_VERSION, AIWS_MAX_INLINE_BYTES, AIWS_MAX_SOURCE_FILES, AiwsSourceError, aiwsContentDigest, buildControl, buildFiles, checkComponent, collectSources, compatManifest, controlSkeleton, createControlSource, ensureFolder, exportBundle, findFolder, folderName, hasControlSource, homeControlDir, homeExportDir, joinPath, pullControl, readBuildState, sourceStateKey, sourcesKey, verifyBundle, watchControl, writeBuildState, writeHomeFile } from "./aiws_ext.mjs";
+import { AIWS_BUILD_STATE_FILE, AIWS_COMPONENT_FILE, AIWS_COMPOSITION_FILE, AIWS_DECLARATIVE_API_VERSION, AIWS_HTML_API_VERSION, AIWS_MANIFEST_FILE, AIWS_MANIFEST_VERSION, AIWS_MAX_INLINE_BYTES, AIWS_MAX_SOURCE_FILES, AiwsSourceError, aiwsContentDigest, buildControl, buildFiles, checkComponent, checkComposition, collectSources, compatManifest, controlSkeleton, createControlSource, ensureFolder, exportBundle, findFolder, folderName, hasControlSource, homeControlDir, homeExportDir, isSourcePath, joinPath, packBuildFiles, pullControl, readBuildState, slotCells, sourceStateKey, sourcesDigest, sourcesKey, unbuiltChanges, verifyBundle, watchControl, writeBuildState, writeHomeFile, writeSourceFile } from "./aiws_ext.mjs";
 const sdkModule = createSDKModule("universal");
 const buckyos = sdkModule.buckyos;
 const initBuckyOS = sdkModule.initBuckyOS;
@@ -61,6 +61,7 @@ export {
   co as AIWORKSPACE_SERVICE_NAME,
   AIWS_BUILD_STATE_FILE,
   AIWS_COMPONENT_FILE,
+  AIWS_COMPOSITION_FILE,
   AIWS_DECLARATIVE_API_VERSION,
   AIWS_HTML_API_VERSION,
   AIWS_MANIFEST_FILE,
@@ -210,6 +211,7 @@ export {
   buildFiles,
   al as buildJumpUrl,
   checkComponent,
+  checkComposition,
   collectSources,
   U as commitNotifyAnswer,
   compatManifest,
@@ -279,6 +281,7 @@ export {
   k2 as isBuckyOSZoneDocument,
   m as isExternalPrincipal,
   G as isNotifyClosed,
+  isSourcePath,
   bd as isTerminalTaskPhase,
   a8 as isUserGroupRefTag,
   i2 as isW3CDIDDocumentBase,
@@ -306,6 +309,7 @@ export {
   P as notifyUrl,
   o as objectUrl,
   openExternalUrl,
+  packBuildFiles,
   ab as parseAccessDenial,
   cr as parseAiwsReferenceUrl,
   c3 as parseAppId,
@@ -327,13 +331,16 @@ export {
   r as resolveDidFromHost,
   resolve_did,
   setAppSetting,
+  slotCells,
   s as sn,
   sourceStateKey,
+  sourcesDigest,
   sourcesKey,
   subscribeKEvent,
   ba as taskMgrErrorCode,
   b8 as taskMgrTaskEventPath,
   b9 as taskMgrTreeEventPath,
+  unbuiltChanges,
   bS as validateAiccMessage,
   bW as validateDecisionAnswers,
   bV as validateDecisionRequest,
@@ -349,6 +356,7 @@ export {
   watchControl,
   writeBuildState,
   writeHomeFile,
+  writeSourceFile,
   ak as zoneActionUrl
 };
 //# sourceMappingURL=index.mjs.map

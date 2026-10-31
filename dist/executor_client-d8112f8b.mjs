@@ -838,9 +838,14 @@ class AiWorkspaceClient {
   extExport(workspace_id, entity_ids, purpose = "package") {
     return this.call("ext.export", { workspace_id, entity_ids, purpose });
   }
-  /** Into the caller's library: a `.pikg` object, or definitions of a Workspace (`from` + `package`). */
+  /** Into the caller's library: a `.pikg` object or one bound into the caller's `exports` bucket (consumed), or
+   * definitions of a Workspace (`from` + `package`). */
   extInstall(params) {
     return this.call("ext.install", params);
+  }
+  /** Pack definitions (and what they build on) as an `aiws` `.pikg` into the caller's `exports` bucket (unsigned). */
+  extPack(workspace_id, entity_ids, pkg) {
+    return this.call("ext.pack", { workspace_id, entity_ids, package: pkg });
   }
   extListLibrary() {
     return this.call("ext.list_library", {});
@@ -30700,4 +30705,4 @@ export {
   NOTIFY_SESSION_PREFIX as y,
   NOTIFY_CHOICE_CONTROL_ID as z
 };
-//# sourceMappingURL=executor_client-50023bcc.mjs.map
+//# sourceMappingURL=executor_client-d8112f8b.mjs.map

@@ -509,6 +509,46 @@ Deno.test('aiws-controls packages: init writes a control skeleton, pack checks t
   }
 })
 
+Deno.test('aiws-controls packages: --composite starts with a composite control that packs and reads back', async () => {
+  const root = await Deno.makeTempDir()
+  try {
+    const project = join(root, 'board-pack')
+    await Deno.mkdir(project, { recursive: true })
+    const io = new CaptureStdio()
+    const app = new BuckyOSToolApplication({
+      cwd: project,
+      homeDir: join(root, 'home'),
+      environment: { HOME: join(root, 'home') },
+      stdio: io,
+      pikg: { now: () => 1_800_000_000 },
+      createAuthentication: () => {
+        throw new Error('PIKG must not create authentication')
+      },
+    })
+    assertEquals(await app.run(['--non-interactive', 'pikg', 'init', '.', '--owner', 'did:bns:alice', '--kind', 'aiws-controls', '--source', './aiws', '--composite']), 0, io.stdoutText)
+    io.takeEnvelope()
+    const component = JSON.parse(await Deno.readTextFile(join(project, 'aiws', 'controls', 'board-pack', 'component.json')))
+    assertEquals([component.manifest_version, component.kind, component.entry], [2, 'composite', 'composition.json'])
+    assertEquals(await app.run(['pikg', 'build']), 0, io.stdoutText)
+    let envelope = io.takeEnvelope()
+    assertEquals(await app.run(['pikg', 'pack', envelope.data.dist_dir]), 0, io.stdoutText)
+    envelope = io.takeEnvelope()
+    assertEquals(await app.run(['pikg', 'info', envelope.data.pikg_path]), 0, io.stdoutText)
+    envelope = io.takeEnvelope()
+    assertEquals(envelope.data.aiws.controls[0].kind, 'composite')
+    // a composition the service would refuse fails the package check as well
+    const compositionPath = join(project, 'aiws', 'controls', 'board-pack', 'composition.json')
+    const composition = JSON.parse(await Deno.readTextFile(compositionPath))
+    composition.events = {}
+    await Deno.writeTextFile(compositionPath, JSON.stringify(composition))
+    assertEquals(await app.run(['pikg', 'build']), 6, io.stdoutText)
+    envelope = io.takeEnvelope()
+    assert(String(envelope.error.message).includes('digest') || String(envelope.error.message).includes('events'), envelope.error.message)
+  } finally {
+    await Deno.remove(root, { recursive: true })
+  }
+})
+
 Deno.test('an aiws AppDoc carries exactly the aiws sub package', () => {
   const appDoc: Record<string, unknown> = {
     schema_version: 1, doc_type: 'app', did: 'did:bns:kpi.alice', name: 'kpi', version: '0.1.0', app_type: 'aiws', owner: 'did:bns:alice',

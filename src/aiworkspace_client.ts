@@ -99,7 +99,22 @@ export interface AiwsLibraryPackage {
   author: string
   mode: string
   installed_at: string
-  controls: { ident: string; name: string; kind: string; version: number; digest: string; dir: string; title?: string; description?: string; catalog?: Record<string, unknown> }[]
+  controls: { ident: string; name: string; kind: string; version: number; digest: string; dir: string; title?: string; description?: string; catalog?: Record<string, unknown>; deps?: string[] }[]
+}
+
+/** `ext.pack`: the `.pikg` the service wrote into the caller's `exports` bucket. */
+export interface AiwsExtPackResult {
+  bucket_id: string
+  key: string
+  obj_id: string
+  size: number
+  digest: string
+  app_doc_object_id: string
+  app_did: string
+  pkg_id: string
+  version: string
+  /** The bucket binding with a read token (as `doc.export`'s `download`). */
+  download: { bucket_id: string; key: string; version: number; obj_id: string; token: string }
 }
 
 /** What an executor outside the service reports for a run (M3): results in the Mock executor's shape, or an analysis. */
@@ -186,9 +201,14 @@ export class AiWorkspaceClient {
   extExport(workspace_id: string, entity_ids: string[], purpose: 'package' | 'pull' = 'package') {
     return this.call<{ manifest: Record<string, unknown>; controls: Record<string, unknown>[]; files: { path: string; obj_id?: string; size: number; text?: string }[] }>('ext.export', { workspace_id, entity_ids, purpose })
   }
-  /** Into the caller's library: a `.pikg` object, or definitions of a Workspace (`from` + `package`). */
-  extInstall(params: { pikg?: { obj_id: string }; from?: { workspace_id: string; entity_ids: string[] }; package?: { name: string; version?: string; title?: string }; mode?: 'dev' }) {
+  /** Into the caller's library: a `.pikg` object or one bound into the caller's `exports` bucket (consumed), or
+   * definitions of a Workspace (`from` + `package`). */
+  extInstall(params: { pikg?: { obj_id: string } | { bucket_id: string; key: string }; from?: { workspace_id: string; entity_ids: string[] }; package?: { name: string; version?: string; title?: string }; mode?: 'dev' }) {
     return this.call<{ pkg_id: string; version: string; action: string; controls: Record<string, unknown>[] }>('ext.install', params)
+  }
+  /** Pack definitions (and what they build on) as an `aiws` `.pikg` into the caller's `exports` bucket (unsigned). */
+  extPack(workspace_id: string, entity_ids: string[], pkg: { name: string; version?: string; title?: string }) {
+    return this.call<AiwsExtPackResult>('ext.pack', { workspace_id, entity_ids, package: pkg })
   }
   extListLibrary() { return this.call<{ packages: AiwsLibraryPackage[] }>('ext.list_library', {}) }
   extUninstall(pkg_id: string) { return this.call('ext.uninstall', { pkg_id }) }
