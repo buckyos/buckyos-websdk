@@ -1,4 +1,5 @@
 import './setup.ts'
+import { join } from 'node:path'
 import { createRegistry } from '../core/app.ts'
 import { parseCommandArgs } from '../core/argv.ts'
 import { ConfigStore } from '../core/config.ts'
@@ -315,7 +316,7 @@ Deno.test('template export writes one bundle: the template files, the controls i
   })
   assertEquals(calls[1].params, { workspace_id: 'ws_a', entity_ids: ['def_kpi'], purpose: 'package' })
   assertEquals((result.template as { id: string }).id, 'team')
-  const root = `${out}/aiws`
+  const root = join(out, 'aiws')
   assertEquals(result.bundle, root)
   const manifest = JSON.parse(await Deno.readTextFile(`${root}/aiws-manifest.json`))
   assertEquals([manifest.manifest_version, manifest.workspace_templates, manifest.controls.length], [3, [item], 1])
