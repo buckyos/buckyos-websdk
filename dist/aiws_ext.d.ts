@@ -3,10 +3,11 @@
  * Desktop and the CLI: a control's source lives in a home folder of the Zone file service (files may sit in
  * sub-folders: their names are relative paths, Q23); `build` lists it over NFSP and hands each file's object to
  * `ext.build`, `pull` writes a Workspace snapshot back, `watch` rebuilds on change; bundles (the AIWS manifest plus
- * `controls/<dir>/<path>`) are what exports, packages and the library carry.
+ * `controls/<dir>/<path>` and Workspace templates under `templates/<id>/`) are what exports, packages and the library
+ * carry.
  * Runs in browsers and Deno (fetch, crypto.subtle); no dependencies.
  */
-import type { AiWorkspaceClient } from './aiworkspace_client';
+import type { AiWorkspaceClient, AiwsMigration, AiwsTemplateItem } from './aiworkspace_client';
 import type { NfspClient, WireRef } from './nfsp';
 /** The two service calls these drivers make (an `AiWorkspaceClient`, or a host's own session with the same shape). */
 export type AiwsExtRpc = Pick<AiWorkspaceClient, 'extBuild' | 'extExport'>;
@@ -21,11 +22,15 @@ export declare const AIWS_MANIFEST_FILE = "aiws-manifest.json";
 /** A client's own record of the base it last built or pulled (never part of the source snapshot: dot files are not). */
 export declare const AIWS_BUILD_STATE_FILE = ".aiws-build.json";
 /** The newest component.json / AIWS manifest version this module reads (older ones stay readable, Q19). Version 2
- * adds `kind: composite` and non-empty `deps`. */
-export declare const AIWS_MANIFEST_VERSION = 2;
-/** The HTML Block host API (`window.aiws` v2) and the declarative interpreter version. */
-export declare const AIWS_HTML_API_VERSION = 2;
+ * adds `kind: composite` and non-empty `deps`; version 3 `events`, the declarative `button`, composite `events` and
+ * Workspace templates. */
+export declare const AIWS_MANIFEST_VERSION = 3;
+/** The newest HTML Block host API (`window.aiws` v3: `emit`, `createBlock { parent, slot }`, `context.interactive`;
+ * hosts run 2 and 3) and the declarative interpreter version. */
+export declare const AIWS_HTML_API_VERSION = 3;
 export declare const AIWS_DECLARATIVE_API_VERSION = 1;
+/** The `format` of a Workspace template's `snapshot.json` (Q32). */
+export declare const AIWS_TEMPLATE_FORMAT = "aiws-template/1";
 export declare const AIWS_MAX_SOURCE_FILES = 64;
 /**
  * One file of a source folder. `obj_id` is set when the file service holds it as a named-store FileObject (`cyfile:`):
@@ -45,7 +50,8 @@ export interface AiwsDiagnostic {
     col?: number;
     severity: 'error' | 'warning';
     message: string;
-    /** `DEP_MISSING`: a `deps` entry or a slot's `cell:<ident>` names no definition of the Workspace. */
+    /** `DEP_MISSING`: a `deps` entry or a slot's `cell:<ident>` names no definition of the Workspace; `EVENT_UNDECLARED`:
+     * a composite re-raises an event no `cell:<ident>` of that slot declares, or a button emits an undeclared event. */
     code?: string;
     /** Blocks whose contract a rebuild would break. */
     instances?: {
@@ -83,7 +89,7 @@ export interface AiwsManifest {
     purpose: 'aiws';
     host_api?: Record<string, number>;
     controls: AiwsManifestControl[];
-    workspace_templates: unknown[];
+    workspace_templates: AiwsTemplateItem[];
 }
 export interface AiwsBundle {
     manifest: AiwsManifest;
@@ -131,12 +137,28 @@ export declare function packBuildFiles(files: {
 /** The `files` of `ext.build`: FileObjects by reference, everything else read over the file service and sent inline
  * (or, past the inline limit, uploaded through `upload`). */
 export declare function buildFiles(nfsp: NfspClient, files: AiwsSourceFile[], upload?: AiwsUploader): Promise<AiwsBuildFile[]>;
+/** What another control declares (the `events` names of its component.json), `undefined` when it is not at hand:
+ * whether a composite's slot children raise an event can be judged only then (otherwise the build judges it). */
+export type AiwsCellEvents = (ident: string) => string[] | undefined;
 /** A file name of a source folder: a relative path whose parts are non-empty and do not start with `.` (Q23). */
 export declare function isSourcePath(name: string): boolean;
-/** A composite's `composition.json` (K3): what the slots accept and their counts, the layout and the Chrome. */
+/**
+ * Check a declarative control's entry file the way `ext.build` does (store/src/ext.rs `check_declarative`): what the
+ * interpreter draws (`layout`, `items` / `view.items`, `accent`, `actions`, `inspector`) and, with manifest_version 3,
+ * the item `{ kind: "button", label, emit, params? }` raising an event of `events` (`EVENT_UNDECLARED` otherwise;
+ * strings in `params` may hold `{{config.<key>}}`). Without `events` the emitted names are not judged.
+ */
+export declare function checkDeclarative(text: string, context?: {
+    bindings?: unknown;
+    events?: string[];
+    configSchema?: unknown;
+    manifestVersion?: number;
+}, file?: string): AiwsDiagnostic[];
+/** A composite's `composition.json` (K3): what the slots accept and their counts, the layout, the Chrome and the
+ * events it re-raises from its children (P2). */
 export interface AiwsComposition {
     layout: {
-        algorithm: 'stack' | 'fixed';
+        algorithm: 'stack' | 'fixed' | 'grid';
         direction?: 'column' | 'row';
         spacing?: number | string;
         padding?: number | string | {
@@ -145,6 +167,8 @@ export interface AiwsComposition {
             b?: number;
             l?: number;
         };
+        columns?: number;
+        gap?: number | string;
     };
     slots: Record<string, {
         accepts?: string[];
@@ -163,23 +187,44 @@ export interface AiwsComposition {
         };
         empty?: string;
     };
+    events?: Record<string, {
+        from: {
+            slot: string;
+            event: string;
+        };
+        title?: string;
+        description?: string;
+    }>;
 }
 /**
- * Check a `composition.json` the way `ext.build` does (store/src/ext.rs `check_composition`): `layout` is `stack` or
- * `fixed`, at most 16 slots named `[a-z][a-z0-9_]{0,31}` accepting `cell:<ident>`, a view type or `container`, the
- * Chrome's strings, and `{{config.<key>}}` naming properties of `config_schema`. `events` is refused (P2).
+ * Check a `composition.json` the way `ext.build` does (store/src/ext.rs `check_composition`): `layout` is `stack`,
+ * `fixed` or `grid` (`columns` 1…12, `gap`; a grid fills its cells with the slots' children in slot order, so its slots
+ * take placement `stack` only), at most 16 slots named `[a-z][a-z0-9_]{0,31}` accepting `cell:<ident>`, a view type or
+ * `container`, the Chrome's strings, `{{config.<key>}}` naming properties of `config_schema`, and `events`
+ * (manifest_version 3) re-raising an event of a slot's children: `EVENT_UNDECLARED` when no `cell:<ident>` of that slot
+ * declares it, judged as far as `cellEvents` knows those controls.
  */
-export declare function checkComposition(text: string, configSchema?: unknown, file?: string): AiwsDiagnostic[];
+export declare function checkComposition(text: string, configSchema?: unknown, file?: string, context?: {
+    manifestVersion?: number;
+    cellEvents?: AiwsCellEvents;
+}): AiwsDiagnostic[];
 /**
- * Check a `component.json` text against the files of its directory (and, for a composite, its composition when
- * `readText` gives the entry's text). Errors make a build fail; warnings do not.
+ * Check a `component.json` text against the files of its directory (and its declarative file or composition when
+ * `readText` gives the entry's text; `cellEvents` says what other controls declare, for a composite's re-raised
+ * events). Errors make a build fail; warnings do not.
  */
-export declare function checkComponent(text: string, fileNames: string[], readText?: (name: string) => string | undefined): AiwsDiagnostic[];
+export declare function checkComponent(text: string, fileNames: string[], readText?: (name: string) => string | undefined, cellEvents?: AiwsCellEvents): AiwsDiagnostic[];
 /** The identities a composition's slots accept as `cell:<ident>`. */
 export declare function slotCells(composition: AiwsComposition): string[];
 /** Read an AIWS manifest of any supported version as the current one (Q19); a newer one is refused. */
 export declare function compatManifest(value: unknown): AiwsManifest;
-/** Verify a bundle the way an installer does: manifest, each control's digest and component.json, no stray files. */
+/** Where a Workspace template's files sit in a bundle: `templates/<id>/` (`snapshot.json`, `objects/`, `chunks/`). */
+export declare function templateDir(id: string): string;
+/** The content digest of a Workspace template (its manifest `digest`): the files under `templates/<id>/`, named
+ * relative to that folder, digested as a control's. */
+export declare function aiwsTemplateDigest(files: Iterable<[string, Uint8Array]>, id: string): Promise<string>;
+/** Verify a bundle the way an installer does: manifest, each control's digest and component.json, each Workspace
+ * template's shape, snapshot and digest, no stray files. */
 export declare function verifyBundle(files: Map<string, Uint8Array>): Promise<{
     manifest: AiwsManifest;
     diagnostics: AiwsDiagnostic[];
@@ -220,6 +265,7 @@ export interface AiwsBuildOptions {
     force?: boolean;
     dryRun?: boolean;
     upload?: AiwsUploader;
+    migration?: Record<string, AiwsMigration>;
 }
 /**
  * Build the control in `dir` into a Workspace: collect the files, call `ext.build` with the base recorded in
@@ -255,8 +301,9 @@ export interface AiwsSkeletonOptions {
     deps?: string[];
     algorithm?: 'stack' | 'fixed';
 }
-/** The files of a new control: a minimal working declarative or HTML control with one optional binding, or a composite
- * that stacks (or keeps in place) the Blocks of its slots under a titled frame. */
+/** The files of a new control: a minimal working declarative or HTML control (with one public event, raised by a
+ * button) with one optional binding, or a composite that stacks (or keeps in place) the Blocks of its slots under a
+ * titled frame. */
 export declare function controlSkeleton(opts: AiwsSkeletonOptions): Record<string, string>;
 /** Create a control's source folder from a skeleton (refuses to overwrite a folder that has a component.json). */
 export declare function createControlSource(nfsp: NfspClient, dir: string, files: Record<string, string>): Promise<WireRef>;

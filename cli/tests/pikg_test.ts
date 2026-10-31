@@ -1,6 +1,7 @@
 import './setup.ts'
 import { join, parse as parsePath } from 'node:path'
 import { BuckyOSToolApplication, type ToolStdio } from '../core/app.ts'
+import { aiwsTemplateDigest } from 'buckyos/node'
 import { createDeterministicTarGz, digestFile } from '../modules/pikg_archive.ts'
 import type { DockerClient, DockerImageInfo } from '../modules/pikg.ts'
 import { appDocObjectId, validateAppDocShape } from '../modules/pikg_protocol.ts'
@@ -528,7 +529,7 @@ Deno.test('aiws-controls packages: --composite starts with a composite control t
     assertEquals(await app.run(['--non-interactive', 'pikg', 'init', '.', '--owner', 'did:bns:alice', '--kind', 'aiws-controls', '--source', './aiws', '--composite']), 0, io.stdoutText)
     io.takeEnvelope()
     const component = JSON.parse(await Deno.readTextFile(join(project, 'aiws', 'controls', 'board-pack', 'component.json')))
-    assertEquals([component.manifest_version, component.kind, component.entry], [2, 'composite', 'composition.json'])
+    assertEquals([component.manifest_version, component.kind, component.entry], [3, 'composite', 'composition.json'])
     assertEquals(await app.run(['pikg', 'build']), 0, io.stdoutText)
     let envelope = io.takeEnvelope()
     assertEquals(await app.run(['pikg', 'pack', envelope.data.dist_dir]), 0, io.stdoutText)
@@ -544,6 +545,71 @@ Deno.test('aiws-controls packages: --composite starts with a composite control t
     assertEquals(await app.run(['pikg', 'build']), 6, io.stdoutText)
     envelope = io.takeEnvelope()
     assert(String(envelope.error.message).includes('digest') || String(envelope.error.message).includes('events'), envelope.error.message)
+  } finally {
+    await Deno.remove(root, { recursive: true })
+  }
+})
+
+Deno.test('aiws-controls packages: Workspace templates are checked with the bundle (shape, snapshot, digest, controls, stray files)', async () => {
+  const root = await Deno.makeTempDir()
+  try {
+    const project = join(root, 'team-pack')
+    await Deno.mkdir(project, { recursive: true })
+    const io = new CaptureStdio()
+    const app = new BuckyOSToolApplication({
+      cwd: project,
+      homeDir: join(root, 'home'),
+      environment: { HOME: join(root, 'home') },
+      stdio: io,
+      pikg: { now: () => 1_800_000_000 },
+      createAuthentication: () => {
+        throw new Error('PIKG must not create authentication')
+      },
+    })
+    assertEquals(await app.run(['--non-interactive', 'pikg', 'init', '.', '--owner', 'did:bns:alice', '--kind', 'aiws-controls', '--source', './aiws']), 0, io.stdoutText)
+    io.takeEnvelope()
+    const bundle = join(project, 'aiws')
+    const manifestPath = join(bundle, 'aiws-manifest.json')
+    const manifest = JSON.parse(await Deno.readTextFile(manifestPath))
+    assertEquals(manifest.manifest_version, 3)
+    await Deno.mkdir(join(bundle, 'templates', 'team', 'objects'), { recursive: true })
+    const snapshot = JSON.stringify({ format: 'aiws-template/1', content_root: 'r', entities: [] })
+    await Deno.writeTextFile(join(bundle, 'templates', 'team', 'snapshot.json'), snapshot)
+    await Deno.writeTextFile(join(bundle, 'templates', 'team', 'objects', 'o1'), '{}')
+    const encoder = new TextEncoder()
+    const digest = await aiwsTemplateDigest([['templates/team/snapshot.json', encoder.encode(snapshot)], ['templates/team/objects/o1', encoder.encode('{}')]], 'team')
+    const template = { id: 'team', title: 'Team board', snapshot: 'templates/team/snapshot.json', digest, requires: { controls: [manifest.controls[0].ident] }, params: { team_name: { type: 'string', default: 'Team' } }, reset: { tables: ['tasks'] } }
+    const writeManifest = (m: unknown) => Deno.writeTextFile(manifestPath, JSON.stringify(m))
+    const refused = async (needle: string) => {
+      assertEquals(await app.run(['pikg', 'build']), 6, io.stdoutText)
+      const envelope = io.takeEnvelope()
+      assertEquals(envelope.error.code, 'INVALID_PACKAGE')
+      assert(String(envelope.error.message).includes(needle), envelope.error.message)
+    }
+
+    await writeManifest({ ...manifest, workspace_templates: [template] })
+    assertEquals(await app.run(['pikg', 'build']), 0, io.stdoutText)
+    let envelope = io.takeEnvelope()
+    assertEquals(await app.run(['pikg', 'pack', envelope.data.dist_dir]), 0, io.stdoutText)
+    envelope = io.takeEnvelope()
+    assertEquals(await app.run(['pikg', 'info', envelope.data.pikg_path]), 0, io.stdoutText)
+    envelope = io.takeEnvelope()
+    assertEquals(envelope.data.aiws.manifest_version, 3)
+    assertEquals(envelope.data.aiws.templates.map((t: { id: string; digest: string }) => [t.id, t.digest]), [['team', digest]])
+
+    await writeManifest({ ...manifest, manifest_version: 2, workspace_templates: [template] })
+    await refused('need manifest_version 3')
+    await writeManifest({ ...manifest, workspace_templates: [{ ...template, requires: { controls: ['did:bns:bob#gauge'] } }] })
+    await refused('is not a control of this manifest')
+    await writeManifest({ ...manifest, workspace_templates: [{ ...template, snapshot: 'templates/team/other.json' }] })
+    await refused('snapshot must be templates/team/snapshot.json')
+    await writeManifest({ ...manifest, workspace_templates: [template] })
+    await Deno.writeTextFile(join(bundle, 'templates', 'team', 'objects', 'o2'), '[]')
+    await refused('template digest')
+    await Deno.remove(join(bundle, 'templates', 'team', 'objects', 'o2'))
+    await Deno.mkdir(join(bundle, 'templates', 'loose'), { recursive: true })
+    await Deno.writeTextFile(join(bundle, 'templates', 'loose', 'snapshot.json'), snapshot)
+    await refused('belongs to no control or template')
   } finally {
     await Deno.remove(root, { recursive: true })
   }

@@ -509,11 +509,13 @@ export function appDocObjectId(value: Record<string, unknown>): string {
   return ndn.buildNamedObjectByJson('appdoc', value)[0].toString()
 }
 
-/** The sub-package of an `aiws` package: the AIWS bundle (aiws-manifest.json plus controls/<dir>/<file>). */
+/** The sub-package of an `aiws` package: the AIWS bundle (aiws-manifest.json plus controls/<dir>/<file> and, from
+ * manifest_version 3, Workspace templates under templates/<id>/). */
 export const AIWS_SUB_PACKAGE = 'aiws'
 const MAX_AIWS_PAYLOAD_BYTES = 256 * 1024 * 1024
 
-/** Check the bundle inside an `aiws` payload the way the AI Workspace library does (digests, component.json). */
+/** Check the bundle inside an `aiws` payload the way the AI Workspace library does (digests, component.json, the
+ * templates' shape, snapshot, digest and required controls, no file outside a control, a template or the manifest). */
 export async function verifyAiwsPayload(tarGz: Uint8Array): Promise<Record<string, unknown>> {
   const files = new Map<string, Uint8Array>()
   for (const entry of await readTarGz(tarGz, MAX_AIWS_PAYLOAD_BYTES)) files.set(entry.path, entry.bytes)
@@ -527,7 +529,11 @@ export async function verifyAiwsPayload(tarGz: Uint8Array): Promise<Record<strin
   if (errors.length > 0) {
     throw invalid('aiws', `aiws bundle: ${errors.map((d: { file: string; message: string }) => `${d.file}: ${d.message}`).join('; ')}`)
   }
-  return { manifest_version: checked.manifest.manifest_version, controls: checked.manifest.controls.map((c: Record<string, unknown>) => ({ ident: c.ident, kind: c.kind, version: c.version, digest: c.digest })) }
+  return {
+    manifest_version: checked.manifest.manifest_version,
+    controls: checked.manifest.controls.map((c: Record<string, unknown>) => ({ ident: c.ident, kind: c.kind, version: c.version, digest: c.digest })),
+    templates: checked.manifest.workspace_templates.map((t: Record<string, unknown>) => ({ id: t.id, title: t.title, digest: t.digest, requires: t.requires })),
+  }
 }
 
 export async function validateSnapshot(

@@ -64,6 +64,15 @@ export function parseAiwsReferenceUrl(url: string): AiwsReference {
   return reference
 }
 
+/** What `ext.upgrade` / `ext.build` rewrite on the instances of a definition whose new version narrows what they rely
+ * on (schemas/migration.schema.json, Q30). */
+export interface AiwsMigration {
+  config?: { rename?: Record<string, string>; drop?: string[]; fill?: Record<string, unknown> }
+  bindings?: { rename?: Record<string, string>; drop?: string[]; fill?: Record<string, { entity_id: string }> }
+  slots?: { rename?: Record<string, string>; move?: Record<string, string> }
+  events?: { rename?: Record<string, string>; drop?: string[] }
+}
+
 export interface AiwsExtBuildParams {
   files: ({ name: string; obj_id: string } | { name: string; base64: string })[]
   folder_id?: string
@@ -71,7 +80,53 @@ export interface AiwsExtBuildParams {
   force?: boolean
   dry_run?: boolean
   provenance?: { pkg_id?: string; version?: string; digest?: string }
+  /** With `provenance`: rebuild an identity the folder holds from another source (an upgrade across Zones, Q30). */
+  upgrade?: boolean
+  /** `{ <ident>: Migration }` for a build that narrows what instances rely on. */
+  migration?: Record<string, AiwsMigration>
   idempotency_key?: string
+}
+
+export interface AiwsExtUpgradeParams {
+  workspace_id: string
+  /** `pkg_id` default: the package the definition was imported from (`provenance.pkg_id`). */
+  items: { def_entity_id: string; pkg_id?: string }[]
+  migration?: Record<string, AiwsMigration>
+  force?: boolean
+  dry_run?: boolean
+  idempotency_key?: string
+}
+
+export interface AiwsExtUpgradeResult {
+  status: 'accepted' | 'unchanged' | 'checked'
+  commit_id?: string
+  seq?: number
+  controls: { ident: string; def_entity_id: string; action: 'upgraded' | 'unchanged'; from?: string; to?: string; migrated?: string[] }[]
+  /** `dry_run`: what the migration writes on each instance. */
+  plan?: { instance: string; ops: Record<string, unknown>[] }[]
+}
+
+export interface AiwsTemplateParam { type: 'string' | 'number' | 'boolean'; title?: string; default?: string | number | boolean }
+
+/** A Workspace template of a control package (aiws-manifest.json `workspace_templates`, schemas/template.schema.json,
+ * Q32): a snapshot under `templates/<id>/` and the controls of the same package it needs. */
+export interface AiwsTemplateItem {
+  id: string
+  title: string
+  description?: string
+  snapshot: string
+  digest: string
+  requires: { host_api?: { html?: number; declarative?: number }; controls: string[] }
+  params?: Record<string, AiwsTemplateParam>
+  reset?: { tables?: string[] }
+}
+
+/** One template to export (`ext.export_template`, `ext.pack` / `ext.install` `templates`): chosen Surfaces (and data
+ * entities) of the Workspace. */
+export interface AiwsTemplateExport {
+  surfaces: string[]
+  data?: string[]
+  template: { id: string; title: string; description?: string; params?: Record<string, AiwsTemplateParam>; reset?: { tables: string[] } }
 }
 
 /** `ext.build` / `ext.import`: one entry per control (`created | rebuilt | unchanged | satisfied`), the first also at the top. */
@@ -99,7 +154,10 @@ export interface AiwsLibraryPackage {
   author: string
   mode: string
   installed_at: string
+  /** The package's manifest_version is above what the service reads: listed, not importable. */
+  needs_newer?: boolean
   controls: { ident: string; name: string; kind: string; version: number; digest: string; dir: string; title?: string; description?: string; catalog?: Record<string, unknown>; deps?: string[] }[]
+  templates?: { id: string; title: string; description?: string; params?: Record<string, AiwsTemplateParam>; requires: AiwsTemplateItem['requires'] }[]
 }
 
 /** `ext.pack`: the `.pikg` the service wrote into the caller's `exports` bucket. */
@@ -203,12 +261,25 @@ export class AiWorkspaceClient {
   }
   /** Into the caller's library: a `.pikg` object or one bound into the caller's `exports` bucket (consumed), or
    * definitions of a Workspace (`from` + `package`). */
-  extInstall(params: { pikg?: { obj_id: string } | { bucket_id: string; key: string }; from?: { workspace_id: string; entity_ids: string[] }; package?: { name: string; version?: string; title?: string }; mode?: 'dev' }) {
+  extInstall(params: { pikg?: { obj_id: string } | { bucket_id: string; key: string }; from?: { workspace_id: string; entity_ids: string[]; templates?: AiwsTemplateExport[] }; package?: { name: string; version?: string; title?: string }; mode?: 'dev' }) {
     return this.call<{ pkg_id: string; version: string; action: string; controls: Record<string, unknown>[] }>('ext.install', params)
   }
-  /** Pack definitions (and what they build on) as an `aiws` `.pikg` into the caller's `exports` bucket (unsigned). */
-  extPack(workspace_id: string, entity_ids: string[], pkg: { name: string; version?: string; title?: string }) {
-    return this.call<AiwsExtPackResult>('ext.pack', { workspace_id, entity_ids, package: pkg })
+  /** Pack definitions (and what they build on, and templates of the Workspace) as an `aiws` `.pikg` into the caller's
+   * `exports` bucket (unsigned). */
+  extPack(workspace_id: string, entity_ids: string[], pkg: { name: string; version?: string; title?: string }, templates?: AiwsTemplateExport[]) {
+    return this.call<AiwsExtPackResult>('ext.pack', { workspace_id, entity_ids, package: pkg, ...(templates ? { templates } : {}) })
+  }
+  /** Rebuild imported definitions from the caller's library (same Zone; across Zones `ext.build { provenance, upgrade }`):
+   * `EXT_LOCAL_CHANGES` when the snapshot was built locally since, unless `force`. */
+  extUpgrade(params: AiwsExtUpgradeParams) { return this.call<AiwsExtUpgradeResult>('ext.upgrade', { ...params }) }
+  /** Chosen Surfaces as a template snapshot: the manifest item, the definitions it needs and the files (base64) of
+   * `templates/<id>/`. */
+  extExportTemplate(params: { workspace_id: string } & AiwsTemplateExport) {
+    return this.call<{ template: AiwsTemplateItem; controls: Record<string, unknown>[]; files: { path: string; base64: string }[] }>('ext.export_template', { ...params })
+  }
+  /** A new Workspace from a template of the caller's library (installing a template never creates one). */
+  extCreateFromTemplate(params: { pkg_id: string; template_id: string; title?: string; params?: Record<string, string | number | boolean> }) {
+    return this.call<{ workspace_id: string }>('ext.create_from_template', params)
   }
   extListLibrary() { return this.call<{ packages: AiwsLibraryPackage[] }>('ext.list_library', {}) }
   extUninstall(pkg_id: string) { return this.call('ext.uninstall', { pkg_id }) }

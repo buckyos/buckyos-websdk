@@ -3,10 +3,11 @@
  * Desktop and the CLI: a control's source lives in a home folder of the Zone file service (files may sit in
  * sub-folders: their names are relative paths, Q23); `build` lists it over NFSP and hands each file's object to
  * `ext.build`, `pull` writes a Workspace snapshot back, `watch` rebuilds on change; bundles (the AIWS manifest plus
- * `controls/<dir>/<path>`) are what exports, packages and the library carry.
+ * `controls/<dir>/<path>` and Workspace templates under `templates/<id>/`) are what exports, packages and the library
+ * carry.
  * Runs in browsers and Deno (fetch, crypto.subtle); no dependencies.
  */
-import type { AiWorkspaceClient } from './aiworkspace_client'
+import type { AiWorkspaceClient, AiwsMigration, AiwsTemplateItem } from './aiworkspace_client'
 import type { NfspClient, WireRef } from './nfsp'
 
 /** The two service calls these drivers make (an `AiWorkspaceClient`, or a host's own session with the same shape). */
@@ -24,11 +25,15 @@ export const AIWS_MANIFEST_FILE = 'aiws-manifest.json'
 /** A client's own record of the base it last built or pulled (never part of the source snapshot: dot files are not). */
 export const AIWS_BUILD_STATE_FILE = '.aiws-build.json'
 /** The newest component.json / AIWS manifest version this module reads (older ones stay readable, Q19). Version 2
- * adds `kind: composite` and non-empty `deps`. */
-export const AIWS_MANIFEST_VERSION = 2
-/** The HTML Block host API (`window.aiws` v2) and the declarative interpreter version. */
-export const AIWS_HTML_API_VERSION = 2
+ * adds `kind: composite` and non-empty `deps`; version 3 `events`, the declarative `button`, composite `events` and
+ * Workspace templates. */
+export const AIWS_MANIFEST_VERSION = 3
+/** The newest HTML Block host API (`window.aiws` v3: `emit`, `createBlock { parent, slot }`, `context.interactive`;
+ * hosts run 2 and 3) and the declarative interpreter version. */
+export const AIWS_HTML_API_VERSION = 3
 export const AIWS_DECLARATIVE_API_VERSION = 1
+/** The `format` of a Workspace template's `snapshot.json` (Q32). */
+export const AIWS_TEMPLATE_FORMAT = 'aiws-template/1'
 export const AIWS_MAX_SOURCE_FILES = 64
 
 /**
@@ -43,7 +48,8 @@ export interface AiwsDiagnostic {
   col?: number
   severity: 'error' | 'warning'
   message: string
-  /** `DEP_MISSING`: a `deps` entry or a slot's `cell:<ident>` names no definition of the Workspace. */
+  /** `DEP_MISSING`: a `deps` entry or a slot's `cell:<ident>` names no definition of the Workspace; `EVENT_UNDECLARED`:
+   * a composite re-raises an event no `cell:<ident>` of that slot declares, or a button emits an undeclared event. */
   code?: string
   /** Blocks whose contract a rebuild would break. */
   instances?: { entity_id: string; title?: string | null }[]
@@ -52,7 +58,7 @@ export interface AiwsDiagnostic {
 }
 export interface AiwsBuildState { workspace_id: string; def_entity_id: string; def_rev: number; dir_rev: number; ident?: string; at?: string }
 export interface AiwsManifestControl { ident: string; name: string; kind: string; version: number; digest: string; dir: string; title?: string; description?: string; catalog?: Record<string, unknown>; deps?: string[] }
-export interface AiwsManifest { manifest_version: number; purpose: 'aiws'; host_api?: Record<string, number>; controls: AiwsManifestControl[]; workspace_templates: unknown[] }
+export interface AiwsManifest { manifest_version: number; purpose: 'aiws'; host_api?: Record<string, number>; controls: AiwsManifestControl[]; workspace_templates: AiwsTemplateItem[] }
 export interface AiwsBundle { manifest: AiwsManifest; files: Map<string, Uint8Array> }
 
 /** A source directory that cannot be built as it is (not a service refusal: `diagnostics` say why). */
@@ -163,18 +169,77 @@ export async function buildFiles(nfsp: NfspClient, files: AiwsSourceFile[], uplo
 
 // ---- component.json pre-check (the service's composer is authoritative; this catches the usual mistakes early)
 
-const COMPONENT_KEYS = ['manifest_version', 'ident', 'kind', 'title', 'description', 'host_api', 'accepts', 'allow_no_source', 'default_size', 'config_schema', 'bindings', 'entry', 'assets', 'catalog', 'agent', 'deps']
+const COMPONENT_KEYS = ['manifest_version', 'ident', 'kind', 'title', 'description', 'host_api', 'accepts', 'allow_no_source', 'default_size', 'config_schema', 'bindings', 'entry', 'assets', 'catalog', 'agent', 'deps', 'events']
 const SCHEMA_KEYWORDS = ['type', 'enum', 'default', 'required', 'title', 'description', 'minimum', 'maximum', 'minLength', 'maxLength', 'properties', 'items']
 const NAME = /^[a-z0-9][a-z0-9._-]{0,63}$/
 const DID = /^did:[a-z0-9]+:[^/#\s]+$/
 const BINDING = /^[a-z][a-z0-9_]{0,31}$/
 const IDENT = /^did:[a-z0-9]+:[^/#\s]+#[a-z0-9][a-z0-9._-]{0,63}$/
-const EVENTS_LATER = 'events are not supported yet (a later AI Workspace version adds them)'
 const V2_HINT = 'needs manifest_version 2 (raise it in component.json)'
+const V3_HINT = 'needs manifest_version 3 (raise it in component.json)'
+const EVENT_PARAM_TYPES = ['string', 'number', 'boolean', 'object', 'entity']
+const ITEM_KINDS = ['text', 'value', 'metric', 'bar', 'list', 'badge']
+const ITEM_KEYS = ['kind', 'text', 'label', 'bind', 'by', 'format', 'limit']
+const ACTION_COMMANDS = ['open_source', 'activate_editor', 'open_definition']
+const INSPECTOR_KINDS = ['text', 'number', 'select', 'boolean', 'color']
+
+/** What another control declares (the `events` names of its component.json), `undefined` when it is not at hand:
+ * whether a composite's slot children raise an event can be judged only then (otherwise the build judges it). */
+export type AiwsCellEvents = (ident: string) => string[] | undefined
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return !!v && typeof v === 'object' && !Array.isArray(v)
+}
 
 /** A file name of a source folder: a relative path whose parts are non-empty and do not start with `.` (Q23). */
 export function isSourcePath(name: string): boolean {
   return name.length > 0 && encoder.encode(name).length <= 255 && !name.includes('\0') && name.split('/').every((seg) => seg.length > 0 && !seg.startsWith('.'))
+}
+
+function configProps(configSchema: unknown): Record<string, unknown> {
+  const props = isRecord(configSchema) ? configSchema.properties : undefined
+  return isRecord(props) ? props : {}
+}
+
+/** `{{config.<key>}}` placeholders of a string: each names a property of `config_schema`. */
+function configPlaceholders(text: string, at: string, props: Record<string, unknown>, error: (message: string) => void): void {
+  for (const m of text.matchAll(/\{\{([^}]*)\}\}/g)) {
+    const inner = m[1].trim()
+    if (!inner.startsWith('config.')) error(`${at}: only {{config.<key>}} may be used here`)
+    else if (!(inner.slice(7) in props)) error(`${at}: {{${inner}}} names no property of config_schema`)
+  }
+}
+
+/** A render control's `events` (Q26): ≤ 16 names `[a-z][a-z0-9_]{0,31}`, each `{ title?, description?, params? }` with
+ * ≤ 16 params `{ type: string | number | boolean | object | entity, required?, description? }`. */
+function eventProblems(v: unknown, out: string[]): void {
+  if (!isRecord(v)) { out.push('events must be an object { <name>: { title?, description?, params? } }'); return }
+  if (Object.keys(v).length > 16) out.push('events: at most 16')
+  for (const [name, raw] of Object.entries(v)) {
+    const at = `events.${name}`
+    if (!BINDING.test(name)) out.push(`${at}: an event name is [a-z][a-z0-9_]{0,31}`)
+    if (!isRecord(raw)) { out.push(`${at} must be an object { title?, description?, params? }`); continue }
+    for (const [k, x] of Object.entries(raw)) {
+      if (k === 'title') { if (typeof x !== 'string' || x.length > 256) out.push(`${at}.title: at most 256 characters`) }
+      else if (k === 'description') { if (typeof x !== 'string' || x.length > 4000) out.push(`${at}.description: at most 4000 characters`) }
+      else if (k !== 'params') out.push(`${at}: unknown key ${k} (title, description, params)`)
+    }
+    if (raw.params === undefined) continue
+    if (!isRecord(raw.params)) { out.push(`${at}.params must be an object { <param>: { type, required?, description? } }`); continue }
+    if (Object.keys(raw.params).length > 16) out.push(`${at}.params: at most 16`)
+    for (const [p, spec] of Object.entries(raw.params)) {
+      const pat = `${at}.params.${p}`
+      if (!BINDING.test(p)) out.push(`${pat}: a param name is [a-z][a-z0-9_]{0,31}`)
+      if (!isRecord(spec)) { out.push(`${pat} must be an object { type, required?, description? }`); continue }
+      for (const [k, x] of Object.entries(spec)) {
+        if (k === 'type') { if (typeof x !== 'string' || !EVENT_PARAM_TYPES.includes(x)) out.push(`${pat}.type: ${EVENT_PARAM_TYPES.join(', ')}`) }
+        else if (k === 'required') { if (typeof x !== 'boolean') out.push(`${pat}.required must be a boolean`) }
+        else if (k === 'description') { if (typeof x !== 'string' || x.length > 1000) out.push(`${pat}.description: at most 1000 characters`) }
+        else out.push(`${pat}: unknown key ${k} (type, required, description)`)
+      }
+      if (spec.type === undefined) out.push(`${pat}.type required`)
+    }
+  }
 }
 
 function schemaProblems(v: unknown, path: string, out: string[]): void {
@@ -186,63 +251,138 @@ function schemaProblems(v: unknown, path: string, out: string[]): void {
   }
 }
 
-/** A composite's `composition.json` (K3): what the slots accept and their counts, the layout and the Chrome. */
-export interface AiwsComposition {
-  layout: { algorithm: 'stack' | 'fixed'; direction?: 'column' | 'row'; spacing?: number | string; padding?: number | string | { t?: number; r?: number; b?: number; l?: number } }
-  slots: Record<string, { accepts?: string[]; min?: number; max?: number; placement?: 'stack' | 'top' | 'bottom' | 'free'; title?: string }>
-  chrome?: { background?: string; radius?: number | string; border?: string; title?: { text: string; slot?: string }; empty?: string }
-}
-
 /**
- * Check a `composition.json` the way `ext.build` does (store/src/ext.rs `check_composition`): `layout` is `stack` or
- * `fixed`, at most 16 slots named `[a-z][a-z0-9_]{0,31}` accepting `cell:<ident>`, a view type or `container`, the
- * Chrome's strings, and `{{config.<key>}}` naming properties of `config_schema`. `events` is refused (P2).
+ * Check a declarative control's entry file the way `ext.build` does (store/src/ext.rs `check_declarative`): what the
+ * interpreter draws (`layout`, `items` / `view.items`, `accent`, `actions`, `inspector`) and, with manifest_version 3,
+ * the item `{ kind: "button", label, emit, params? }` raising an event of `events` (`EVENT_UNDECLARED` otherwise;
+ * strings in `params` may hold `{{config.<key>}}`). Without `events` the emitted names are not judged.
  */
-export function checkComposition(text: string, configSchema?: unknown, file = AIWS_COMPOSITION_FILE): AiwsDiagnostic[] {
+export function checkDeclarative(text: string, context: { bindings?: unknown; events?: string[]; configSchema?: unknown; manifestVersion?: number } = {}, file = 'declarative.json'): AiwsDiagnostic[] {
   const out: AiwsDiagnostic[] = []
-  const error = (message: string) => out.push({ file, severity: 'error', message })
+  const error = (message: string, code?: string) => out.push({ file, severity: 'error', message, ...(code ? { code } : {}) })
+  const warn = (message: string) => out.push({ file, severity: 'warning', message })
   let o: Record<string, unknown>
   try {
     const parsed = JSON.parse(text) as unknown
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) { error('a composition is a JSON object { layout, slots, chrome? }'); return out }
+    if (!isRecord(parsed)) { error('a declarative definition is a JSON object'); return out }
+    o = parsed
+  } catch (e) {
+    error(e instanceof Error ? e.message : String(e))
+    return out
+  }
+  const bindings = isRecord(context.bindings) ? context.bindings : {}
+  const props = configProps(context.configSchema)
+  const strings = (v: unknown, at: string): void => {
+    if (typeof v === 'string') configPlaceholders(v, at, props, error)
+    else if (Array.isArray(v)) v.forEach((x, i) => strings(x, `${at}[${i}]`))
+    else if (isRecord(v)) for (const [k, x] of Object.entries(v)) strings(x, `${at}.${k}`)
+  }
+  const button = (it: Record<string, unknown>, at: string) => {
+    if (context.manifestVersion !== undefined && context.manifestVersion < 3) error(`${at}: a button ${V3_HINT}`)
+    for (const k of Object.keys(it)) if (!['kind', 'label', 'emit', 'params'].includes(k)) warn(`${at}: key ${k} is ignored by the interpreter`)
+    if (typeof it.label !== 'string' || !it.label) error(`${at}.label: the button's text (required)`)
+    if (typeof it.emit !== 'string' || !it.emit) error(`${at}.emit: the event the button raises (required)`)
+    else if (context.events && !context.events.includes(it.emit)) error(`${at}.emit ${it.emit}: not an event of component.json`, 'EVENT_UNDECLARED')
+    if (it.params !== undefined) { if (isRecord(it.params)) strings(it.params, `${at}.params`); else error(`${at}.params must be an object`) }
+  }
+  const items = (list: unknown, at: string) => {
+    if (list === undefined) return
+    if (!Array.isArray(list)) { error(`${at} must be an array`); return }
+    list.forEach((it, i) => {
+      const iat = `${at}[${i}]`
+      if (!isRecord(it)) { error(`${iat} must be an object`); return }
+      if (it.kind === 'button') { button(it, iat); return }
+      if (typeof it.kind !== 'string' || !ITEM_KINDS.includes(it.kind)) error(`${iat}.kind ${JSON.stringify(it.kind)}: one of ${[...ITEM_KINDS, 'button'].join(', ')}`)
+      for (const k of Object.keys(it)) if (!ITEM_KEYS.includes(k)) warn(`${iat}: key ${k} is ignored by the interpreter`)
+      if (it.format !== undefined && !['text', 'number', 'percent', 'currency'].includes(it.format as string)) error(`${iat}.format ${JSON.stringify(it.format)}: text, number, percent or currency`)
+      if (typeof it.bind === 'string' && it.bind.includes('.')) {
+        const prefix = it.bind.slice(0, it.bind.indexOf('.'))
+        if (prefix !== 'props' && !(prefix in bindings)) warn(`${iat}.bind ${JSON.stringify(it.bind)}: ${prefix} is not a declared binding, so it reads the field ${JSON.stringify(it.bind)} of the main source`)
+      }
+    })
+  }
+  for (const [k, v] of Object.entries(o)) {
+    if (k === 'layout') { if (v !== 'stack' && v !== 'row') error('layout: stack or row') }
+    else if (k === 'items') items(v, 'items')
+    else if (k === 'view') items(isRecord(v) ? v.items : undefined, 'view.items')
+    else if (k === 'accent') { if (typeof v !== 'string') error('accent must be a colour string') }
+    else if (k === 'actions') {
+      (Array.isArray(v) ? v : []).forEach((a: unknown, i) => {
+        const r = isRecord(a) ? a : {}
+        if (typeof r.command !== 'string' || !ACTION_COMMANDS.includes(r.command)) error(`actions[${i}].command: one of ${ACTION_COMMANDS.join(', ')}`)
+        if (typeof r.id !== 'string' || typeof r.label !== 'string') error(`actions[${i}] needs id and label`)
+      })
+    } else if (k === 'inspector') {
+      (Array.isArray(v) ? v : []).forEach((f: unknown, i) => {
+        const r = isRecord(f) ? f : {}
+        if (typeof r.kind !== 'string' || !INSPECTOR_KINDS.includes(r.kind)) error(`inspector[${i}].kind: one of ${INSPECTOR_KINDS.join(', ')}`)
+        if (typeof r.key !== 'string' || typeof r.label !== 'string') error(`inspector[${i}] needs key and label`)
+      })
+    } else warn(`key ${k} is not part of the declarative vocabulary`)
+  }
+  if (o.items === undefined && o.view === undefined) warn('no items: the control draws nothing')
+  return out
+}
+
+/** A composite's `composition.json` (K3): what the slots accept and their counts, the layout, the Chrome and the
+ * events it re-raises from its children (P2). */
+export interface AiwsComposition {
+  layout: { algorithm: 'stack' | 'fixed' | 'grid'; direction?: 'column' | 'row'; spacing?: number | string; padding?: number | string | { t?: number; r?: number; b?: number; l?: number }; columns?: number; gap?: number | string }
+  slots: Record<string, { accepts?: string[]; min?: number; max?: number; placement?: 'stack' | 'top' | 'bottom' | 'free'; title?: string }>
+  chrome?: { background?: string; radius?: number | string; border?: string; title?: { text: string; slot?: string }; empty?: string }
+  events?: Record<string, { from: { slot: string; event: string }; title?: string; description?: string }>
+}
+
+/**
+ * Check a `composition.json` the way `ext.build` does (store/src/ext.rs `check_composition`): `layout` is `stack`,
+ * `fixed` or `grid` (`columns` 1…12, `gap`; a grid fills its cells with the slots' children in slot order, so its slots
+ * take placement `stack` only), at most 16 slots named `[a-z][a-z0-9_]{0,31}` accepting `cell:<ident>`, a view type or
+ * `container`, the Chrome's strings, `{{config.<key>}}` naming properties of `config_schema`, and `events`
+ * (manifest_version 3) re-raising an event of a slot's children: `EVENT_UNDECLARED` when no `cell:<ident>` of that slot
+ * declares it, judged as far as `cellEvents` knows those controls.
+ */
+export function checkComposition(text: string, configSchema?: unknown, file = AIWS_COMPOSITION_FILE, context: { manifestVersion?: number; cellEvents?: AiwsCellEvents } = {}): AiwsDiagnostic[] {
+  const out: AiwsDiagnostic[] = []
+  const error = (message: string, code?: string) => out.push({ file, severity: 'error', message, ...(code ? { code } : {}) })
+  let o: Record<string, unknown>
+  try {
+    const parsed = JSON.parse(text) as unknown
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) { error('a composition is a JSON object { layout, slots, chrome?, events? }'); return out }
     o = parsed as Record<string, unknown>
   } catch (e) {
     error(e instanceof Error ? e.message : String(e))
     return out
   }
-  const props = ((configSchema as { properties?: Record<string, unknown> } | undefined)?.properties) ?? {}
-  const placeholders = (t: string, at: string) => {
-    for (const m of t.matchAll(/\{\{([^}]*)\}\}/g)) {
-      const inner = m[1].trim()
-      if (!inner.startsWith('config.')) error(`${at}: only {{config.<key>}} may be used here`)
-      else if (!(inner.slice(7) in props)) error(`${at}: {{${inner}}} names no property of config_schema`)
-    }
-  }
+  const props = configProps(configSchema)
+  const placeholders = (t: string, at: string) => configPlaceholders(t, at, props, error)
   const dimension = (v: unknown, at: string, max: number) => {
     if (typeof v === 'number' && v >= 0 && v <= max) return
     if (typeof v === 'string' && /^\s*\{\{.*\}\}\s*$/.test(v)) { placeholders(v, at); return }
     error(`${at}: a number in [0, ${max}] or {{config.<key>}}`)
   }
   for (const k of Object.keys(o)) {
-    if (k === 'events') error(EVENTS_LATER)
-    else if (!['layout', 'slots', 'chrome'].includes(k)) error(`unknown key ${k} (a composition says layout, slots and chrome)`)
+    if (!['layout', 'slots', 'chrome', 'events'].includes(k)) error(`unknown key ${k} (a composition says layout, slots, chrome and events)`)
   }
   const layout = o.layout as Record<string, unknown> | undefined
   let algorithm = 'stack'
-  if (!layout || typeof layout !== 'object') error('layout { algorithm: stack | fixed } required')
+  if (!layout || typeof layout !== 'object') error('layout { algorithm: stack | fixed | grid } required')
   else {
-    if (layout.algorithm === 'stack' || layout.algorithm === 'fixed') algorithm = layout.algorithm
-    else error(`layout.algorithm ${JSON.stringify(layout.algorithm)}: stack or fixed (the algorithms the host ships)`)
+    if (layout.algorithm === 'stack' || layout.algorithm === 'fixed' || layout.algorithm === 'grid') algorithm = layout.algorithm
+    else error(`layout.algorithm ${JSON.stringify(layout.algorithm)}: stack, fixed or grid (the algorithms the host ships)`)
     for (const [k, v] of Object.entries(layout)) {
       if (k === 'algorithm') continue
       if ((k === 'direction' || k === 'spacing') && algorithm !== 'stack') { error(`layout.${k} belongs to the stack layout`); continue }
+      if ((k === 'columns' || k === 'gap') && algorithm !== 'grid') { error(`layout.${k} belongs to the grid layout`); continue }
       if (k === 'direction') { if (v !== 'column' && v !== 'row') error('layout.direction: column or row') }
       else if (k === 'spacing') dimension(v, 'layout.spacing', 2000)
+      else if (k === 'columns') { if (!Number.isInteger(v) || (v as number) < 1 || (v as number) > 12) error('layout.columns: an integer in [1, 12]') }
+      else if (k === 'gap') dimension(v, 'layout.gap', 2000)
       else if (k === 'padding') {
         if (v && typeof v === 'object' && !Array.isArray(v)) for (const [side, n] of Object.entries(v)) { if (!['t', 'r', 'b', 'l'].includes(side)) error(`layout.padding.${side}: t, r, b or l`); dimension(n, `layout.padding.${side}`, 2000) }
         else dimension(v, 'layout.padding', 2000)
       } else error(`layout: unknown key ${k}`)
     }
+    if (algorithm === 'grid' && layout.columns === undefined) error('layout.columns (1…12) required: the cells of a grid row')
   }
   const slots = (o.slots && typeof o.slots === 'object' && !Array.isArray(o.slots) ? o.slots : null) as Record<string, unknown> | null
   if (!slots) error('slots { <name>: { accepts?, min?, max?, placement? } } required')
@@ -263,9 +403,9 @@ export function checkComposition(text: string, configSchema?: unknown, file = AI
         } else if (k === 'min') { if (!Number.isInteger(v) || (v as number) < 0 || (v as number) > 64) error(`${at}.min: an integer in [0, 64]`) }
         else if (k === 'max') { if (!Number.isInteger(v) || (v as number) < 1 || (v as number) > 1000) error(`${at}.max: an integer in [1, 1000]`) }
         else if (k === 'placement') {
-          if (v === 'free') continue
-          if (v === 'stack' || v === 'top' || v === 'bottom') { if (algorithm !== 'stack') error(`${at}.placement: a fixed layout keeps every child where it is (free)`) }
-          else error(`${at}.placement: stack, top, bottom or free`)
+          if (v !== 'stack' && v !== 'top' && v !== 'bottom' && v !== 'free') error(`${at}.placement: stack, top, bottom or free`)
+          else if (algorithm === 'fixed' && v !== 'free') error(`${at}.placement: a fixed layout keeps every child where it is (free)`)
+          else if (algorithm === 'grid' && v !== 'stack') error(`${at}.placement: a grid fills its cells with the slots' children in slot order (stack)`)
         } else if (k === 'title') { if (typeof v !== 'string' || v.length > 256) error(`${at}.title: at most 256 characters`) }
         else error(`${at}: unknown key ${k}`)
       }
@@ -292,14 +432,44 @@ export function checkComposition(text: string, configSchema?: unknown, file = AI
       } else error(`chrome: unknown key ${k} (background, radius, border, title, empty)`)
     }
   }
+  if (o.events !== undefined) {
+    if (context.manifestVersion !== undefined && context.manifestVersion < 3) error(`events ${V3_HINT}`)
+    if (!isRecord(o.events)) error('events must be an object { <name>: { from: { slot, event }, title?, description? } }')
+    else {
+      if (Object.keys(o.events).length > 16) error('events: at most 16')
+      for (const [name, raw] of Object.entries(o.events)) {
+        const at = `events.${name}`
+        if (!BINDING.test(name)) error(`${at}: an event name is [a-z][a-z0-9_]{0,31}`)
+        if (!isRecord(raw)) { error(`${at} must be an object { from: { slot, event }, title?, description? }`); continue }
+        for (const [k, v] of Object.entries(raw)) {
+          if (k === 'title') { if (typeof v !== 'string' || v.length > 256) error(`${at}.title: at most 256 characters`) }
+          else if (k === 'description') { if (typeof v !== 'string' || v.length > 4000) error(`${at}.description: at most 4000 characters`) }
+          else if (k !== 'from') error(`${at}: unknown key ${k} (from, title, description)`)
+        }
+        const from = raw.from
+        if (!isRecord(from)) { error(`${at}.from { slot, event } required: the child event it re-raises`); continue }
+        for (const k of Object.keys(from)) if (k !== 'slot' && k !== 'event') error(`${at}.from: unknown key ${k} (slot, event)`)
+        const event = typeof from.event === 'string' && BINDING.test(from.event) ? from.event : undefined
+        if (!event) error(`${at}.from.event: an event name [a-z][a-z0-9_]{0,31}`)
+        const slot = typeof from.slot === 'string' && slots ? slots[from.slot] : undefined
+        if (!isRecord(slot)) { error(`${at}.from.slot ${JSON.stringify(from.slot)}: a slot of this composition`); continue }
+        if (!event) continue
+        const cells = (Array.isArray(slot.accepts) ? slot.accepts : []).filter((a): a is string => typeof a === 'string' && a.startsWith('cell:')).map((a) => a.slice(5))
+        if (cells.length === 0) { error(`${at}: slot ${from.slot} accepts no cell:<ident>, so no control there declares ${event}`, 'EVENT_UNDECLARED'); continue }
+        const declared = cells.map((ident) => context.cellEvents?.(ident))
+        if (declared.every((names) => names !== undefined && !names.includes(event))) error(`${at}: no control slot ${from.slot} accepts (${cells.join(', ')}) declares the event ${event}`, 'EVENT_UNDECLARED')
+      }
+    }
+  }
   return out
 }
 
 /**
- * Check a `component.json` text against the files of its directory (and, for a composite, its composition when
- * `readText` gives the entry's text). Errors make a build fail; warnings do not.
+ * Check a `component.json` text against the files of its directory (and its declarative file or composition when
+ * `readText` gives the entry's text; `cellEvents` says what other controls declare, for a composite's re-raised
+ * events). Errors make a build fail; warnings do not.
  */
-export function checkComponent(text: string, fileNames: string[], readText?: (name: string) => string | undefined): AiwsDiagnostic[] {
+export function checkComponent(text: string, fileNames: string[], readText?: (name: string) => string | undefined, cellEvents?: AiwsCellEvents): AiwsDiagnostic[] {
   const out: AiwsDiagnostic[] = []
   const f = AIWS_COMPONENT_FILE
   const error = (message: string) => out.push({ file: f, severity: 'error', message })
@@ -312,14 +482,12 @@ export function checkComponent(text: string, fileNames: string[], readText?: (na
     error(e instanceof Error ? e.message : String(e))
     return out
   }
-  for (const k of Object.keys(c)) {
-    if (k === 'events') error(EVENTS_LATER)
-    else if (!COMPONENT_KEYS.includes(k)) error(`unknown key ${k}`)
-  }
+  for (const k of Object.keys(c)) if (!COMPONENT_KEYS.includes(k)) error(`unknown key ${k}`)
   const mv = c.manifest_version
   const version = typeof mv === 'number' && Number.isInteger(mv) && mv >= 1 ? mv : 0
   if (!version) error(`manifest_version (1…${AIWS_MANIFEST_VERSION}) required`)
   else if (version > AIWS_MANIFEST_VERSION) error(`manifest_version ${mv} is newer than this client reads (${AIWS_MANIFEST_VERSION})`)
+  const before3 = version > 0 && version < 3
   const ident = c.ident as Record<string, unknown> | undefined
   let self = ''
   if (!ident || typeof ident !== 'object') error('ident { author_did, name } required')
@@ -354,21 +522,33 @@ export function checkComponent(text: string, fileNames: string[], readText?: (na
       }
     }
   }
+  let events: string[] = []
+  if (c.events !== undefined) {
+    if (composite) error('events: a composite declares its events in composition.json (events.<name>.from re-raises an event of a child)')
+    else if (before3) error(`events ${V3_HINT}`)
+    else { const p: string[] = []; eventProblems(c.events, p); p.forEach(error) }
+    if (!composite && isRecord(c.events)) events = Object.keys(c.events)
+  }
   const has = (n: unknown) => typeof n === 'string' && fileNames.includes(n)
   const named = new Set([f])
   if (c.kind === 'html') {
     const e = c.entry as Record<string, unknown> | undefined
     if (!e || typeof e !== 'object' || typeof e.html !== 'string') error('entry must be { html, css?, js? }')
     else for (const [k, n] of Object.entries(e)) { if (!has(n)) error(`entry.${k} ${JSON.stringify(n)} is not in the directory`); else named.add(String(n)) }
-    if (c.host_api !== undefined && c.host_api !== AIWS_HTML_API_VERSION) error(`host_api: the HTML Block host speaks API ${AIWS_HTML_API_VERSION}`)
+    if (c.host_api !== undefined && c.host_api !== 2 && c.host_api !== 3) error('host_api: the HTML Block host speaks API 2 and 3')
+    else if (c.host_api === 3 && before3) error(`host_api 3 ${V3_HINT}`)
+    if (events.length > 0 && c.host_api !== 3) out.push({ file: f, severity: 'warning', message: 'events: an HTML control raises them with aiws.emit, which is host API 3 (set host_api to 3)' })
   } else if (c.kind === 'declarative' || composite) {
     if (!has(c.entry)) error(`entry ${JSON.stringify(c.entry)} is not in the directory`)
     else {
       named.add(String(c.entry))
-      const entryText = composite ? readText?.(String(c.entry)) : undefined
-      if (entryText !== undefined) out.push(...checkComposition(entryText, c.config_schema, String(c.entry)))
+      const entryText = readText?.(String(c.entry))
+      const manifestVersion = version || undefined
+      if (entryText !== undefined && composite) out.push(...checkComposition(entryText, c.config_schema, String(c.entry), { manifestVersion, cellEvents }))
+      else if (entryText !== undefined) out.push(...checkDeclarative(entryText, { bindings: c.bindings, events, configSchema: c.config_schema, manifestVersion }, String(c.entry)))
     }
     if (composite && c.host_api !== undefined) error('host_api: a composite runs no code of its own (its layout and chrome are the host\'s)')
+    if (!composite && c.host_api !== undefined && c.host_api !== AIWS_DECLARATIVE_API_VERSION) error(`host_api: the declarative interpreter is version ${AIWS_DECLARATIVE_API_VERSION}`)
   }
   for (const a of Array.isArray(c.assets) ? c.assets : []) { if (!has(a)) error(`asset ${JSON.stringify(a)} is not in the directory`); else named.add(String(a)) }
   if (c.agent !== undefined) { if (!has(c.agent)) error(`agent ${JSON.stringify(c.agent)} is not in the directory`); else named.add(String(c.agent)) }
@@ -400,7 +580,75 @@ export function compatManifest(value: unknown): AiwsManifest {
   return { manifest_version: version, purpose: 'aiws', host_api: (m.host_api as Record<string, number>) ?? {}, controls: m.controls as AiwsManifestControl[], workspace_templates: Array.isArray(m.workspace_templates) ? m.workspace_templates : [] }
 }
 
-/** Verify a bundle the way an installer does: manifest, each control's digest and component.json, no stray files. */
+const TEMPLATE_ID = /^[a-z0-9][a-z0-9-]{0,63}$/
+
+/** Where a Workspace template's files sit in a bundle: `templates/<id>/` (`snapshot.json`, `objects/`, `chunks/`). */
+export function templateDir(id: string): string {
+  return `templates/${id}/`
+}
+
+/** The content digest of a Workspace template (its manifest `digest`): the files under `templates/<id>/`, named
+ * relative to that folder, digested as a control's. */
+export async function aiwsTemplateDigest(files: Iterable<[string, Uint8Array]>, id: string): Promise<string> {
+  const dir = templateDir(id)
+  const own: [string, Uint8Array][] = []
+  for (const [path, bytes] of files) if (path.startsWith(dir)) own.push([path.slice(dir.length), bytes])
+  return aiwsContentDigest(own)
+}
+
+/** The shape of a `workspace_templates` item (schemas/template.schema.json); `controls` are the manifest's identities. */
+function templateProblems(t: unknown, controls: Set<string>): string[] {
+  if (!isRecord(t)) return ['a template is an object { id, title, snapshot, digest, requires, description?, params?, reset? }']
+  const out: string[] = []
+  for (const k of Object.keys(t)) if (!['id', 'title', 'description', 'snapshot', 'digest', 'requires', 'params', 'reset'].includes(k)) out.push(`unknown key ${k}`)
+  if (typeof t.id !== 'string' || !TEMPLATE_ID.test(t.id)) out.push('id: [a-z0-9][a-z0-9-]{0,63}')
+  else if (t.snapshot !== `${templateDir(t.id)}snapshot.json`) out.push(`snapshot must be ${templateDir(t.id)}snapshot.json`)
+  if (typeof t.title !== 'string' || !t.title || t.title.length > 256) out.push('title: 1…256 characters')
+  if (t.description !== undefined && (typeof t.description !== 'string' || t.description.length > 4000)) out.push('description: at most 4000 characters')
+  if (typeof t.digest !== 'string' || !/^sha256:[0-9a-f]{64}$/.test(t.digest)) out.push('digest: sha256:<64 hex digits>')
+  const requires = t.requires
+  if (!isRecord(requires)) out.push('requires { host_api?, controls } required')
+  else {
+    for (const k of Object.keys(requires)) if (k !== 'host_api' && k !== 'controls') out.push(`requires: unknown key ${k}`)
+    if (requires.host_api !== undefined) {
+      if (!isRecord(requires.host_api)) out.push('requires.host_api must be an object { html?, declarative? }')
+      else for (const [k, v] of Object.entries(requires.host_api)) if ((k !== 'html' && k !== 'declarative') || !Number.isInteger(v) || (v as number) < 1) out.push(`requires.host_api.${k}: html or declarative, a positive integer`)
+    }
+    if (!Array.isArray(requires.controls) || requires.controls.length > 256) out.push('requires.controls: at most 256 identities')
+    else {
+      const seen = new Set<unknown>()
+      for (const ident of requires.controls) {
+        if (typeof ident !== 'string' || !controls.has(ident)) out.push(`requires.controls: ${JSON.stringify(ident)} is not a control of this manifest`)
+        else if (seen.has(ident)) out.push(`requires.controls lists ${ident} twice`)
+        seen.add(ident)
+      }
+    }
+  }
+  if (t.params !== undefined) {
+    if (!isRecord(t.params) || Object.keys(t.params).length > 32) out.push('params: an object of at most 32 { type, title?, default? }')
+    else for (const [name, p] of Object.entries(t.params)) {
+      const at = `params.${name}`
+      if (!BINDING.test(name)) out.push(`${at}: a param name is [a-z][a-z0-9_]{0,31}`)
+      if (!isRecord(p)) { out.push(`${at} must be an object { type, title?, default? }`); continue }
+      for (const [k, v] of Object.entries(p)) {
+        if (k === 'type') { if (v !== 'string' && v !== 'number' && v !== 'boolean') out.push(`${at}.type: string, number or boolean`) }
+        else if (k === 'title') { if (typeof v !== 'string' || v.length > 256) out.push(`${at}.title: at most 256 characters`) }
+        else if (k === 'default') { if (!['string', 'number', 'boolean'].includes(typeof v)) out.push(`${at}.default: a string, number or boolean`) }
+        else out.push(`${at}: unknown key ${k} (type, title, default)`)
+      }
+      if (p.type === undefined) out.push(`${at}.type required`)
+    }
+  }
+  if (t.reset !== undefined) {
+    const tables = isRecord(t.reset) ? t.reset.tables : undefined
+    if (!isRecord(t.reset) || Object.keys(t.reset).some((k) => k !== 'tables')) out.push('reset: { tables }')
+    else if (tables !== undefined && (!Array.isArray(tables) || tables.length > 64 || new Set(tables).size !== tables.length || tables.some((x) => typeof x !== 'string' || !/^[a-z0-9][a-z0-9_-]{0,63}$/.test(x)))) out.push('reset.tables: at most 64 distinct table ids')
+  }
+  return out
+}
+
+/** Verify a bundle the way an installer does: manifest, each control's digest and component.json, each Workspace
+ * template's shape, snapshot and digest, no stray files. */
 export async function verifyBundle(files: Map<string, Uint8Array>): Promise<{ manifest: AiwsManifest; diagnostics: AiwsDiagnostic[] }> {
   const raw = files.get(AIWS_MANIFEST_FILE)
   if (!raw) throw new AiwsSourceError([{ file: AIWS_MANIFEST_FILE, severity: 'error', message: 'missing' }])
@@ -408,8 +656,19 @@ export async function verifyBundle(files: Map<string, Uint8Array>): Promise<{ ma
   try { parsed = JSON.parse(decoder.decode(raw)) } catch (e) { throw new AiwsSourceError([{ file: AIWS_MANIFEST_FILE, severity: 'error', message: String(e) }]) }
   const manifest = compatManifest(parsed)
   const diagnostics: AiwsDiagnostic[] = []
-  if (manifest.workspace_templates.length > 0) diagnostics.push({ file: AIWS_MANIFEST_FILE, severity: 'error', message: 'Workspace templates are not supported yet' })
-  if (manifest.controls.length === 0) diagnostics.push({ file: AIWS_MANIFEST_FILE, severity: 'error', message: 'lists no control' })
+  const templates = manifest.workspace_templates
+  if (templates.length > 0 && manifest.manifest_version < 3) diagnostics.push({ file: AIWS_MANIFEST_FILE, severity: 'error', message: `Workspace templates need manifest_version 3 (raise it in ${AIWS_MANIFEST_FILE})` })
+  if (templates.length > 32) diagnostics.push({ file: AIWS_MANIFEST_FILE, severity: 'error', message: 'at most 32 Workspace templates' })
+  if (manifest.controls.length === 0 && templates.length === 0) diagnostics.push({ file: AIWS_MANIFEST_FILE, severity: 'error', message: 'lists no control' })
+  // what the bundle's controls declare: a composite's re-raised events are judged against them
+  const declared = new Map<string, string[]>()
+  for (const c of manifest.controls) {
+    const component = typeof c.dir === 'string' ? files.get(`${c.dir}${AIWS_COMPONENT_FILE}`) : undefined
+    try {
+      const comp = component ? JSON.parse(decoder.decode(component)) as unknown : undefined
+      if (isRecord(comp)) declared.set(c.ident, isRecord(comp.events) ? Object.keys(comp.events) : [])
+    } catch { /* reported below */ }
+  }
   const dirs = new Set<string>()
   for (const c of manifest.controls) {
     if (typeof c.dir !== 'string' || !/^controls\/[a-z0-9][a-z0-9._-]{0,70}\/$/.test(c.dir) || dirs.has(c.dir)) { diagnostics.push({ file: AIWS_MANIFEST_FILE, severity: 'error', message: `control ${c.ident}: bad or repeated dir` }); continue }
@@ -419,7 +678,7 @@ export async function verifyBundle(files: Map<string, Uint8Array>): Promise<{ ma
     const component = own.find(([n]) => n === AIWS_COMPONENT_FILE)
     if (!component) { diagnostics.push({ file: `${c.dir}${AIWS_COMPONENT_FILE}`, severity: 'error', message: 'missing' }); continue }
     const text = (name: string) => { const hit = own.find(([n]) => n === name); return hit ? decoder.decode(hit[1]) : undefined }
-    for (const d of checkComponent(decoder.decode(component[1]), own.map(([n]) => n), text)) diagnostics.push({ ...d, file: `${c.dir}${d.file}` })
+    for (const d of checkComponent(decoder.decode(component[1]), own.map(([n]) => n), text, (ident) => declared.get(ident))) diagnostics.push({ ...d, file: `${c.dir}${d.file}` })
     try {
       const comp = JSON.parse(decoder.decode(component[1])) as { ident?: { author_did?: string; name?: string }; kind?: string; deps?: string[] }
       if (`${comp.ident?.author_did}#${comp.ident?.name}` !== c.ident || comp.kind !== c.kind) diagnostics.push({ file: c.dir, severity: 'error', message: 'ident and kind must match its component.json' })
@@ -429,7 +688,22 @@ export async function verifyBundle(files: Map<string, Uint8Array>): Promise<{ ma
   // what a control builds on travels with it (P1): every dependency is another control of the bundle
   const idents = new Set(manifest.controls.map((c) => c.ident))
   for (const c of manifest.controls) for (const d of c.deps ?? []) if (!idents.has(d)) diagnostics.push({ file: AIWS_MANIFEST_FILE, severity: 'error', message: `${c.ident} depends on ${d}, which the bundle does not carry` })
-  for (const p of files.keys()) if (p !== AIWS_MANIFEST_FILE && ![...dirs].some((d) => p.startsWith(d))) diagnostics.push({ file: p, severity: 'error', message: 'belongs to no control of the manifest' })
+  // a template is a snapshot under templates/<id>/ needing controls of the same manifest (Q32)
+  for (const [i, t] of templates.entries()) {
+    const label = isRecord(t) && typeof t.id === 'string' ? `template ${t.id}` : `workspace_templates[${i}]`
+    for (const p of templateProblems(t, idents)) diagnostics.push({ file: AIWS_MANIFEST_FILE, severity: 'error', message: `${label}: ${p}` })
+    if (!isRecord(t) || typeof t.id !== 'string' || !TEMPLATE_ID.test(t.id)) continue
+    const dir = templateDir(t.id)
+    if (dirs.has(dir)) { diagnostics.push({ file: AIWS_MANIFEST_FILE, severity: 'error', message: `${label} is listed twice` }); continue }
+    dirs.add(dir)
+    const snapshot = files.get(`${dir}snapshot.json`)
+    let format: unknown
+    try { format = snapshot ? (JSON.parse(decoder.decode(snapshot)) as { format?: unknown }).format : undefined } catch { format = undefined }
+    if (!snapshot) diagnostics.push({ file: `${dir}snapshot.json`, severity: 'error', message: 'missing' })
+    else if (format !== AIWS_TEMPLATE_FORMAT) diagnostics.push({ file: `${dir}snapshot.json`, severity: 'error', message: `not a template snapshot (format ${AIWS_TEMPLATE_FORMAT})` })
+    if (await aiwsTemplateDigest(files, t.id) !== t.digest) diagnostics.push({ file: dir, severity: 'error', message: 'the files do not match the template digest' })
+  }
+  for (const p of files.keys()) if (p !== AIWS_MANIFEST_FILE && ![...dirs].some((d) => p.startsWith(d))) diagnostics.push({ file: p, severity: 'error', message: 'belongs to no control or template of the manifest' })
   return { manifest, diagnostics }
 }
 
@@ -574,7 +848,7 @@ export async function writeBuildState(nfsp: NfspClient, dir: string, state: Aiws
   await writeHomeFile(nfsp, dir, AIWS_BUILD_STATE_FILE, encoder.encode(`${JSON.stringify(state, null, 2)}\n`))
 }
 
-export interface AiwsBuildOptions { folderId?: string; force?: boolean; dryRun?: boolean; upload?: AiwsUploader }
+export interface AiwsBuildOptions { folderId?: string; force?: boolean; dryRun?: boolean; upload?: AiwsUploader; migration?: Record<string, AiwsMigration> }
 
 /**
  * Build the control in `dir` into a Workspace: collect the files, call `ext.build` with the base recorded in
@@ -591,6 +865,7 @@ export async function buildControl(client: AiwsExtRpc, nfsp: NfspClient, workspa
     ...(base ? { expect: base } : {}),
     ...(opts.force ? { force: true } : {}),
     ...(opts.dryRun ? { dry_run: true } : {}),
+    ...(opts.migration ? { migration: opts.migration } : {}),
   })
   if (!opts.dryRun && typeof result.def_entity_id === 'string' && typeof result.def_rev === 'number') {
     await writeBuildState(nfsp, dir, { workspace_id: workspaceId, def_entity_id: result.def_entity_id, def_rev: result.def_rev, dir_rev: Number(result.dir_rev ?? 0), ident: String(result.ident ?? ''), at: new Date().toISOString() })
@@ -663,8 +938,9 @@ export interface AiwsSkeletonOptions {
   algorithm?: 'stack' | 'fixed'
 }
 
-/** The files of a new control: a minimal working declarative or HTML control with one optional binding, or a composite
- * that stacks (or keeps in place) the Blocks of its slots under a titled frame. */
+/** The files of a new control: a minimal working declarative or HTML control (with one public event, raised by a
+ * button) with one optional binding, or a composite that stacks (or keeps in place) the Blocks of its slots under a
+ * titled frame. */
 export function controlSkeleton(opts: AiwsSkeletonOptions): Record<string, string> {
   const title = opts.title ?? opts.name
   if (opts.kind === 'composite') {
@@ -715,12 +991,20 @@ export function controlSkeleton(opts: AiwsSkeletonOptions): Record<string, strin
   }
   const agent = `# ${title}\n\nBind \`data\` to a table. Config: \`label\` (text).\n`
   if (opts.kind === 'html') {
+    const events = { clicked: { title: 'Clicked', description: 'Raised when someone clicks the button (in run mode)', params: { count: { type: 'number', description: 'Rows of the bound table' } } } }
     return {
-      [AIWS_COMPONENT_FILE]: `${JSON.stringify({ ...base, host_api: AIWS_HTML_API_VERSION, entry: { html: 'view.html', css: 'style.css', js: 'behavior.js' } }, null, 2)}\n`,
-      'view.html': '<div class="card"><div class="label" id="label"></div><div class="value" id="value">—</div></div>\n',
+      [AIWS_COMPONENT_FILE]: `${JSON.stringify({ ...base, host_api: AIWS_HTML_API_VERSION, events, entry: { html: 'view.html', css: 'style.css', js: 'behavior.js' } }, null, 2)}\n`,
+      'view.html': '<div class="card"><div class="label" id="label"></div><div class="value" id="value">—</div><button id="go" type="button">Go</button></div>\n',
       'style.css': '.card{font:14px system-ui;padding:12px}.label{opacity:.7}.value{font-size:28px;font-weight:600}\n',
-      'behavior.js': "document.getElementById('label').textContent = (aiws.context.config || {}).label || ''\nif (aiws.bindings.data) aiws.input('data').rows().then(function (rows) { document.getElementById('value').textContent = String(rows.length) })\n",
-      'AGENT.md': agent,
+      'behavior.js': [
+        "document.getElementById('label').textContent = (aiws.context.config || {}).label || ''",
+        'var count = 0',
+        "if (aiws.bindings.data) aiws.input('data').rows().then(function (rows) { count = rows.length; document.getElementById('value').textContent = String(count) })",
+        '// the public event of component.json: an instance binds handlers to it in its `on` (host API 3)',
+        "document.getElementById('go').addEventListener('click', function () { aiws.emit('clicked', { count: count }) })",
+        '',
+      ].join('\n'),
+      'AGENT.md': `${agent}Event: \`clicked\` (\`count\`), raised by its button; bind handlers to it in the instance's \`on\`.\n`,
     }
   }
   return {

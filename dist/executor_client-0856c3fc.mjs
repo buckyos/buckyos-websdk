@@ -843,9 +843,24 @@ class AiWorkspaceClient {
   extInstall(params) {
     return this.call("ext.install", params);
   }
-  /** Pack definitions (and what they build on) as an `aiws` `.pikg` into the caller's `exports` bucket (unsigned). */
-  extPack(workspace_id, entity_ids, pkg) {
-    return this.call("ext.pack", { workspace_id, entity_ids, package: pkg });
+  /** Pack definitions (and what they build on, and templates of the Workspace) as an `aiws` `.pikg` into the caller's
+   * `exports` bucket (unsigned). */
+  extPack(workspace_id, entity_ids, pkg, templates) {
+    return this.call("ext.pack", { workspace_id, entity_ids, package: pkg, ...templates ? { templates } : {} });
+  }
+  /** Rebuild imported definitions from the caller's library (same Zone; across Zones `ext.build { provenance, upgrade }`):
+   * `EXT_LOCAL_CHANGES` when the snapshot was built locally since, unless `force`. */
+  extUpgrade(params) {
+    return this.call("ext.upgrade", { ...params });
+  }
+  /** Chosen Surfaces as a template snapshot: the manifest item, the definitions it needs and the files (base64) of
+   * `templates/<id>/`. */
+  extExportTemplate(params) {
+    return this.call("ext.export_template", { ...params });
+  }
+  /** A new Workspace from a template of the caller's library (installing a template never creates one). */
+  extCreateFromTemplate(params) {
+    return this.call("ext.create_from_template", params);
   }
   extListLibrary() {
     return this.call("ext.list_library", {});
@@ -30705,4 +30720,4 @@ export {
   NOTIFY_SESSION_PREFIX as y,
   NOTIFY_CHOICE_CONTROL_ID as z
 };
-//# sourceMappingURL=executor_client-d8112f8b.mjs.map
+//# sourceMappingURL=executor_client-0856c3fc.mjs.map
