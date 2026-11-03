@@ -131,7 +131,9 @@ export type AiccErrorCode = 'invalid_request' | 'invalid_method' | 'schema_valid
   /** The Provider / model is not permitted to the caller (hidden identities are not disclosed). */
   'resource_not_permitted' |
   /** The AICC user of a delegated run cannot be determined. */
-  'attribution_unavailable'
+  'attribution_unavailable' |
+  /** The request does not fit the model's context window (Provider refusal or no window holds it): shrink the input; retrying it as is cannot succeed. */
+  'context_length_exceeded'
 export interface AiccError { code: AiccErrorCode; message: string; provider_code?: string; retriable?: boolean; details?: JsonValue }
 /** Token quota and resource policy refusals: they reach the client as a detailed kRPC error. */
 export const AICC_POLICY_REFUSAL_CODES: readonly AiccErrorCode[] = ['quota_exhausted', 'quota_budget_exceeded', 'quota_unavailable', 'resource_not_permitted', 'attribution_unavailable']
