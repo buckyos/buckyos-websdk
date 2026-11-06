@@ -1,9 +1,46 @@
-import { kRPCClient } from './krpc_client';
+import { kRPCClient, RPCError } from './krpc_client';
 export declare const WORKFLOW_SERVICE_NAME = "workflow";
 export interface WorkflowOwner {
     user_id: string;
     app_id: string;
 }
+export type WorkflowDefinitionSource = 'system' | 'user_imported' | 'app_registered' | 'agent_generated';
+/** Structured execution error carried from the function implementation to the RPC surface. */
+export interface WorkflowExecutionError {
+    code: string;
+    message: string;
+    details?: unknown;
+    retryable?: boolean;
+}
+export declare const WorkflowErrorCode: {
+    readonly ToolsMissing: "tools_missing";
+    readonly Timeout: "timeout";
+    readonly Cancelled: "cancelled";
+    readonly Interrupted: "interrupted";
+    readonly PermissionDenied: "permission_denied";
+    readonly ResourceLimit: "resource_limit";
+    readonly EnvironmentChanged: "environment_changed";
+    readonly InvalidParams: "invalid_params";
+    readonly InvalidResult: "invalid_result";
+    readonly InputUnavailable: "input_unavailable";
+    readonly ToolFailed: "tool_failed";
+    readonly FunctionNotFound: "function_not_found";
+    readonly QueueFull: "queue_full";
+    readonly Internal: "internal";
+    readonly SystemDefinitionReadOnly: "system_definition_read_only";
+    readonly UnresolvedFunction: "unresolved_function";
+    readonly RunTerminal: "run_terminal";
+    readonly InvalidInput: "invalid_input";
+    readonly NotAuthorized: "not_authorized";
+};
+/** `{ok:false, error, message, detail}` from the workflow service. */
+export declare class WorkflowRequestError extends RPCError {
+    readonly code: string;
+    readonly detail: unknown;
+    constructor(code: string, message: string, detail: unknown);
+}
+/** `cache` = reused step result, `executed` = thunk ran, `direct` = orchestrator adapter, `submitted` = agent output. */
+export type WorkflowNodeSource = 'cache' | 'executed' | 'direct' | 'submitted';
 export declare enum WorkflowStepType {
     Autonomous = "autonomous",
     HumanConfirm = "human_confirm",
@@ -151,48 +188,221 @@ export interface WorkflowHumanAction {
     actor?: string;
 }
 export interface WorkflowSubmitDefinitionReq {
-    owner: WorkflowOwner;
+    owner?: WorkflowOwner;
     definition: WorkflowDefinition;
     tags?: string[];
+    /** `system` is reserved for the service and rejected. */
+    source?: Exclude<WorkflowDefinitionSource, 'system'>;
+}
+export interface WorkflowAnalysisIssue {
+    severity: string;
+    code: string;
+    message: string;
+    node_id?: string | null;
+}
+export interface WorkflowAnalysisReport {
+    errors: WorkflowAnalysisIssue[];
+    warnings: WorkflowAnalysisIssue[];
+}
+export interface WorkflowDefinitionSummary {
+    id: string;
+    schema_version: string;
+    name: string;
+    owner: WorkflowOwner;
+    source: WorkflowDefinitionSource;
+    read_only: boolean;
+    revision: string;
+    status: WorkflowDefinitionStatus;
+    version: number;
+    tags: string[];
+    created_at: number;
+    updated_at: number;
+    warnings: number;
+    errors: number;
+}
+export interface WorkflowDefinitionRecord {
+    id: string;
+    schema_version: string;
+    name: string;
+    owner: WorkflowOwner;
+    source: WorkflowDefinitionSource;
+    read_only: boolean;
+    revision: string;
+    resolved_functions: Record<string, string>;
+    definition: WorkflowDefinition;
+    compiled: WorkflowCompiledWorkflow;
+    analysis: WorkflowAnalysisReport;
+    status: WorkflowDefinitionStatus;
+    version: number;
+    tags: string[];
+    created_at: number;
+    updated_at: number;
+}
+export interface WorkflowCompiledGraph {
+    start_nodes: string[];
+    terminal_from: string[];
+    incoming: Record<string, string[]>;
+    explicit_successors: Record<string, string[]>;
+    all_successors: Record<string, string[]>;
+    branch_targets: Record<string, Record<string, string>>;
+    parallel_branches: Record<string, string[]>;
+    for_each_steps: Record<string, string[]>;
+}
+export interface WorkflowCompiledNode {
+    id: string;
+    name: string;
+    expr: unknown;
+    output_schema?: unknown;
+    skippable: boolean;
+    idempotent: boolean;
+}
+export interface WorkflowCompiledWorkflow {
+    schema_version: string;
+    workflow_id: string;
+    workflow_name: string;
+    definition: WorkflowDefinition;
+    nodes: Record<string, WorkflowCompiledNode>;
+    graph: WorkflowCompiledGraph;
+    warnings: WorkflowAnalysisIssue[];
+    resolved_functions: Record<string, string>;
+    revision: string;
 }
 export interface WorkflowSubmitDefinitionResult {
     workflow_id: string;
     version: number;
-    analysis: unknown;
-    definition: unknown;
+    revision: string;
+    source: WorkflowDefinitionSource;
+    analysis: WorkflowAnalysisReport;
+    definition: WorkflowDefinitionRecord;
+}
+export interface WorkflowDryRunResult {
+    analysis: WorkflowAnalysisReport;
+    graph: WorkflowCompiledGraph;
+    revision: string;
+    resolved_functions: Record<string, string>;
 }
 export interface WorkflowListDefinitionsReq {
     owner?: WorkflowOwner;
     status?: WorkflowDefinitionStatus;
     tag?: string;
+    source?: WorkflowDefinitionSource;
+}
+export interface WorkflowFunctionRegistration {
+    name: string;
+    version: string;
+    fun_id: string;
+    description: string;
+    timeout?: number | null;
+    requirements: Record<string, number>;
+    best_run_weight: Record<string, number>;
+    affinity_type: unknown;
+}
+export interface WorkflowFunctionObject {
+    func_type: unknown;
+    content: string;
+    is_pure: boolean;
+    params_type: Record<string, unknown>;
+    params_schema: unknown;
+    result_type: unknown;
+    result_schema: unknown;
+}
+export interface WorkflowFunctionEntry {
+    fun_id: string;
+    registration: WorkflowFunctionRegistration;
+    object: WorkflowFunctionObject;
+    /** Only on `getFunction`: whether the FunctionObject is readable from the object store. */
+    published?: boolean;
+}
+export interface WorkflowToolInfo {
+    path: string;
+    version: string;
+}
+export interface WorkflowCapabilities {
+    execution_epoch: number;
+    environment: {
+        revision: string;
+        probed_at: number;
+        tools: Record<string, WorkflowToolInfo>;
+        missing: string[];
+        searched: string[];
+    };
+    functions: number;
 }
 export interface WorkflowCreateRunReq {
+    /** Record id, or the logical id of a system definition (`media.pdf`). */
     workflow_id: string;
-    owner: WorkflowOwner;
+    owner?: WorkflowOwner;
     input?: unknown;
     callback_url?: string;
     auto_start?: boolean;
+    /** Reuse an active run of the same principal / revision / input / environment. */
+    ensure?: boolean;
+    /** Wait up to this long (<= 5000) for a terminal state before returning. */
+    wait_ms?: number;
 }
 export interface WorkflowRunTransitionResult {
     run_id: string;
     status: WorkflowRunStatus;
     events: WorkflowEventEnvelope[];
+    accepted?: boolean;
     seq?: number;
     from_seq?: number;
     to_seq?: number;
 }
+export interface WorkflowCreateRunResult extends WorkflowRunTransitionResult {
+    workflow_id: string;
+    revision: string;
+    reused: boolean;
+    output: Record<string, unknown>;
+    seq: number;
+}
+export interface WorkflowStartRunReq {
+    run_id: string;
+    wait_ms?: number;
+}
+export interface WorkflowCancelRunReq {
+    run_id: string;
+    reason?: string;
+}
 export interface WorkflowRunGraph {
     run_id: string;
     workflow_id: string;
+    workflow_name: string;
     status: WorkflowRunStatus;
-    graph: unknown;
-    nodes: unknown;
+    revision: string;
+    requested_by?: string | null;
+    executor: string;
+    owner: WorkflowOwner;
+    graph: WorkflowCompiledGraph;
+    nodes: Record<string, WorkflowCompiledNode>;
     node_states: Record<string, WorkflowNodeRunState>;
     node_outputs: Record<string, unknown>;
+    node_errors: Record<string, WorkflowExecutionError>;
+    node_sources: Record<string, WorkflowNodeSource>;
+    node_attempts: Record<string, number>;
     human_waiting_nodes: string[];
     pending_thunks: Record<string, unknown>;
     metrics: Record<string, unknown>;
+    output: Record<string, unknown>;
+    deadline_at?: number | null;
+    execution_epoch: number;
+    created_at: number;
+    updated_at: number;
     seq: number;
+}
+export interface WorkflowRunOutput {
+    run_id: string;
+    status: WorkflowRunStatus;
+    terminal: boolean;
+    revision: string;
+    output: Record<string, unknown>;
+    node_errors: Record<string, WorkflowExecutionError>;
+    run_error?: WorkflowExecutionError | null;
+    delivery: {
+        artifacts: string[];
+        principal: string;
+        expires_at: number;
+    };
 }
 export interface WorkflowListRunsReq {
     owner?: WorkflowOwner;
@@ -204,7 +414,9 @@ export interface WorkflowRunSummary {
     workflow_id: string;
     workflow_name: string;
     status: WorkflowRunStatus;
+    revision: string;
     owner: WorkflowOwner;
+    requested_by?: string | null;
     created_at: number;
     updated_at: number;
     seq: number;
@@ -247,6 +459,7 @@ export interface WorkflowHistoryReq {
 }
 export interface WorkflowHistoryResult {
     run_id: string;
+    status: WorkflowRunStatus;
     events: WorkflowEventEnvelope[];
     next_seq: number;
     current_seq: number;
@@ -391,17 +604,24 @@ export declare class WorkflowClient {
     setSeq(seq: number): void;
     private callOk;
     submitDefinition(request: WorkflowSubmitDefinitionReq): Promise<WorkflowSubmitDefinitionResult>;
-    getDefinition(workflowId: string): Promise<unknown>;
-    listDefinitions(request?: WorkflowListDefinitionsReq): Promise<unknown[]>;
+    getDefinition(workflowId: string): Promise<WorkflowDefinitionRecord>;
+    listDefinitions(request?: WorkflowListDefinitionsReq): Promise<WorkflowDefinitionSummary[]>;
     archiveDefinition(workflowId: string): Promise<WorkflowDefinitionStatus>;
-    dryRun(definition: WorkflowDefinition): Promise<{
-        analysis: unknown;
-        graph: unknown;
-    }>;
-    createRun(request: WorkflowCreateRunReq): Promise<WorkflowRunTransitionResult>;
-    startRun(runId: string): Promise<WorkflowRunTransitionResult>;
+    dryRun(definition: WorkflowDefinition): Promise<WorkflowDryRunResult>;
+    listFunctions(prefix?: string): Promise<WorkflowFunctionEntry[]>;
+    getFunction(ref: {
+        fun_id: string;
+    } | {
+        name: string;
+        version?: string;
+    }): Promise<WorkflowFunctionEntry>;
+    getCapabilities(): Promise<WorkflowCapabilities>;
+    createRun(request: WorkflowCreateRunReq): Promise<WorkflowCreateRunResult>;
+    startRun(runId: string, waitMs?: number): Promise<WorkflowRunTransitionResult>;
     tickRun(runId: string): Promise<WorkflowRunTransitionResult>;
+    cancelRun(request: WorkflowCancelRunReq): Promise<WorkflowRunTransitionResult>;
     getRunGraph(runId: string): Promise<WorkflowRunGraph>;
+    getRunOutput(runId: string): Promise<WorkflowRunOutput>;
     listRuns(request?: WorkflowListRunsReq): Promise<WorkflowRunSummary[]>;
     submitStepOutput(request: WorkflowSubmitStepOutputReq): Promise<WorkflowRunTransitionResult>;
     reportStepProgress(request: WorkflowReportStepProgressReq): Promise<WorkflowRunTransitionResult>;

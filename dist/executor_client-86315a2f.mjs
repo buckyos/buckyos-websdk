@@ -1726,6 +1726,35 @@ class TaskManagerClient {
   }
 }
 const WORKFLOW_SERVICE_NAME = "workflow";
+const WorkflowErrorCode = {
+  ToolsMissing: "tools_missing",
+  Timeout: "timeout",
+  Cancelled: "cancelled",
+  Interrupted: "interrupted",
+  PermissionDenied: "permission_denied",
+  ResourceLimit: "resource_limit",
+  EnvironmentChanged: "environment_changed",
+  InvalidParams: "invalid_params",
+  InvalidResult: "invalid_result",
+  InputUnavailable: "input_unavailable",
+  ToolFailed: "tool_failed",
+  FunctionNotFound: "function_not_found",
+  QueueFull: "queue_full",
+  Internal: "internal",
+  SystemDefinitionReadOnly: "system_definition_read_only",
+  UnresolvedFunction: "unresolved_function",
+  RunTerminal: "run_terminal",
+  InvalidInput: "invalid_input",
+  NotAuthorized: "not_authorized"
+};
+class WorkflowRequestError extends RPCError {
+  constructor(code, message, detail) {
+    super(message);
+    this.name = "WorkflowRequestError";
+    this.code = code;
+    this.detail = detail;
+  }
+}
 var WorkflowStepType = /* @__PURE__ */ ((WorkflowStepType2) => {
   WorkflowStepType2["Autonomous"] = "autonomous";
   WorkflowStepType2["HumanConfirm"] = "human_confirm";
@@ -1835,14 +1864,17 @@ class WorkflowClient {
     if (parsed.ok === true) {
       return parsed;
     }
-    const message = typeof parsed.message === "string" ? parsed.message : typeof parsed.error === "string" ? parsed.error : "workflow request failed";
-    throw new RPCError(message);
+    const code = typeof parsed.error === "string" ? parsed.error : "workflow_error";
+    const message = typeof parsed.message === "string" ? parsed.message : code;
+    throw new WorkflowRequestError(code, message, parsed.detail);
   }
   async submitDefinition(request) {
     const result = await this.callOk("submit_definition", request);
     return {
       workflow_id: requiredField(result, "workflow_id"),
       version: requiredField(result, "version"),
+      revision: requiredField(result, "revision"),
+      source: requiredField(result, "source"),
       analysis: requiredField(result, "analysis"),
       definition: requiredField(result, "definition")
     };
@@ -1863,20 +1895,45 @@ class WorkflowClient {
     const result = await this.callOk("dry_run", { definition });
     return {
       analysis: requiredField(result, "analysis"),
-      graph: requiredField(result, "graph")
+      graph: requiredField(result, "graph"),
+      revision: requiredField(result, "revision"),
+      resolved_functions: requiredField(result, "resolved_functions")
+    };
+  }
+  async listFunctions(prefix) {
+    const result = await this.callOk("list_functions", prefix ? { prefix } : {});
+    return requiredField(result, "functions");
+  }
+  async getFunction(ref) {
+    const result = await this.callOk("get_function", ref);
+    return requiredField(result, "function");
+  }
+  async getCapabilities() {
+    const result = await this.callOk("get_capabilities", {});
+    return {
+      execution_epoch: requiredField(result, "execution_epoch"),
+      environment: requiredField(result, "environment"),
+      functions: requiredField(result, "functions")
     };
   }
   async createRun(request) {
     return await this.callOk("create_run", request);
   }
-  async startRun(runId) {
-    return await this.callOk("start_run", { run_id: runId });
+  async startRun(runId, waitMs) {
+    const request = waitMs == null ? { run_id: runId } : { run_id: runId, wait_ms: waitMs };
+    return await this.callOk("start_run", request);
   }
   async tickRun(runId) {
     return await this.callOk("tick_run", { run_id: runId });
   }
+  async cancelRun(request) {
+    return await this.callOk("cancel_run", request);
+  }
   async getRunGraph(runId) {
     return await this.callOk("get_run_graph", { run_id: runId });
+  }
+  async getRunOutput(runId) {
+    return await this.callOk("get_run_output", { run_id: runId });
   }
   async listRuns(request = {}) {
     const result = await this.callOk("list_runs", request);
@@ -30602,7 +30659,7 @@ export {
   TASK_MANAGER_SERVICE_PORT as ay,
   TASK_POLICY_PRESET_COLLABORATIVE_TREE_V1 as az,
   bns_client as b,
-  videoGenerationRequirement as b$,
+  validateVideoGeneration as b$,
   TASK_ERR_CONTROL_NOT_AVAILABLE as b0,
   TASK_ERR_CONTROL_ALREADY_PENDING as b1,
   TASK_ERR_ALREADY_COMPLETED as b2,
@@ -30613,33 +30670,33 @@ export {
   TASK_MGR_ERROR_CODES as b7,
   taskMgrTaskEventPath as b8,
   taskMgrTreeEventPath as b9,
-  WorkflowScheduledTaskFireStatus as bA,
-  WorkflowClient as bB,
-  AICC_SERVICE_UNIQUE_ID as bC,
-  AICC_SERVICE_SERVICE_NAME as bD,
-  AICC_SERVICE_SERVICE_PORT as bE,
-  AICC_AI_METHODS as bF,
-  AICC_CORE_METHODS as bG,
-  AICC_MANAGEMENT_METHODS as bH,
-  AICC_QUOTA_METHODS as bI,
-  AICC_METHODS as bJ,
-  AICC_FEATURES as bK,
-  AICC_EXECUTION_MODES as bL,
-  AICC_POLICY_REFUSAL_CODES as bM,
-  aiccRefusalOf as bN,
-  isAiccAiMethod as bO,
-  aiccTextMessage as bP,
-  aiccMessageTextContent as bQ,
-  aiccMessageFirstText as bR,
-  validateAiccMessage as bS,
-  AiccClient as bT,
-  decisionRequirements as bU,
-  validateDecisionRequest as bV,
-  validateDecisionAnswers as bW,
-  parseVideoPrompt as bX,
-  validateVideoOutput as bY,
-  validateVideoGeneration as bZ,
-  validateVideoEdit as b_,
+  WorkflowScheduledTaskStatus as bA,
+  WorkflowScheduledTaskMisfirePolicy as bB,
+  WorkflowScheduledTaskFireStatus as bC,
+  WorkflowClient as bD,
+  AICC_SERVICE_UNIQUE_ID as bE,
+  AICC_SERVICE_SERVICE_NAME as bF,
+  AICC_SERVICE_SERVICE_PORT as bG,
+  AICC_AI_METHODS as bH,
+  AICC_CORE_METHODS as bI,
+  AICC_MANAGEMENT_METHODS as bJ,
+  AICC_QUOTA_METHODS as bK,
+  AICC_METHODS as bL,
+  AICC_FEATURES as bM,
+  AICC_EXECUTION_MODES as bN,
+  AICC_POLICY_REFUSAL_CODES as bO,
+  aiccRefusalOf as bP,
+  isAiccAiMethod as bQ,
+  aiccTextMessage as bR,
+  aiccMessageTextContent as bS,
+  aiccMessageFirstText as bT,
+  validateAiccMessage as bU,
+  AiccClient as bV,
+  decisionRequirements as bW,
+  validateDecisionRequest as bX,
+  validateDecisionAnswers as bY,
+  parseVideoPrompt as bZ,
+  validateVideoOutput as b_,
   taskMgrErrorCode as ba,
   TaskExecutorKind as bb,
   TaskPhase as bc,
@@ -30656,46 +30713,48 @@ export {
   TaskEventType as bn,
   TaskManagerClient as bo,
   WORKFLOW_SERVICE_NAME as bp,
-  WorkflowStepType as bq,
-  WorkflowOutputMode as br,
-  WorkflowJoinMode as bs,
-  WorkflowRetryFallback as bt,
-  WorkflowDefinitionStatus as bu,
-  WorkflowRunStatus as bv,
-  WorkflowNodeRunState as bw,
-  WorkflowHumanActionKind as bx,
-  WorkflowScheduledTaskStatus as by,
-  WorkflowScheduledTaskMisfirePolicy as bz,
+  WorkflowErrorCode as bq,
+  WorkflowRequestError as br,
+  WorkflowStepType as bs,
+  WorkflowOutputMode as bt,
+  WorkflowJoinMode as bu,
+  WorkflowRetryFallback as bv,
+  WorkflowDefinitionStatus as bw,
+  WorkflowRunStatus as bx,
+  WorkflowNodeRunState as by,
+  WorkflowHumanActionKind as bz,
   createSDKModule as c,
-  KEventReader as c0,
-  KEventClient as c1,
-  appIdFromDid as c2,
-  parseAppId as c3,
-  appDidFromId as c4,
-  createAppInstanceId as c5,
-  parseAppInstanceId as c6,
-  BNS_EVM_DEFAULT_GAS_LIMIT as c7,
-  BNS_EVM_DEFAULT_MAX_FEE_PER_GAS as c8,
-  BNS_EVM_DEFAULT_MAX_PRIORITY_FEE_PER_GAS as c9,
-  BNS_MAX_INLINE_DOCUMENT_BYTES as ca,
-  BNS_DNS_TXT_DEFAULT_TTL as cb,
-  BNS_DNS_TXT_DOC_TYPE as cc,
-  BNS_PUBLISH_DOCUMENT_ABI as cd,
-  BnsEvmTxError as ce,
-  BnsEvmTxBuilder as cf,
-  decodeBnsPublishDocumentCalldata as cg,
-  BnsTxExecutorError as ch,
-  walletUserHasSnAccount as ci,
-  BnsTxExecutor as cj,
-  ExecutorClient as ck,
-  ExecutorStreamError as cl,
-  encodeExecutorControl as cm,
-  ExecutorCommandStream as cn,
-  AIWORKSPACE_SERVICE_NAME as co,
-  AiwsFailure as cp,
-  aiwsReferenceUrl as cq,
-  parseAiwsReferenceUrl as cr,
-  AiWorkspaceClient as cs,
+  validateVideoEdit as c0,
+  videoGenerationRequirement as c1,
+  KEventReader as c2,
+  KEventClient as c3,
+  appIdFromDid as c4,
+  parseAppId as c5,
+  appDidFromId as c6,
+  createAppInstanceId as c7,
+  parseAppInstanceId as c8,
+  BNS_EVM_DEFAULT_GAS_LIMIT as c9,
+  BNS_EVM_DEFAULT_MAX_FEE_PER_GAS as ca,
+  BNS_EVM_DEFAULT_MAX_PRIORITY_FEE_PER_GAS as cb,
+  BNS_MAX_INLINE_DOCUMENT_BYTES as cc,
+  BNS_DNS_TXT_DEFAULT_TTL as cd,
+  BNS_DNS_TXT_DOC_TYPE as ce,
+  BNS_PUBLISH_DOCUMENT_ABI as cf,
+  BnsEvmTxError as cg,
+  BnsEvmTxBuilder as ch,
+  decodeBnsPublishDocumentCalldata as ci,
+  BnsTxExecutorError as cj,
+  walletUserHasSnAccount as ck,
+  BnsTxExecutor as cl,
+  ExecutorClient as cm,
+  ExecutorStreamError as cn,
+  encodeExecutorControl as co,
+  ExecutorCommandStream as cp,
+  AIWORKSPACE_SERVICE_NAME as cq,
+  AiwsFailure as cr,
+  aiwsReferenceUrl as cs,
+  parseAiwsReferenceUrl as ct,
+  AiWorkspaceClient as cu,
   bucket_client as d,
   BS_SERVICE_TASK_MANAGER as e,
   getActiveRuntimeType as f,
@@ -30720,4 +30779,4 @@ export {
   NOTIFY_SESSION_PREFIX as y,
   NOTIFY_CHOICE_CONTROL_ID as z
 };
-//# sourceMappingURL=executor_client-0856c3fc.mjs.map
+//# sourceMappingURL=executor_client-86315a2f.mjs.map

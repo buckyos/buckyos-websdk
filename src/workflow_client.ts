@@ -7,6 +7,58 @@ export interface WorkflowOwner {
   app_id: string
 }
 
+export type WorkflowDefinitionSource =
+  | 'system'
+  | 'user_imported'
+  | 'app_registered'
+  | 'agent_generated'
+
+/** Structured execution error carried from the function implementation to the RPC surface. */
+export interface WorkflowExecutionError {
+  code: string
+  message: string
+  details?: unknown
+  retryable?: boolean
+}
+
+export const WorkflowErrorCode = {
+  ToolsMissing: 'tools_missing',
+  Timeout: 'timeout',
+  Cancelled: 'cancelled',
+  Interrupted: 'interrupted',
+  PermissionDenied: 'permission_denied',
+  ResourceLimit: 'resource_limit',
+  EnvironmentChanged: 'environment_changed',
+  InvalidParams: 'invalid_params',
+  InvalidResult: 'invalid_result',
+  InputUnavailable: 'input_unavailable',
+  ToolFailed: 'tool_failed',
+  FunctionNotFound: 'function_not_found',
+  QueueFull: 'queue_full',
+  Internal: 'internal',
+  SystemDefinitionReadOnly: 'system_definition_read_only',
+  UnresolvedFunction: 'unresolved_function',
+  RunTerminal: 'run_terminal',
+  InvalidInput: 'invalid_input',
+  NotAuthorized: 'not_authorized',
+} as const
+
+/** `{ok:false, error, message, detail}` from the workflow service. */
+export class WorkflowRequestError extends RPCError {
+  readonly code: string
+  readonly detail: unknown
+
+  constructor(code: string, message: string, detail: unknown) {
+    super(message)
+    this.name = 'WorkflowRequestError'
+    this.code = code
+    this.detail = detail
+  }
+}
+
+/** `cache` = reused step result, `executed` = thunk ran, `direct` = orchestrator adapter, `submitted` = agent output. */
+export type WorkflowNodeSource = 'cache' | 'executed' | 'direct' | 'submitted'
+
 export enum WorkflowStepType {
   Autonomous = 'autonomous',
   HumanConfirm = 'human_confirm',
@@ -177,53 +229,243 @@ export interface WorkflowHumanAction {
 }
 
 export interface WorkflowSubmitDefinitionReq {
-  owner: WorkflowOwner
+  owner?: WorkflowOwner
   definition: WorkflowDefinition
   tags?: string[]
+  /** `system` is reserved for the service and rejected. */
+  source?: Exclude<WorkflowDefinitionSource, 'system'>
+}
+
+export interface WorkflowAnalysisIssue {
+  severity: string
+  code: string
+  message: string
+  node_id?: string | null
+}
+
+export interface WorkflowAnalysisReport {
+  errors: WorkflowAnalysisIssue[]
+  warnings: WorkflowAnalysisIssue[]
+}
+
+export interface WorkflowDefinitionSummary {
+  id: string
+  schema_version: string
+  name: string
+  owner: WorkflowOwner
+  source: WorkflowDefinitionSource
+  read_only: boolean
+  revision: string
+  status: WorkflowDefinitionStatus
+  version: number
+  tags: string[]
+  created_at: number
+  updated_at: number
+  warnings: number
+  errors: number
+}
+
+export interface WorkflowDefinitionRecord {
+  id: string
+  schema_version: string
+  name: string
+  owner: WorkflowOwner
+  source: WorkflowDefinitionSource
+  read_only: boolean
+  revision: string
+  resolved_functions: Record<string, string>
+  definition: WorkflowDefinition
+  compiled: WorkflowCompiledWorkflow
+  analysis: WorkflowAnalysisReport
+  status: WorkflowDefinitionStatus
+  version: number
+  tags: string[]
+  created_at: number
+  updated_at: number
+}
+
+export interface WorkflowCompiledGraph {
+  start_nodes: string[]
+  terminal_from: string[]
+  incoming: Record<string, string[]>
+  explicit_successors: Record<string, string[]>
+  all_successors: Record<string, string[]>
+  branch_targets: Record<string, Record<string, string>>
+  parallel_branches: Record<string, string[]>
+  for_each_steps: Record<string, string[]>
+}
+
+export interface WorkflowCompiledNode {
+  id: string
+  name: string
+  expr: unknown
+  output_schema?: unknown
+  skippable: boolean
+  idempotent: boolean
+}
+
+export interface WorkflowCompiledWorkflow {
+  schema_version: string
+  workflow_id: string
+  workflow_name: string
+  definition: WorkflowDefinition
+  nodes: Record<string, WorkflowCompiledNode>
+  graph: WorkflowCompiledGraph
+  warnings: WorkflowAnalysisIssue[]
+  resolved_functions: Record<string, string>
+  revision: string
 }
 
 export interface WorkflowSubmitDefinitionResult {
   workflow_id: string
   version: number
-  analysis: unknown
-  definition: unknown
+  revision: string
+  source: WorkflowDefinitionSource
+  analysis: WorkflowAnalysisReport
+  definition: WorkflowDefinitionRecord
+}
+
+export interface WorkflowDryRunResult {
+  analysis: WorkflowAnalysisReport
+  graph: WorkflowCompiledGraph
+  revision: string
+  resolved_functions: Record<string, string>
 }
 
 export interface WorkflowListDefinitionsReq {
   owner?: WorkflowOwner
   status?: WorkflowDefinitionStatus
   tag?: string
+  source?: WorkflowDefinitionSource
+}
+
+export interface WorkflowFunctionRegistration {
+  name: string
+  version: string
+  fun_id: string
+  description: string
+  timeout?: number | null
+  requirements: Record<string, number>
+  best_run_weight: Record<string, number>
+  affinity_type: unknown
+}
+
+export interface WorkflowFunctionObject {
+  func_type: unknown
+  content: string
+  is_pure: boolean
+  params_type: Record<string, unknown>
+  params_schema: unknown
+  result_type: unknown
+  result_schema: unknown
+}
+
+export interface WorkflowFunctionEntry {
+  fun_id: string
+  registration: WorkflowFunctionRegistration
+  object: WorkflowFunctionObject
+  /** Only on `getFunction`: whether the FunctionObject is readable from the object store. */
+  published?: boolean
+}
+
+export interface WorkflowToolInfo {
+  path: string
+  version: string
+}
+
+export interface WorkflowCapabilities {
+  execution_epoch: number
+  environment: {
+    revision: string
+    probed_at: number
+    tools: Record<string, WorkflowToolInfo>
+    missing: string[]
+    searched: string[]
+  }
+  functions: number
 }
 
 export interface WorkflowCreateRunReq {
+  /** Record id, or the logical id of a system definition (`media.pdf`). */
   workflow_id: string
-  owner: WorkflowOwner
+  owner?: WorkflowOwner
   input?: unknown
   callback_url?: string
   auto_start?: boolean
+  /** Reuse an active run of the same principal / revision / input / environment. */
+  ensure?: boolean
+  /** Wait up to this long (<= 5000) for a terminal state before returning. */
+  wait_ms?: number
 }
 
 export interface WorkflowRunTransitionResult {
   run_id: string
   status: WorkflowRunStatus
   events: WorkflowEventEnvelope[]
+  accepted?: boolean
   seq?: number
   from_seq?: number
   to_seq?: number
 }
 
+export interface WorkflowCreateRunResult extends WorkflowRunTransitionResult {
+  workflow_id: string
+  revision: string
+  reused: boolean
+  output: Record<string, unknown>
+  seq: number
+}
+
+export interface WorkflowStartRunReq {
+  run_id: string
+  wait_ms?: number
+}
+
+export interface WorkflowCancelRunReq {
+  run_id: string
+  reason?: string
+}
+
 export interface WorkflowRunGraph {
   run_id: string
   workflow_id: string
+  workflow_name: string
   status: WorkflowRunStatus
-  graph: unknown
-  nodes: unknown
+  revision: string
+  requested_by?: string | null
+  executor: string
+  owner: WorkflowOwner
+  graph: WorkflowCompiledGraph
+  nodes: Record<string, WorkflowCompiledNode>
   node_states: Record<string, WorkflowNodeRunState>
   node_outputs: Record<string, unknown>
+  node_errors: Record<string, WorkflowExecutionError>
+  node_sources: Record<string, WorkflowNodeSource>
+  node_attempts: Record<string, number>
   human_waiting_nodes: string[]
   pending_thunks: Record<string, unknown>
   metrics: Record<string, unknown>
+  output: Record<string, unknown>
+  deadline_at?: number | null
+  execution_epoch: number
+  created_at: number
+  updated_at: number
   seq: number
+}
+
+export interface WorkflowRunOutput {
+  run_id: string
+  status: WorkflowRunStatus
+  terminal: boolean
+  revision: string
+  output: Record<string, unknown>
+  node_errors: Record<string, WorkflowExecutionError>
+  run_error?: WorkflowExecutionError | null
+  delivery: {
+    artifacts: string[]
+    principal: string
+    expires_at: number
+  }
 }
 
 export interface WorkflowListRunsReq {
@@ -237,7 +479,9 @@ export interface WorkflowRunSummary {
   workflow_id: string
   workflow_name: string
   status: WorkflowRunStatus
+  revision: string
   owner: WorkflowOwner
+  requested_by?: string | null
   created_at: number
   updated_at: number
   seq: number
@@ -287,6 +531,7 @@ export interface WorkflowHistoryReq {
 
 export interface WorkflowHistoryResult {
   run_id: string
+  status: WorkflowRunStatus
   events: WorkflowEventEnvelope[]
   next_seq: number
   current_seq: number
@@ -479,12 +724,9 @@ export class WorkflowClient {
       return parsed
     }
 
-    const message = typeof parsed.message === 'string'
-      ? parsed.message
-      : typeof parsed.error === 'string'
-        ? parsed.error
-        : 'workflow request failed'
-    throw new RPCError(message)
+    const code = typeof parsed.error === 'string' ? parsed.error : 'workflow_error'
+    const message = typeof parsed.message === 'string' ? parsed.message : code
+    throw new WorkflowRequestError(code, message, parsed.detail)
   }
 
   async submitDefinition(request: WorkflowSubmitDefinitionReq): Promise<WorkflowSubmitDefinitionResult> {
@@ -492,19 +734,21 @@ export class WorkflowClient {
     return {
       workflow_id: requiredField<string>(result, 'workflow_id'),
       version: requiredField<number>(result, 'version'),
-      analysis: requiredField<unknown>(result, 'analysis'),
-      definition: requiredField<unknown>(result, 'definition'),
+      revision: requiredField<string>(result, 'revision'),
+      source: requiredField<WorkflowDefinitionSource>(result, 'source'),
+      analysis: requiredField<WorkflowAnalysisReport>(result, 'analysis'),
+      definition: requiredField<WorkflowDefinitionRecord>(result, 'definition'),
     }
   }
 
-  async getDefinition(workflowId: string): Promise<unknown> {
+  async getDefinition(workflowId: string): Promise<WorkflowDefinitionRecord> {
     const result = await this.callOk('get_definition', { workflow_id: workflowId })
-    return requiredField<unknown>(result, 'definition')
+    return requiredField<WorkflowDefinitionRecord>(result, 'definition')
   }
 
-  async listDefinitions(request: WorkflowListDefinitionsReq = {}): Promise<unknown[]> {
+  async listDefinitions(request: WorkflowListDefinitionsReq = {}): Promise<WorkflowDefinitionSummary[]> {
     const result = await this.callOk('list_definitions', request)
-    return requiredField<unknown[]>(result, 'definitions')
+    return requiredField<WorkflowDefinitionSummary[]>(result, 'definitions')
   }
 
   async archiveDefinition(workflowId: string): Promise<WorkflowDefinitionStatus> {
@@ -512,28 +756,58 @@ export class WorkflowClient {
     return requiredField<WorkflowDefinitionStatus>(result, 'status')
   }
 
-  async dryRun(definition: WorkflowDefinition): Promise<{ analysis: unknown, graph: unknown }> {
+  async dryRun(definition: WorkflowDefinition): Promise<WorkflowDryRunResult> {
     const result = await this.callOk('dry_run', { definition })
     return {
-      analysis: requiredField<unknown>(result, 'analysis'),
-      graph: requiredField<unknown>(result, 'graph'),
+      analysis: requiredField<WorkflowAnalysisReport>(result, 'analysis'),
+      graph: requiredField<WorkflowCompiledGraph>(result, 'graph'),
+      revision: requiredField<string>(result, 'revision'),
+      resolved_functions: requiredField<Record<string, string>>(result, 'resolved_functions'),
     }
   }
 
-  async createRun(request: WorkflowCreateRunReq): Promise<WorkflowRunTransitionResult> {
-    return await this.callOk('create_run', request) as unknown as WorkflowRunTransitionResult
+  async listFunctions(prefix?: string): Promise<WorkflowFunctionEntry[]> {
+    const result = await this.callOk('list_functions', prefix ? { prefix } : {})
+    return requiredField<WorkflowFunctionEntry[]>(result, 'functions')
   }
 
-  async startRun(runId: string): Promise<WorkflowRunTransitionResult> {
-    return await this.callOk('start_run', { run_id: runId }) as unknown as WorkflowRunTransitionResult
+  async getFunction(ref: { fun_id: string } | { name: string, version?: string }): Promise<WorkflowFunctionEntry> {
+    const result = await this.callOk('get_function', ref)
+    return requiredField<WorkflowFunctionEntry>(result, 'function')
+  }
+
+  async getCapabilities(): Promise<WorkflowCapabilities> {
+    const result = await this.callOk('get_capabilities', {})
+    return {
+      execution_epoch: requiredField<number>(result, 'execution_epoch'),
+      environment: requiredField<WorkflowCapabilities['environment']>(result, 'environment'),
+      functions: requiredField<number>(result, 'functions'),
+    }
+  }
+
+  async createRun(request: WorkflowCreateRunReq): Promise<WorkflowCreateRunResult> {
+    return await this.callOk('create_run', request) as unknown as WorkflowCreateRunResult
+  }
+
+  async startRun(runId: string, waitMs?: number): Promise<WorkflowRunTransitionResult> {
+    const request: WorkflowStartRunReq = waitMs == null ? { run_id: runId } : { run_id: runId, wait_ms: waitMs }
+    return await this.callOk('start_run', request) as unknown as WorkflowRunTransitionResult
   }
 
   async tickRun(runId: string): Promise<WorkflowRunTransitionResult> {
     return await this.callOk('tick_run', { run_id: runId }) as unknown as WorkflowRunTransitionResult
   }
 
+  async cancelRun(request: WorkflowCancelRunReq): Promise<WorkflowRunTransitionResult> {
+    return await this.callOk('cancel_run', request) as unknown as WorkflowRunTransitionResult
+  }
+
   async getRunGraph(runId: string): Promise<WorkflowRunGraph> {
     return await this.callOk('get_run_graph', { run_id: runId }) as unknown as WorkflowRunGraph
+  }
+
+  async getRunOutput(runId: string): Promise<WorkflowRunOutput> {
+    return await this.callOk('get_run_output', { run_id: runId }) as unknown as WorkflowRunOutput
   }
 
   async listRuns(request: WorkflowListRunsReq = {}): Promise<WorkflowRunSummary[]> {
