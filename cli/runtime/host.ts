@@ -344,6 +344,8 @@ function collectArgumentPaths(argv: string[]): {
         read.push(value)
       } else if (['input', 'session-token-file', 'pikg'].includes(name)) {
         if (value !== '-') read.push(value)
+      } else if (name === 'catalog' && module === 'pikg') {
+        read.push(value)
       } else if (name === 'source' && module === 'pikg') {
         read.push(value)
       } else if (name === 'plan') {

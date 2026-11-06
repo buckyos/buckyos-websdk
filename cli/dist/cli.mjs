@@ -614,6 +614,8 @@ function collectArgumentPaths(argv) {
       } else if (["input", "session-token-file", "pikg"].includes(name)) {
         if (value !== "-")
           read.push(value);
+      } else if (name === "catalog" && module === "pikg") {
+        read.push(value);
       } else if (name === "source" && module === "pikg") {
         read.push(value);
       } else if (name === "plan") {
@@ -3331,46 +3333,144 @@ async function gzipFile(source, destination) {
 }
 async function readTarGz(bytes, limit) {
   const tar = await gunzipBytes(bytes, limit);
-  const decoder = new TextDecoder("utf-8", { fatal: true });
-  const text2 = (offset2, length) => decoder.decode(tar.subarray(offset2, offset2 + length)).replace(/\0.*$/s, "");
   const files = [];
   const seen = /* @__PURE__ */ new Set();
   let offset = 0;
   while (offset + BLOCK_SIZE <= tar.length && tar.subarray(offset, offset + BLOCK_SIZE).some(Boolean)) {
-    let raw;
-    let size;
-    let mode;
-    try {
-      const prefix = text2(offset + 257, 6) === "ustar" ? text2(offset + 345, 155) : "";
-      raw = prefix ? `${prefix}/${text2(offset, 100)}` : text2(offset, 100);
-      size = Number.parseInt(text2(offset + 124, 12).trim() || "0", 8);
-      mode = Number.parseInt(text2(offset + 100, 8).trim() || "0", 8);
-    } catch {
-      throw invalidZip("payload", "tar header is not valid UTF-8");
-    }
-    const type = String.fromCharCode(tar[offset + 156] || 48);
-    const path = raw.replace(/^(?:\.\/)+/, "").replace(/\/$/, "");
+    const header = parseTarHeader(tar.subarray(offset, offset + BLOCK_SIZE));
     const start = offset + BLOCK_SIZE;
-    if (!Number.isSafeInteger(size) || size < 0 || start + size > tar.length) {
-      throw invalidZip("payload", `tar entry is truncated: ${raw}`);
+    if (start + header.size > tar.length) {
+      throw invalidZip("payload", `tar entry is truncated: ${header.path}`);
     }
-    offset = start + Math.ceil(size / BLOCK_SIZE) * BLOCK_SIZE;
-    if (type === "5" && (path === "" || path === "."))
+    offset = start + Math.ceil(header.size / BLOCK_SIZE) * BLOCK_SIZE;
+    if (header.kind !== "file")
       continue;
-    if (!path || path.startsWith("/") || /^[A-Za-z]:/.test(path) || path.includes("\\") || path.split("/").some((segment) => !segment || segment === "." || segment === "..")) {
-      throw invalidZip("payload", `unsafe tar entry path: ${JSON.stringify(raw)}`);
-    }
-    if (type === "5")
-      continue;
-    if (type !== "0") {
-      throw invalidZip("payload", `tar entry is not a regular file or directory: ${path}`);
-    }
-    if (seen.has(path))
-      throw invalidZip("payload", `duplicate tar entry: ${path}`);
-    seen.add(path);
-    files.push({ path, executable: (mode & 73) !== 0, bytes: tar.slice(start, start + size) });
+    if (seen.has(header.path))
+      throw invalidZip("payload", `duplicate tar entry: ${header.path}`);
+    seen.add(header.path);
+    files.push({ path: header.path, executable: header.executable, bytes: tar.slice(start, start + header.size) });
   }
   return files;
+}
+function parseTarHeader(block) {
+  const decoder = new TextDecoder("utf-8", { fatal: true });
+  const text2 = (offset, length) => decoder.decode(block.subarray(offset, offset + length)).replace(/\0.*$/s, "");
+  let raw;
+  let size;
+  let mode;
+  try {
+    const prefix = text2(257, 6) === "ustar" ? text2(345, 155) : "";
+    raw = prefix ? `${prefix}/${text2(0, 100)}` : text2(0, 100);
+    size = Number.parseInt(text2(124, 12).trim() || "0", 8);
+    mode = Number.parseInt(text2(100, 8).trim() || "0", 8);
+  } catch {
+    throw invalidZip("payload", "tar header is not valid UTF-8");
+  }
+  if (!Number.isSafeInteger(size) || size < 0) {
+    throw invalidZip("payload", `tar entry is truncated: ${raw}`);
+  }
+  const type = String.fromCharCode(block[156] || 48);
+  const path = raw.replace(/^(?:\.\/)+/, "").replace(/\/$/, "");
+  if (type === "5" && (path === "" || path === ".")) {
+    return { path, kind: "root", size, executable: false };
+  }
+  if (!path || path.startsWith("/") || /^[A-Za-z]:/.test(path) || path.includes("\\") || path.split("/").some((segment) => !segment || segment === "." || segment === "..")) {
+    throw invalidZip("payload", `unsafe tar entry path: ${JSON.stringify(raw)}`);
+  }
+  if (type !== "5" && type !== "0") {
+    throw invalidZip("payload", `tar entry is not a regular file or directory: ${path}`);
+  }
+  return { path, kind: type === "5" ? "directory" : "file", size, executable: (mode & 73) !== 0 };
+}
+async function listTarGzStream(gzip, limit, capture2) {
+  const listing = { files: /* @__PURE__ */ new Map(), directories: /* @__PURE__ */ new Set(), captured: /* @__PURE__ */ new Map() };
+  const header = new Uint8Array(BLOCK_SIZE);
+  let headerFill = 0;
+  let skip = 0;
+  let body;
+  let ended = false;
+  let total = 0;
+  try {
+    const stream = gzip.pipeThrough(
+      new DecompressionStream("gzip")
+    );
+    for await (const chunk of stream) {
+      total += chunk.length;
+      if (total > limit)
+        throw invalidZip("limits", "payload expands beyond the size limit");
+      let offset = 0;
+      while (offset < chunk.length && !ended) {
+        if (skip > 0) {
+          const take2 = Math.min(skip, chunk.length - offset);
+          if (body && body.fill < body.bytes.length) {
+            const part = Math.min(take2, body.bytes.length - body.fill);
+            body.bytes.set(chunk.subarray(offset, offset + part), body.fill);
+            body.fill += part;
+            if (body.fill === body.bytes.length) {
+              listing.captured.set(body.path, body.bytes);
+              body = void 0;
+            }
+          }
+          skip -= take2;
+          offset += take2;
+          continue;
+        }
+        const take = Math.min(BLOCK_SIZE - headerFill, chunk.length - offset);
+        header.set(chunk.subarray(offset, offset + take), headerFill);
+        headerFill += take;
+        offset += take;
+        if (headerFill < BLOCK_SIZE)
+          break;
+        headerFill = 0;
+        if (!header.some(Boolean)) {
+          ended = true;
+          break;
+        }
+        const entry = parseTarHeader(header);
+        skip = Math.ceil(entry.size / BLOCK_SIZE) * BLOCK_SIZE;
+        if (entry.kind === "directory")
+          listing.directories.add(entry.path);
+        if (entry.kind !== "file")
+          continue;
+        if (listing.files.has(entry.path)) {
+          throw invalidZip("payload", `duplicate tar entry: ${entry.path}`);
+        }
+        listing.files.set(entry.path, { size: entry.size, executable: entry.executable });
+        if (capture2(entry.path, entry.size)) {
+          if (entry.size === 0)
+            listing.captured.set(entry.path, new Uint8Array());
+          else
+            body = { path: entry.path, bytes: new Uint8Array(entry.size), fill: 0 };
+        }
+      }
+    }
+  } catch (error) {
+    if (error instanceof ToolError)
+      throw error;
+    throw invalidZip("compression", "payload is not a valid gzip stream");
+  }
+  if (skip > 0 || headerFill > 0 || body)
+    throw invalidZip("payload", "tar stream is truncated");
+  return listing;
+}
+function fileReadableStream(path) {
+  let file;
+  return new ReadableStream({
+    async pull(controller) {
+      file ??= await getHost().open(path, { read: true });
+      const buffer = new Uint8Array(256 * 1024);
+      const read = await file.read(buffer);
+      if (read === null) {
+        await file.close();
+        controller.close();
+        return;
+      }
+      controller.enqueue(buffer.subarray(0, read));
+    },
+    async cancel() {
+      await file?.close();
+    }
+  });
 }
 async function gunzipBytes(bytes, limit) {
   const stream = new ReadableStream({
@@ -4163,11 +4263,10 @@ function derivedSelector(key) {
     web: {},
     agent: {},
     agent_skills: {},
-    agent_tools: {},
     aiws: {},
     script: {}
   };
-  return selectors[key];
+  return selectors[key] ?? extToolsPlatformOfKey(key)?.selector;
 }
 function canonicalSelector(value, label) {
   if (value === void 0)
@@ -4505,6 +4604,168 @@ async function verifyAiwsPayload(tarGz) {
     templates: checked.manifest.workspace_templates.map((t) => ({ id: t.id, title: t.title, digest: t.digest, requires: t.requires }))
   };
 }
+const EXT_TOOLS_APP_TYPE = "ext_tools";
+const EXT_TOOLS_MANIFEST_FILE = "ext-manifest.json";
+const EXT_TOOLS_MANIFEST_SCHEMA = "buckyos.ext_tools/1";
+const MAX_EXT_TOOLS_PAYLOAD_BYTES = 64 * 1024 * 1024 * 1024;
+const MAX_EXT_TOOLS_LAUNCHER_BYTES = 1024 * 1024;
+const EXT_TOOLS_ID = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
+const EXT_TOOLS_COMMAND = /^[A-Za-z0-9_+-][A-Za-z0-9._+-]*$/;
+const EXT_TOOLS_WINDOWS_SUFFIXES = ["", ".exe", ".cmd", ".bat", ".ps1"];
+const BUILD_MACHINE_PATH = /(?:^|[\s"'=:(])(\/home\/|\/Users\/|\/root\/|\/tmp\/|\/var\/folders\/|\/opt\/buckyos\/|[A-Za-z]:\\\\?Users\\)/;
+const EXT_TOOLS_PLATFORMS = [
+  { name: "linux-x86_64", key: "ext_tools_linux_x86_64", selector: { os: "linux", arch: "x86_64" } },
+  { name: "linux-aarch64", key: "ext_tools_linux_aarch64", selector: { os: "linux", arch: "aarch64" } },
+  { name: "darwin-arm64", key: "ext_tools_darwin_arm64", selector: { os: "macos", arch: "aarch64" } },
+  { name: "darwin-x86_64", key: "ext_tools_darwin_x86_64", selector: { os: "macos", arch: "x86_64" } },
+  { name: "windows-x86_64", key: "ext_tools_windows_x86_64", selector: { os: "windows", arch: "x86_64" } }
+];
+function extToolsPlatformOfKey(key) {
+  return EXT_TOOLS_PLATFORMS.find((platform) => platform.key === key);
+}
+function extToolsManifestErrors(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    return ["must be a JSON object"];
+  const manifest = value;
+  const errors = [];
+  const allowed = ["schema", "id", "version", "requires", "conflicts", "provides", "platforms", "size_bytes", "license", "desc"];
+  for (const key of Object.keys(manifest))
+    if (!allowed.includes(key))
+      errors.push(`${key} is not a field of the manifest`);
+  if (manifest.schema !== EXT_TOOLS_MANIFEST_SCHEMA)
+    errors.push(`schema must be ${EXT_TOOLS_MANIFEST_SCHEMA}`);
+  if (typeof manifest.id !== "string" || !EXT_TOOLS_ID.test(manifest.id))
+    errors.push("id must be lowercase letters, digits and -");
+  if (typeof manifest.version !== "string" || !manifest.version.trim())
+    errors.push("version is required");
+  if (!Array.isArray(manifest.provides) || manifest.provides.length === 0)
+    errors.push("provides must not be empty");
+  const commands = /* @__PURE__ */ new Set();
+  for (const raw of Array.isArray(manifest.provides) ? manifest.provides : []) {
+    const entry = raw ?? {};
+    const command = entry.command;
+    if (typeof command !== "string" || !EXT_TOOLS_COMMAND.test(command)) {
+      errors.push(`provides: ${JSON.stringify(command)} is not a command name`);
+      continue;
+    }
+    if (commands.has(command))
+      errors.push(`provides: command ${command} is listed twice`);
+    commands.add(command);
+    if (typeof entry.version_probe !== "string" || !entry.version_probe.trim())
+      errors.push(`provides: ${command} has no version_probe`);
+    const smoke = entry.smoke;
+    if (smoke !== void 0 && (typeof smoke !== "string" || !isSafeRelativePath(smoke))) {
+      errors.push(`provides: the smoke of ${command} must be a relative path inside the payload`);
+    }
+  }
+  if (!Array.isArray(manifest.platforms) || manifest.platforms.length === 0)
+    errors.push("platforms must not be empty");
+  for (const platform of Array.isArray(manifest.platforms) ? manifest.platforms : []) {
+    if (!EXT_TOOLS_PLATFORMS.some((known) => known.name === platform))
+      errors.push(`unknown platform ${JSON.stringify(platform)}`);
+  }
+  for (const raw of Array.isArray(manifest.requires) ? manifest.requires : manifest.requires === void 0 ? [] : [null]) {
+    const required = raw ?? {};
+    if (typeof required.id !== "string" || !EXT_TOOLS_ID.test(required.id) || required.id === manifest.id || typeof required.version !== "string") {
+      errors.push(`requires: ${JSON.stringify(raw)} is not another package's {id, version}`);
+    }
+  }
+  if (manifest.conflicts !== void 0 && !(Array.isArray(manifest.conflicts) && manifest.conflicts.every((id) => typeof id === "string" && id !== manifest.id))) {
+    errors.push("conflicts must list other packages by id");
+  }
+  return errors;
+}
+function isSafeRelativePath(path) {
+  return !path.includes("\\") && !path.startsWith("/") && path.split("/").every((part) => part && part !== "." && part !== "..");
+}
+function parseExtToolsManifest(bytes) {
+  let value;
+  try {
+    value = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+  } catch (error) {
+    throw invalid("ext_tools", `${EXT_TOOLS_MANIFEST_FILE} is not valid JSON: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  const errors = extToolsManifestErrors(value);
+  if (errors.length > 0)
+    throw invalid("ext_tools", `${EXT_TOOLS_MANIFEST_FILE}: ${errors.join("; ")}`);
+  const manifest = value;
+  manifest.requires ??= [];
+  manifest.conflicts ??= [];
+  return manifest;
+}
+function extToolsPayloadErrors(manifest, platform, tree, buildPaths = []) {
+  const errors = [];
+  const windows = platform.startsWith("windows-");
+  const suffixes = windows ? EXT_TOOLS_WINDOWS_SUFFIXES : [""];
+  for (const path of [...tree.files.keys(), ...tree.directories]) {
+    const [top, second] = path.split("/");
+    const isTop = !path.includes("/");
+    const known = top === EXT_TOOLS_MANIFEST_FILE && isTop || top === "bin" || top === "smoke" || top === "store";
+    if (!known)
+      errors.push(`${path}: a package only holds ${EXT_TOOLS_MANIFEST_FILE}, bin/, smoke/ and store/${manifest.id}/`);
+    if (top === "store" && second !== void 0 && second !== manifest.id)
+      errors.push(`${path}: a package only writes store/${manifest.id}/`);
+  }
+  const declared = new Set(manifest.provides.map((provided) => provided.command));
+  for (const provided of manifest.provides) {
+    const launcher = suffixes.map((suffix) => tree.files.get(`bin/${provided.command}${suffix}`)).find(Boolean);
+    if (!launcher)
+      errors.push(`bin/${provided.command}: the launcher of a provided command is missing`);
+    else if (!windows && !launcher.executable)
+      errors.push(`bin/${provided.command}: the launcher is not executable`);
+    if (provided.smoke && !tree.files.has(provided.smoke))
+      errors.push(`${provided.smoke}: the smoke script of ${provided.command} is missing`);
+  }
+  for (const path of tree.files.keys()) {
+    if (!path.startsWith("bin/"))
+      continue;
+    const name = path.slice("bin/".length);
+    const command = suffixes.map((suffix) => suffix && name.endsWith(suffix) ? name.slice(0, -suffix.length) : name).find((candidate) => declared.has(candidate));
+    if (!command)
+      errors.push(`${path}: not in provides, so nothing knows this package provides it`);
+  }
+  const decoder = new TextDecoder();
+  for (const [path, bytes] of tree.launchers) {
+    const text2 = decoder.decode(bytes);
+    const named = buildPaths.find((dir) => text2.includes(dir));
+    if (named)
+      errors.push(`${path}: names ${named} on the machine that built it`);
+    else if (BUILD_MACHINE_PATH.test(text2))
+      errors.push(`${path}: names an absolute path of the machine that built it (${BUILD_MACHINE_PATH.exec(text2)?.[1]})`);
+  }
+  return errors;
+}
+function assertExtToolsOf(appDoc, manifest, platform, platforms) {
+  if (manifest.id !== appDoc.name)
+    throw invalid("ext_tools", `${EXT_TOOLS_MANIFEST_FILE} id ${manifest.id} is not the App name ${appDoc.name}`);
+  if (manifest.version !== appDoc.version)
+    throw invalid("ext_tools", `${EXT_TOOLS_MANIFEST_FILE} version ${manifest.version} is not the App version ${appDoc.version}`);
+  if (!manifest.platforms.includes(platform))
+    throw invalid("ext_tools", `${EXT_TOOLS_MANIFEST_FILE} does not list the payload's platform ${platform}`);
+  const missing = manifest.platforms.filter((name) => !platforms.includes(name));
+  if (missing.length > 0)
+    throw invalid("ext_tools", `${EXT_TOOLS_MANIFEST_FILE} lists platforms without a payload: ${missing.join(", ")}`);
+}
+async function verifyExtToolsPayload(gzip, key, appDoc) {
+  const platform = extToolsPlatformOfKey(key);
+  if (!platform)
+    throw invalid("appdoc", `an ext_tools package has no sub package ${key}`);
+  const listing = await listTarGzStream(
+    gzip,
+    MAX_EXT_TOOLS_PAYLOAD_BYTES,
+    (path, size) => path === EXT_TOOLS_MANIFEST_FILE || path.startsWith("bin/") && size <= MAX_EXT_TOOLS_LAUNCHER_BYTES
+  );
+  const raw = listing.captured.get(EXT_TOOLS_MANIFEST_FILE);
+  if (!raw)
+    throw invalid("ext_tools", `${key}: ${EXT_TOOLS_MANIFEST_FILE} is not at the root of the payload`);
+  const manifest = parseExtToolsManifest(raw);
+  assertExtToolsOf(appDoc, manifest, platform.name, Object.keys(expectObject$3(appDoc.pkg_list, "APPDOC.pkg_list")).flatMap((k) => extToolsPlatformOfKey(k)?.name ?? []));
+  const launchers = new Map([...listing.captured].filter(([path]) => path.startsWith("bin/")));
+  const errors = extToolsPayloadErrors(manifest, platform.name, { files: listing.files, directories: listing.directories, launchers });
+  if (errors.length > 0)
+    throw invalid("ext_tools", `${key}: ${errors.join("; ")}`);
+  return manifest;
+}
 async function validateSnapshot(distDir, appDoc, packageMeta) {
   const payloads = /* @__PURE__ */ new Map();
   for (const entryValue of Object.values(packageMeta.content_index)) {
@@ -4517,6 +4778,10 @@ async function validateSnapshot(distDir, appDoc, packageMeta) {
   if (appDoc.app_type === "aiws") {
     for (const sub of validated.subpackages)
       await verifyAiwsPayload(await getHost().readFile(join$1(distDir, sub.payload_path)));
+  }
+  if (appDoc.app_type === EXT_TOOLS_APP_TYPE) {
+    for (const sub of validated.subpackages)
+      await verifyExtToolsPayload(fileReadableStream(join$1(distDir, sub.payload_path)), sub.key, appDoc);
   }
   return validated;
 }
@@ -4628,10 +4893,18 @@ async function inspectPikg(path) {
     const sub = validated.subpackages[0];
     aiws2 = await verifyAiwsPayload(await readZipEntry(archive, archive.byName.get(sub.payload_path), MAX_AIWS_PAYLOAD_BYTES));
   }
+  let extTools;
+  if (appDoc.app_type === EXT_TOOLS_APP_TYPE) {
+    for (const sub of validated.subpackages) {
+      const manifest = await verifyExtToolsPayload(zipEntryStream(archive.path, archive.byName.get(sub.payload_path)), sub.key, appDoc);
+      extTools ??= { ...manifest };
+    }
+  }
   const pikgDigest = await digestFile(path);
   return {
     schema_version: 1,
     ...aiws2 ? { aiws: aiws2 } : {},
+    ...extTools ? { ext_tools: extTools } : {},
     protocol: PACKAGE_META_SCHEMA,
     pikg_path: resolve$2(path),
     size: pikgDigest.size,
@@ -4928,7 +5201,7 @@ function validateAppDocShape(appDoc) {
   }
   if (appDoc.doc_type !== "app")
     throw invalid("appdoc", "APPDOC.doc_type must be app");
-  if (!["service", "dapp", "web", "agent", "agent_skills", "aiws"].includes(String(appDoc.app_type))) {
+  if (!["service", "dapp", "web", "agent", "agent_skills", "aiws", EXT_TOOLS_APP_TYPE].includes(String(appDoc.app_type))) {
     throw invalid("appdoc", "APPDOC.app_type is invalid");
   }
   if (appDoc.name !== void 0)
@@ -4988,6 +5261,16 @@ function validateAppDocShape(appDoc) {
   }
   if (appDoc.app_type === "aiws" && Object.keys(pkgList).join() !== AIWS_SUB_PACKAGE) {
     throw invalid("appdoc", "an aiws package must contain only the aiws sub package");
+  }
+  if (appDoc.app_type === EXT_TOOLS_APP_TYPE) {
+    expectNonEmptyString(appDoc.name, "APPDOC.name");
+    const unknown = Object.keys(pkgList).find((key) => !extToolsPlatformOfKey(key));
+    if (unknown)
+      throw invalid("appdoc", `an ext_tools package must contain only ext_tools_<os>_<arch> sub packages, not ${unknown}`);
+  } else {
+    const stray = Object.keys(pkgList).find((key) => extToolsPlatformOfKey(key));
+    if (stray)
+      throw invalid("appdoc", `${stray} belongs to an ext_tools package`);
   }
   deriveNamespaceForPackage(appDoc);
 }
@@ -5242,7 +5525,7 @@ function validateContentHandlers(value, permissions) {
   }
   return value;
 }
-const PACKAGE_VERSION = "0.7.167";
+const PACKAGE_VERSION = "0.7.168";
 const TOOL_VERSION = PACKAGE_VERSION;
 const SDK_VERSION = PACKAGE_VERSION;
 const PROTOCOL_VERSION = "1";
@@ -5260,14 +5543,17 @@ const SHA256_ID = /^sha256:[0-9a-f]{64}$/;
 const OBJECT_ID = /^(?:appdoc|pkg):[0-9a-f]{64}$/;
 const SAFE_GENERATED_FILE = /^[A-Za-z0-9._-]+$/;
 const OBJECT_OUTPUT$c = { type: "object", additionalProperties: true };
-const APP_KINDS = ["static-web", "script", "docker", "agent-skills", "aiws-controls"];
+const APP_KINDS = ["static-web", "script", "docker", "agent-skills", "aiws-controls", "ext-tools"];
 const PATH_KINDS = {
   "static-web": { key: "web", category: "web", selectorType: "static" },
   script: { key: "script", category: "dapp", selectorType: "single" },
   "agent-skills": { key: "agent_skills", category: "agent_skills", selectorType: "single" },
   // AI Workspace controls: one bundle (aiws-manifest.json + controls/<dir>/), installed into the AI Workspace library
-  "aiws-controls": { key: "aiws", category: "aiws", selectorType: "single" }
+  "aiws-controls": { key: "aiws", category: "aiws", selectorType: "single" },
+  // Extension tools: ext-manifest.json + payload/<platform>/, one sub package per platform, enabled for the Zone
+  "ext-tools": { key: "ext_tools", category: "ext_tools", selectorType: "single" }
 };
+const EXT_TOOLS_LAUNCHER_LIMIT = 1024 * 1024;
 function packageEnvironmentQualifier(key, selector) {
   const effective = selector ?? derivedSelector(key);
   const os = effective?.os;
@@ -5299,9 +5585,19 @@ function createPikgModule(dependencies = {}) {
         positionals: [
           { name: "meta_dir", description: "dapp_meta directory", required: false }
         ],
+        options: [
+          {
+            name: "catalog",
+            description: "ext-tools: a directory of other packages (<id>/ext-manifest.json) to check requires and same-named commands against",
+            type: "string"
+          }
+        ],
         inputSchema: {
           type: "object",
-          properties: { meta_dir: { type: "string", minLength: 1 } },
+          properties: {
+            meta_dir: { type: "string", minLength: 1 },
+            catalog: { type: "string", minLength: 1 }
+          },
           additionalProperties: false
         },
         outputSchema: OBJECT_OUTPUT$c,
@@ -5311,7 +5607,11 @@ function createPikgModule(dependencies = {}) {
         requiresSession: false,
         execution: "local",
         networkAccess: false,
-        examples: ["buckyos pikg doctor", "buckyos pikg doctor ./dapp_meta"],
+        examples: [
+          "buckyos pikg doctor",
+          "buckyos pikg doctor ./dapp_meta",
+          "buckyos pikg doctor ./dapp_meta --catalog ../publish/exttool"
+        ],
         handler: async (ctx, input) => await doctorCommand(ctx, input)
       },
       {
@@ -5369,7 +5669,8 @@ function createPikgModule(dependencies = {}) {
           "buckyos --non-interactive pikg init . --owner did:bns:root --kind static-web --source ./web/dist",
           "buckyos --non-interactive pikg init . --owner did:bns:root --kind agent-skills --source ./skills",
           "buckyos --non-interactive pikg init . --owner did:bns:alice --kind aiws-controls --source ./aiws",
-          "buckyos --non-interactive pikg init . --owner did:bns:alice --kind aiws-controls --source ./aiws --composite"
+          "buckyos --non-interactive pikg init . --owner did:bns:alice --kind aiws-controls --source ./aiws --composite",
+          "buckyos --non-interactive pikg init . --name ext-media --owner did:bns:root --kind ext-tools --source ./ext-media"
         ],
         handler: async (ctx, input) => await initCommand(ctx, input, docker)
       },
@@ -5527,6 +5828,10 @@ async function doctorCommand(ctx, input) {
         status: missingSources.length === 0 ? "ok" : "missing",
         missing: missingSources
       });
+      if (app.categories[0] === PATH_KINDS["ext-tools"].category) {
+        const catalog = optionalInputString(input, "catalog");
+        checks.push(...await extToolsChecks(app, pikg, metaDir, catalog ? resolveFromCwd$1(ctx, catalog) : void 0));
+      }
     } catch (error) {
       checks.push({
         name: "metadata_schema",
@@ -5540,7 +5845,7 @@ async function doctorCommand(ctx, input) {
   const profile = profileName ? await ctx.configStore.readProfile(profileName) : void 0;
   const host2 = getHost();
   return {
-    healthy: checks.every((check) => check.status === "ok"),
+    healthy: checks.every((check) => check.status === "ok" || check.status === "skipped"),
     tool_version: TOOL_VERSION,
     sdk_version: SDK_VERSION,
     protocol_version: PROTOCOL_VERSION,
@@ -5591,7 +5896,25 @@ async function initCommand(ctx, input, docker) {
   let sourceValue;
   let selector;
   let sourceSummary2;
-  if (kind === "docker") {
+  if (kind === "ext-tools") {
+    const platform = hostExtToolsPlatform();
+    const absoluteSource = resolve$1(projectDir, source);
+    subpackageKey = platform.key;
+    selector = platform.selector;
+    sourceValue = {
+      type: "path",
+      path: toPortablePath(relative(join(projectDir, "dapp_meta"), join(absoluteSource, "payload", platform.name)))
+    };
+    sourceSummary2 = { type: "path", path: displaySource(projectDir, absoluteSource), platform: platform.name };
+    try {
+      await getHost().lstat(join(absoluteSource, EXT_TOOLS_MANIFEST_FILE));
+    } catch (error) {
+      if (!isHostError(error, "NotFound"))
+        throw error;
+      await writeExtToolsSkeleton(absoluteSource, name, version, platform.name);
+      sourceSummary2.skeleton = true;
+    }
+  } else if (kind === "docker") {
     const image = await docker.inspect(source);
     const arch = normalizeArch$1(image.architecture);
     subpackageKey = arch === "x86_64" ? "amd64_docker_image" : arch === "aarch64" ? "aarch64_docker_image" : (() => {
@@ -5695,6 +6018,221 @@ async function writeAiwsSkeleton(dir, ownerDid, name, composite) {
   };
   await host2.writeTextFile(join(dir, AIWS_MANIFEST_FILE), `${JSON.stringify(manifest, null, 2)}
 `);
+}
+function hostExtToolsPlatform() {
+  const host2 = getHost();
+  const os = host2.platform === "darwin" ? "macos" : host2.platform === "win32" ? "windows" : host2.platform;
+  const arch = normalizeArch$1(host2.arch);
+  const platform = EXT_TOOLS_PLATFORMS.find((known) => known.selector.os === os && known.selector.arch === arch);
+  if (!platform) {
+    throw new UsageError("UNSUPPORTED_PLATFORM", `extension packages have no payload for ${os}/${arch}`);
+  }
+  return platform;
+}
+async function writeExtToolsSkeleton(dir, id, version, platform) {
+  const host2 = getHost();
+  const manifest = {
+    schema: EXT_TOOLS_MANIFEST_SCHEMA,
+    id,
+    version,
+    requires: [],
+    conflicts: [],
+    provides: [{ command: id, version_probe: `${id} --version`, smoke: `smoke/${id}.sh` }],
+    platforms: [platform],
+    license: "",
+    desc: ""
+  };
+  const text2 = `${JSON.stringify(manifest, null, 2)}
+`;
+  const payload = join(dir, "payload", platform);
+  for (const sub of ["bin", "smoke", join("store", id)])
+    await host2.mkdir(join(payload, sub), { recursive: true });
+  await host2.writeTextFile(join(dir, EXT_TOOLS_MANIFEST_FILE), text2);
+  await host2.writeTextFile(join(payload, EXT_TOOLS_MANIFEST_FILE), text2);
+  const windows = platform.startsWith("windows-");
+  await host2.writeTextFile(
+    join(payload, "bin", windows ? `${id}.cmd` : id),
+    windows ? `@echo off\r
+echo ${id} ${version}\r
+` : `#!/bin/sh
+echo "${id} ${version}"
+`,
+    { mode: 493 }
+  );
+  await host2.writeTextFile(join(payload, "smoke", `${id}.sh`), `#!/bin/sh
+set -eu
+${id} --version >/dev/null
+`, { mode: 493 });
+}
+async function readExtToolsManifestFile(path) {
+  let text2;
+  try {
+    text2 = await getHost().readTextFile(path);
+  } catch (error) {
+    if (isHostError(error, "NotFound"))
+      return { text: "", errors: ["not found"] };
+    throw error;
+  }
+  let value;
+  try {
+    value = JSON.parse(text2);
+  } catch {
+    return { text: text2, errors: ["not valid JSON"] };
+  }
+  const errors = extToolsManifestErrors(value);
+  if (errors.length > 0)
+    return { text: text2, errors };
+  const manifest = value;
+  manifest.requires ??= [];
+  manifest.conflicts ??= [];
+  return { text: text2, manifest, errors };
+}
+async function readExtToolsPayloadTree(root) {
+  const host2 = getHost();
+  const tree = { files: /* @__PURE__ */ new Map(), directories: /* @__PURE__ */ new Set(), launchers: /* @__PURE__ */ new Map() };
+  const errors = [];
+  const realRoot = await host2.realPath(root);
+  const walk = async (directory, prefix) => {
+    const children = await host2.readDir(directory);
+    for (const child of children) {
+      const archivePath = prefix ? `${prefix}/${child.name}` : child.name;
+      const path = join(directory, child.name);
+      const link = await host2.lstat(path);
+      let physical = path;
+      if (link.isSymlink) {
+        try {
+          physical = await host2.realPath(path);
+        } catch (error) {
+          errors.push(`${archivePath}: ${isHostError(error, "NotFound") ? "a dangling symlink" : "a symlink out of the payload"}`);
+          continue;
+        }
+        const inside = relative(realRoot, physical);
+        if (inside === ".." || inside.startsWith(`..${host2.path.sep}`) || isAbsolute$1(inside)) {
+          errors.push(`${archivePath}: a symlink out of the payload`);
+          continue;
+        }
+      }
+      const info = link.isSymlink ? await host2.stat(physical) : link;
+      if (info.isDirectory) {
+        tree.directories.add(archivePath);
+        await walk(physical, archivePath);
+      } else if (info.isFile) {
+        tree.files.set(archivePath, { executable: ((info.mode ?? 0) & 73) !== 0 });
+        if (archivePath.startsWith("bin/") && info.size <= EXT_TOOLS_LAUNCHER_LIMIT) {
+          tree.launchers.set(archivePath, await host2.readFile(physical));
+        }
+      } else {
+        errors.push(`${archivePath}: not a regular file`);
+      }
+    }
+  };
+  await walk(realRoot, "");
+  return { tree, errors };
+}
+async function extToolsChecks(app, pikg, metaDir, catalogDir) {
+  const checks = [];
+  const platforms = /* @__PURE__ */ new Map();
+  const stray = [];
+  for (const [key, subpackage] of Object.entries(pikg.sub_pkgs)) {
+    const platform = extToolsPlatformOfKey(key);
+    if (!platform || subpackage.source.type !== "path") {
+      stray.push(key);
+      continue;
+    }
+    platforms.set(platform.name, resolve$1(metaDir, subpackage.source.path));
+  }
+  const sources = [...platforms.values()];
+  const source = sources.length > 0 ? dirname(dirname(sources[0])) : dirname(metaDir);
+  const master = await readExtToolsManifestFile(join(source, EXT_TOOLS_MANIFEST_FILE));
+  const manifestErrors = [...master.errors];
+  if (stray.length > 0)
+    manifestErrors.push(`sub packages must be ext_tools_<os>_<arch> from a directory: ${stray.join(", ")}`);
+  const manifest = master.manifest;
+  if (manifest) {
+    if (manifest.id !== app.name)
+      manifestErrors.push(`id ${manifest.id} is not the App name ${app.name}`);
+    if (manifest.version !== app.version)
+      manifestErrors.push(`version ${manifest.version} is not the App version ${app.version}`);
+    const without = manifest.platforms.filter((name) => !platforms.has(name));
+    if (without.length > 0)
+      manifestErrors.push(`platforms without a sub package: ${without.join(", ")}`);
+    const unlisted = [...platforms.keys()].filter((name) => !manifest.platforms.includes(name));
+    if (unlisted.length > 0)
+      manifestErrors.push(`sub packages of platforms it does not list: ${unlisted.join(", ")}`);
+  }
+  checks.push({
+    name: "ext_tools_manifest",
+    status: manifestErrors.length === 0 ? "ok" : "error",
+    path: join(source, EXT_TOOLS_MANIFEST_FILE),
+    ...manifestErrors.length > 0 ? { errors: manifestErrors } : {}
+  });
+  if (!manifest)
+    return checks;
+  for (const [platform, dir] of platforms) {
+    const errors = [];
+    try {
+      const { tree, errors: walkErrors } = await readExtToolsPayloadTree(dir);
+      errors.push(...walkErrors);
+      const copy = await readExtToolsManifestFile(join(dir, EXT_TOOLS_MANIFEST_FILE));
+      if (copy.errors.length > 0)
+        errors.push(`${EXT_TOOLS_MANIFEST_FILE}: ${copy.errors.join("; ")}`);
+      else if (copy.text !== master.text)
+        errors.push(`${EXT_TOOLS_MANIFEST_FILE}: differs from the package's manifest`);
+      errors.push(...extToolsPayloadErrors(manifest, platform, tree, [source, metaDir]));
+    } catch (error) {
+      if (!isHostError(error, "NotFound"))
+        throw error;
+      errors.push(`${dir}: not found`);
+    }
+    checks.push({
+      name: "ext_tools_payload",
+      platform,
+      status: errors.length === 0 ? "ok" : "error",
+      path: dir,
+      ...errors.length > 0 ? { errors } : {}
+    });
+  }
+  if (!catalogDir) {
+    checks.push({
+      name: "ext_tools_catalog",
+      status: "skipped",
+      detail: "no --catalog: requires and commands other packages also provide are not checked"
+    });
+    return checks;
+  }
+  const others = /* @__PURE__ */ new Map();
+  const catalogErrors = [];
+  for (const entry of await getHost().readDir(catalogDir)) {
+    if (entry.isFile)
+      continue;
+    const candidate = await readExtToolsManifestFile(join(catalogDir, entry.name, EXT_TOOLS_MANIFEST_FILE));
+    if (candidate.errors.includes("not found"))
+      continue;
+    if (!candidate.manifest)
+      catalogErrors.push(`${entry.name}: ${candidate.errors.join("; ")}`);
+    else if (candidate.manifest.id !== manifest.id)
+      others.set(candidate.manifest.id, candidate.manifest);
+  }
+  for (const required of manifest.requires) {
+    if (!others.has(required.id))
+      catalogErrors.push(`requires ${required.id}: not in the catalog`);
+  }
+  const commands = new Set(manifest.provides.map((provided) => provided.command));
+  for (const other of others.values()) {
+    if (manifest.conflicts.includes(other.id) || other.conflicts.includes(manifest.id))
+      continue;
+    const shared = other.provides.map((provided) => provided.command).filter((command) => commands.has(command));
+    if (shared.length > 0)
+      catalogErrors.push(`${other.id} also provides ${shared.join(", ")}: one of the two must list the other in conflicts`);
+  }
+  checks.push({
+    name: "ext_tools_catalog",
+    status: catalogErrors.length === 0 ? "ok" : "error",
+    path: catalogDir,
+    packages: [...others.keys()],
+    ...catalogErrors.length > 0 ? { errors: catalogErrors } : {}
+  });
+  return checks;
 }
 async function buildCommand$1(ctx, input, docker, now) {
   const metaInput = optionalInputString(input, "meta_dir") ?? "./dapp_meta";
@@ -7131,7 +7669,7 @@ function publishCommand() {
         property: "app_type",
         description: "App type; defaults to the template app_type",
         type: "string",
-        enum: ["dapp", "web", "agent"]
+        enum: ["dapp", "web", "agent", "ext_tools"]
       }
     ],
     inputSchema: {
@@ -7139,7 +7677,7 @@ function publishCommand() {
       properties: {
         local_dir: { type: "string", minLength: 1 },
         app_doc: { type: "string", minLength: 1 },
-        app_type: { type: "string", enum: ["dapp", "web", "agent"] }
+        app_type: { type: "string", enum: ["dapp", "web", "agent", "ext_tools"] }
       },
       required: ["local_dir", "app_doc"],
       additionalProperties: false
@@ -7151,7 +7689,8 @@ function publishCommand() {
     requiresSession: true,
     examples: [
       "buckyos app publish /srv/build/demo-web --app-doc ./demo-web.appdoc.json",
-      "buckyos app publish /srv/build/demo-agent --app-doc ./demo-agent.appdoc.json --app-type agent"
+      "buckyos app publish /srv/build/demo-agent --app-doc ./demo-agent.appdoc.json --app-type agent",
+      "buckyos app publish /srv/build/ext-media --app-doc ./dapp_dist/APPDOC.json"
     ],
     handler: async (ctx, input) => {
       const localDir = expectString(input, "local_dir");
@@ -7227,6 +7766,12 @@ async function installApp(ctx, input, dependencies) {
   try {
     let inspection = submittedPlan ? await recomputePlan(ctx, source, input, submittedPlan) : await inspectSource(ctx, source, input);
     verifyPikgBinding(source, submittedPlan ?? inspection.plan);
+    if (inspection.plan.app_doc?.app_type === "ext_tools") {
+      throw new ToolError(
+        "EXT_TOOLS_NOT_AN_APP",
+        "an extension tool package is not installed as an App: publish it to the Repo with `buckyos app publish`, then enable it for the Zone on the management page"
+      );
+    }
     const app = expectObject$1(inspection.plan.app, "inspection.plan.app");
     const appDid = expectString(app, "did");
     const plannedOwner = submittedPlan ? expectString(submittedPlan, "owner_user_id") : void 0;

@@ -343,11 +343,14 @@ CLI 可以组合这些能力完成同一条用户命令，但不能自行比较�
 
 ## 9. 发布职责边界
 
-`app publish <local-dir> --app-doc <file> [--app-type dapp|web|agent]` 只是 Control Panel
+`app publish <local-dir> --app-doc <file> [--app-type dapp|web|agent|ext_tools]` 只是 Control Panel
 `app.publish` 的客户端：`<local-dir>` 是 Control Panel 节点上的绝对路径（CLI 不上传），AppDoc
-模板文件由 CLI 本地读取。服务端打包 subpackage、把 PackageMeta 与 AppDoc 写入 NamedStore 并
-`repo.store`，在节点上暂存并自校验 PIKG。Agent 模板含 `pkg_list.agent_skills` 时，该 subpackage
-取自 `<local-dir>/agent_skills`，`agent` subpackage 不再包含该目录；`agent_tools` 仍被拒绝。
+模板文件由 CLI 本地读取。服务端打包 subpackage、把 PackageMeta 与 AppDoc 写入 NamedStore，
+暂存并自校验 PIKG，再把 PIKG 文件 `repo.store` 进 Repo（`repo_content_id`，名字 `<AppId>.pikg`，
+同一版本不能绑定到另一份内容）。Agent 模板含 `pkg_list.agent_skills` 时，该 subpackage
+取自 `<local-dir>/agent_skills`，`agent` subpackage 不再包含该目录。扩展工具包的 `<local-dir>` 是
+工程目录（`ext-manifest.json` + `payload/<platform>/`），模板可用 `pikg build` 生成的 `APPDOC.json`；
+它只进 Repo，`app install` 拒绝，由管理员为 Zone 启用。
 
 输出如实给出 `publish_status=repo_stored_candidate`、`app_doc_signature=not-signed`、
 `app_did_publication=not-published`：AppDoc 未经 Owner 签名，也没有更新任何 BNS/App DID 记录，

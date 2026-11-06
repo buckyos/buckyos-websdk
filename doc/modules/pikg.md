@@ -24,7 +24,7 @@ npx buckyos pikg info ./dapp_dist/demo-0.1.0.pikg
 
 | 命令 | 默认输入 | 访问级别 | 当前行为 |
 | --- | --- | --- | --- |
-| `pikg doctor [meta_dir]` | `./dapp_meta` | read | 诊断本机 Tool/SDK、策略、元数据、path source 与目标配置 |
+| `pikg doctor [meta_dir] [--catalog <dir>]` | `./dapp_meta` | read | 诊断本机 Tool/SDK、策略、元数据、path source 与目标配置；扩展工具包还校验清单与每个平台的 payload |
 | `pikg init [project_dir]` | `.` | write | 只创建 `dapp_meta/app.json` 和 `pikg.json` |
 | `pikg build [meta_dir]` | `./dapp_meta` | write | 读取已构建的 source，生成完整受管理快照 |
 | `pikg pack [dist_dir]` | `./dapp_dist` | write | 只消费快照，封装 PIKG 并回读验证 |
@@ -37,6 +37,8 @@ npx buckyos pikg info ./dapp_dist/demo-0.1.0.pikg
 
 报告 `healthy` 与逐项 `checks`、Tool/SDK/协议版本、权限策略、分发清单、目标 profile 和 identity candidate 顺序。它不登录、不连接 Zone、不执行 Docker inspect；目标兼容性为 `not-checked`。诊断成功不等于构建、签名或安装成功。
 
+扩展工具包（`categories: ["ext_tools"]`）另有三类检查：`ext_tools_manifest`（清单与 App 名/版本、子包一一对应）、每个平台一条 `ext_tools_payload`（launcher 齐全且可执行、没有声明外的入口、smoke 脚本存在、只写自己的 `store/<id>`、不含构建机绝对路径、payload 里的清单副本与工程根一致）、`ext_tools_catalog`。最后一条要 `--catalog <dir>`（目录下每个子目录一份 `ext-manifest.json`，如 `publish/exttool`）才运行：`requires` 的包在不在，同名命令有没有 `conflicts`；不给时记 `skipped`，因为 `doctor` 不连 Zone。出错时 `healthy: false`，各项写在 `errors` 里；`pikg build` / `pack` / `info` 对 payload 做同一组检查并拒绝。
+
 ### `init`
 
 选项为 `--name`、`--owner`、`--kind`、`--source`、`--version` 和 `--app-did`，也接受全局 `--input` JSON；同一字段不能同时由 option 和 input 提供。工程目录必须已存在。`dapp_meta` 非空时拒绝覆盖，不提供 force/merge。
@@ -48,6 +50,9 @@ npx buckyos pikg info ./dapp_dist/demo-0.1.0.pikg
 | `docker` | `dapp` | `amd64_docker_image` / `aarch64_docker_image` | 本地 Docker image name/tag/ID |
 | `agent-skills` | `agent_skills` | `agent_skills` | skill 内容目录或 `.tar.gz` |
 | `aiws-controls` | `aiws` | `aiws` | AIWS bundle 目录（`aiws-manifest.json` + `controls/<dir>/`）；不存在时写一个 declarative 控件骨架 |
+| `ext-tools` | `ext_tools` | `ext_tools_<os>_<arch>`，初始是本机平台 | 扩展包工程目录（`ext-manifest.json` + `payload/<platform>/{bin,smoke,store/<id>}`）；没有 `ext-manifest.json` 时写一个能打包的骨架 |
+
+扩展工具包的格式见 [PIKG 格式 §5.1](https://github.com/buckyos/buckyos/blob/main/doc/pikg/format.md)。`--name` 就是清单的 `id`。加平台：放好 `payload/<platform>/`，把平台写进 `ext-manifest.json` 的 `platforms`，在 `pikg.json` 加对应子包；工程根的 `ext-manifest.json` 是唯一来源，每个 payload 根上放一份相同的副本。
 
 Agent 模板没有独立 init kind，参考 [Jarvis 元数据](https://github.com/buckyos/buckyos/tree/main/src/apps/jarvis_agent/dapp_meta) 或 [Agent fixture](https://github.com/buckyos/buckyos/tree/main/test/app_installer_test/pikg_samples/agent)。
 

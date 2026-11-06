@@ -4,12 +4,15 @@ import { getHost } from '../runtime/host.ts'
 import {
   digestFile,
   type FileDigest,
+  fileReadableStream,
+  listTarGzStream,
   openZip,
   readTarGz,
   readZipEntry,
   sha256Bytes,
   verifyZipEntry,
   writeStoredZip,
+  zipEntryStream,
 } from './pikg_archive.ts'
 
 const basename = (path: string) => getHost().path.basename(path)
@@ -72,6 +75,8 @@ export interface PikgInspectionResult {
   schema_version: 1
   /** An `aiws` package: its bundle checked like the AI Workspace library does. */
   aiws?: Record<string, unknown>
+  /** An `ext_tools` package: what its `ext-manifest.json` says, checked against every payload. */
+  ext_tools?: Record<string, unknown>
   protocol: string
   pikg_path: string
   size: number
@@ -143,11 +148,10 @@ export function derivedSelector(key: string): Record<string, string> | undefined
     web: {},
     agent: {},
     agent_skills: {},
-    agent_tools: {},
     aiws: {},
     script: {},
   }
-  return selectors[key]
+  return selectors[key] ?? extToolsPlatformOfKey(key)?.selector
 }
 
 export function canonicalSelector(
@@ -536,6 +540,186 @@ export async function verifyAiwsPayload(tarGz: Uint8Array): Promise<Record<strin
   }
 }
 
+/** Extension tool packages (`app_type = ext_tools`): tools every Agent of a machine shares, one payload per platform. */
+export const EXT_TOOLS_APP_TYPE = 'ext_tools'
+export const EXT_TOOLS_MANIFEST_FILE = 'ext-manifest.json'
+export const EXT_TOOLS_MANIFEST_SCHEMA = 'buckyos.ext_tools/1'
+const MAX_EXT_TOOLS_PAYLOAD_BYTES = 64 * 1024 * 1024 * 1024
+const MAX_EXT_TOOLS_LAUNCHER_BYTES = 1024 * 1024
+const EXT_TOOLS_ID = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/
+const EXT_TOOLS_COMMAND = /^[A-Za-z0-9_+-][A-Za-z0-9._+-]*$/
+const EXT_TOOLS_WINDOWS_SUFFIXES = ['', '.exe', '.cmd', '.bat', '.ps1']
+// A launcher resolves its tree from its own location: these never exist where a package lands.
+const BUILD_MACHINE_PATH = /(?:^|[\s"'=:(])(\/home\/|\/Users\/|\/root\/|\/tmp\/|\/var\/folders\/|\/opt\/buckyos\/|[A-Za-z]:\\\\?Users\\)/
+
+export interface ExtToolsPlatform {
+  name: string
+  key: string
+  selector: Record<string, string>
+}
+
+export const EXT_TOOLS_PLATFORMS: ExtToolsPlatform[] = [
+  { name: 'linux-x86_64', key: 'ext_tools_linux_x86_64', selector: { os: 'linux', arch: 'x86_64' } },
+  { name: 'linux-aarch64', key: 'ext_tools_linux_aarch64', selector: { os: 'linux', arch: 'aarch64' } },
+  { name: 'darwin-arm64', key: 'ext_tools_darwin_arm64', selector: { os: 'macos', arch: 'aarch64' } },
+  { name: 'darwin-x86_64', key: 'ext_tools_darwin_x86_64', selector: { os: 'macos', arch: 'x86_64' } },
+  { name: 'windows-x86_64', key: 'ext_tools_windows_x86_64', selector: { os: 'windows', arch: 'x86_64' } },
+]
+
+export function extToolsPlatformOfKey(key: string): ExtToolsPlatform | undefined {
+  return EXT_TOOLS_PLATFORMS.find((platform) => platform.key === key)
+}
+
+export interface ExtToolsManifest {
+  schema: string
+  id: string
+  version: string
+  requires: Array<{ id: string; version: string }>
+  conflicts: string[]
+  provides: Array<{ command: string; version_probe: string; smoke?: string }>
+  platforms: string[]
+  size_bytes?: Record<string, number>
+  license?: string
+  desc?: string
+}
+
+/** The manifest's own rules (`buckyos.ext_tools/1`, doc/pikg/format.md §5), each problem one line. */
+export function extToolsManifestErrors(value: unknown): string[] {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return ['must be a JSON object']
+  const manifest = value as Record<string, unknown>
+  const errors: string[] = []
+  const allowed = ['schema', 'id', 'version', 'requires', 'conflicts', 'provides', 'platforms', 'size_bytes', 'license', 'desc']
+  for (const key of Object.keys(manifest)) if (!allowed.includes(key)) errors.push(`${key} is not a field of the manifest`)
+  if (manifest.schema !== EXT_TOOLS_MANIFEST_SCHEMA) errors.push(`schema must be ${EXT_TOOLS_MANIFEST_SCHEMA}`)
+  if (typeof manifest.id !== 'string' || !EXT_TOOLS_ID.test(manifest.id)) errors.push('id must be lowercase letters, digits and -')
+  if (typeof manifest.version !== 'string' || !manifest.version.trim()) errors.push('version is required')
+  if (!Array.isArray(manifest.provides) || manifest.provides.length === 0) errors.push('provides must not be empty')
+  const commands = new Set<string>()
+  for (const raw of Array.isArray(manifest.provides) ? manifest.provides : []) {
+    const entry = (raw ?? {}) as Record<string, unknown>
+    const command = entry.command
+    if (typeof command !== 'string' || !EXT_TOOLS_COMMAND.test(command)) {
+      errors.push(`provides: ${JSON.stringify(command)} is not a command name`)
+      continue
+    }
+    if (commands.has(command)) errors.push(`provides: command ${command} is listed twice`)
+    commands.add(command)
+    if (typeof entry.version_probe !== 'string' || !entry.version_probe.trim()) errors.push(`provides: ${command} has no version_probe`)
+    const smoke = entry.smoke
+    if (smoke !== undefined && (typeof smoke !== 'string' || !isSafeRelativePath(smoke))) {
+      errors.push(`provides: the smoke of ${command} must be a relative path inside the payload`)
+    }
+  }
+  if (!Array.isArray(manifest.platforms) || manifest.platforms.length === 0) errors.push('platforms must not be empty')
+  for (const platform of Array.isArray(manifest.platforms) ? manifest.platforms : []) {
+    if (!EXT_TOOLS_PLATFORMS.some((known) => known.name === platform)) errors.push(`unknown platform ${JSON.stringify(platform)}`)
+  }
+  for (const raw of Array.isArray(manifest.requires) ? manifest.requires : manifest.requires === undefined ? [] : [null]) {
+    const required = (raw ?? {}) as Record<string, unknown>
+    if (typeof required.id !== 'string' || !EXT_TOOLS_ID.test(required.id) || required.id === manifest.id || typeof required.version !== 'string') {
+      errors.push(`requires: ${JSON.stringify(raw)} is not another package's {id, version}`)
+    }
+  }
+  if (manifest.conflicts !== undefined && !(Array.isArray(manifest.conflicts) && manifest.conflicts.every((id) => typeof id === 'string' && id !== manifest.id))) {
+    errors.push('conflicts must list other packages by id')
+  }
+  return errors
+}
+
+function isSafeRelativePath(path: string): boolean {
+  return !path.includes('\\') && !path.startsWith('/') && path.split('/').every((part) => part && part !== '.' && part !== '..')
+}
+
+export function parseExtToolsManifest(bytes: Uint8Array): ExtToolsManifest {
+  let value: unknown
+  try {
+    value = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes))
+  } catch (error) {
+    throw invalid('ext_tools', `${EXT_TOOLS_MANIFEST_FILE} is not valid JSON: ${error instanceof Error ? error.message : String(error)}`)
+  }
+  const errors = extToolsManifestErrors(value)
+  if (errors.length > 0) throw invalid('ext_tools', `${EXT_TOOLS_MANIFEST_FILE}: ${errors.join('; ')}`)
+  const manifest = value as ExtToolsManifest
+  manifest.requires ??= []
+  manifest.conflicts ??= []
+  return manifest
+}
+
+/** A payload's tree, from a directory or from its tar: the regular files, as `pikg build` would archive them. */
+export interface ExtToolsPayloadTree {
+  files: Map<string, { executable: boolean }>
+  directories: Set<string>
+  /** The contents of the small files under `bin/`. */
+  launchers: Map<string, Uint8Array>
+}
+
+/** What is wrong with a payload of `platform`: its layout, a launcher for every command it provides and for nothing
+ * else, the smoke scripts, and launchers that only name paths of the machine that built them. */
+export function extToolsPayloadErrors(manifest: ExtToolsManifest, platform: string, tree: ExtToolsPayloadTree, buildPaths: string[] = []): string[] {
+  const errors: string[] = []
+  const windows = platform.startsWith('windows-')
+  const suffixes = windows ? EXT_TOOLS_WINDOWS_SUFFIXES : ['']
+  for (const path of [...tree.files.keys(), ...tree.directories]) {
+    const [top, second] = path.split('/')
+    const isTop = !path.includes('/')
+    const known = top === EXT_TOOLS_MANIFEST_FILE && isTop || top === 'bin' || top === 'smoke' || top === 'store'
+    if (!known) errors.push(`${path}: a package only holds ${EXT_TOOLS_MANIFEST_FILE}, bin/, smoke/ and store/${manifest.id}/`)
+    if (top === 'store' && second !== undefined && second !== manifest.id) errors.push(`${path}: a package only writes store/${manifest.id}/`)
+  }
+  const declared = new Set(manifest.provides.map((provided) => provided.command))
+  for (const provided of manifest.provides) {
+    const launcher = suffixes.map((suffix) => tree.files.get(`bin/${provided.command}${suffix}`)).find(Boolean)
+    if (!launcher) errors.push(`bin/${provided.command}: the launcher of a provided command is missing`)
+    else if (!windows && !launcher.executable) errors.push(`bin/${provided.command}: the launcher is not executable`)
+    if (provided.smoke && !tree.files.has(provided.smoke)) errors.push(`${provided.smoke}: the smoke script of ${provided.command} is missing`)
+  }
+  for (const path of tree.files.keys()) {
+    if (!path.startsWith('bin/')) continue
+    const name = path.slice('bin/'.length)
+    const command = suffixes.map((suffix) => suffix && name.endsWith(suffix) ? name.slice(0, -suffix.length) : name).find((candidate) => declared.has(candidate))
+    if (!command) errors.push(`${path}: not in provides, so nothing knows this package provides it`)
+  }
+  const decoder = new TextDecoder()
+  for (const [path, bytes] of tree.launchers) {
+    const text = decoder.decode(bytes)
+    const named = buildPaths.find((dir) => text.includes(dir))
+    if (named) errors.push(`${path}: names ${named} on the machine that built it`)
+    else if (BUILD_MACHINE_PATH.test(text)) errors.push(`${path}: names an absolute path of the machine that built it (${BUILD_MACHINE_PATH.exec(text)?.[1]})`)
+  }
+  return errors
+}
+
+function assertExtToolsOf(appDoc: Record<string, unknown>, manifest: ExtToolsManifest, platform: string, platforms: string[]): void {
+  if (manifest.id !== appDoc.name) throw invalid('ext_tools', `${EXT_TOOLS_MANIFEST_FILE} id ${manifest.id} is not the App name ${appDoc.name}`)
+  if (manifest.version !== appDoc.version) throw invalid('ext_tools', `${EXT_TOOLS_MANIFEST_FILE} version ${manifest.version} is not the App version ${appDoc.version}`)
+  if (!manifest.platforms.includes(platform)) throw invalid('ext_tools', `${EXT_TOOLS_MANIFEST_FILE} does not list the payload's platform ${platform}`)
+  const missing = manifest.platforms.filter((name) => !platforms.includes(name))
+  if (missing.length > 0) throw invalid('ext_tools', `${EXT_TOOLS_MANIFEST_FILE} lists platforms without a payload: ${missing.join(', ')}`)
+}
+
+/** Check one payload of an `ext_tools` package (a tar.gz stream, never held whole) and return its manifest. */
+async function verifyExtToolsPayload(
+  gzip: ReadableStream<Uint8Array>,
+  key: string,
+  appDoc: Record<string, unknown>,
+): Promise<ExtToolsManifest> {
+  const platform = extToolsPlatformOfKey(key)
+  if (!platform) throw invalid('appdoc', `an ext_tools package has no sub package ${key}`)
+  const listing = await listTarGzStream(
+    gzip,
+    MAX_EXT_TOOLS_PAYLOAD_BYTES,
+    (path, size) => path === EXT_TOOLS_MANIFEST_FILE || (path.startsWith('bin/') && size <= MAX_EXT_TOOLS_LAUNCHER_BYTES),
+  )
+  const raw = listing.captured.get(EXT_TOOLS_MANIFEST_FILE)
+  if (!raw) throw invalid('ext_tools', `${key}: ${EXT_TOOLS_MANIFEST_FILE} is not at the root of the payload`)
+  const manifest = parseExtToolsManifest(raw)
+  assertExtToolsOf(appDoc, manifest, platform.name, Object.keys(expectObject(appDoc.pkg_list, 'APPDOC.pkg_list')).flatMap((k) => extToolsPlatformOfKey(k)?.name ?? []))
+  const launchers = new Map([...listing.captured].filter(([path]) => path.startsWith('bin/')))
+  const errors = extToolsPayloadErrors(manifest, platform.name, { files: listing.files, directories: listing.directories, launchers })
+  if (errors.length > 0) throw invalid('ext_tools', `${key}: ${errors.join('; ')}`)
+  return manifest
+}
+
 export async function validateSnapshot(
   distDir: string,
   appDoc: Record<string, unknown>,
@@ -551,6 +735,9 @@ export async function validateSnapshot(
   const validated = validateObjectGraph(appDoc, packageMeta, payloads, true, false, true)
   if (appDoc.app_type === 'aiws') {
     for (const sub of validated.subpackages) await verifyAiwsPayload(await getHost().readFile(join(distDir, sub.payload_path)))
+  }
+  if (appDoc.app_type === EXT_TOOLS_APP_TYPE) {
+    for (const sub of validated.subpackages) await verifyExtToolsPayload(fileReadableStream(join(distDir, sub.payload_path)), sub.key, appDoc)
   }
   return validated
 }
@@ -676,10 +863,18 @@ export async function inspectPikg(path: string): Promise<PikgInspectionResult> {
     const sub = validated.subpackages[0]
     aiws = await verifyAiwsPayload(await readZipEntry(archive, archive.byName.get(sub.payload_path)!, MAX_AIWS_PAYLOAD_BYTES))
   }
+  let extTools: Record<string, unknown> | undefined
+  if (appDoc.app_type === EXT_TOOLS_APP_TYPE) {
+    for (const sub of validated.subpackages) {
+      const manifest = await verifyExtToolsPayload(zipEntryStream(archive.path, archive.byName.get(sub.payload_path)!), sub.key, appDoc)
+      extTools ??= { ...manifest }
+    }
+  }
   const pikgDigest = await digestFile(path)
   return {
     schema_version: 1,
     ...(aiws ? { aiws } : {}),
+    ...(extTools ? { ext_tools: extTools } : {}),
     protocol: PACKAGE_META_SCHEMA,
     pikg_path: resolve(path),
     size: pikgDigest.size,
@@ -995,7 +1190,7 @@ export function validateAppDocShape(appDoc: Record<string, unknown>): void {
     expectNonEmptyString(appDoc[field], `APPDOC.${field}`)
   }
   if (appDoc.doc_type !== 'app') throw invalid('appdoc', 'APPDOC.doc_type must be app')
-  if (!['service', 'dapp', 'web', 'agent', 'agent_skills', 'aiws'].includes(String(appDoc.app_type))) {
+  if (!['service', 'dapp', 'web', 'agent', 'agent_skills', 'aiws', EXT_TOOLS_APP_TYPE].includes(String(appDoc.app_type))) {
     throw invalid('appdoc', 'APPDOC.app_type is invalid')
   }
   if (appDoc.name !== undefined) expectNonEmptyString(appDoc.name, 'APPDOC.name')
@@ -1058,6 +1253,15 @@ export function validateAppDocShape(appDoc: Record<string, unknown>): void {
   // AI Workspace controls (buckyos aiworkspace README “Extension controls”): one bundle, nothing to run
   if (appDoc.app_type === 'aiws' && Object.keys(pkgList).join() !== AIWS_SUB_PACKAGE) {
     throw invalid('appdoc', 'an aiws package must contain only the aiws sub package')
+  }
+  // Extension tools: one payload per platform, nothing to run
+  if (appDoc.app_type === EXT_TOOLS_APP_TYPE) {
+    expectNonEmptyString(appDoc.name, 'APPDOC.name')
+    const unknown = Object.keys(pkgList).find((key) => !extToolsPlatformOfKey(key))
+    if (unknown) throw invalid('appdoc', `an ext_tools package must contain only ext_tools_<os>_<arch> sub packages, not ${unknown}`)
+  } else {
+    const stray = Object.keys(pkgList).find((key) => extToolsPlatformOfKey(key))
+    if (stray) throw invalid('appdoc', `${stray} belongs to an ext_tools package`)
   }
   deriveNamespaceForPackage(appDoc)
 }

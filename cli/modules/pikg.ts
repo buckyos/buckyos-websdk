@@ -14,6 +14,14 @@ import {
   DIST_MANIFEST_NAME,
   expectNonEmptyString,
   expectObject,
+  EXT_TOOLS_MANIFEST_FILE,
+  EXT_TOOLS_MANIFEST_SCHEMA,
+  EXT_TOOLS_PLATFORMS,
+  extToolsManifestErrors,
+  extToolsPayloadErrors,
+  extToolsPlatformOfKey,
+  type ExtToolsManifest,
+  type ExtToolsPayloadTree,
   inspectPikg,
   normalizeArch,
   PACKAGE_META_ENTRY,
@@ -56,14 +64,17 @@ const SHA256_ID = /^sha256:[0-9a-f]{64}$/
 const OBJECT_ID = /^(?:appdoc|pkg):[0-9a-f]{64}$/
 const SAFE_GENERATED_FILE = /^[A-Za-z0-9._-]+$/
 const OBJECT_OUTPUT = { type: 'object' as const, additionalProperties: true }
-const APP_KINDS = ['static-web', 'script', 'docker', 'agent-skills', 'aiws-controls']
+const APP_KINDS = ['static-web', 'script', 'docker', 'agent-skills', 'aiws-controls', 'ext-tools']
 const PATH_KINDS: Record<string, { key: string; category: string; selectorType: string }> = {
   'static-web': { key: 'web', category: 'web', selectorType: 'static' },
   script: { key: 'script', category: 'dapp', selectorType: 'single' },
   'agent-skills': { key: 'agent_skills', category: 'agent_skills', selectorType: 'single' },
   // AI Workspace controls: one bundle (aiws-manifest.json + controls/<dir>/), installed into the AI Workspace library
   'aiws-controls': { key: 'aiws', category: 'aiws', selectorType: 'single' },
+  // Extension tools: ext-manifest.json + payload/<platform>/, one sub package per platform, enabled for the Zone
+  'ext-tools': { key: 'ext_tools', category: 'ext_tools', selectorType: 'single' },
 }
+const EXT_TOOLS_LAUNCHER_LIMIT = 1024 * 1024
 
 export interface DockerImageInfo {
   id: string
@@ -183,9 +194,19 @@ export function createPikgModule(dependencies: PikgModuleDependencies = {}): Com
         positionals: [
           { name: 'meta_dir', description: 'dapp_meta directory', required: false },
         ],
+        options: [
+          {
+            name: 'catalog',
+            description: 'ext-tools: a directory of other packages (<id>/ext-manifest.json) to check requires and same-named commands against',
+            type: 'string',
+          },
+        ],
         inputSchema: {
           type: 'object',
-          properties: { meta_dir: { type: 'string', minLength: 1 } },
+          properties: {
+            meta_dir: { type: 'string', minLength: 1 },
+            catalog: { type: 'string', minLength: 1 },
+          },
           additionalProperties: false,
         },
         outputSchema: OBJECT_OUTPUT,
@@ -195,7 +216,11 @@ export function createPikgModule(dependencies: PikgModuleDependencies = {}): Com
         requiresSession: false,
         execution: 'local',
         networkAccess: false,
-        examples: ['buckyos pikg doctor', 'buckyos pikg doctor ./dapp_meta'],
+        examples: [
+          'buckyos pikg doctor',
+          'buckyos pikg doctor ./dapp_meta',
+          'buckyos pikg doctor ./dapp_meta --catalog ../publish/exttool',
+        ],
         handler: async (ctx, input) => await doctorCommand(ctx, input),
       },
       {
@@ -254,6 +279,7 @@ export function createPikgModule(dependencies: PikgModuleDependencies = {}): Com
           'buckyos --non-interactive pikg init . --owner did:bns:root --kind agent-skills --source ./skills',
           'buckyos --non-interactive pikg init . --owner did:bns:alice --kind aiws-controls --source ./aiws',
           'buckyos --non-interactive pikg init . --owner did:bns:alice --kind aiws-controls --source ./aiws --composite',
+          'buckyos --non-interactive pikg init . --name ext-media --owner did:bns:root --kind ext-tools --source ./ext-media',
         ],
         handler: async (ctx, input) => await initCommand(ctx, input, docker),
       },
@@ -413,6 +439,10 @@ async function doctorCommand(
         status: missingSources.length === 0 ? 'ok' : 'missing',
         missing: missingSources,
       })
+      if (app.categories[0] === PATH_KINDS['ext-tools'].category) {
+        const catalog = optionalInputString(input, 'catalog')
+        checks.push(...await extToolsChecks(app, pikg, metaDir, catalog ? resolveFromCwd(ctx, catalog) : undefined))
+      }
     } catch (error) {
       checks.push({
         name: 'metadata_schema',
@@ -426,7 +456,7 @@ async function doctorCommand(
   const profile = profileName ? await ctx.configStore.readProfile(profileName) : undefined
   const host = getHost()
   return {
-    healthy: checks.every((check) => check.status === 'ok'),
+    healthy: checks.every((check) => check.status === 'ok' || check.status === 'skipped'),
     tool_version: TOOL_VERSION,
     sdk_version: SDK_VERSION,
     protocol_version: PROTOCOL_VERSION,
@@ -480,7 +510,24 @@ async function initCommand(
   let sourceValue: Record<string, string>
   let selector: Record<string, string> | undefined
   let sourceSummary: Record<string, unknown>
-  if (kind === 'docker') {
+  if (kind === 'ext-tools') {
+    const platform = hostExtToolsPlatform()
+    const absoluteSource = resolve(projectDir, source)
+    subpackageKey = platform.key
+    selector = platform.selector
+    sourceValue = {
+      type: 'path',
+      path: toPortablePath(relative(join(projectDir, 'dapp_meta'), join(absoluteSource, 'payload', platform.name))),
+    }
+    sourceSummary = { type: 'path', path: displaySource(projectDir, absoluteSource), platform: platform.name }
+    try {
+      await getHost().lstat(join(absoluteSource, EXT_TOOLS_MANIFEST_FILE))
+    } catch (error) {
+      if (!isHostError(error, 'NotFound')) throw error
+      await writeExtToolsSkeleton(absoluteSource, name, version, platform.name)
+      sourceSummary.skeleton = true
+    }
+  } else if (kind === 'docker') {
     const image = await docker.inspect(source)
     const arch = normalizeArch(image.architecture)
     subpackageKey = arch === 'x86_64'
@@ -590,6 +637,205 @@ async function writeAiwsSkeleton(dir: string, ownerDid: string, name: string, co
     workspace_templates: [],
   }
   await host.writeTextFile(join(dir, AIWS_MANIFEST_FILE), `${JSON.stringify(manifest, null, 2)}\n`)
+}
+
+function hostExtToolsPlatform(): (typeof EXT_TOOLS_PLATFORMS)[number] {
+  const host = getHost()
+  const os = host.platform === 'darwin' ? 'macos' : host.platform === 'win32' ? 'windows' : host.platform
+  const arch = normalizeArch(host.arch)
+  const platform = EXT_TOOLS_PLATFORMS.find((known) => known.selector.os === os && known.selector.arch === arch)
+  if (!platform) {
+    throw new UsageError('UNSUPPORTED_PLATFORM', `extension packages have no payload for ${os}/${arch}`)
+  }
+  return platform
+}
+
+/** An extension package skeleton for this machine's platform: `ext-manifest.json` and one command that runs and has a
+ * smoke script, so the package builds from the first minute. Other platforms are added beside it. */
+async function writeExtToolsSkeleton(dir: string, id: string, version: string, platform: string): Promise<void> {
+  const host = getHost()
+  const manifest = {
+    schema: EXT_TOOLS_MANIFEST_SCHEMA,
+    id,
+    version,
+    requires: [],
+    conflicts: [],
+    provides: [{ command: id, version_probe: `${id} --version`, smoke: `smoke/${id}.sh` }],
+    platforms: [platform],
+    license: '',
+    desc: '',
+  }
+  const text = `${JSON.stringify(manifest, null, 2)}\n`
+  const payload = join(dir, 'payload', platform)
+  for (const sub of ['bin', 'smoke', join('store', id)]) await host.mkdir(join(payload, sub), { recursive: true })
+  await host.writeTextFile(join(dir, EXT_TOOLS_MANIFEST_FILE), text)
+  await host.writeTextFile(join(payload, EXT_TOOLS_MANIFEST_FILE), text)
+  const windows = platform.startsWith('windows-')
+  await host.writeTextFile(
+    join(payload, 'bin', windows ? `${id}.cmd` : id),
+    windows ? `@echo off\r\necho ${id} ${version}\r\n` : `#!/bin/sh\necho "${id} ${version}"\n`,
+    { mode: 0o755 },
+  )
+  await host.writeTextFile(join(payload, 'smoke', `${id}.sh`), `#!/bin/sh\nset -eu\n${id} --version >/dev/null\n`, { mode: 0o755 })
+}
+
+async function readExtToolsManifestFile(path: string): Promise<{ text: string; manifest?: ExtToolsManifest; errors: string[] }> {
+  let text: string
+  try {
+    text = await getHost().readTextFile(path)
+  } catch (error) {
+    if (isHostError(error, 'NotFound')) return { text: '', errors: ['not found'] }
+    throw error
+  }
+  let value: unknown
+  try {
+    value = JSON.parse(text)
+  } catch {
+    return { text, errors: ['not valid JSON'] }
+  }
+  const errors = extToolsManifestErrors(value)
+  if (errors.length > 0) return { text, errors }
+  const manifest = value as ExtToolsManifest
+  manifest.requires ??= []
+  manifest.conflicts ??= []
+  return { text, manifest, errors }
+}
+
+/** A payload directory as `pikg build` would archive it: symlinks read through, and refused when they leave the tree. */
+async function readExtToolsPayloadTree(root: string): Promise<{ tree: ExtToolsPayloadTree; errors: string[] }> {
+  const host = getHost()
+  const tree: ExtToolsPayloadTree = { files: new Map(), directories: new Set(), launchers: new Map() }
+  const errors: string[] = []
+  const realRoot = await host.realPath(root)
+  const walk = async (directory: string, prefix: string): Promise<void> => {
+    const children = await host.readDir(directory)
+    for (const child of children) {
+      const archivePath = prefix ? `${prefix}/${child.name}` : child.name
+      const path = join(directory, child.name)
+      const link = await host.lstat(path)
+      let physical = path
+      if (link.isSymlink) {
+        try {
+          physical = await host.realPath(path)
+        } catch (error) {
+          errors.push(`${archivePath}: ${isHostError(error, 'NotFound') ? 'a dangling symlink' : 'a symlink out of the payload'}`)
+          continue
+        }
+        const inside = relative(realRoot, physical)
+        if (inside === '..' || inside.startsWith(`..${host.path.sep}`) || isAbsolute(inside)) {
+          errors.push(`${archivePath}: a symlink out of the payload`)
+          continue
+        }
+      }
+      const info = link.isSymlink ? await host.stat(physical) : link
+      if (info.isDirectory) {
+        tree.directories.add(archivePath)
+        await walk(physical, archivePath)
+      } else if (info.isFile) {
+        tree.files.set(archivePath, { executable: ((info.mode ?? 0) & 0o111) !== 0 })
+        if (archivePath.startsWith('bin/') && info.size <= EXT_TOOLS_LAUNCHER_LIMIT) {
+          tree.launchers.set(archivePath, await host.readFile(physical))
+        }
+      } else {
+        errors.push(`${archivePath}: not a regular file`)
+      }
+    }
+  }
+  await walk(realRoot, '')
+  return { tree, errors }
+}
+
+/** `pikg doctor` of an extension package: the manifest against the App, every platform's payload, and, given a catalog
+ * of the other packages, `requires` and same-named commands. */
+async function extToolsChecks(app: AppMeta, pikg: PikgMeta, metaDir: string, catalogDir: string | undefined): Promise<Array<Record<string, unknown>>> {
+  const checks: Array<Record<string, unknown>> = []
+  const platforms = new Map<string, string>()
+  const stray: string[] = []
+  for (const [key, subpackage] of Object.entries(pikg.sub_pkgs)) {
+    const platform = extToolsPlatformOfKey(key)
+    if (!platform || subpackage.source.type !== 'path') {
+      stray.push(key)
+      continue
+    }
+    platforms.set(platform.name, resolve(metaDir, subpackage.source.path))
+  }
+  const sources = [...platforms.values()]
+  // <source>/payload/<platform>: the package's manifest is two levels up
+  const source = sources.length > 0 ? dirname(dirname(sources[0])) : dirname(metaDir)
+  const master = await readExtToolsManifestFile(join(source, EXT_TOOLS_MANIFEST_FILE))
+  const manifestErrors = [...master.errors]
+  if (stray.length > 0) manifestErrors.push(`sub packages must be ext_tools_<os>_<arch> from a directory: ${stray.join(', ')}`)
+  const manifest = master.manifest
+  if (manifest) {
+    if (manifest.id !== app.name) manifestErrors.push(`id ${manifest.id} is not the App name ${app.name}`)
+    if (manifest.version !== app.version) manifestErrors.push(`version ${manifest.version} is not the App version ${app.version}`)
+    const without = manifest.platforms.filter((name) => !platforms.has(name))
+    if (without.length > 0) manifestErrors.push(`platforms without a sub package: ${without.join(', ')}`)
+    const unlisted = [...platforms.keys()].filter((name) => !manifest.platforms.includes(name))
+    if (unlisted.length > 0) manifestErrors.push(`sub packages of platforms it does not list: ${unlisted.join(', ')}`)
+  }
+  checks.push({
+    name: 'ext_tools_manifest',
+    status: manifestErrors.length === 0 ? 'ok' : 'error',
+    path: join(source, EXT_TOOLS_MANIFEST_FILE),
+    ...(manifestErrors.length > 0 ? { errors: manifestErrors } : {}),
+  })
+  if (!manifest) return checks
+  for (const [platform, dir] of platforms) {
+    const errors: string[] = []
+    try {
+      const { tree, errors: walkErrors } = await readExtToolsPayloadTree(dir)
+      errors.push(...walkErrors)
+      const copy = await readExtToolsManifestFile(join(dir, EXT_TOOLS_MANIFEST_FILE))
+      if (copy.errors.length > 0) errors.push(`${EXT_TOOLS_MANIFEST_FILE}: ${copy.errors.join('; ')}`)
+      else if (copy.text !== master.text) errors.push(`${EXT_TOOLS_MANIFEST_FILE}: differs from the package's manifest`)
+      errors.push(...extToolsPayloadErrors(manifest, platform, tree, [source, metaDir]))
+    } catch (error) {
+      if (!isHostError(error, 'NotFound')) throw error
+      errors.push(`${dir}: not found`)
+    }
+    checks.push({
+      name: 'ext_tools_payload',
+      platform,
+      status: errors.length === 0 ? 'ok' : 'error',
+      path: dir,
+      ...(errors.length > 0 ? { errors } : {}),
+    })
+  }
+  if (!catalogDir) {
+    checks.push({
+      name: 'ext_tools_catalog',
+      status: 'skipped',
+      detail: 'no --catalog: requires and commands other packages also provide are not checked',
+    })
+    return checks
+  }
+  const others = new Map<string, ExtToolsManifest>()
+  const catalogErrors: string[] = []
+  for (const entry of await getHost().readDir(catalogDir)) {
+    if (entry.isFile) continue
+    const candidate = await readExtToolsManifestFile(join(catalogDir, entry.name, EXT_TOOLS_MANIFEST_FILE))
+    if (candidate.errors.includes('not found')) continue
+    if (!candidate.manifest) catalogErrors.push(`${entry.name}: ${candidate.errors.join('; ')}`)
+    else if (candidate.manifest.id !== manifest.id) others.set(candidate.manifest.id, candidate.manifest)
+  }
+  for (const required of manifest.requires) {
+    if (!others.has(required.id)) catalogErrors.push(`requires ${required.id}: not in the catalog`)
+  }
+  const commands = new Set(manifest.provides.map((provided) => provided.command))
+  for (const other of others.values()) {
+    if (manifest.conflicts.includes(other.id) || other.conflicts.includes(manifest.id)) continue
+    const shared = other.provides.map((provided) => provided.command).filter((command) => commands.has(command))
+    if (shared.length > 0) catalogErrors.push(`${other.id} also provides ${shared.join(', ')}: one of the two must list the other in conflicts`)
+  }
+  checks.push({
+    name: 'ext_tools_catalog',
+    status: catalogErrors.length === 0 ? 'ok' : 'error',
+    path: catalogDir,
+    packages: [...others.keys()],
+    ...(catalogErrors.length > 0 ? { errors: catalogErrors } : {}),
+  })
+  return checks
 }
 
 async function buildCommand(

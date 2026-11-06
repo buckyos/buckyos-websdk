@@ -481,7 +481,7 @@ function publishCommand(): CommandDefinition {
         property: 'app_type',
         description: 'App type; defaults to the template app_type',
         type: 'string',
-        enum: ['dapp', 'web', 'agent'],
+        enum: ['dapp', 'web', 'agent', 'ext_tools'],
       },
     ],
     inputSchema: {
@@ -489,7 +489,7 @@ function publishCommand(): CommandDefinition {
       properties: {
         local_dir: { type: 'string', minLength: 1 },
         app_doc: { type: 'string', minLength: 1 },
-        app_type: { type: 'string', enum: ['dapp', 'web', 'agent'] },
+        app_type: { type: 'string', enum: ['dapp', 'web', 'agent', 'ext_tools'] },
       },
       required: ['local_dir', 'app_doc'],
       additionalProperties: false,
@@ -502,6 +502,7 @@ function publishCommand(): CommandDefinition {
     examples: [
       'buckyos app publish /srv/build/demo-web --app-doc ./demo-web.appdoc.json',
       'buckyos app publish /srv/build/demo-agent --app-doc ./demo-agent.appdoc.json --app-type agent',
+      'buckyos app publish /srv/build/ext-media --app-doc ./dapp_dist/APPDOC.json',
     ],
     handler: async (ctx, input) => {
       const localDir = expectString(input, 'local_dir')
@@ -591,6 +592,12 @@ async function installApp(
       ? await recomputePlan(ctx, source, input, submittedPlan)
       : await inspectSource(ctx, source, input)
     verifyPikgBinding(source, submittedPlan ?? inspection.plan)
+    if ((inspection.plan.app_doc as Record<string, unknown> | undefined)?.app_type === 'ext_tools') {
+      throw new ToolError(
+        'EXT_TOOLS_NOT_AN_APP',
+        'an extension tool package is not installed as an App: publish it to the Repo with `buckyos app publish`, then enable it for the Zone on the management page',
+      )
+    }
     const app = expectObject(inspection.plan.app, 'inspection.plan.app')
     const appDid = expectString(app, 'did')
     const plannedOwner = submittedPlan ? expectString(submittedPlan, 'owner_user_id') : undefined

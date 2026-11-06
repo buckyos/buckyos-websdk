@@ -2,7 +2,7 @@ import './setup.ts'
 import { join, parse as parsePath } from 'node:path'
 import { BuckyOSToolApplication, type ToolStdio } from '../core/app.ts'
 import { aiwsTemplateDigest } from 'buckyos/node'
-import { createDeterministicTarGz, digestFile } from '../modules/pikg_archive.ts'
+import { createDeterministicTarGz, digestFile, listTarGzStream } from '../modules/pikg_archive.ts'
 import type { DockerClient, DockerImageInfo } from '../modules/pikg.ts'
 import { appDocObjectId, validateAppDocShape } from '../modules/pikg_protocol.ts'
 import { assert, assertEquals, assertRejects } from './test_helpers.ts'
@@ -613,6 +613,261 @@ Deno.test('aiws-controls packages: Workspace templates are checked with the bund
   } finally {
     await Deno.remove(root, { recursive: true })
   }
+})
+
+function extToolsApp(root: string, project: string) {
+  const io = new CaptureStdio()
+  const app = new BuckyOSToolApplication({
+    cwd: project,
+    homeDir: join(root, 'home'),
+    environment: { HOME: join(root, 'home') },
+    stdio: io,
+    pikg: { now: () => 1_800_000_000 },
+    createAuthentication: () => {
+      throw new Error('PIKG must not create authentication')
+    },
+  })
+  return { app, io }
+}
+
+async function initExtTools(root: string, name = 'ext-media') {
+  const project = join(root, name)
+  await Deno.mkdir(project, { recursive: true })
+  const { app, io } = extToolsApp(root, project)
+  assertEquals(await app.run(['--non-interactive', 'pikg', 'init', '.', '--name', name, '--owner', 'did:bns:alice', '--kind', 'ext-tools', '--source', '.']), 0, io.stdoutText)
+  const envelope = io.takeEnvelope()
+  const platform: string = envelope.data.subpackage.source.platform
+  return { project, app, io, envelope, platform, payload: join(project, 'payload', platform) }
+}
+
+function failedChecks(data: { checks: Array<Record<string, unknown>> }): string[] {
+  return data.checks.filter((check) => check.status === 'error').flatMap((check) => (check.errors ?? [check.detail]) as string[])
+}
+
+Deno.test('ext-tools packages: init writes a package that doctors, builds, packs and reads back', async () => {
+  const root = await Deno.makeTempDir()
+  try {
+    const { project, app, io, envelope, platform, payload } = await initExtTools(root)
+    assertEquals(envelope.data.app.categories, ['ext_tools'])
+    assertEquals(envelope.data.subpackage.key, `ext_tools_${platform.replace('-', '_')}`)
+    const manifest = JSON.parse(await Deno.readTextFile(join(project, 'ext-manifest.json')))
+    assertEquals(manifest.schema, 'buckyos.ext_tools/1')
+    assertEquals(manifest.provides[0].command, 'ext-media')
+    assertEquals(await Deno.readTextFile(join(payload, 'ext-manifest.json')), await Deno.readTextFile(join(project, 'ext-manifest.json')))
+
+    assertEquals(await app.run(['pikg', 'doctor']), 0, io.stdoutText)
+    let result = io.takeEnvelope()
+    assertEquals(result.data.healthy, true, JSON.stringify(result.data.checks))
+    const names = result.data.checks.map((check: { name: string }) => check.name)
+    assert(names.includes('ext_tools_manifest') && names.includes('ext_tools_payload'), names.join())
+    assertEquals(result.data.checks.find((check: { name: string }) => check.name === 'ext_tools_catalog').status, 'skipped')
+
+    assertEquals(await app.run(['pikg', 'build']), 0, io.stdoutText)
+    result = io.takeEnvelope()
+    const appDoc = JSON.parse(await Deno.readTextFile(join(result.data.dist_dir, 'APPDOC.json')))
+    assertEquals(appDoc.app_type, 'ext_tools')
+    assertEquals(Object.keys(appDoc.pkg_list), [`ext_tools_${platform.replace('-', '_')}`])
+    assertEquals(await app.run(['pikg', 'pack', result.data.dist_dir]), 0, io.stdoutText)
+    result = io.takeEnvelope()
+    assertEquals(await app.run(['pikg', 'info', result.data.pikg_path]), 0, io.stdoutText)
+    result = io.takeEnvelope()
+    assertEquals(result.data.app.app_type, 'ext_tools')
+    assertEquals(result.data.ext_tools.id, 'ext-media')
+    assertEquals(result.data.ext_tools.provides[0].smoke, 'smoke/ext-media.sh')
+    assertEquals(result.data.subpackages[0].selector, envelope.data.subpackage.selector)
+  } finally {
+    await Deno.remove(root, { recursive: true })
+  }
+})
+
+Deno.test('ext-tools packages: doctor names what a package gets wrong, and build refuses it', async () => {
+  const root = await Deno.makeTempDir()
+  try {
+    const { project, app, io, payload } = await initExtTools(root)
+    const manifestPath = join(project, 'ext-manifest.json')
+    const original = JSON.parse(await Deno.readTextFile(manifestPath))
+    const writeManifest = async (value: unknown) => {
+      const text = `${JSON.stringify(value, null, 2)}\n`
+      await Deno.writeTextFile(manifestPath, text)
+      await Deno.writeTextFile(join(payload, 'ext-manifest.json'), text)
+    }
+    const doctor = async () => {
+      assertEquals(await app.run(['pikg', 'doctor']), 0, io.stdoutText)
+      return io.takeEnvelope().data
+    }
+    const expectProblem = (data: { healthy: boolean; checks: Array<Record<string, unknown>> }, needle: string) => {
+      assertEquals(data.healthy, false)
+      assert(failedChecks(data).some((line) => line.includes(needle)), `${needle}: ${JSON.stringify(failedChecks(data))}`)
+    }
+
+    // a command with no launcher
+    await writeManifest({ ...original, provides: [...original.provides, { command: 'ffmpeg', version_probe: 'ffmpeg -version' }] })
+    expectProblem(await doctor(), 'bin/ffmpeg: the launcher of a provided command is missing')
+    assertEquals(await app.run(['pikg', 'build']), 6, io.stdoutText)
+    const failure = io.takeEnvelope()
+    assertEquals(failure.error.code, 'INVALID_PACKAGE')
+    assert(String(failure.error.message).includes('bin/ffmpeg'), failure.error.message)
+
+    // the launcher is there but does not run
+    await Deno.writeTextFile(join(payload, 'bin', 'ffmpeg'), '#!/bin/sh\nexit 0\n', { mode: 0o644 })
+    await Deno.chmod(join(payload, 'bin', 'ffmpeg'), 0o644)
+    expectProblem(await doctor(), 'bin/ffmpeg: the launcher is not executable')
+    await Deno.chmod(join(payload, 'bin', 'ffmpeg'), 0o755)
+    assertEquals((await doctor()).healthy, true)
+
+    // a launcher that names the machine it was built on
+    await Deno.writeTextFile(join(payload, 'bin', 'ffmpeg'), `#!/bin/sh\nexec ${join(project, 'payload', 'x')} "$@"\n`)
+    expectProblem(await doctor(), 'on the machine that built it')
+    await Deno.writeTextFile(join(payload, 'bin', 'ffmpeg'), '#!/bin/sh\nexec /home/ci/ffmpeg "$@"\n')
+    expectProblem(await doctor(), '/home/')
+    await Deno.writeTextFile(join(payload, 'bin', 'ffmpeg'), '#!/bin/sh\nexec "$(dirname "$0")/../store/ext-media/ffmpeg" "$@"\n')
+    assertEquals((await doctor()).healthy, true)
+
+    // a launcher the manifest does not declare would be a command nothing knows about
+    await Deno.writeTextFile(join(payload, 'bin', 'ffplay'), '#!/bin/sh\n', { mode: 0o755 })
+    expectProblem(await doctor(), 'bin/ffplay: not in provides')
+    await Deno.remove(join(payload, 'bin', 'ffplay'))
+
+    // the smoke script it promises
+    await writeManifest({ ...original, provides: [...original.provides, { command: 'ffmpeg', version_probe: 'ffmpeg -version', smoke: 'smoke/ffmpeg.sh' }] })
+    expectProblem(await doctor(), 'smoke/ffmpeg.sh')
+    await writeManifest({ ...original, provides: [...original.provides, { command: 'ffmpeg', version_probe: 'ffmpeg -version' }] })
+
+    // only its own tree
+    await Deno.mkdir(join(payload, 'store', 'pandoc'), { recursive: true })
+    await Deno.writeTextFile(join(payload, 'uv-cache'), '')
+    let data = await doctor()
+    expectProblem(data, 'store/pandoc: a package only writes store/ext-media/')
+    expectProblem(data, 'uv-cache: a package only holds')
+    await Deno.remove(join(payload, 'store', 'pandoc'))
+    await Deno.remove(join(payload, 'uv-cache'))
+
+    // a symlink cannot reach out of the payload
+    await Deno.symlink('/bin/sh', join(payload, 'bin', 'ffmpeg-link'))
+    expectProblem(await doctor(), 'bin/ffmpeg-link: a symlink out of the payload')
+    await Deno.remove(join(payload, 'bin', 'ffmpeg-link'))
+
+    // a payload copy behind the package's manifest, and an id that is not the App's
+    await Deno.writeTextFile(join(payload, 'ext-manifest.json'), `${JSON.stringify(original)}\n`)
+    expectProblem(await doctor(), 'differs from the package')
+    await writeManifest({ ...original, id: 'other', provides: [...original.provides, { command: 'ffmpeg', version_probe: 'ffmpeg -version' }] })
+    expectProblem(await doctor(), 'is not the App name')
+    // a command listed twice and a field the format does not have
+    await writeManifest({ ...original, provides: [original.provides[0], original.provides[0]], writes: ['/usr/bin'] })
+    data = await doctor()
+    expectProblem(data, 'listed twice')
+    expectProblem(data, 'writes is not a field')
+  } finally {
+    await Deno.remove(root, { recursive: true })
+  }
+})
+
+Deno.test('ext-tools packages: a catalog answers requires and same-named commands', async () => {
+  const root = await Deno.makeTempDir()
+  try {
+    const { project, app, io, payload } = await initExtTools(root)
+    const catalog = join(root, 'catalog')
+    await Deno.mkdir(join(catalog, 'ext-core'), { recursive: true })
+    const other = {
+      schema: 'buckyos.ext_tools/1', id: 'ext-core', version: '1.0.0', requires: [], conflicts: [],
+      provides: [{ command: 'ext-media', version_probe: 'ext-media --version' }], platforms: ['linux-x86_64'],
+    }
+    await Deno.writeTextFile(join(catalog, 'ext-core', 'ext-manifest.json'), JSON.stringify(other))
+    await Deno.writeTextFile(join(catalog, 'Dockerfile'), 'a catalog directory also holds other files')
+    await Deno.mkdir(join(catalog, 'not-a-package'))
+    const doctor = async () => {
+      assertEquals(await app.run(['pikg', 'doctor', '--catalog', catalog]), 0, io.stdoutText)
+      return io.takeEnvelope().data
+    }
+    const manifestPath = join(project, 'ext-manifest.json')
+    const writeManifest = async (value: unknown) => {
+      const text = `${JSON.stringify(value, null, 2)}\n`
+      await Deno.writeTextFile(manifestPath, text)
+      await Deno.writeTextFile(join(payload, 'ext-manifest.json'), text)
+    }
+    const original = JSON.parse(await Deno.readTextFile(manifestPath))
+
+    let data = await doctor()
+    assertEquals(data.healthy, false)
+    assert(failedChecks(data).some((line) => line.includes('ext-core also provides ext-media')), JSON.stringify(failedChecks(data)))
+
+    // either side saying `conflicts` is enough: the two are never enabled together
+    await writeManifest({ ...original, conflicts: ['ext-core'] })
+    data = await doctor()
+    assertEquals(data.healthy, true, JSON.stringify(failedChecks(data)))
+    assertEquals(data.checks.find((check: { name: string }) => check.name === 'ext_tools_catalog').packages, ['ext-core'])
+
+    await writeManifest({ ...original, conflicts: ['ext-core'], requires: [{ id: 'ext-absent', version: '>=1.0' }] })
+    data = await doctor()
+    assert(failedChecks(data).some((line) => line.includes('requires ext-absent: not in the catalog')), JSON.stringify(failedChecks(data)))
+    await writeManifest({ ...original, conflicts: ['ext-core'], requires: [{ id: 'ext-core', version: '>=1.0' }] })
+    assertEquals((await doctor()).healthy, true)
+  } finally {
+    await Deno.remove(root, { recursive: true })
+  }
+})
+
+Deno.test('a payload too large to hold is listed from a stream, whatever its chunks', async () => {
+  const root = await Deno.makeTempDir()
+  try {
+    const source = join(root, 'source')
+    await Deno.mkdir(join(source, 'bin'), { recursive: true })
+    await Deno.writeTextFile(join(source, 'bin', 'tool'), '#!/bin/sh\n', { mode: 0o755 })
+    await Deno.writeTextFile(join(source, 'ext-manifest.json'), '{"id":"x"}')
+    await Deno.writeFile(join(source, 'blob'), new Uint8Array(3 * 1024 * 1024))
+    await Deno.writeFile(join(source, 'empty'), new Uint8Array())
+    const tar = join(root, 'payload.tar.gz')
+    await createDeterministicTarGz(source, tar)
+    const bytes = await Deno.readFile(tar)
+    for (const chunkSize of [1, 7, 513, bytes.length]) {
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          for (let offset = 0; offset < bytes.length; offset += chunkSize) controller.enqueue(bytes.subarray(offset, offset + chunkSize))
+          controller.close()
+        },
+      })
+      const listing = await listTarGzStream(stream, 16 * 1024 * 1024, (path) => path !== 'blob')
+      assertEquals([...listing.files.keys()].sort(), ['bin/tool', 'blob', 'empty', 'ext-manifest.json'])
+      assertEquals(listing.files.get('bin/tool')?.executable, true)
+      assertEquals(listing.files.get('blob')?.size, 3 * 1024 * 1024)
+      assertEquals(new TextDecoder().decode(listing.captured.get('ext-manifest.json')), '{"id":"x"}')
+      assertEquals(listing.captured.has('blob'), false)
+      assertEquals(listing.captured.get('empty')?.length, 0)
+      assert(listing.directories.has('bin'))
+    }
+    const limited = new Response(bytes).body!
+    await assertRejects(() => listTarGzStream(limited, 1024, () => false))
+  } finally {
+    await Deno.remove(root, { recursive: true })
+  }
+})
+
+Deno.test('an ext_tools AppDoc carries only its platform payloads', () => {
+  const objid = `pkg:${'0'.repeat(64)}`
+  const appDoc: Record<string, unknown> = {
+    schema_version: 1, doc_type: 'app', did: 'did:bns:ext-core.alice', name: 'ext-core', version: '1.0.0', app_type: 'ext_tools', owner: 'did:bns:alice',
+    controller: 'did:bns:alice', author: 'did:bns:alice', show_name: 'ext-core', selector_type: 'single', categories: ['ext_tools'],
+    create_time: 1, last_update_time: 1, exp: 2, service_config_tips: {},
+    pkg_list: { ext_tools_linux_x86_64: { pkg_objid: objid }, ext_tools_darwin_arm64: { pkg_objid: objid } },
+  }
+  validateAppDocShape(appDoc)
+  const refused = (pkgList: unknown) => {
+    try {
+      validateAppDocShape({ ...appDoc, pkg_list: pkgList })
+    } catch {
+      return true
+    }
+    return false
+  }
+  assert(refused({ ext_tools_linux_x86_64: { pkg_objid: objid }, web: { pkg_objid: objid } }), 'another sub package')
+  assert(refused({ ext_tools_windows_aarch64: { pkg_objid: objid } }), 'a platform that does not exist')
+  let strayRefused = false
+  try {
+    validateAppDocShape({ ...appDoc, app_type: 'web', categories: ['web'], pkg_list: { web: { pkg_objid: objid }, ext_tools_linux_x86_64: { pkg_objid: objid } } })
+  } catch {
+    strayRefused = true
+  }
+  assert(strayRefused, 'a payload of an extension package in another App')
 })
 
 Deno.test('an aiws AppDoc carries exactly the aiws sub package', () => {

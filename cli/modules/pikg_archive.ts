@@ -144,49 +144,162 @@ export interface TarFileEntry {
 
 export async function readTarGz(bytes: Uint8Array, limit: number): Promise<TarFileEntry[]> {
   const tar = await gunzipBytes(bytes, limit)
-  const decoder = new TextDecoder('utf-8', { fatal: true })
-  const text = (offset: number, length: number) =>
-    decoder.decode(tar.subarray(offset, offset + length)).replace(/\0.*$/s, '')
   const files: TarFileEntry[] = []
   const seen = new Set<string>()
   let offset = 0
   while (
     offset + BLOCK_SIZE <= tar.length && tar.subarray(offset, offset + BLOCK_SIZE).some(Boolean)
   ) {
-    let raw: string
-    let size: number
-    let mode: number
-    try {
-      const prefix = text(offset + 257, 6) === 'ustar' ? text(offset + 345, 155) : ''
-      raw = prefix ? `${prefix}/${text(offset, 100)}` : text(offset, 100)
-      size = Number.parseInt(text(offset + 124, 12).trim() || '0', 8)
-      mode = Number.parseInt(text(offset + 100, 8).trim() || '0', 8)
-    } catch {
-      throw invalidZip('payload', 'tar header is not valid UTF-8')
-    }
-    const type = String.fromCharCode(tar[offset + 156] || 0x30)
-    const path = raw.replace(/^(?:\.\/)+/, '').replace(/\/$/, '')
+    const header = parseTarHeader(tar.subarray(offset, offset + BLOCK_SIZE))
     const start = offset + BLOCK_SIZE
-    if (!Number.isSafeInteger(size) || size < 0 || start + size > tar.length) {
-      throw invalidZip('payload', `tar entry is truncated: ${raw}`)
+    if (start + header.size > tar.length) {
+      throw invalidZip('payload', `tar entry is truncated: ${header.path}`)
     }
-    offset = start + Math.ceil(size / BLOCK_SIZE) * BLOCK_SIZE
-    if (type === '5' && (path === '' || path === '.')) continue
-    if (
-      !path || path.startsWith('/') || /^[A-Za-z]:/.test(path) || path.includes('\\') ||
-      path.split('/').some((segment) => !segment || segment === '.' || segment === '..')
-    ) {
-      throw invalidZip('payload', `unsafe tar entry path: ${JSON.stringify(raw)}`)
-    }
-    if (type === '5') continue
-    if (type !== '0') {
-      throw invalidZip('payload', `tar entry is not a regular file or directory: ${path}`)
-    }
-    if (seen.has(path)) throw invalidZip('payload', `duplicate tar entry: ${path}`)
-    seen.add(path)
-    files.push({ path, executable: (mode & 0o111) !== 0, bytes: tar.slice(start, start + size) })
+    offset = start + Math.ceil(header.size / BLOCK_SIZE) * BLOCK_SIZE
+    if (header.kind !== 'file') continue
+    if (seen.has(header.path)) throw invalidZip('payload', `duplicate tar entry: ${header.path}`)
+    seen.add(header.path)
+    files.push({ path: header.path, executable: header.executable, bytes: tar.slice(start, start + header.size) })
   }
   return files
+}
+
+interface TarHeader {
+  path: string
+  kind: 'file' | 'directory' | 'root'
+  size: number
+  executable: boolean
+}
+
+function parseTarHeader(block: Uint8Array): TarHeader {
+  const decoder = new TextDecoder('utf-8', { fatal: true })
+  const text = (offset: number, length: number) =>
+    decoder.decode(block.subarray(offset, offset + length)).replace(/\0.*$/s, '')
+  let raw: string
+  let size: number
+  let mode: number
+  try {
+    const prefix = text(257, 6) === 'ustar' ? text(345, 155) : ''
+    raw = prefix ? `${prefix}/${text(0, 100)}` : text(0, 100)
+    size = Number.parseInt(text(124, 12).trim() || '0', 8)
+    mode = Number.parseInt(text(100, 8).trim() || '0', 8)
+  } catch {
+    throw invalidZip('payload', 'tar header is not valid UTF-8')
+  }
+  if (!Number.isSafeInteger(size) || size < 0) {
+    throw invalidZip('payload', `tar entry is truncated: ${raw}`)
+  }
+  const type = String.fromCharCode(block[156] || 0x30)
+  const path = raw.replace(/^(?:\.\/)+/, '').replace(/\/$/, '')
+  if (type === '5' && (path === '' || path === '.')) {
+    return { path, kind: 'root', size, executable: false }
+  }
+  if (
+    !path || path.startsWith('/') || /^[A-Za-z]:/.test(path) || path.includes('\\') ||
+    path.split('/').some((segment) => !segment || segment === '.' || segment === '..')
+  ) {
+    throw invalidZip('payload', `unsafe tar entry path: ${JSON.stringify(raw)}`)
+  }
+  if (type !== '5' && type !== '0') {
+    throw invalidZip('payload', `tar entry is not a regular file or directory: ${path}`)
+  }
+  return { path, kind: type === '5' ? 'directory' : 'file', size, executable: (mode & 0o111) !== 0 }
+}
+
+export interface TarListing {
+  files: Map<string, { size: number; executable: boolean }>
+  directories: Set<string>
+  /** The contents of the files `capture` asked for. */
+  captured: Map<string, Uint8Array>
+}
+
+/** List a tar.gz too large to hold: a package's payload is gigabytes, and only its few small files need reading. */
+export async function listTarGzStream(
+  gzip: ReadableStream<Uint8Array>,
+  limit: number,
+  capture: (path: string, size: number) => boolean,
+): Promise<TarListing> {
+  const listing: TarListing = { files: new Map(), directories: new Set(), captured: new Map() }
+  const header = new Uint8Array(BLOCK_SIZE)
+  let headerFill = 0
+  let skip = 0
+  let body: { path: string; bytes: Uint8Array; fill: number } | undefined
+  let ended = false
+  let total = 0
+  try {
+    const stream = gzip.pipeThrough(
+      new DecompressionStream('gzip') as unknown as ReadableWritablePair<Uint8Array, Uint8Array>,
+    )
+    for await (const chunk of stream) {
+      total += chunk.length
+      if (total > limit) throw invalidZip('limits', 'payload expands beyond the size limit')
+      let offset = 0
+      while (offset < chunk.length && !ended) {
+        if (skip > 0) {
+          const take = Math.min(skip, chunk.length - offset)
+          if (body && body.fill < body.bytes.length) {
+            const part = Math.min(take, body.bytes.length - body.fill)
+            body.bytes.set(chunk.subarray(offset, offset + part), body.fill)
+            body.fill += part
+            if (body.fill === body.bytes.length) {
+              listing.captured.set(body.path, body.bytes)
+              body = undefined
+            }
+          }
+          skip -= take
+          offset += take
+          continue
+        }
+        const take = Math.min(BLOCK_SIZE - headerFill, chunk.length - offset)
+        header.set(chunk.subarray(offset, offset + take), headerFill)
+        headerFill += take
+        offset += take
+        if (headerFill < BLOCK_SIZE) break
+        headerFill = 0
+        if (!header.some(Boolean)) {
+          ended = true
+          break
+        }
+        const entry = parseTarHeader(header)
+        skip = Math.ceil(entry.size / BLOCK_SIZE) * BLOCK_SIZE
+        if (entry.kind === 'directory') listing.directories.add(entry.path)
+        if (entry.kind !== 'file') continue
+        if (listing.files.has(entry.path)) {
+          throw invalidZip('payload', `duplicate tar entry: ${entry.path}`)
+        }
+        listing.files.set(entry.path, { size: entry.size, executable: entry.executable })
+        if (capture(entry.path, entry.size)) {
+          if (entry.size === 0) listing.captured.set(entry.path, new Uint8Array())
+          else body = { path: entry.path, bytes: new Uint8Array(entry.size), fill: 0 }
+        }
+      }
+    }
+  } catch (error) {
+    if (error instanceof ToolError) throw error
+    throw invalidZip('compression', 'payload is not a valid gzip stream')
+  }
+  if (skip > 0 || headerFill > 0 || body) throw invalidZip('payload', 'tar stream is truncated')
+  return listing
+}
+
+export function fileReadableStream(path: string): ReadableStream<Uint8Array> {
+  let file: HostFile | undefined
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      file ??= await getHost().open(path, { read: true })
+      const buffer = new Uint8Array(256 * 1024)
+      const read = await file.read(buffer)
+      if (read === null) {
+        await file.close()
+        controller.close()
+        return
+      }
+      controller.enqueue(buffer.subarray(0, read))
+    },
+    async cancel() {
+      await file?.close()
+    },
+  })
 }
 
 async function gunzipBytes(bytes: Uint8Array, limit: number): Promise<Uint8Array> {
@@ -628,7 +741,7 @@ function createEntryVerification(entry: ZipEntry): {
   }
 }
 
-function zipEntryStream(path: string, entry: ZipEntry): ReadableStream<Uint8Array> {
+export function zipEntryStream(path: string, entry: ZipEntry): ReadableStream<Uint8Array> {
   let file: HostFile | undefined
   let remaining = entry.compressedSize
   const compressed = new ReadableStream<Uint8Array>({
