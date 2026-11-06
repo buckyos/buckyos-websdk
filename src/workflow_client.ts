@@ -426,9 +426,16 @@ export interface WorkflowCancelRunReq {
   reason?: string
 }
 
+export interface WorkflowSubmitHumanActionReq {
+  run_id: string
+  node_id: string
+  kind: WorkflowHumanActionKind
+  /** `modify`: `{modified_subject}`. `reject`: optional `{feedback}`. */
+  payload?: Record<string, unknown>
+}
+
 export interface WorkflowRunGraph {
   run_id: string
-  task_id?: string | null
   workflow_id: string
   workflow_name: string
   status: WorkflowRunStatus
@@ -464,8 +471,9 @@ export interface WorkflowRunOutput {
   run_error?: WorkflowExecutionError | null
   delivery: {
     artifacts: string[]
-    principal: string
-    expires_at: number
+    /** How many objects the requester may now read through NDM. */
+    held: number
+    hold_error?: string | null
   }
 }
 
@@ -822,6 +830,10 @@ export class WorkflowClient {
 
   async reportStepProgress(request: WorkflowReportStepProgressReq): Promise<WorkflowRunTransitionResult> {
     return await this.callOk('report_step_progress', request) as unknown as WorkflowRunTransitionResult
+  }
+
+  async submitHumanAction(request: WorkflowSubmitHumanActionReq): Promise<WorkflowRunTransitionResult> {
+    return await this.callOk('submit_human_action', request) as unknown as WorkflowRunTransitionResult
   }
 
   async requestHuman(request: WorkflowRequestHumanReq): Promise<WorkflowRunTransitionResult> {

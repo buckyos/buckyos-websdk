@@ -1969,6 +1969,9 @@ class WorkflowClient {
   async reportStepProgress(request) {
     return await this.callOk("report_step_progress", request);
   }
+  async submitHumanAction(request) {
+    return await this.callOk("submit_human_action", request);
+  }
   async requestHuman(request) {
     return await this.callOk("request_human", request);
   }
@@ -30803,4 +30806,4 @@ export {
   NOTIFY_SESSION_PREFIX as y,
   NOTIFY_CHOICE_CONTROL_ID as z
 };
-//# sourceMappingURL=executor_client-f9908517.mjs.map
+//# sourceMappingURL=executor_client-a32bc377.mjs.map

@@ -364,9 +364,15 @@ export interface WorkflowCancelRunReq {
     run_id: string;
     reason?: string;
 }
+export interface WorkflowSubmitHumanActionReq {
+    run_id: string;
+    node_id: string;
+    kind: WorkflowHumanActionKind;
+    /** `modify`: `{modified_subject}`. `reject`: optional `{feedback}`. */
+    payload?: Record<string, unknown>;
+}
 export interface WorkflowRunGraph {
     run_id: string;
-    task_id?: string | null;
     workflow_id: string;
     workflow_name: string;
     status: WorkflowRunStatus;
@@ -401,8 +407,9 @@ export interface WorkflowRunOutput {
     run_error?: WorkflowExecutionError | null;
     delivery: {
         artifacts: string[];
-        principal: string;
-        expires_at: number;
+        /** How many objects the requester may now read through NDM. */
+        held: number;
+        hold_error?: string | null;
     };
 }
 export interface WorkflowListRunsReq {
@@ -626,6 +633,7 @@ export declare class WorkflowClient {
     listRuns(request?: WorkflowListRunsReq): Promise<WorkflowRunSummary[]>;
     submitStepOutput(request: WorkflowSubmitStepOutputReq): Promise<WorkflowRunTransitionResult>;
     reportStepProgress(request: WorkflowReportStepProgressReq): Promise<WorkflowRunTransitionResult>;
+    submitHumanAction(request: WorkflowSubmitHumanActionReq): Promise<WorkflowRunTransitionResult>;
     requestHuman(request: WorkflowRequestHumanReq): Promise<WorkflowRunTransitionResult>;
     submitAmendment(request: WorkflowSubmitAmendmentReq): Promise<unknown>;
     approveAmendment(request: WorkflowDecideAmendmentReq): Promise<{

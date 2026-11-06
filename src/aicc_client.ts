@@ -112,7 +112,7 @@ export type AiContent =
 export interface AiMessage { role: AiRole; content: AiContent[] }
 export interface AiToolSpec { type?: string; name: string; description: string; args_json_schema: JsonValue; output_schema?: JsonValue }
 export interface LlmJsonSchema { name?: string; schema: JsonValue; strict?: boolean }
-export interface LlmResponseFormat { type: 'text' | 'json' | 'json_object' | 'json_schema'; json_schema?: LlmJsonSchema }
+export interface LlmResponseFormat { type: 'text' | 'json_schema'; json_schema?: LlmJsonSchema }
 export interface AiUsage { input_tokens?: number; output_tokens?: number; total_tokens?: number; request_units?: number;
   video_seconds?: number; reference_images?: number; reported_cost?: number }
 export interface Money { amount: number; currency: string }

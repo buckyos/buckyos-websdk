@@ -217,7 +217,7 @@ export interface LlmJsonSchema {
     strict?: boolean;
 }
 export interface LlmResponseFormat {
-    type: 'text' | 'json' | 'json_object' | 'json_schema';
+    type: 'text' | 'json_schema';
     json_schema?: LlmJsonSchema;
 }
 export interface AiUsage {
