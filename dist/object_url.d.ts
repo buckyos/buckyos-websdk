@@ -46,6 +46,16 @@ export declare function formatObjectUrl(url: ObjectUrl): string;
  * origin (the Zone host or a node gateway). Anything else (files, ObjIds, paths of other Zones) has none.
  */
 export declare function objectEndpoint(url: ObjectUrl, origin: string, currentZone?: string | null): string | null;
+/** The `hint` of `/ndn/<obj_id>`: canonical JSON, read token and path from the authorization root. */
+export type NdnHint = {
+    path?: string;
+    token?: string;
+};
+/**
+ * `<origin>/ndn/<obj_id>[?hint=...]`, the plain-HTTP read of a named object. Built when a
+ * request needs it and never stored: a hint may hold a token.
+ */
+export declare function ndnReadUrl(origin: string, objId: string, hint?: NdnHint | null): string;
 export declare function normalizeObjectUrl(input: string): string;
 /** RBAC resource key: unique after alias normalization, without query. */
 export declare function rbacResourceKey(url: ObjectUrl, currentZone?: string): string | null;

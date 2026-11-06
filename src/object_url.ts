@@ -173,8 +173,26 @@ export function objectEndpoint(url: ObjectUrl, origin: string, currentZone?: str
   const base = origin.replace(/\/+$/, '')
   if (url.kind === 'obj') return `${base}/kapi/${url.host.name}/obj${formatObjectUrl(url).slice(`obj://${url.host.name}`.length)}`
   if (url.kind === 'cyfs_path' && (url.zone === null || url.zone === currentZone)) return `${base}/kapi/dfs/obj${url.path.replace(/\/+$/, '')}`
+  if (url.kind === 'cyfs_object') {
+    const from = url.sourceZone && url.sourceZone !== currentZone ? `https://${url.sourceZone}` : base
+    const inner = url.innerPath.replace(/^\/+|\/+$/g, '')
+    return `${from}/ndn/${url.objId.toString()}${inner ? `/@/${inner}` : ''}`
+  }
   if (url.kind === 'web') return url.url
   return null
+}
+
+/** The `hint` of `/ndn/<obj_id>`: canonical JSON, read token and path from the authorization root. */
+export type NdnHint = { path?: string; token?: string }
+
+/**
+ * `<origin>/ndn/<obj_id>[?hint=...]`, the plain-HTTP read of a named object. Built when a
+ * request needs it and never stored: a hint may hold a token.
+ */
+export function ndnReadUrl(origin: string, objId: string, hint?: NdnHint | null): string {
+  const url = `${origin.replace(/\/+$/, '')}/ndn/${objId}`
+  if (!hint || (hint.path === undefined && hint.token === undefined)) return url
+  return `${url}?hint=${encodeURIComponent(canonicalJson(hint))}`
 }
 
 export function normalizeObjectUrl(input: string): string {

@@ -480,9 +480,20 @@ function objectEndpoint(url, origin, currentZone) {
     return `${base}/kapi/${url.host.name}/obj${formatObjectUrl(url).slice(`obj://${url.host.name}`.length)}`;
   if (url.kind === "cyfs_path" && (url.zone === null || url.zone === currentZone))
     return `${base}/kapi/dfs/obj${url.path.replace(/\/+$/, "")}`;
+  if (url.kind === "cyfs_object") {
+    const from = url.sourceZone && url.sourceZone !== currentZone ? `https://${url.sourceZone}` : base;
+    const inner = url.innerPath.replace(/^\/+|\/+$/g, "");
+    return `${from}/ndn/${url.objId.toString()}${inner ? `/@/${inner}` : ""}`;
+  }
   if (url.kind === "web")
     return url.url;
   return null;
+}
+function ndnReadUrl(origin, objId, hint) {
+  const url = `${origin.replace(/\/+$/, "")}/ndn/${objId}`;
+  if (!hint || hint.path === void 0 && hint.token === void 0)
+    return url;
+  return `${url}?hint=${encodeURIComponent(canonicalJson(hint))}`;
 }
 function normalizeObjectUrl(input) {
   return formatObjectUrl(parseObjectUrl(input));
@@ -695,6 +706,7 @@ const object_url = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.definePr
   formatObjectUrl,
   isObjServiceName,
   keventSegment,
+  ndnReadUrl,
   normalizeObjectUrl,
   objEntityUrl,
   objEventKey,
@@ -989,6 +1001,18 @@ class BucketClient {
   }
   get(bucketId, key, version2) {
     return this.call("bucket.get", { bucket_id: bucketId, key, version: version2 });
+  }
+  /**
+   * Asks the Zone to download a file that is already anonymously readable at another
+   * Zone's `https://<zone>/ndn/<root_obj_id>` and re-serve it on `/ndn/`. Accepted now,
+   * readable once a real download verified it.
+   */
+  cachePublic(rootObjId, source) {
+    return this.call("bucket.cache_public", { root_obj_id: rootObjId, source });
+  }
+  /** Starts pulling ambient content that is not here; `bucket.head` shows `fetching` meanwhile. */
+  prefetch(bucketId, prefix = "") {
+    return this.call("bucket.prefetch", { bucket_id: bucketId, prefix });
   }
   head(bucketId, key, version2) {
     return this.call("bucket.head", { bucket_id: bucketId, key, version: version2 });
@@ -30779,4 +30803,4 @@ export {
   NOTIFY_SESSION_PREFIX as y,
   NOTIFY_CHOICE_CONTROL_ID as z
 };
-//# sourceMappingURL=executor_client-86315a2f.mjs.map
+//# sourceMappingURL=executor_client-f9908517.mjs.map

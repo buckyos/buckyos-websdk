@@ -11,6 +11,7 @@ import {
   objServiceUrl,
   parseObjectUrl,
   rbacResourceKey,
+  ndnReadUrl,
 } from '../src/object_url'
 import { ObjId } from '../src/ndn_types'
 
@@ -25,6 +26,8 @@ type Vector = {
   event_key?: string
   endpoint?: string
   no_endpoint?: boolean
+  ndn_read?: { origin: string; obj_id: string; hint?: { path?: string; token?: string } }
+  ndn_read_url?: string
 }
 
 const fixture = join(__dirname, 'fixtures', 'object_url_vectors.json')
@@ -60,6 +63,7 @@ describe('object_url shared vectors', () => {
       if (v.event && v.event_key) expect(objectEventKey(parsed, v.event)).toBe(v.event_key)
       if (v.endpoint) expect(objectEndpoint(parsed, 'http://gw:3180', 'test.buckyos.io')).toBe(v.endpoint)
       if (v.no_endpoint) expect(objectEndpoint(parsed, 'http://gw:3180', 'test.buckyos.io')).toBeNull()
+      if (v.ndn_read && v.ndn_read_url) expect(ndnReadUrl(v.ndn_read.origin, v.ndn_read.obj_id, v.ndn_read.hint)).toBe(v.ndn_read_url)
     })
   }
 })
@@ -70,6 +74,16 @@ describe('object_url helpers', () => {
     const url = `cyfs://${objId.toBase32()}.test.buckyos.io/a/b.txt`
     expect(formatObjectUrl(parseObjectUrl(url))).toBe(url)
     expect(() => parseObjectUrl(`obj://${objId.toBase32()}/x`)).toThrow()
+  })
+
+  it('resolves a named object url to /ndn/ at its zone', () => {
+    const objId = new ObjId('cyfile', new Uint8Array(32).fill(7))
+    const id = objId.toString()
+    const url = (tail: string) => parseObjectUrl(`cyfs://${objId.toBase32()}${tail}`)
+    expect(objectEndpoint(url('.other.example/a/b.txt'), 'http://gw:3180', 'test.buckyos.io')).toBe(`https://other.example/ndn/${id}/@/a/b.txt`)
+    expect(objectEndpoint(url('.other.example'), 'http://gw:3180', 'test.buckyos.io')).toBe(`https://other.example/ndn/${id}`)
+    expect(objectEndpoint(url('.test.buckyos.io/x'), 'http://gw:3180', 'test.buckyos.io')).toBe(`http://gw:3180/ndn/${id}/@/x`)
+    expect(objectEndpoint(url('/x'), 'http://gw:3180', 'test.buckyos.io')).toBe(`http://gw:3180/ndn/${id}/@/x`)
   })
 
   it('derives path DIDs and builds urls', () => {

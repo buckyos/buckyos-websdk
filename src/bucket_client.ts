@@ -14,7 +14,7 @@ export type BucketKind = 'data' | 'object'
 export type DataPolicy = 'documents' | 'app_data' | 'collected' | 'ambient' | 'temp' | 'cache'
 export type BucketScope = 'user' | 'zone'
 export type BucketAction = 'list' | 'read' | 'create' | 'write' | 'delete' | 'manage'
-export type Availability = 'local' | 'evicted' | 'remote'
+export type Availability = 'local' | 'evicted' | 'remote' | 'fetching'
 
 export type LifecycleRule =
   | { rule: 'expire'; prefix?: string; days: number }
@@ -355,6 +355,20 @@ export class BucketClient {
 
   get(bucketId: string, key: string, version?: number): Promise<Binding> {
     return this.call('bucket.get', { bucket_id: bucketId, key, version })
+  }
+
+  /**
+   * Asks the Zone to download a file that is already anonymously readable at another
+   * Zone's `https://<zone>/ndn/<root_obj_id>` and re-serve it on `/ndn/`. Accepted now,
+   * readable once a real download verified it.
+   */
+  cachePublic(rootObjId: string, source: string): Promise<{ accepted: boolean }> {
+    return this.call('bucket.cache_public', { root_obj_id: rootObjId, source })
+  }
+
+  /** Starts pulling ambient content that is not here; `bucket.head` shows `fetching` meanwhile. */
+  prefetch(bucketId: string, prefix = ''): Promise<{ triggered: number }> {
+    return this.call('bucket.prefetch', { bucket_id: bucketId, prefix })
   }
 
   head(bucketId: string, key: string, version?: number): Promise<{ binding: Binding; availability: Availability }> {
