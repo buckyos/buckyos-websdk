@@ -24,7 +24,7 @@ npx buckyos pikg info ./dapp_dist/demo-0.1.0.pikg
 
 | 命令 | 默认输入 | 访问级别 | 当前行为 |
 | --- | --- | --- | --- |
-| `pikg doctor [meta_dir] [--catalog <dir>]` | `./dapp_meta` | read | 诊断本机 Tool/SDK、策略、元数据、path source 与目标配置；扩展工具包还校验清单与每个平台的 payload |
+| `pikg doctor [meta_dir] [--catalog <dir>]` | `./dapp_meta` | read | 诊断本机 Tool/SDK、策略、元数据、path source 与目标配置；扩展工具包还校验清单（不能提供标准层命令）与每个平台的 payload |
 | `pikg init [project_dir]` | `.` | write | 只创建 `dapp_meta/app.json` 和 `pikg.json` |
 | `pikg build [meta_dir]` | `./dapp_meta` | write | 读取已构建的 source，生成完整受管理快照 |
 | `pikg pack [dist_dir]` | `./dapp_dist` | write | 只消费快照，封装 PIKG 并回读验证 |

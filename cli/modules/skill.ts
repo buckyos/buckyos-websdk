@@ -63,6 +63,27 @@ export function createSkillModule(): CommandModule {
         },
       },
       {
+        verb: 'status',
+        summary: 'The commands each cmd skill relies on, on a runtime of the Agent, and the extension package that would bring what is missing',
+        options: [
+          AGENT_OPTION,
+          { name: 'runtime', property: 'runtime_id', description: 'Runtime id (default: the private runtime)', type: 'string' },
+        ],
+        inputSchema: {
+          type: 'object',
+          properties: { agent_id: { type: 'string', minLength: 1 }, runtime_id: { type: 'string', minLength: 1 } },
+          required: ['agent_id'],
+          additionalProperties: false,
+        },
+        outputSchema: OBJECT_OUTPUT,
+        resultSchemaVersion: 1,
+        access: { mode: 'fixed', level: 'read' },
+        asyncMode: 'sync',
+        requiresSession: true,
+        examples: ['buckyos skill status --agent jarvis.example.zone --runtime host'],
+        handler: async (ctx, input) => await callService<Record<string, unknown>>(ctx, agentIdFrom(input), 'skills.status', { runtime_id: input.runtime_id ?? null }),
+      },
+      {
         verb: 'install',
         summary: 'Install the skills of a skill PIKG into an Agent',
         description:
@@ -162,21 +183,25 @@ async function installSkills(
     }
     files[entry.path] = { content: base64(entry.bytes), executable: entry.executable }
   }
+  const skillPackage = {
+    package: inspection.app.name,
+    version: inspection.app.version,
+    pikg_digest: inspection.pikg_digest,
+    files,
+  }
   const result = await callService<unknown>(ctx, agentId, 'skills.install', {
-    package: {
-      package: inspection.app.name,
-      version: inspection.app.version,
-      pikg_digest: inspection.pikg_digest,
-      files,
-    },
+    package: skillPackage,
     replace: input.replace === true,
   })
+  // Advice, after the fact: a skill is never refused for a command it does not find.
+  const commands = await callService<Record<string, unknown>>(ctx, agentId, 'skills.install_plan', { package: skillPackage }).catch(() => null)
   return {
     agent_id: agentId,
     pikg_path: inspection.pikg_path,
     pikg_digest: inspection.pikg_digest,
     ...expectObject(result, 'skills.install'),
     ...(ignored.length ? { ignored_files: ignored } : {}),
+    ...(commands ? { commands } : {}),
   }
 }
 

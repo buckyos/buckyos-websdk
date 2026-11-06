@@ -41,6 +41,7 @@ import { createShareModule } from '../modules/share.ts'
 import { createBucketModule } from '../modules/bucket.ts'
 import { createObjModule } from '../modules/obj.ts'
 import { createExecutorModule } from '../modules/executor.ts'
+import { createExtToolsModule } from '../modules/ext_tools.ts'
 import { createAiwsModule } from '../modules/aiws.ts'
 import {
   distributionManifestView,
@@ -488,6 +489,7 @@ export function createRegistry(
   registry.register(createBucketModule())
   registry.register(createObjModule())
   registry.register(createExecutorModule())
+  registry.register(createExtToolsModule())
   registry.register(createAiwsModule())
   return registry
 }

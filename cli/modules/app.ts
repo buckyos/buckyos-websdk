@@ -792,6 +792,13 @@ async function mutateLifecycle(
   return { ...submitted, status: task }
 }
 
+/** A local `.pikg` staged for an inspection or import that is not an App install. */
+export async function stageLocalPikg(ctx: CommandContext, path: string): Promise<PikgStagingMetadata> {
+  const prepared = await prepareSource(ctx, { pikg: path }, 'inspect', {})
+  if (prepared.kind === 'catalog') throw new UsageError('INVALID_PIKG_SOURCE', 'not a local PIKG')
+  return prepared.staging
+}
+
 async function prepareSource(
   ctx: CommandContext,
   input: Record<string, unknown>,

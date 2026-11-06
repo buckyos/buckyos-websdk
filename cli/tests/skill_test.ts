@@ -136,12 +136,14 @@ Deno.test('skill install sends the verified agent_skills payload to the Agent', 
 
     const calls: RecordedCall[] = []
     const clients = clientsFor(calls, (method, params) => {
+      if (method === 'skills.install_plan') return { runtime_id: 'private', skills: [{ name: 'hello', commands: ['ffmpeg'] }] }
       assertEquals(method, 'skills.install')
       const pkg = params.package as Record<string, unknown>
       return { package: pkg.package, version: pkg.version, digest: 'sha256:00', skills: [] }
     })
     const result = await run('install', { pikg_path: path, agent_id: 'jarvis.test.zone' }, clients)
-    assertEquals(calls.length, 1)
+    assertEquals(calls.map((call) => call.method), ['skills.install', 'skills.install_plan'], 'advice comes after, and only as advice')
+    assertEquals((result.commands as { runtime_id: string }).runtime_id, 'private')
     assertEquals(calls[0].service, 'jarvis.test.zone')
     const params = calls[0].params
     assertEquals(params.replace, false)
@@ -171,7 +173,7 @@ Deno.test('skill install sends the verified agent_skills payload to the Agent', 
       () => run('install', { pikg_path: path, agent_id: '../control-panel' }, clients),
       'INVALID_AGENT_ID',
     )
-    assertEquals(calls.length, 1)
+    assertEquals(calls.length, 2, 'the rejected package reaches nothing')
   } finally {
     await Deno.remove(root, { recursive: true })
   }
@@ -212,8 +214,9 @@ Deno.test('skill remove looks up the kind and requires confirmation', async () =
 
 Deno.test('skill command surface and agent_skills AppDoc shape', async () => {
   const module = createSkillModule()
-  assertEquals(module.commands.map((command) => command.verb), ['list', 'install', 'remove'])
+  assertEquals(module.commands.map((command) => command.verb), ['list', 'status', 'install', 'remove'])
   assertEquals(module.commands.map((command) => command.access), [
+    { mode: 'fixed', level: 'read' },
     { mode: 'fixed', level: 'read' },
     { mode: 'fixed', level: 'write' },
     { mode: 'fixed', level: 'destructive' },

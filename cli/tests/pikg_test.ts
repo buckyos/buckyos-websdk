@@ -887,3 +887,16 @@ Deno.test('an aiws AppDoc carries exactly the aiws sub package', () => {
   }
   assert(failed, 'an aiws package with another sub package must be refused')
 })
+
+Deno.test('ext-tools packages: a standard command cannot be provided, and a Windows payload smokes with .ps1', async () => {
+  const { extToolsManifestErrors, extToolsPayloadErrors } = await import('../modules/pikg_protocol.ts')
+  const manifest = {
+    schema: 'buckyos.ext_tools/1', id: 'ext-x', version: '1.0.0', requires: [], conflicts: [],
+    provides: [{ command: 'xagent', version_probe: 'xagent --version' }], platforms: ['linux-x86_64'],
+  }
+  assert(extToolsManifestErrors(manifest).some((error: string) => error.includes('standard command')))
+  const windows = { ...manifest, provides: [{ command: 'tool', version_probe: 'tool -v', smoke: 'smoke/tool.sh' }], platforms: ['windows-x86_64'] }
+  const tree = (files: string[]) => ({ files: new Map(files.map((path) => [path, { executable: false }])), directories: new Set<string>(), launchers: new Map() })
+  assertEquals(extToolsPayloadErrors(windows, 'windows-x86_64', tree(['ext-manifest.json', 'bin/tool.cmd', 'smoke/tool.ps1'])), [])
+  assert(extToolsPayloadErrors(windows, 'windows-x86_64', tree(['ext-manifest.json', 'bin/tool.cmd', 'smoke/tool.sh'])).some((error: string) => error.includes('smoke/tool.ps1')))
+})

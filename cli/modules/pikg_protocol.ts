@@ -545,6 +545,15 @@ export const EXT_TOOLS_APP_TYPE = 'ext_tools'
 export const EXT_TOOLS_MANIFEST_FILE = 'ext-manifest.json'
 export const EXT_TOOLS_MANIFEST_SCHEMA = 'buckyos.ext_tools/1'
 const MAX_EXT_TOOLS_PAYLOAD_BYTES = 64 * 1024 * 1024 * 1024
+/** The standard layer's commands (Rust: `EXT_TOOLS_RESERVED_COMMANDS`, `baseline::STANDARD_TOOLS`): `tools/bin` comes first
+ * on the PATH, so a package providing one would shadow an Agent's identity and control commands. */
+export const EXT_TOOLS_RESERVED_COMMANDS = [
+  'agent-session', 'agent_tool', 'ai_provider', 'ai_provider_test', 'ai_quota', 'aicc-tool', 'ask_user', 'buckyos',
+  'caption_image', 'detect_image', 'edit_image', 'edit_video', 'enhance_audio', 'extend_video', 'gen_image', 'gen_music',
+  'gen_video', 'import_office', 'import_table', 'inpaint_image', 'llm_understand_media', 'materialize_resource',
+  'ocr_image', 'remove_bg', 'resume_aicc_task', 'segment_image', 'speech_to_text', 'text_to_speech', 'upscale_image',
+  'upscale_video', 'xagent',
+]
 const MAX_EXT_TOOLS_LAUNCHER_BYTES = 1024 * 1024
 const EXT_TOOLS_ID = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/
 const EXT_TOOLS_COMMAND = /^[A-Za-z0-9_+-][A-Za-z0-9._+-]*$/
@@ -592,7 +601,7 @@ export function extToolsManifestErrors(value: unknown): string[] {
   for (const key of Object.keys(manifest)) if (!allowed.includes(key)) errors.push(`${key} is not a field of the manifest`)
   if (manifest.schema !== EXT_TOOLS_MANIFEST_SCHEMA) errors.push(`schema must be ${EXT_TOOLS_MANIFEST_SCHEMA}`)
   if (typeof manifest.id !== 'string' || !EXT_TOOLS_ID.test(manifest.id)) errors.push('id must be lowercase letters, digits and -')
-  if (typeof manifest.version !== 'string' || !manifest.version.trim()) errors.push('version is required')
+  if (typeof manifest.version !== 'string' || !/^[A-Za-z0-9._+-]+$/.test(manifest.version)) errors.push('version must be letters, digits and ._+-')
   if (!Array.isArray(manifest.provides) || manifest.provides.length === 0) errors.push('provides must not be empty')
   const commands = new Set<string>()
   for (const raw of Array.isArray(manifest.provides) ? manifest.provides : []) {
@@ -603,6 +612,7 @@ export function extToolsManifestErrors(value: unknown): string[] {
       continue
     }
     if (commands.has(command)) errors.push(`provides: command ${command} is listed twice`)
+    if (EXT_TOOLS_RESERVED_COMMANDS.includes(command)) errors.push(`provides: ${command} is a standard command and cannot be provided by a package`)
     commands.add(command)
     if (typeof entry.version_probe !== 'string' || !entry.version_probe.trim()) errors.push(`provides: ${command} has no version_probe`)
     const smoke = entry.smoke
@@ -671,7 +681,8 @@ export function extToolsPayloadErrors(manifest: ExtToolsManifest, platform: stri
     const launcher = suffixes.map((suffix) => tree.files.get(`bin/${provided.command}${suffix}`)).find(Boolean)
     if (!launcher) errors.push(`bin/${provided.command}: the launcher of a provided command is missing`)
     else if (!windows && !launcher.executable) errors.push(`bin/${provided.command}: the launcher is not executable`)
-    if (provided.smoke && !tree.files.has(provided.smoke)) errors.push(`${provided.smoke}: the smoke script of ${provided.command} is missing`)
+    const smoke = provided.smoke && windows ? provided.smoke.replace(/\.[^./]+$/, '.ps1') : provided.smoke
+    if (smoke && !tree.files.has(smoke)) errors.push(`${smoke}: the smoke script of ${provided.command} is missing`)
   }
   for (const path of tree.files.keys()) {
     if (!path.startsWith('bin/')) continue
