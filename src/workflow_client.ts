@@ -428,6 +428,7 @@ export interface WorkflowCancelRunReq {
 
 export interface WorkflowRunGraph {
   run_id: string
+  task_id?: string | null
   workflow_id: string
   workflow_name: string
   status: WorkflowRunStatus
