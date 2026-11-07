@@ -2178,10 +2178,8 @@ export interface MsgObjectJwt {
  * Document.
  */
 export function msgJwtKidDid(kid: string): DID | null {
-    const did = kid.split('#')[0]
-    if (did === 'did' || did.startsWith('did:') && did.split(':').length < 3) return null
     try {
-        return DidValue.fromStr(did).toString()
+        return DidValue.fromStr(kid.split('#')[0]).toString()
     } catch {
         return null
     }

@@ -459,6 +459,9 @@ export class DID {
       }
       throw new Error(`namelib: invalid did ${did}`)
     }
+    if (parts.length < 3) {
+      throw new Error(`namelib: invalid did ${did}`)
+    }
     return new DID(parts[1], parts.slice(2).join(':'))
   }
 
@@ -573,19 +576,22 @@ export class DID {
     return filename
   }
 
-  // For did:dev the id is the base64url Ed25519 public key.
+  // For did:dev the id is the base64url Ed25519 public key. Null for any other
+  // id, as Rust: decoders here are lenient, so the bytes must encode back to it.
   getEd25519AuthKey(): Uint8Array | null {
-    if (this.method === 'dev') {
-      return base64UrlDecodeToBytes(this.id)
+    if (this.method !== 'dev') {
+      return null
     }
-    return null
+    try {
+      const key = base64UrlDecodeToBytes(this.id)
+      return key.length === 32 && base64UrlEncodeBytes(key) === this.id ? key : null
+    } catch {
+      return null
+    }
   }
 
   getAuthKeyJwk(): Ed25519Jwk | null {
-    if (this.method === 'dev') {
-      return createJwkByX(this.id)
-    }
-    return null
+    return this.getEd25519AuthKey() ? createJwkByX(this.id) : null
   }
 
   toRawHostName(): string {

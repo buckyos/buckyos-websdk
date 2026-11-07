@@ -5,8 +5,8 @@ var __publicField = (obj, key, value) => {
   return value;
 };
 var _a;
-import { N as NODE_IDENTITY_SCHEMA_V2, t as DID, aT as newDeviceDocumentByJwk, aU as verifyJwtEdDSA, aV as deviceDocumentToOrderedJson, aW as decodeJwtClaimWithoutVerify, aX as commonjsGlobal, aY as DEFAULT_EXPIRE_TIME, h as hashPassword, aZ as buckyosGetUnixTimestamp, a_ as getPublicKeyXFromPrivatePem, a$ as getXFromJwk, b0 as createJwkByX, b1 as newOwnerDocument, b2 as ownerDocumentSetDefaultZoneDid, b3 as ownerDocumentToOrderedJson, b4 as oodDescriptionToString, b5 as parseOODDescription, b6 as encodeZoneBootDocument, b7 as newZoneBootDocument, b8 as encodeDeviceDocument, b9 as newDeviceMiniDocumentByDeviceDocument, ba as deviceMiniDocumentToJwt, bb as newZoneDocument, bc as encodeZoneDocument, bd as zoneDocumentToOrderedJson, be as newDeviceMiniDocument, bf as newDeviceDocumentByMiniDocument, at as calcPkgMetaObjId } from "./ndn_types-08fdf59a.mjs";
-import { aG } from "./ndn_types-08fdf59a.mjs";
+import { N as NODE_IDENTITY_SCHEMA_V2, t as DID, aT as newDeviceDocumentByJwk, aU as verifyJwtEdDSA, aV as deviceDocumentToOrderedJson, aW as decodeJwtClaimWithoutVerify, aX as commonjsGlobal, aY as DEFAULT_EXPIRE_TIME, h as hashPassword, aZ as buckyosGetUnixTimestamp, a_ as getPublicKeyXFromPrivatePem, a$ as getXFromJwk, b0 as createJwkByX, b1 as newOwnerDocument, b2 as ownerDocumentSetDefaultZoneDid, b3 as ownerDocumentToOrderedJson, b4 as oodDescriptionToString, b5 as parseOODDescription, b6 as encodeZoneBootDocument, b7 as newZoneBootDocument, b8 as encodeDeviceDocument, b9 as newDeviceMiniDocumentByDeviceDocument, ba as deviceMiniDocumentToJwt, bb as newZoneDocument, bc as encodeZoneDocument, bd as zoneDocumentToOrderedJson, be as newDeviceMiniDocument, bf as newDeviceDocumentByMiniDocument, at as calcPkgMetaObjId } from "./ndn_types-ab30fac0.mjs";
+import { aG } from "./ndn_types-ab30fac0.mjs";
 import { Buffer as Buffer$1 } from "node:buffer";
 import { pbkdf2Sync, createPublicKey, createPrivateKey, createECDH, createHmac } from "node:crypto";
 const DEVICE_DOC_JWT_FILE_NAME = "device_doc.jwt";

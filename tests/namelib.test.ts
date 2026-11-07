@@ -3,6 +3,7 @@ import * as path from 'path'
 import { Buffer } from 'buffer'
 
 import {
+  base64UrlEncodeBytes,
   DID,
   parseOODDescription,
   oodDescriptionToString,
@@ -74,6 +75,26 @@ afterEach(() => {
 })
 
 describe('DID (mirror of did.rs unit tests)', () => {
+  test('auth key of a did:dev: a malformed id means no key', () => {
+    const good = base64UrlEncodeBytes(new Uint8Array(32).fill(7))
+    expect(DID.fromStr(`did:dev:${good}`).getEd25519AuthKey()).toEqual(new Uint8Array(32).fill(7))
+    expect(DID.fromStr(`did:dev:${good}`).getAuthKeyJwk()?.x).toBe(good)
+    const nonCanonical = `${good.slice(0, -1)}${String.fromCharCode(good.charCodeAt(good.length - 1) + 1)}`
+    for (const id of ['', '!!!', 'not base64', 'a', 'abc=', nonCanonical, base64UrlEncodeBytes(new Uint8Array(31)), base64UrlEncodeBytes(new Uint8Array(33))]) {
+      const did = DID.fromStr(`did:dev:${id}`)
+      expect(did.getEd25519AuthKey()).toBeNull()
+      expect(did.getAuthKeyJwk()).toBeNull()
+    }
+    expect(DID.fromStr(`did:web:${good}`).getEd25519AuthKey()).toBeNull()
+  })
+
+  test('from_str rejects a did without id', () => {
+    for (const bad of ['did', 'did:', 'did:web']) {
+      expect(() => DID.fromStr(bad)).toThrow('invalid did')
+    }
+    expect(DID.fromStr('did:web:').toString()).toBe('did:web:')
+  })
+
   test('from_str basic schemes', () => {
     const did = DID.fromStr('did:bns:waterflier')
     expect(did.method).toBe('bns')

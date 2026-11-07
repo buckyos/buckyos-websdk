@@ -1225,6 +1225,9 @@ class DID {
       }
       throw new Error(`namelib: invalid did ${did}`);
     }
+    if (parts.length < 3) {
+      throw new Error(`namelib: invalid did ${did}`);
+    }
     return new DID(parts[1], parts.slice(2).join(":"));
   }
   static fromHostName(hostName) {
@@ -1325,18 +1328,21 @@ class DID {
     }
     return filename;
   }
-  // For did:dev the id is the base64url Ed25519 public key.
+  // For did:dev the id is the base64url Ed25519 public key. Null for any other
+  // id, as Rust: decoders here are lenient, so the bytes must encode back to it.
   getEd25519AuthKey() {
-    if (this.method === "dev") {
-      return base64UrlDecodeToBytes(this.id);
+    if (this.method !== "dev") {
+      return null;
     }
-    return null;
+    try {
+      const key = base64UrlDecodeToBytes(this.id);
+      return key.length === 32 && base64UrlEncodeBytes(key) === this.id ? key : null;
+    } catch {
+      return null;
+    }
   }
   getAuthKeyJwk() {
-    if (this.method === "dev") {
-      return createJwkByX(this.id);
-    }
-    return null;
+    return this.getEd25519AuthKey() ? createJwkByX(this.id) : null;
   }
   toRawHostName() {
     const realId = this.id.split(":")[0];
@@ -3793,11 +3799,8 @@ function msgObjectFromJsonChecked(value) {
   return [msg, objId];
 }
 function msgJwtKidDid(kid) {
-  const did = kid.split("#")[0];
-  if (did === "did" || did.startsWith("did:") && did.split(":").length < 3)
-    return null;
   try {
-    return DID.fromStr(did).toString();
+    return DID.fromStr(kid.split("#")[0]).toString();
   } catch {
     return null;
   }
@@ -4161,4 +4164,4 @@ export {
   getBrowserUserInfo as y,
   clearBrowserIdentity as z
 };
-//# sourceMappingURL=ndn_types-08fdf59a.mjs.map
+//# sourceMappingURL=ndn_types-ab30fac0.mjs.map
