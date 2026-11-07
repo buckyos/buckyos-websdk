@@ -5,6 +5,7 @@ import { aiwsTemplateDigest } from 'buckyos/node'
 import { createDeterministicTarGz, digestFile, listTarGzStream } from '../modules/pikg_archive.ts'
 import type { DockerClient, DockerImageInfo } from '../modules/pikg.ts'
 import { appDocObjectId, validateAppDocShape } from '../modules/pikg_protocol.ts'
+import { getHost, installHost, resetHostForTest } from '../runtime/host.ts'
 import { assert, assertEquals, assertRejects } from './test_helpers.ts'
 
 class CaptureStdio implements ToolStdio {
@@ -630,11 +631,28 @@ function extToolsApp(root: string, project: string) {
   return { app, io }
 }
 
+// `pikg init --kind ext-tools` starts from the host's platform, and Windows on ARM is not one of the five.
+const hostHasNoExtToolsPlatform = Deno.build.os === 'windows' && Deno.build.arch === 'aarch64'
+
+async function asHost<T>(platform: string, arch: string, run: () => Promise<T>): Promise<T> {
+  const real = getHost()
+  resetHostForTest()
+  installHost(Object.create(real, { platform: { value: platform }, arch: { value: arch } }))
+  try {
+    return await run()
+  } finally {
+    resetHostForTest()
+    installHost(real)
+  }
+}
+
+const extToolsInitArgs = (name: string) => ['--non-interactive', 'pikg', 'init', '.', '--name', name, '--owner', 'did:bns:alice', '--kind', 'ext-tools', '--source', '.']
+
 async function initExtTools(root: string, name = 'ext-media') {
   const project = join(root, name)
   await Deno.mkdir(project, { recursive: true })
   const { app, io } = extToolsApp(root, project)
-  assertEquals(await app.run(['--non-interactive', 'pikg', 'init', '.', '--name', name, '--owner', 'did:bns:alice', '--kind', 'ext-tools', '--source', '.']), 0, io.stdoutText)
+  assertEquals(await app.run(extToolsInitArgs(name)), 0, io.stdoutText)
   const envelope = io.takeEnvelope()
   const platform: string = envelope.data.subpackage.source.platform
   return { project, app, io, envelope, platform, payload: join(project, 'payload', platform) }
@@ -644,7 +662,7 @@ function failedChecks(data: { checks: Array<Record<string, unknown>> }): string[
   return data.checks.filter((check) => check.status === 'error').flatMap((check) => (check.errors ?? [check.detail]) as string[])
 }
 
-Deno.test('ext-tools packages: init writes a package that doctors, builds, packs and reads back', async () => {
+Deno.test('ext-tools packages: init writes a package that doctors, builds, packs and reads back', { ignore: hostHasNoExtToolsPlatform }, async () => {
   const root = await Deno.makeTempDir()
   try {
     const { project, app, io, envelope, platform, payload } = await initExtTools(root)
@@ -680,7 +698,47 @@ Deno.test('ext-tools packages: init writes a package that doctors, builds, packs
   }
 })
 
-Deno.test('ext-tools packages: doctor names what a package gets wrong, and build refuses it', async () => {
+Deno.test('ext-tools packages: a Windows host gets a .cmd launcher and a .ps1 smoke, and they doctor, build and pack', async () => {
+  const root = await Deno.makeTempDir()
+  try {
+    await asHost('windows', 'x86_64', async () => {
+      const { project, app, io, envelope, platform, payload } = await initExtTools(root)
+      assertEquals(platform, 'windows-x86_64')
+      assertEquals(envelope.data.subpackage.key, 'ext_tools_windows_x86_64')
+      assert((await Deno.stat(join(payload, 'bin', 'ext-media.cmd'))).isFile)
+      assert((await Deno.stat(join(payload, 'smoke', 'ext-media.ps1'))).isFile)
+      const manifest = JSON.parse(await Deno.readTextFile(join(project, 'ext-manifest.json')))
+      assertEquals(manifest.provides[0].smoke, 'smoke/ext-media.sh')
+
+      assertEquals(await app.run(['pikg', 'doctor']), 0, io.stdoutText)
+      const doctor = io.takeEnvelope()
+      assertEquals(doctor.data.healthy, true, JSON.stringify(failedChecks(doctor.data)))
+      assertEquals(await app.run(['pikg', 'build']), 0, io.stdoutText)
+      const build = io.takeEnvelope()
+      assertEquals(await app.run(['pikg', 'pack', build.data.dist_dir]), 0, io.stdoutText)
+      assertEquals(io.takeEnvelope().ok, true)
+    })
+  } finally {
+    await Deno.remove(root, { recursive: true })
+  }
+})
+
+Deno.test('ext-tools packages: init refuses a host that no payload platform covers', async () => {
+  const root = await Deno.makeTempDir()
+  try {
+    await asHost('windows', 'aarch64', async () => {
+      const project = join(root, 'ext-media')
+      await Deno.mkdir(project)
+      const { app, io } = extToolsApp(root, project)
+      assert(await app.run(extToolsInitArgs('ext-media')) !== 0, io.stdoutText)
+      assertEquals(io.takeEnvelope().error.code, 'UNSUPPORTED_PLATFORM')
+    })
+  } finally {
+    await Deno.remove(root, { recursive: true })
+  }
+})
+
+Deno.test('ext-tools packages: doctor names what a package gets wrong, and build refuses it', { ignore: hostHasNoExtToolsPlatform }, async () => {
   const root = await Deno.makeTempDir()
   try {
     const { project, app, io, payload } = await initExtTools(root)
@@ -708,11 +766,13 @@ Deno.test('ext-tools packages: doctor names what a package gets wrong, and build
     assertEquals(failure.error.code, 'INVALID_PACKAGE')
     assert(String(failure.error.message).includes('bin/ffmpeg'), failure.error.message)
 
-    // the launcher is there but does not run
+    // the launcher is there but does not run: Windows has no execute bit to check
     await Deno.writeTextFile(join(payload, 'bin', 'ffmpeg'), '#!/bin/sh\nexit 0\n', { mode: 0o644 })
-    await Deno.chmod(join(payload, 'bin', 'ffmpeg'), 0o644)
-    expectProblem(await doctor(), 'bin/ffmpeg: the launcher is not executable')
-    await Deno.chmod(join(payload, 'bin', 'ffmpeg'), 0o755)
+    if (Deno.build.os !== 'windows') {
+      await Deno.chmod(join(payload, 'bin', 'ffmpeg'), 0o644)
+      expectProblem(await doctor(), 'bin/ffmpeg: the launcher is not executable')
+      await Deno.chmod(join(payload, 'bin', 'ffmpeg'), 0o755)
+    }
     assertEquals((await doctor()).healthy, true)
 
     // a launcher that names the machine it was built on
@@ -730,7 +790,7 @@ Deno.test('ext-tools packages: doctor names what a package gets wrong, and build
 
     // the smoke script it promises
     await writeManifest({ ...original, provides: [...original.provides, { command: 'ffmpeg', version_probe: 'ffmpeg -version', smoke: 'smoke/ffmpeg.sh' }] })
-    expectProblem(await doctor(), 'smoke/ffmpeg.sh')
+    expectProblem(await doctor(), Deno.build.os === 'windows' ? 'smoke/ffmpeg.ps1' : 'smoke/ffmpeg.sh')
     await writeManifest({ ...original, provides: [...original.provides, { command: 'ffmpeg', version_probe: 'ffmpeg -version' }] })
 
     // only its own tree
@@ -743,9 +803,11 @@ Deno.test('ext-tools packages: doctor names what a package gets wrong, and build
     await Deno.remove(join(payload, 'uv-cache'))
 
     // a symlink cannot reach out of the payload
-    await Deno.symlink('/bin/sh', join(payload, 'bin', 'ffmpeg-link'))
-    expectProblem(await doctor(), 'bin/ffmpeg-link: a symlink out of the payload')
-    await Deno.remove(join(payload, 'bin', 'ffmpeg-link'))
+    if (Deno.build.os !== 'windows') {
+      await Deno.symlink('/bin/sh', join(payload, 'bin', 'ffmpeg-link'))
+      expectProblem(await doctor(), 'bin/ffmpeg-link: a symlink out of the payload')
+      await Deno.remove(join(payload, 'bin', 'ffmpeg-link'))
+    }
 
     // a payload copy behind the package's manifest, and an id that is not the App's
     await Deno.writeTextFile(join(payload, 'ext-manifest.json'), `${JSON.stringify(original)}\n`)
@@ -762,7 +824,7 @@ Deno.test('ext-tools packages: doctor names what a package gets wrong, and build
   }
 })
 
-Deno.test('ext-tools packages: a catalog answers requires and same-named commands', async () => {
+Deno.test('ext-tools packages: a catalog answers requires and same-named commands', { ignore: hostHasNoExtToolsPlatform }, async () => {
   const root = await Deno.makeTempDir()
   try {
     const { project, app, io, payload } = await initExtTools(root)
@@ -828,7 +890,7 @@ Deno.test('a payload too large to hold is listed from a stream, whatever its chu
       })
       const listing = await listTarGzStream(stream, 16 * 1024 * 1024, (path) => path !== 'blob')
       assertEquals([...listing.files.keys()].sort(), ['bin/tool', 'blob', 'empty', 'ext-manifest.json'])
-      assertEquals(listing.files.get('bin/tool')?.executable, true)
+      assertEquals(listing.files.get('bin/tool')?.executable, Deno.build.os !== 'windows')
       assertEquals(listing.files.get('blob')?.size, 3 * 1024 * 1024)
       assertEquals(new TextDecoder().decode(listing.captured.get('ext-manifest.json')), '{"id":"x"}')
       assertEquals(listing.captured.has('blob'), false)

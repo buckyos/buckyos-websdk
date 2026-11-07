@@ -6095,10 +6095,17 @@ echo "${id} ${version}"
 `,
     { mode: 493 }
   );
-  await host2.writeTextFile(join(payload, "smoke", `${id}.sh`), `#!/bin/sh
+  await host2.writeTextFile(
+    join(payload, "smoke", windows ? `${id}.ps1` : `${id}.sh`),
+    windows ? `$ErrorActionPreference = 'Continue'
+& ${id} --version | Out-Null
+if ($LASTEXITCODE -ne 0) { exit 1 }
+` : `#!/bin/sh
 set -eu
 ${id} --version >/dev/null
-`, { mode: 493 });
+`,
+    { mode: 493 }
+  );
 }
 async function readExtToolsManifestFile(path) {
   let text2;

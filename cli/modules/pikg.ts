@@ -676,7 +676,13 @@ async function writeExtToolsSkeleton(dir: string, id: string, version: string, p
     windows ? `@echo off\r\necho ${id} ${version}\r\n` : `#!/bin/sh\necho "${id} ${version}"\n`,
     { mode: 0o755 },
   )
-  await host.writeTextFile(join(payload, 'smoke', `${id}.sh`), `#!/bin/sh\nset -eu\n${id} --version >/dev/null\n`, { mode: 0o755 })
+  await host.writeTextFile(
+    join(payload, 'smoke', windows ? `${id}.ps1` : `${id}.sh`),
+    windows
+      ? `$ErrorActionPreference = 'Continue'\n& ${id} --version | Out-Null\nif ($LASTEXITCODE -ne 0) { exit 1 }\n`
+      : `#!/bin/sh\nset -eu\n${id} --version >/dev/null\n`,
+    { mode: 0o755 },
+  )
 }
 
 async function readExtToolsManifestFile(path: string): Promise<{ text: string; manifest?: ExtToolsManifest; errors: string[] }> {
