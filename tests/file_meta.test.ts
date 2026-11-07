@@ -223,7 +223,10 @@ describeSamples('probeFileMeta real samples', () => {
     })
   }
 
-  afterAll(() => {
-    if (process.env.BUCKYOS_MEDIA_META_TS_DUMP) fs.writeFileSync(process.env.BUCKYOS_MEDIA_META_TS_DUMP, JSON.stringify(dump))
-  })
+  // jest fails the whole file for a hook in a describe block with no tests, even a skipped one.
+  if (names.length > 0) {
+    afterAll(() => {
+      if (process.env.BUCKYOS_MEDIA_META_TS_DUMP) fs.writeFileSync(process.env.BUCKYOS_MEDIA_META_TS_DUMP, JSON.stringify(dump))
+    })
+  }
 })
