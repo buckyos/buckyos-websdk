@@ -85,7 +85,7 @@ export * as bns from './bns_client';
 export * from './bns_evm_tx';
 export * from './bns_tx_executor';
 export * as sn from './sn_client';
-export * as ndn from './ndn_types';
+export * as ndn from './ndn';
 export * as ndm from './ndm_client';
 export * as ndm_proxy from './ndm_proxy';
 export * as bucket from './bucket_client';

@@ -1,4 +1,5 @@
-export { extensionOf, mediaTypeFromExtension, TEXT_CODE_EXTENSIONS } from './content_mime';
+export { extensionOf, heifImageSize, isoBoxes, mediaTypeFromExtension, sniffMagic, stripMediaTypeParams, TEXT_CODE_EXTENSIONS } from './content_mime';
+export type { IsoBox } from './content_mime';
 export type TransferableContentRef = {
     kind: 'cyfs-path';
     path: string;

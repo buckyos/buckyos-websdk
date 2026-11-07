@@ -36,13 +36,13 @@ function setResult(value: unknown) {
     window.__NDN_TYPES_TEST_RESULT__ = value
 }
 
-function runOnce() {
+async function runOnce() {
     setStatus('running', 'Running')
     setSummary(`Running ${NDN_TYPES_TEST_CASES.length} cases...`)
 
-    let outcome: ReturnType<typeof runNdnTypesCases>
+    let outcome: Awaited<ReturnType<typeof runNdnTypesCases>>
     try {
-        outcome = runNdnTypesCases()
+        outcome = await runNdnTypesCases()
     } catch (e) {
         const err = e as Error
         setStatus('failed', 'Failed (runner crashed)')
@@ -74,7 +74,7 @@ function runOnce() {
 }
 
 if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', runOnce, { once: true })
+    document.addEventListener('DOMContentLoaded', () => void runOnce(), { once: true })
 } else {
-    runOnce()
+    void runOnce()
 }

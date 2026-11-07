@@ -23,6 +23,7 @@ import {
     ImportedFileObject,
     ImportedDirObject,
 } from '../src/ndm_client'
+import { probeFileMeta } from '../src/file_meta'
 
 import {
     sha256Bytes,
@@ -130,6 +131,27 @@ export const defaultAsyncTap: AsyncTap = {
 // Helpers
 // ============================================================
 
+export const MEDIA_ELEMENT_FALLBACK_CASE = 'probeFileMeta falls back to media elements for what the bytes cannot tell'
+
+const FALLBACK_WEBM = 'GkXfo59ChoEBQveBAULygQRC84EIQoKEd2VibUKHgQJChYECGFOAZwEAAAAAAAYmEU2bdLpNu4tTq4QVSalmU6yBoU27i1OrhBZUrmtTrIHWTbuMU6uEElTDZ1OsggEnTbuMU6uEHFO7a1OsggYQ7AEAAAAAAABZAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAVSalmsCrXsYMPQkBNgIxMYXZmNjEuNy4xMDNXQYxMYXZmNjEuNy4xMDNEiYhAeQAAAAAAABZUrmvMrgEAAAAAAABD14EBc8WIZYzTgCeBa/mcgQAitZyDdW5kiIEAhoVWX1ZQOYOBASPjg4QL68IA4JSwgSC6gRiagQJVsIhVsYEAVbmBAhJUw2dAf3Nzn2PAgGfImUWjh0VOQ09ERVJEh4xMYXZmNjEuNy4xMDNzc9pjwItjxYhljNOAJ4Fr+WfIpUWjh0VOQ09ERVJEh5hMYXZjNjEuMTkuMTAxIGxpYnZweC12cDlnyKFFo4hEVVJBVElPTkSHkzAwOjAwOjAwLjQwMDAwMDAwMAAfQ7Z1RF7ngQCjQ7WBAACAokmDQuAB8AF2CDgkHBhCAAAwcAAAfwK/0f///iy74B/2Jm4/eyDW/JhuapGE9e7FRpAg05iU0lZjizXISKvyhemhpNx8av////E6X////GrHs1ph5kOgzeeznzDJN//7VGY2Vfeyxrt2gL4V6BorFO7/oFfLvP9AQvj////xOl////xzJfL1by7BOTtoW+xieeX///m+qj///xAH/z7f/Bca5HlI8eA/82vMsgGPf0O2SlhfMhRmHn//w1OhYAFc5KAb//i0eenMOXJLB///3IIDt/RJ3Wim2P3XMF////ioAVv//+5BAdv6JO60U2x+65gv///8TpAHqyRAfwex3ZUzv/qP///+w/gU3///sTUOH///2H8f////YmoedTf//hDWMbj2XvR/j+5/6XV38Ep++lv//60q/0NdRH5T9guX/V/P/7mao268////9ccYlKUeOfyv9Lf3/9M/v7Z9/8qn/9sr///3e07n0aYTf/8v1+BrP/Mf9Q0y53///TaymsQgsP9//DP7/+3IUj0+4+uv///7D+P////W2n//73Kdz6NMJv/+X6/A1n/mP+oaZaZufPcFVv+VihPmbiFELX4ik6kv/deGtj/yKNkdHr//IEXr12zb5t+xzxtkK/qc6Af////6pOefOTgu//xMbv3xP1bl26t///8ZDf9eK0eL//suSG7gPFUF///+TCvnDWWwu///59xJTaoPmbNI///+Y746R3Nh///4AnGjf////9fqTH//9FV//6mrfw0dTAXEZ5Reui+yF4d384N////yN0AGz////Ltn/of71////9Gwoj/3yOH6gMI4v///+zAlj9jQMpGdv//6DW9laf///i5mbf/aL9N93kof5ts/8h5///1K///xfP9Jc///n8yH/oHf//N4f8cY/wA4v64vpWf///DNyH//AlyO4ocAoP8////y/XvqTB6Qa9j/wGd////8jkANv////Luf2gOmdf///ocrh//2sHocaJqh+kU241///8Io/+Pn/9a6f//7vyn3wf//P5f/fsv8BGRcVf/8sP/80d/RX//w6///Az8lmqO/3r3TxzLLQTUjLQSKtJw6Ug/3//+ni+EQV////MUWV8u//3n/94Zu///Rtf/99M3oz/sHu2iAeCyhsFVK9gxGqsnsJP/7D/9IQh3///RisYEf//+KFsNycP/+0J8fXf//5s///5sxzv///5Fv//5FvvQ8BV/2D/KsNLiQQc2sZr97Dq34e4//2iAAo0CggQDIAKYAQJKcEElAAANgAAB1GE//+IR//7wOIryQJwg+GX7Q43//8Tnv/+pMuyVhy6x/FN4iPOf/6Pkn+aH2ntv456Tc4fHIo/8BIX+aH0ytk9MVmzCNFz//52U//nKSgyA9SPb6nRCJd16P//7h3H/+eBJUWN9Ta/WGviTkH/+vD9/4fWmWHyHzg9db4Xkf/Xgbf4fW0+HEYba3THcAABxTu2uRu4+zgQC3iveBAfGCAazwgQM='
+const FALLBACK_MP3 = '//tAwAAAAAAAAAAAAAAAAAAAAAAASW5mbwAAAA8AAAARAAAHpgAlJSUlJTMzMzMzM0BAQEBAQE5OTk5OTlxcXFxcXGlpaWlpaXd3d3d3d4WFhYWFhZKSkpKSoKCgoKCgrq6urq6uu7u7u7u7ycnJycnJ19fX19fX5OTk5OTk8vLy8vLy//////8AAAAATGF2YzYxLjE5AAAAAAAAAAAAAAAAJAVYAAAAAAAAB6aqTK6WAAAAAAD/+xDEAAAEdBNVVJCAMKYJrzcaIAIAAa05QAABWTo9UFAIBgkB8HwfB8oCAIBhEHwf1Ag7E4f4g3AEk/bAYDgcDgAAAAAAKIkqmRRkCOkCSBaj94UB8BMb8CKUL6gaEvwkDSoKABgwAP/7EsQCg8VYHSAd4AAomwPjQa9oTMwJALxABIYA4Hhn7vamYwOWYcQRJgwAfmBCBgYFIExgXgPFmrSVh5gghmT5xLRhfiimq9Sian4ophhAzHPemfSmaPGbjmJCuJTgm76qMNDjDh0x0//7EMQDg8UEHxgN+yJArYRigb9sSIM+gzCvG+NQzhw06xtDCeBtNcwCBm6odX5rBsmloc/X9CRBiYiZscG7xpiXDtHBX1wb/A7hiahPnCMhniMZmfmZPBiwsweMU+Af+r6KMKETDxwx//sSxAMDxQAfGA37IkCrBCKBv2xIo7M9hjCmHJNNvms0uBvzCXBwNJEBBG8mdvhrhM1ng3+v6EfzFA4zk1N6hDE1HHOFbiE4IxyTE6CaOFZTO0czA+MvfTFRddEvqA5+z7owsQMMHzGT//sQxAODxQAfGA37IkCnBCKBr2xIwziJMJ8dI0pOtDSFHIMIwHUzVAMKcKB3cmwCzadDn6foSQMuNN0wP7/MTobA4f9gjhKG0MT8JU4ZiM6SDL0Eyx+MSGF1yjME/3eqMMLMOWMgzNX/+xLEBAPE0B8aDXsiQI+D44GvaE32MIAZ8z4dIzPEGVMHEGYwkQwI2iTnqA0zNZ4z+n7Gbg4IZcecB0YWYdJqMPNmnyHWYWgJBxV5lz5jjRjYIBBw5XI1MKKMMZMe0NN7MHkaYzrtWjP/+xDECIPEpB8aDXsiYJAD44GvaE2VGcMGgGsAqBwpujHNOCpWbTpr9TQAcHMwMOC3MLYNw1LXNDUMDeMLkEU4iwyh4xp0xUICBH/qBiowAcwJIwyszeowXhdTMLvlMvQW0wUQXAoiNP/7EsQNA8SYHxwNeyJghIOjwZ9kTRGsCcLQQ83toz+pq4YAaYp7UGE+FiaTC+po+hamFABsfMZnsmMsYfINBjAZMKKMEZMW2M9/MGcbIzQtwDMrGqMFYHEQtDxpvgHU+DqWhTpr9DHQwf/7EMQUA8SkHxoNeyJgjwPjga9oTWZoQcVaYXgYBqpsvGpgGEYXoHpxFRlDxizphogMCP/ULDBAswMYMINzG4AwXhuTML3tMvQbEwTQchh0mSAXp1tBFTQZ5VbwcIM2FOIoML8LE1Yl//sSxBkDxIgfGg37ImiPA+OBr2hN7TVBC1ML4Dg46kyZ8xB4wscGhYYrkQCGAhMwKwyG8wRxhDJ0xYMmMXwwOAYywwUGA7I4kQ51vrJr9azRIeZwEcdGYYAUBq5q6GqcFMYYIGpxFBkk//sQxB8DxIQfHA17ImCOg+OBr2hNBhz5gIwUCQ3UqgAFApIALzG8DA+GJMj/HkyLBgzAvBkHWyI8I1OMwSib20Z/WpIWGAJ2cY8YYYSJq/J8mq6EuYYQGBxU5kT5hDwBkhcPDFcV//T/+xLEJIPEdB8cDXsiYJYD44GvaEhVMDCgANmAnBh0KYII5BkpcrGSCOAYFwPIgkFnAkY7Dw61oU6snyPDwM4OSZMMQIA1i0eDVmCGMMMC04iQyB4wZ8CSBAGhupUqMACwKNAA7MLhjA3/+xDEKYPEfB8aDfsiaI0D44GvaE2HLMg/nMx/hxTAjB6Bs4c+HineQJXNRnjP6UKh4wBp51jBhyhBmy8kCbG4RJhxAYHTWmVTmEUAWyIRcMVxX9cwEKAg2BTowSJMCsc4xyOijG7HGP/7EsQvA8SgHxoN+yJgk4PjQa9oTMBYH0AUBkAmUdwota1KdNfqL8kxsHTDrkzDmBsNmk9w2PgdDDlArOkqMomMGpBFgRConUFm/WoHAKPIYBYGpgigjmEKISYHLlZiqBemC+BGYE4BoP/7EMQ0A8SgHxoN+yJglYPjQa9oTBANAoAoGAKSyfik4QCB9RqPR6PhaAAAAAB8EyiEapoX7V/z+Q8AJS9bjW/wlC+3KL/j/BuEsV2IX/8ROGghD7Pt//1tgZFHPWLUS8uH50rVJEA7//sSxDgABRQhJBXgACEODq73MPBKAHQmTOaKEoonTISoeo6o7CyyMUAwUk84cSw5KorAyEpMQU1FMy4xMDCqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//sQxCuDxEw/ABzzAAgAADSAAAAEqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqo='
+
+function fromBase64(value: string): Uint8Array {
+    const binary = atob(value)
+    return Uint8Array.from(binary, c => c.charCodeAt(0))
+}
+
+/**
+ * The FileObject the SDK should build for a plain file of these tests: the bytes
+ * say nothing and `makeFile` declares nothing, so only the extension decides
+ * `mime`, and `.bin` has none.
+ */
+function expectedFileObject(name: string, size: number, content: string): NdnFileObject {
+    const fileObj = new NdnFileObject(name, size, content)
+    if (name.endsWith('.txt')) fileObj.meta.mime = 'text/x-txt'
+    return fileObj
+}
+
 function makeFile(name: string, content: Uint8Array | string, type = 'application/octet-stream'): File {
     const data = typeof content === 'string' ? new TextEncoder().encode(content) : content
     return new File([data], name, { type })
@@ -144,7 +166,7 @@ function makeFile(name: string, content: Uint8Array | string, type = 'applicatio
 function computeExpectedFileObjectId(name: string, content: Uint8Array): string {
     const hash = sha256Bytes(content)
     const chunkId = ChunkId.fromMix256Result(content.length, hash)
-    const fileObj = new NdnFileObject(name, content.length, chunkId.toString())
+    const fileObj = expectedFileObject(name, content.length, chunkId.toString())
     const [objId] = fileObj.genObjId()
     return objId.toString()
 }
@@ -175,7 +197,7 @@ function computeExpectedMultiChunkFileObjectId(
         offset = end
     }
     const [chunkListObjId] = chunkList.genObjId()
-    const fileObj = new NdnFileObject(name, content.length, chunkListObjId.toString())
+    const fileObj = expectedFileObject(name, content.length, chunkListObjId.toString())
     const [objId] = fileObj.genObjId()
     return objId.toString()
 }
@@ -574,8 +596,8 @@ export const NDM_CLIENT_TEST_CASES: NdmClientTestCase[] = [
                 const contentB = new TextEncoder().encode('bbb')
 
                 // Compute expected dir objectId bottom-up using ndn_types
-                const fileObjA = new NdnFileObject('a.txt', contentA.length, computeExpectedChunkId(contentA))
-                const fileObjB = new NdnFileObject('b.txt', contentB.length, computeExpectedChunkId(contentB))
+                const fileObjA = expectedFileObject('a.txt', contentA.length, computeExpectedChunkId(contentA))
+                const fileObjB = expectedFileObject('b.txt', contentB.length, computeExpectedChunkId(contentB))
 
                 const subDir = new NdnDirObject('sub')
                 subDir.addFile('b.txt', fileObjB.toJSON(), contentB.length)
@@ -851,7 +873,74 @@ export const NDM_CLIENT_TEST_CASES: NdmClientTestCase[] = [
         },
     },
     {
-        name: 'omits mimeType when file.type is empty',
+        name: 'mimeType and the FileObject follow the magic bytes, not file.type',
+        async run(t) {
+            const saved = getImportProvider()
+            try {
+                // A 2x3 GIF named and declared as something else.
+                const gif = new Uint8Array([0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 2, 0, 3, 0, 0, 0, 0])
+                setImportProvider(mockProvider({}, [makeFile('photo.txt', gif, 'text/plain')]))
+                const result = await pickupAndImport({ mode: 'single_file' })
+                const selection = result.selection as ImportedFileObject
+                t.eq(selection.mimeType, 'image/gif')
+                t.eq(selection._ndnFileObject?.mime, 'image/gif')
+                t.eq(selection._ndnFileObject?.width, 2)
+                t.eq(selection._ndnFileObject?.height, 3)
+            } finally {
+                setImportProvider(saved)
+            }
+        },
+    },
+    {
+        name: 'a malformed media file still imports',
+        async run(t) {
+            const saved = getImportProvider()
+            try {
+                const broken = new Uint8Array([0xff, 0xd8, 0xff, 0xe1, 0xff, 0xff, 0x45])
+                setImportProvider(mockProvider({}, [makeFile('broken.jpg', broken)]))
+                const result = await pickupAndImport({ mode: 'single_file' })
+                const selection = result.selection as ImportedFileObject
+                t.eq(selection.mimeType, 'image/jpeg')
+                t.eq(selection._ndnFileObject?.mime, 'image/jpeg')
+                t.eq(selection._ndnFileObject?.width, undefined)
+            } finally {
+                setImportProvider(saved)
+            }
+        },
+    },
+    {
+        name: 'fileMeta with a mime replaces the probe, without one it is merged over the probe',
+        async run(t) {
+            const saved = getImportProvider()
+            try {
+                const gif = new Uint8Array([0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 2, 0, 3, 0, 0, 0, 0])
+                setImportProvider(mockProvider({}, [makeFile('a.gif', gif)]))
+                const known = await pickupAndImport({
+                    mode: 'single_file',
+                    fileMeta: () => ({ mime: 'image/x-known', width: 9 }),
+                })
+                const knownObject = (known.selection as ImportedFileObject)._ndnFileObject
+                t.eq(knownObject?.mime, 'image/x-known')
+                t.eq(knownObject?.width, 9)
+                t.eq(knownObject?.height, undefined)
+
+                setImportProvider(mockProvider({}, [makeFile('a.gif', gif)]))
+                const merged = await pickupAndImport({
+                    mode: 'single_file',
+                    fileMeta: () => ({ captured_at: '2024-01-02T03:04:05', camera: { make: 'X' } }),
+                })
+                const mergedObject = (merged.selection as ImportedFileObject)._ndnFileObject
+                t.eq(mergedObject?.mime, 'image/gif')
+                t.eq(mergedObject?.width, 2)
+                t.eq(mergedObject?.captured_at, '2024-01-02T03:04:05')
+                t.deepEq(mergedObject?.camera, { make: 'X' })
+            } finally {
+                setImportProvider(saved)
+            }
+        },
+    },
+    {
+        name: 'omits mimeType when nothing tells the type',
         async run(t) {
             const saved = getImportProvider()
             try {
@@ -861,6 +950,46 @@ export const NDM_CLIENT_TEST_CASES: NdmClientTestCase[] = [
             } finally {
                 setImportProvider(saved)
             }
+        },
+    },
+
+    // ---- Media element fallback (real browser only) ----
+    {
+        name: MEDIA_ELEMENT_FALLBACK_CASE,
+        async run(t) {
+            if (typeof document === 'undefined') return
+            // Formats whose size or duration the byte parsers do not read: a 3x2 BMP,
+            // a 32x24 WebM and an MP3 of 0.4 s, both written by ffmpeg.
+            const bmpHeader = new Uint8Array(54)
+            const bmp = new DataView(bmpHeader.buffer)
+            bmpHeader.set([0x42, 0x4d])
+            bmp.setUint32(2, 54 + 24, true)
+            bmp.setUint32(10, 54, true)
+            bmp.setUint32(14, 40, true)
+            bmp.setInt32(18, 3, true)
+            bmp.setInt32(22, 2, true)
+            bmp.setUint16(26, 1, true)
+            bmp.setUint16(28, 24, true)
+            const image = await probeFileMeta(new Blob([bmpHeader, new Uint8Array(24)]))
+            t.deepEq(image, { mime: 'image/bmp', width: 3, height: 2 }, 'bmp')
+
+            const video = await probeFileMeta(new Blob([fromBase64(FALLBACK_WEBM)]))
+            t.eq(video.mime, 'video/webm')
+            t.eq(video.width, 32)
+            t.eq(video.height, 24)
+            t.truthy(video.duration_ms === undefined || (video.duration_ms >= 300 && video.duration_ms <= 500), 'webm duration')
+
+            const audio = await probeFileMeta(new Blob([fromBase64(FALLBACK_MP3)]))
+            t.eq(audio.mime, 'audio/mpeg')
+            t.truthy(audio.duration_ms !== undefined && audio.duration_ms >= 300 && audio.duration_ms <= 600, 'mp3 duration')
+
+            // The bytes win: a parsed size never reaches a media element, even a broken one.
+            const gif = new Uint8Array([0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 7, 0, 5, 0])
+            t.deepEq(await probeFileMeta(new Blob([gif])), { mime: 'image/gif', width: 7, height: 5 }, 'gif')
+
+            // What no browser can decode just stays unknown.
+            const broken = await probeFileMeta(new Blob([new TextEncoder().encode('not an image')], { type: 'image/x-nothing' }))
+            t.deepEq(broken, { mime: 'image/x-nothing' }, 'undecodable')
         },
     },
 

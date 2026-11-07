@@ -5,7 +5,8 @@ var __publicField = (obj, key, value) => {
   return value;
 };
 var _a;
-import { N as NODE_IDENTITY_SCHEMA_V2, u as DID, K as newDeviceDocumentByJwk, L as verifyJwtEdDSA, M as deviceDocumentToOrderedJson, P as decodeJwtClaimWithoutVerify, Q as commonjsGlobal, R as DEFAULT_EXPIRE_TIME, h as hashPassword, T as buckyosGetUnixTimestamp, U as getPublicKeyXFromPrivatePem, V as getXFromJwk, W as createJwkByX, X as newOwnerDocument, Y as ownerDocumentSetDefaultZoneDid, Z as ownerDocumentToOrderedJson, _ as oodDescriptionToString, $ as parseOODDescription, a0 as encodeZoneBootDocument, a1 as newZoneBootDocument, a2 as encodeDeviceDocument, a3 as newDeviceMiniDocumentByDeviceDocument, a4 as deviceMiniDocumentToJwt, a5 as newZoneDocument, a6 as encodeZoneDocument, a7 as zoneDocumentToOrderedJson, a8 as newDeviceMiniDocument, a9 as newDeviceDocumentByMiniDocument, aa as buildNamedObjectByJson } from "./namelib-b41b10cc.mjs";
+import { N as NODE_IDENTITY_SCHEMA_V2, t as DID, aT as newDeviceDocumentByJwk, aU as verifyJwtEdDSA, aV as deviceDocumentToOrderedJson, aW as decodeJwtClaimWithoutVerify, aX as commonjsGlobal, aY as DEFAULT_EXPIRE_TIME, h as hashPassword, aZ as buckyosGetUnixTimestamp, a_ as getPublicKeyXFromPrivatePem, a$ as getXFromJwk, b0 as createJwkByX, b1 as newOwnerDocument, b2 as ownerDocumentSetDefaultZoneDid, b3 as ownerDocumentToOrderedJson, b4 as oodDescriptionToString, b5 as parseOODDescription, b6 as encodeZoneBootDocument, b7 as newZoneBootDocument, b8 as encodeDeviceDocument, b9 as newDeviceMiniDocumentByDeviceDocument, ba as deviceMiniDocumentToJwt, bb as newZoneDocument, bc as encodeZoneDocument, bd as zoneDocumentToOrderedJson, be as newDeviceMiniDocument, bf as newDeviceDocumentByMiniDocument, at as calcPkgMetaObjId } from "./ndn_types-08fdf59a.mjs";
+import { aG } from "./ndn_types-08fdf59a.mjs";
 import { Buffer as Buffer$1 } from "node:buffer";
 import { pbkdf2Sync, createPublicKey, createPrivateKey, createECDH, createHmac } from "node:crypto";
 const DEVICE_DOC_JWT_FILE_NAME = "device_doc.jwt";
@@ -15699,35 +15700,6 @@ function versionToInt(version) {
     throw new Error(`build number out of range: ${version}`);
   return major << 56n | minor << 40n | patch << 24n | build;
 }
-function normalizePackageMetaForObjId(meta) {
-  const normalized = { ...meta };
-  const dropIf = (key, shouldDrop) => {
-    if (key in normalized && shouldDrop(normalized[key])) {
-      delete normalized[key];
-    }
-  };
-  dropIf("did", (v) => v === null || v === void 0);
-  dropIf("name", (v) => v === "");
-  dropIf("author", (v) => v === "");
-  dropIf("owner", (v) => v === null || v === void 0 || v === "did:undefined:undefined");
-  dropIf("copyright", (v) => v === null || v === void 0);
-  dropIf("tags", (v) => Array.isArray(v) && v.length === 0);
-  dropIf("categories", (v) => Array.isArray(v) && v.length === 0);
-  dropIf("base_on", (v) => v === null || v === void 0);
-  dropIf("directory", (v) => v && typeof v === "object" && Object.keys(v).length === 0);
-  dropIf("references", (v) => v && typeof v === "object" && Object.keys(v).length === 0);
-  dropIf("exp", (v) => v === 0);
-  dropIf("size", (v) => v === 0);
-  dropIf("content", (v) => v === "");
-  dropIf("version_tag", (v) => v === null || v === void 0);
-  dropIf("deps", (v) => v && typeof v === "object" && Object.keys(v).length === 0);
-  return normalized;
-}
-function calcPkgMetaObjId(metaJson) {
-  const normalized = normalizePackageMetaForObjId(metaJson);
-  const [objId] = buildNamedObjectByJson("pkg", normalized);
-  return objId.toString();
-}
 class MetaIndexDb {
   constructor(dbPath) {
     assertProvisionRuntime();
@@ -15952,7 +15924,7 @@ export {
   newDeviceDocumentByJwkWithDid,
   newLocalNodeIdentityConfig,
   nodeTestIdentityRoots,
-  normalizePackageMetaForObjId,
+  aG as normalizePackageMetaForObjId,
   registerDeviceToSn,
   registerUserToSn,
   saveLocalDeviceIdentityForRoots,

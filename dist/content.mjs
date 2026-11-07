@@ -1,144 +1,5 @@
-const TEXT_CODE_EXTENSIONS = [
-  "txt",
-  "text",
-  "log",
-  "ini",
-  "conf",
-  "cfg",
-  "env",
-  "csv",
-  "tsv",
-  "md",
-  "markdown",
-  "rst",
-  "adoc",
-  "json",
-  "jsonc",
-  "json5",
-  "xml",
-  "yaml",
-  "yml",
-  "toml",
-  "ts",
-  "tsx",
-  "js",
-  "jsx",
-  "mjs",
-  "cjs",
-  "rs",
-  "py",
-  "go",
-  "c",
-  "h",
-  "cc",
-  "cpp",
-  "hpp",
-  "java",
-  "kt",
-  "swift",
-  "rb",
-  "php",
-  "sql",
-  "sh",
-  "bash",
-  "zsh",
-  "ps1",
-  "bat",
-  "css",
-  "scss",
-  "less",
-  "vue",
-  "svelte",
-  "lua",
-  "dart",
-  "r",
-  "scala",
-  "ex",
-  "exs",
-  "dockerfile",
-  "makefile",
-  "gitignore",
-  "editorconfig",
-  "lock"
-];
-const MEDIA_TYPE_BY_EXTENSION = {
-  png: "image/png",
-  apng: "image/apng",
-  jpg: "image/jpeg",
-  jpeg: "image/jpeg",
-  jfif: "image/jpeg",
-  gif: "image/gif",
-  webp: "image/webp",
-  bmp: "image/bmp",
-  ico: "image/x-icon",
-  avif: "image/avif",
-  heic: "image/heic",
-  heif: "image/heif",
-  tif: "image/tiff",
-  tiff: "image/tiff",
-  psd: "image/vnd.adobe.photoshop",
-  svg: "image/svg+xml",
-  mp4: "video/mp4",
-  m4v: "video/mp4",
-  webm: "video/webm",
-  mov: "video/quicktime",
-  mkv: "video/x-matroska",
-  avi: "video/x-msvideo",
-  ogv: "video/ogg",
-  mp3: "audio/mpeg",
-  wav: "audio/wav",
-  flac: "audio/flac",
-  ogg: "audio/ogg",
-  oga: "audio/ogg",
-  opus: "audio/ogg",
-  m4a: "audio/mp4",
-  aac: "audio/aac",
-  pdf: "application/pdf",
-  html: "text/html",
-  htm: "text/html",
-  xhtml: "application/xhtml+xml",
-  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-  doc: "application/msword",
-  xls: "application/vnd.ms-excel",
-  ppt: "application/vnd.ms-powerpoint",
-  odt: "application/vnd.oasis.opendocument.text",
-  zip: "application/zip",
-  tar: "application/x-tar",
-  gz: "application/gzip",
-  "7z": "application/x-7z-compressed",
-  rar: "application/vnd.rar",
-  epub: "application/epub+zip",
-  md: "text/markdown",
-  markdown: "text/markdown",
-  json: "application/json",
-  xml: "application/xml",
-  csv: "text/csv",
-  yaml: "application/yaml",
-  yml: "application/yaml",
-  toml: "application/toml",
-  js: "text/javascript",
-  mjs: "text/javascript",
-  cjs: "text/javascript",
-  css: "text/css"
-};
-for (const ext of TEXT_CODE_EXTENSIONS) {
-  if (!MEDIA_TYPE_BY_EXTENSION[ext])
-    MEDIA_TYPE_BY_EXTENSION[ext] = `text/x-${ext}`;
-}
-function extensionOf(name) {
-  if (!name)
-    return "";
-  const base = name.split("/").pop() ?? name;
-  const dot = base.lastIndexOf(".");
-  if (dot <= 0)
-    return "";
-  return base.slice(dot + 1).toLowerCase();
-}
-function mediaTypeFromExtension(ext) {
-  return MEDIA_TYPE_BY_EXTENSION[ext.toLowerCase()];
-}
+import { e as extensionOf, m as mediaTypeFromExtension } from "./content_mime-e42d5f8d.mjs";
+import { T, h, i, s, a } from "./content_mime-e42d5f8d.mjs";
 function readContentHints(value) {
   if (!value || typeof value !== "object")
     return {};
@@ -179,7 +40,7 @@ function isTransferableSession(value) {
   if (!value || typeof value !== "object")
     return false;
   const v = value;
-  return v.kind === "single" || v.kind === "container" && isTransferableRef(v.container) && isTransferableRef(v.current) || v.kind === "list" && Array.isArray(v.items) && v.items.every((i) => i && isTransferableRef(i.source)) && Number.isInteger(v.currentIndex) && v.currentIndex >= 0 && v.currentIndex < v.items.length;
+  return v.kind === "single" || v.kind === "container" && isTransferableRef(v.container) && isTransferableRef(v.current) || v.kind === "list" && Array.isArray(v.items) && v.items.every((i2) => i2 && isTransferableRef(i2.source)) && Number.isInteger(v.currentIndex) && v.currentIndex >= 0 && v.currentIndex < v.items.length;
 }
 function contentDescriptor(source, hints = {}) {
   const name = hints.name ?? contentRefString(source).split("/").pop() ?? "";
@@ -194,15 +55,15 @@ function contentDescriptor(source, hints = {}) {
   };
 }
 const values = (v) => v === void 0 ? [] : Array.isArray(v) ? v : [v];
-function matchSelector(s, d) {
+function matchSelector(s2, d) {
   var _a;
-  if (s.maxSize !== void 0 && d.size !== void 0 && d.size > s.maxSize)
+  if (s2.maxSize !== void 0 && d.size !== void 0 && d.size > s2.maxSize)
     return 0;
-  if (s.objType && !values(s.objType).includes(d.objType ?? ""))
+  if (s2.objType && !values(s2.objType).includes(d.objType ?? ""))
     return 0;
-  let score = s.objType ? 2 : 1;
-  if (s.schema) {
-    const matches = values(s.schema).filter((v) => {
+  let score = s2.objType ? 2 : 1;
+  if (s2.schema) {
+    const matches = values(s2.schema).filter((v) => {
       var _a2;
       return v.endsWith("*") ? (_a2 = d.schema) == null ? void 0 : _a2.startsWith(v.slice(0, -1)) : d.schema === v;
     });
@@ -210,14 +71,14 @@ function matchSelector(s, d) {
       return 0;
     score = matches.some((v) => v === d.schema) ? 7 : 6;
   }
-  if (s.mime) {
+  if (s2.mime) {
     const mime = (d.mime ?? "").toLowerCase().split(";")[0].trim();
-    const scores = values(s.mime).map((v) => {
+    const scores = values(s2.mime).map((v) => {
       v = v.toLowerCase();
       if (v === "*/*")
         return 1;
       if (v.split(";")[0].trim() === mime)
-        return s.objType ? 6 : 5;
+        return s2.objType ? 6 : 5;
       if (v.includes("/*+") && mime.startsWith(v.split("/")[0] + "/") && mime.endsWith(v.slice(v.indexOf("+"))))
         return 4;
       if (v.endsWith("/*") && mime.startsWith(v.slice(0, -1)))
@@ -229,16 +90,16 @@ function matchSelector(s, d) {
       return 0;
     score = Math.max(score, best);
   }
-  if (!s.mime && !s.objType && !s.schema && !((_a = s.ext) == null ? void 0 : _a.includes(d.ext ?? "")))
+  if (!s2.mime && !s2.objType && !s2.schema && !((_a = s2.ext) == null ? void 0 : _a.includes(d.ext ?? "")))
     return 0;
   return score;
 }
 function compactSelector(value) {
   const out = {};
   for (const part of value.split(";")) {
-    const i = part.indexOf(":");
-    const key = part.slice(0, i);
-    const v = part.slice(i + 1);
+    const i2 = part.indexOf(":");
+    const key = part.slice(0, i2);
+    const v = part.slice(i2 + 1);
     if (key === "obj")
       out.objType = v;
     else if (key === "mime")
@@ -256,20 +117,20 @@ function resolveContentHandlers(registry, defaults, descriptor, intent = "open",
   var _a;
   const visible = new Set(availableApps);
   const handlers = { ...registry.handlers, "system#preview": previewHandler };
-  const preferred = Object.entries(defaults.defaults.open ?? {}).map(([s, key]) => ({ key, score: matchSelector(compactSelector(s), descriptor) })).filter((v) => v.score > 0).sort((a, b) => b.score - a.score || a.key.localeCompare(b.key));
-  const matches = Object.entries(handlers).flatMap(([key, h]) => {
-    const binding = h.intents[intent];
-    if (!binding || !h.enabled || key !== "system#preview" && defaults.disabled.includes(key))
+  const preferred = Object.entries(defaults.defaults.open ?? {}).map(([s2, key]) => ({ key, score: matchSelector(compactSelector(s2), descriptor) })).filter((v) => v.score > 0).sort((a2, b) => b.score - a2.score || a2.key.localeCompare(b.key));
+  const matches = Object.entries(handlers).flatMap(([key, h2]) => {
+    const binding = h2.intents[intent];
+    if (!binding || !h2.enabled || key !== "system#preview" && defaults.disabled.includes(key))
       return [];
-    if (h.provider === "app" && (!h.app_instance_id || !visible.has(h.app_instance_id) || binding.entry.type !== "web"))
+    if (h2.provider === "app" && (!h2.app_instance_id || !visible.has(h2.app_instance_id) || binding.entry.type !== "web"))
       return [];
-    const selectors = h.selectors.map((selector) => ({ selector, specificity: matchSelector(selector, descriptor) })).filter((s) => s.specificity > 0).sort((a, b) => b.specificity - a.specificity);
+    const selectors = h2.selectors.map((selector) => ({ selector, specificity: matchSelector(selector, descriptor) })).filter((s2) => s2.specificity > 0).sort((a2, b) => b.specificity - a2.specificity);
     if (!selectors.length)
       return [];
-    return [{ key, h, binding, matched: selectors[0] }];
+    return [{ key, h: h2, binding, matched: selectors[0] }];
   });
   const preferredKey = (_a = preferred.find((p) => matches.some((m) => m.key === p.key))) == null ? void 0 : _a.key;
-  matches.sort((a, b) => Number(b.key === preferredKey) - Number(a.key === preferredKey) || Number(b.matched.specificity > 1 || b.h.provider === "system") - Number(a.matched.specificity > 1 || a.h.provider === "system") || b.matched.specificity - a.matched.specificity || (b.binding.priority ?? 0) - (a.binding.priority ?? 0) || Number(b.h.provider === "system") - Number(a.h.provider === "system") || (a.h.registered_at ?? 0) - (b.h.registered_at ?? 0) || a.key.localeCompare(b.key));
+  matches.sort((a2, b) => Number(b.key === preferredKey) - Number(a2.key === preferredKey) || Number(b.matched.specificity > 1 || b.h.provider === "system") - Number(a2.matched.specificity > 1 || a2.h.provider === "system") || b.matched.specificity - a2.matched.specificity || (b.binding.priority ?? 0) - (a2.binding.priority ?? 0) || Number(b.h.provider === "system") - Number(a2.h.provider === "system") || (a2.h.registered_at ?? 0) - (b.h.registered_at ?? 0) || a2.key.localeCompare(b.key));
   return matches.map((m) => {
     var _a2;
     return {
@@ -288,8 +149,8 @@ function resolveContentHandlers(registry, defaults, descriptor, intent = "open",
 function parentSource(source) {
   if (source.kind !== "cyfs-path")
     return void 0;
-  const i = source.path.lastIndexOf("/");
-  return i >= 7 ? { kind: "cyfs-path", path: source.path.slice(0, i) || "cyfs:///" } : void 0;
+  const i2 = source.path.lastIndexOf("/");
+  return i2 >= 7 ? { kind: "cyfs-path", path: source.path.slice(0, i2) || "cyfs:///" } : void 0;
 }
 function encodeSession(session, source) {
   if (!session)
@@ -299,7 +160,7 @@ function encodeSession(session, source) {
   if (encoded.length <= 2048 || session.kind !== "list")
     return encoded;
   const parent = parentSource(source);
-  if (parent && session.items.every((i) => contentRefString(parentSource(i.source) ?? i.source) === contentRefString(parent))) {
+  if (parent && session.items.every((i2) => contentRefString(parentSource(i2.source) ?? i2.source) === contentRefString(parent))) {
     return encode({ kind: "container", container: parent, current: source });
   }
   return "";
@@ -398,7 +259,7 @@ class ContentRegistryClient {
 }
 export {
   ContentRegistryClient,
-  TEXT_CODE_EXTENSIONS,
+  T as TEXT_CODE_EXTENSIONS,
   contentDescriptor,
   contentRefString,
   emptyDefaults,
@@ -406,9 +267,11 @@ export {
   expandOpenPath,
   extensionOf,
   handlerOfApp,
+  h as heifImageSize,
   isOpenRequest,
   isTransferableRef,
   isTransferableSession,
+  i as isoBoxes,
   matchSelector,
   mediaTypeFromExtension,
   parentSource,
@@ -416,6 +279,8 @@ export {
   previewHandler,
   readContentHints,
   resolveContentHandlers,
+  s as sniffMagic,
+  a as stripMediaTypeParams,
   systemOpenUrl
 };
 //# sourceMappingURL=content.mjs.map

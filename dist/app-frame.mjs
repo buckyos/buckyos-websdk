@@ -1,4 +1,5 @@
 import { isOpenRequest, readContentHints, systemOpenUrl, isTransferableRef, isTransferableSession } from "./content.mjs";
+import "./content_mime-e42d5f8d.mjs";
 const envelope = (type, payload, extra = {}) => ({ protocol: "buckyos.app-frame", version: 1, type, payload, ...extra });
 const isMessage = (value) => {
   if (!value || typeof value !== "object")

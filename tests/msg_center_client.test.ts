@@ -32,6 +32,15 @@ import {
   TaskPhase,
   baselineTaskControlProfile,
 } from '../src/task_mgr_client'
+import type { CanonValue, MsgObject } from '../src/ndn_types'
+
+const TEXT_MSG: MsgObject = {
+  from: 'did:bns:alice',
+  to: ['did:bns:bob'],
+  kind: 'chat',
+  created_at_ms: 1700000000000,
+  content: { content: 'hi' },
+}
 
 function makeResponse(body: unknown, seq: number = 1) {
   return {
@@ -89,7 +98,7 @@ describe('MsgCenterClient', () => {
     const client = new MsgCenterClient(new kRPCClient('/kapi/msg-center/', null, 1, { fetcher }))
 
     const out = await client.dispatch(
-      { id: 'mobj://msg-1', kind: 'text', content: 'hi' },
+      TEXT_MSG,
       { transport_did: 'did:tunnel:wechat-main', platform: 'wechat', context_id: 'ctx-1' },
       'idem-1',
     )
@@ -98,7 +107,7 @@ describe('MsgCenterClient', () => {
     expect(bodyOf(fetcher)).toEqual({
       method: 'msg.dispatch',
       params: {
-        msg: { id: 'mobj://msg-1', kind: 'text', content: 'hi' },
+        msg: TEXT_MSG,
         ingress_ctx: {
           transport_did: 'did:tunnel:wechat-main',
           platform: 'wechat',
@@ -114,9 +123,9 @@ describe('MsgCenterClient', () => {
     const fetcher = jest.fn().mockResolvedValue(makeResponse({ ok: true, msg_id: 'm1' }, 1))
     const client = new MsgCenterClient(new kRPCClient('/kapi/msg-center/', null, 1, { fetcher }))
 
-    await client.dispatch({ id: 'm1' })
+    await client.dispatch(TEXT_MSG)
 
-    expect(bodyOf(fetcher).params).toEqual({ msg: { id: 'm1' } })
+    expect(bodyOf(fetcher).params).toEqual({ msg: TEXT_MSG })
   })
 
   it('postSend forwards msg/idempotency_key and parses PostSendResult', async () => {
@@ -132,12 +141,12 @@ describe('MsgCenterClient', () => {
     }, 2))
     const client = new MsgCenterClient(new kRPCClient('/kapi/msg-center/', null, 2, { fetcher }))
 
-    const result = await client.postSend({ id: 'm2' }, 'idem-2')
+    const result = await client.postSend(TEXT_MSG, 'idem-2')
 
     expect(result.ok).toBe(true)
     expect(bodyOf(fetcher)).toEqual({
       method: 'msg.post_send',
-      params: { msg: { id: 'm2' }, idempotency_key: 'idem-2' },
+      params: { msg: TEXT_MSG, idempotency_key: 'idem-2' },
       sys: [2],
     })
   })
@@ -877,10 +886,11 @@ describe('System Notify', () => {
       task_id: 't1',
       url: notifyUrl('test.buckyos.io', 'nt-1'),
     }
-    const msg = { from: 'did:bns:zone', content: { content: 'Which one?', machine: { intent: 'buckyos.notify', data } } }
+    const machineData = data as unknown as Record<string, CanonValue>
+    const msg: MsgObject = { ...TEXT_MSG, kind: 'notify', content: { content: 'Which one?', machine: { intent: 'buckyos.notify', data: machineData } } }
     expect(notifyMessageData(msg)).toEqual(data)
-    expect(notifyMessageData({ content: { machine: { intent: 'buckyos.notify.delivered', data } } })).toBeNull()
-    expect(notifyMessageData({ content: { content: 'plain' } })).toBeNull()
+    expect(notifyMessageData({ ...msg, content: { machine: { intent: 'buckyos.notify.delivered', data: machineData } } })).toBeNull()
+    expect(notifyMessageData({ ...msg, content: { content: 'plain' } })).toBeNull()
     expect(notifyMessageData(null)).toBeNull()
   })
 

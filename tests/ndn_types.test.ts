@@ -9,10 +9,10 @@ import { NDN_TYPES_TEST_CASES, defaultTap } from './ndn_types_cases'
 
 describe('ndn_types (shared cases)', () => {
     for (const c of NDN_TYPES_TEST_CASES) {
-        it(c.name, () => {
+        it(c.name, async () => {
             // Run via the default tap (throws Error on failure). Jest will
             // surface the thrown error as the test failure with our message.
-            c.run(defaultTap)
+            await c.run(defaultTap)
         })
     }
 })

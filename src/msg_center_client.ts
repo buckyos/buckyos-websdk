@@ -7,6 +7,7 @@ import {
   taskMgrErrorCode,
   taskMgrTaskEventPath,
 } from './task_mgr_client'
+import type { MsgObject } from './ndn_types'
 import type {
   CommitResultReq,
   HumanPromptControl,
@@ -28,7 +29,7 @@ export const UI_SESSION_PLATFORM_TELEGRAM = 'tg'
 export type DID = string
 export type ObjId = string
 export type JsonObject = Record<string, unknown>
-export type MsgObject = JsonObject
+export type { MsgObject }
 
 export type MailboxKind = 'INBOX' | 'SENT' | 'GROUP_INBOX' | 'REQUEST_BOX'
 export type RecipientState = 'UNREAD' | 'READING' | 'READ' | 'ARCHIVED' | 'DELETED'
@@ -1399,11 +1400,9 @@ export function notifyUrl(zoneHost: string | null | undefined, notifyId: string)
 
 /** The `content.machine.data` of a message, when it carries `intent`. */
 export function msgMachineData<T = JsonObject>(msg: MsgObject | null | undefined, intent: string): T | null {
-  const content = msg?.content
-  if (!content || typeof content !== 'object') return null
-  const machine = (content as JsonObject).machine
-  if (!machine || typeof machine !== 'object' || (machine as JsonObject).intent !== intent) return null
-  const data = (machine as JsonObject).data
+  const machine = msg?.content?.machine
+  if (!machine || typeof machine !== 'object' || machine.intent !== intent) return null
+  const data = machine.data
   return data && typeof data === 'object' && !Array.isArray(data) ? data as T : null
 }
 

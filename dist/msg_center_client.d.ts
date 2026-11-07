@@ -1,5 +1,6 @@
 import { kRPCClient } from './krpc_client';
 import type { KEventClient } from './kevent_client';
+import type { MsgObject } from './ndn_types';
 import type { CommitResultReq, HumanPromptOption, HumanTaskPrompt, Task, TaskDataResult } from './task_mgr_client';
 export declare const MSG_CENTER_SERVICE_UNIQUE_ID = "msg-center";
 export declare const MSG_CENTER_SERVICE_NAME = "msg-center";
@@ -11,7 +12,7 @@ export declare const UI_SESSION_PLATFORM_TELEGRAM = "tg";
 export type DID = string;
 export type ObjId = string;
 export type JsonObject = Record<string, unknown>;
-export type MsgObject = JsonObject;
+export type { MsgObject };
 export type MailboxKind = 'INBOX' | 'SENT' | 'GROUP_INBOX' | 'REQUEST_BOX';
 export type RecipientState = 'UNREAD' | 'READING' | 'READ' | 'ARCHIVED' | 'DELETED';
 export type DeliveryState = 'WAIT' | 'SENDING' | 'SENT' | 'FAILED' | 'DEAD';

@@ -100,6 +100,12 @@ Authorization: Bearer <当前用户的应用 session>
 
 `sessionToken` 缺省从活动 runtime 获取，TUS 每个 chunk 重新获取；显式 `null` 使用 cookies。`headers` 同时传给元数据请求与 TUS，适用于同源业务代理的额外身份头；SDK session 的 Authorization 优先。Node/Deno 在无 XMLHttpRequest 时使用 fetch HTTP adapter，浏览器保留 TUS 默认 HTTP stack，两者复用相同 TUS 传输引擎。请求不自动切换到 AppService/管理员身份。低层 `ndm` 的 structured `/store/*` API 保留原有 runtime 限制；浏览器统一导入通过受认证的 finalize 入口。
 
+## 常用 meta
+
+导入时先用 `ndn.probeFileMeta` 从字节读出 `cyfile` 的常用 meta（《CYFS 标准对象》§10.1：`mime`、尺寸、时长、编码、音频标签、拍摄时间、位置、相机、曝光），再构造 FileObject，所以 ObjId 和登记的 `obj_data` 都带它们，QCID 命中时也一样。畸形文件只会缺字段，不会让导入失败。`ImportedFileObject.mimeType` 就是探测结果里的 `mime`，不再是 `file.type`。
+
+调用方已经有探测结果时，用选项 `fileMeta: (file) => meta` 传入：带 `mime` 就不再探测，不带 `mime` 就合并到探测结果之上（图片转码后用它保留原文件的 EXIF）。
+
 ## 两种消费结果
 
 - 内容业务：消费 ready 的 `FileObject` / `DirObject` ID，完成业务授权、引用和 retention；SDK 不替应用发送消息或发布记录。

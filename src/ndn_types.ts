@@ -8,6 +8,9 @@
 //   - SimpleObjectMap / SimpleMapItem / DirObject
 //   - SimpleChunkList
 //   - RelationObject
+//   - MsgObject v2 / ReceiptObj (msgobj.rs), ActionObject (action_obj.rs)
+//   - PackageMeta (package-lib/src/meta.rs)
+//   - JWT form of a NamedObject (object.rs) and dispatch encoding (cyfs_http.rs)
 //
 // The canonical JSON form (RFC 8785 / JCS) and SHA-256-based ObjId derivation
 // are the same as the Rust implementation, so ObjIds generated here are
@@ -15,6 +18,13 @@
 
 import jsSHA from 'jssha'
 import canonicalize from 'canonicalize'
+import {
+    DID as DidValue,
+    decodeJwtClaimWithoutVerify,
+    decodeJwtHeaderWithoutVerify,
+    verifyJwtEdDSA,
+} from './namelib'
+import type { Ed25519Jwk } from './types'
 
 // ============================================================
 // Errors
@@ -57,26 +67,16 @@ export class NdnError extends Error {
 export const OBJ_TYPE_FILE = 'cyfile'
 export const OBJ_TYPE_DIR = 'cydir'
 export const OBJ_TYPE_MSG = 'cymsg'
-export const OBJ_TYPE_MSG_RECE = 'cymsgr'
+export const OBJ_TYPE_RECEIPT = 'cyrece'
 export const OBJ_TYPE_PATH = 'cypath'
 export const OBJ_TYPE_INCLUSION_PROOF = 'cyinc'
 export const OBJ_TYPE_RELATION = 'cyrel'
 export const OBJ_TYPE_ACTION = 'cyact'
 export const OBJ_TYPE_PACK = 'cypack'
 
-export const OBJ_TYPE_TRIE = 'cytrie'
-export const OBJ_TYPE_TRIE_SIMPLE = 'cytrie-s'
-
-export const OBJ_TYPE_OBJMAP = 'cymap-mtp'
-export const OBJ_TYPE_OBJMAP_SIMPLE = 'cymap'
-
-export const OBJ_TYPE_LIST = 'cylist-mtree'
-export const OBJ_TYPE_LIST_SIMPLE = 'cylist'
-
-export const OBJ_TYPE_CHUNK_LIST = 'cl'
-export const OBJ_TYPE_CHUNK_LIST_SIMPLE = 'clist'
-export const OBJ_TYPE_CHUNK_LIST_FIX_SIZE = 'clist-fix'
-export const OBJ_TYPE_CHUNK_LIST_SIMPLE_FIX_SIZE = 'cl-sf'
+export const OBJ_TYPE_OBJMAP = 'cymap'
+export const OBJ_TYPE_LIST = 'cylist'
+export const OBJ_TYPE_CHUNK_LIST = 'clist'
 
 export const OBJ_TYPE_PKG = 'pkg'
 
@@ -263,6 +263,16 @@ function assertValidJcsPrimitive(value: unknown): void {
     }
 }
 
+// A plain assignment to `__proto__` would change the prototype and drop the
+// key, so the ObjId of a JSON value carrying it would differ from Rust's.
+function setOwnJsonField(target: Record<string, unknown>, key: string, value: unknown): void {
+    if (key === '__proto__') {
+        Object.defineProperty(target, key, { value, enumerable: true, writable: true, configurable: true })
+    } else {
+        target[key] = value
+    }
+}
+
 /**
  * Recursively sort object keys (BTreeMap-like) while validating that the
  * value is representable as I-JSON/JCS input. Arrays preserve order.
@@ -284,7 +294,7 @@ export function canonicalizeJson(value: any): any {
     const result: Record<string, any> = {}
     for (const k of keys) {
         ensureValidJcsString(k)
-        result[k] = canonicalizeJson(value[k])
+        setOwnJsonField(result, k, canonicalizeJson(value[k]))
     }
     return result
 }
@@ -560,7 +570,7 @@ export class ObjId {
     }
 
     isChunkList(): boolean {
-        return this.objType === OBJ_TYPE_CHUNK_LIST_SIMPLE
+        return this.objType === OBJ_TYPE_CHUNK_LIST
     }
 
     isJson(): boolean {
@@ -579,16 +589,9 @@ export class ObjId {
     isContainer(): boolean {
         switch (this.objType) {
             case OBJ_TYPE_DIR:
-            case OBJ_TYPE_TRIE:
-            case OBJ_TYPE_TRIE_SIMPLE:
             case OBJ_TYPE_OBJMAP:
-            case OBJ_TYPE_OBJMAP_SIMPLE:
             case OBJ_TYPE_LIST:
-            case OBJ_TYPE_LIST_SIMPLE:
             case OBJ_TYPE_CHUNK_LIST:
-            case OBJ_TYPE_CHUNK_LIST_SIMPLE:
-            case OBJ_TYPE_CHUNK_LIST_FIX_SIZE:
-            case OBJ_TYPE_CHUNK_LIST_SIMPLE_FIX_SIZE:
                 return true
             default:
                 return false
@@ -597,11 +600,9 @@ export class ObjId {
 
     isBigContainer(): boolean {
         switch (this.objType) {
-            case OBJ_TYPE_TRIE:
             case OBJ_TYPE_OBJMAP:
             case OBJ_TYPE_LIST:
             case OBJ_TYPE_CHUNK_LIST:
-            case OBJ_TYPE_CHUNK_LIST_FIX_SIZE:
                 return true
             default:
                 return false
@@ -834,23 +835,46 @@ export function verifyNamedObjectFromStr(objId: ObjId, objStr: string): unknown 
     return parsed
 }
 
+// `char::is_whitespace` of Rust. JS `trim()` differs: it also strips U+FEFF and
+// keeps U+0085.
+const RUST_WHITESPACE = '\\u0009-\\u000d\\u0020\\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000'
+const RUST_LEADING_WHITESPACE = new RegExp(`^[${RUST_WHITESPACE}]+`)
+const RUST_SURROUNDING_WHITESPACE = new RegExp(`^[${RUST_WHITESPACE}]|[${RUST_WHITESPACE}]$`)
+
+function decodeJwtClaims(jwt: string): unknown {
+    try {
+        return decodeJwtClaimWithoutVerify(jwt)
+    } catch (e) {
+        throw new NdnError('DecodeError', `decode jwt failed: ${(e as Error).message}`)
+    }
+}
+
 /**
- * Parse an obj-data-string. The Rust version also accepts JWT, but here we
- * just look at whether the string starts with `{`. JWT decoding is left to
- * the caller (it depends on signature verification anyway).
+ * Parse an obj-data-string: JSON when it starts with `{` or `[` after leading
+ * whitespace, otherwise a JWT whose claims are the object. The JWT signature
+ * is not checked.
  */
 export function loadNamedObjectFromObjStr(objStr: string): unknown {
-    if (objStr.indexOf('{') >= 0) {
+    const head = objStr.replace(RUST_LEADING_WHITESPACE, '')
+    if (head.startsWith('{') || head.startsWith('[')) {
         try {
             return JSON.parse(objStr)
         } catch (e) {
             throw new NdnError('InvalidId', `failed to parse obj_str: ${(e as Error).message}`)
         }
     }
-    throw new NdnError(
-        'Unsupported',
-        'JWT-encoded named objects are not supported in this TypeScript port',
-    )
+    return decodeJwtClaims(objStr)
+}
+
+/** ObjId of a NamedObject in JWT form, computed from the claims only. */
+export function buildNamedObjectByJwt(objType: string, jwt: string): [ObjId, string] {
+    return buildNamedObjectByJson(objType, decodeJwtClaims(jwt))
+}
+
+/** Whether the claims of `jwt` hash to `objId`. The JWT signature is not checked. */
+export function verifyNamedObjectFromJwt(objId: ObjId, jwt: string): boolean {
+    const [actual] = buildNamedObjectByJwt(objId.objType, jwt)
+    return objId.equals(actual)
 }
 
 export function loadNamedObj<T = unknown>(objStr: string): T {
@@ -1042,25 +1066,29 @@ export class FileObject extends NamedObjectBase {
 
 export class PathObject extends NamedObjectBase {
     public path: string
-    public uptime: number
+    public iat: number
     public target: ObjId
     public exp: number
+    /** Host the JWT was issued for; omitted when there is none. */
+    public host?: string
 
-    constructor(path: string, target: ObjId, uptime?: number, exp?: number) {
+    constructor(path: string, target: ObjId, iat?: number, exp?: number, host?: string) {
         super()
         const now = nowSeconds()
         this.path = path
         this.target = target
-        this.uptime = uptime ?? now
+        this.iat = iat ?? now
         this.exp = exp ?? now + 3600 * 24 * 365 * 3
+        this.host = host
     }
 
     static fromJSON(value: Record<string, unknown>): PathObject {
         const path = String(value.path ?? '')
         const target = ObjId.fromString(String(value.target ?? ''))
-        const uptime = Number(value.uptime ?? 0)
+        const iat = Number(value.iat ?? 0)
         const exp = Number(value.exp ?? 0)
-        return new PathObject(path, target, uptime, exp)
+        const host = typeof value.host === 'string' ? value.host : undefined
+        return new PathObject(path, target, iat, exp, host)
     }
 
     getObjType(): string {
@@ -1068,12 +1096,14 @@ export class PathObject extends NamedObjectBase {
     }
 
     toJSON(): Record<string, unknown> {
-        return {
+        const out: Record<string, unknown> = {
             path: this.path,
-            uptime: this.uptime,
+            iat: this.iat,
             target: this.target.toString(),
             exp: this.exp,
         }
+        if (this.host != null) out.host = this.host
+        return out
     }
 }
 
@@ -1210,10 +1240,7 @@ export const SimpleMapItem = {
             case 'object':
                 return buildNamedObjectByJson(item.objType, item.obj)
             case 'objectJwt':
-                throw new NdnError(
-                    'Unsupported',
-                    'JWT-encoded SimpleMapItem requires JWT decoding (not implemented in TS port)',
-                )
+                return buildNamedObjectByJwt(item.objType, item.jwt)
         }
     },
 
@@ -1565,11 +1592,11 @@ export class SimpleChunkList {
     genObjId(): [ObjId, string] {
         const bodyJson = this.body.map(c => c.toString())
         const [innerObjId, objStr] = buildNamedObjectByJson(
-            OBJ_TYPE_CHUNK_LIST_SIMPLE,
+            OBJ_TYPE_CHUNK_LIST,
             bodyJson,
         )
         const mixed = ChunkId.mixLengthAndHashResult(this.total_size, innerObjId.objHash)
-        const resultId = ObjId.fromRaw(OBJ_TYPE_CHUNK_LIST_SIMPLE, mixed)
+        const resultId = ObjId.fromRaw(OBJ_TYPE_CHUNK_LIST, mixed)
         return [resultId, objStr]
     }
 }
@@ -1686,6 +1713,730 @@ export class RelationObject extends NamedObjectBase {
 }
 
 // ============================================================
+// Strict decoding helpers: serde rules of the Rust structs
+// ============================================================
+//
+// Used by the `*FromJson` functions. Optional fields follow `Option<T>`:
+// missing and `null` both mean absent, so a `null` input re-serializes without
+// the key. Unknown keys of nested structs are dropped, as serde does.
+
+function decodeError(field: string, expected: string): NdnError {
+    return new NdnError('DecodeError', `${field} must be ${expected}`)
+}
+
+function decodeRecord(value: unknown, field: string): Record<string, unknown> {
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+        throw decodeError(field, 'an object')
+    }
+    return value as Record<string, unknown>
+}
+
+function decodeString(value: unknown, field: string): string {
+    if (typeof value !== 'string') throw decodeError(field, 'a string')
+    return value
+}
+
+/**
+ * u64 in Rust, but JSON.parse loses precision above 2^53 and would produce a
+ * wrong ObjId, so an unsafe integer is an error here rather than a silent
+ * rounding.
+ */
+function decodeU64(value: unknown, field: string): number {
+    if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) {
+        throw decodeError(field, 'a non-negative safe integer')
+    }
+    return value
+}
+
+function decodeObjIdString(value: unknown, field: string): string {
+    const text = decodeString(value, field)
+    try {
+        return ObjId.fromString(text).toString()
+    } catch (e) {
+        throw decodeError(field, `an ObjId (${(e as Error).message})`)
+    }
+}
+
+/** `did:method:id`. Rust also takes a host name, but it re-serializes differently. */
+function decodeDid(value: unknown, field: string): string {
+    const text = decodeString(value, field)
+    const parts = text.split(':')
+    if (parts.length < 3 || parts[0] !== 'did') throw decodeError(field, 'a did:method:id')
+    return text
+}
+
+function decodeOneOf<T extends string>(values: readonly T[], value: unknown, field: string): T {
+    if (typeof value !== 'string' || !(values as readonly string[]).includes(value)) {
+        throw decodeError(field, `one of ${values.join(', ')}`)
+    }
+    return value as T
+}
+
+function decodeArray<T>(
+    value: unknown,
+    field: string,
+    decode: (item: unknown, field: string) => T,
+): T[] {
+    if (!Array.isArray(value)) throw decodeError(field, 'an array')
+    return value.map((item, index) => decode(item, `${field}[${index}]`))
+}
+
+function decodeOptional<T>(
+    value: unknown,
+    field: string,
+    decode: (value: unknown, field: string) => T,
+): T | undefined {
+    return value === undefined || value === null ? undefined : decode(value, field)
+}
+
+function omitUndefined<T extends object>(value: T): T {
+    const out: Record<string, unknown> = {}
+    for (const [key, item] of Object.entries(value)) {
+        if (item !== undefined) setOwnJsonField(out, key, item)
+    }
+    return out as T
+}
+
+// ============================================================
+// MsgObject v2 (from msgobj.rs, `CYFS 标准对象` §16)
+// ============================================================
+
+export type MsgObjKind = 'chat' | 'group_msg' | 'deliver' | 'notify' | 'event' | 'operation'
+
+const MSG_OBJ_KINDS: readonly MsgObjKind[] = ['chat', 'group_msg', 'deliver', 'notify', 'event', 'operation']
+
+/** MIME-based. Unlisted values are kept verbatim. */
+export type MsgContentFormat =
+    | 'text/plain'
+    | 'text/markdown'
+    | 'text/html'
+    | 'text/css'
+    | 'text/xml'
+    | 'image/png'
+    | 'image/jpeg'
+    | 'image/gif'
+    | 'image/webp'
+    | 'image/svg+xml'
+    | 'image/bmp'
+    | 'video/mp4'
+    | 'video/webm'
+    | 'video/ogg'
+    | 'video/quicktime'
+    | 'video/x-msvideo'
+    | 'audio/mpeg'
+    | 'audio/wav'
+    | 'audio/ogg'
+    | 'audio/webm'
+    | 'audio/aac'
+    | 'audio/flac'
+    | 'application/json'
+    | 'application/xml'
+    | 'application/pdf'
+    | 'application/zip'
+    | 'application/octet-stream'
+    | (string & {})
+
+// Rust reads these as the standard value, so an input that uses one is not canonical.
+const MSG_CONTENT_FORMAT_ALIASES = new Map<string, string>([
+    ['image/jpg', 'image/jpeg'],
+    ['image/svg', 'image/svg+xml'],
+    ['video/avi', 'video/x-msvideo'],
+    ['audio/mp3', 'audio/mpeg'],
+    ['audio/x-wav', 'audio/wav'],
+])
+
+/**
+ * Semantic hints only. `topic` may help to label a conversation but is never
+ * a routing key: the target session is `MsgObject.to_session`.
+ */
+export interface TopicThread {
+    topic?: string
+    reply_to?: string
+    correlation_id?: string
+}
+
+/**
+ * Relation kind of a relation message (§16.3). Unknown values are kept
+ * verbatim; a receiver shows such a message as a plain one.
+ */
+export type MsgRelType = 'edit' | 'redact' | 'reaction' | 'thread' | (string & {})
+
+const MSG_KNOWN_REL_TYPES: readonly string[] = ['edit', 'redact', 'reaction', 'thread']
+
+/**
+ * `relates_to`: this message edits / redacts / reacts to / joins the thread
+ * of another `cymsg`. The original message is never modified.
+ */
+export interface MsgRelation {
+    rel: MsgRelType
+    /** The related message, always a `cymsg` ObjId. */
+    target: string
+    /** Only for `reaction`: the reaction content (1-64 bytes), e.g. one emoji. */
+    key?: string
+}
+
+/**
+ * Structured mentions; notification semantics come only from this field,
+ * never from `@` text in the body. Omit the whole field when it is empty:
+ * `{}` is not a canonical value and is rejected.
+ */
+export interface MsgMentions {
+    dids?: DID[]
+    /** Mentions every participant of the target session. */
+    all?: boolean
+}
+
+export type CanonValue =
+    | null
+    | boolean
+    | number
+    | string
+    | number[]
+    | CanonValue[]
+    | { [key: string]: CanonValue }
+
+export interface MachineContent {
+    intent?: string
+    data?: Record<string, CanonValue>
+}
+
+export type RefTarget =
+    | { type: 'data_obj'; obj_id: string; uri_hint?: string }
+    | { type: 'service_did'; did: DID }
+
+export type RefRole = 'context' | 'input' | 'output' | 'evidence' | 'control'
+
+const REF_ROLES: readonly RefRole[] = ['context', 'input', 'output', 'evidence', 'control']
+
+export interface RefItem {
+    role: RefRole
+    target: RefTarget
+    label?: string
+}
+
+export interface MsgContent {
+    title?: string
+    format?: MsgContentFormat
+    content?: string
+    machine?: MachineContent
+    refs?: RefItem[]
+}
+
+/**
+ * Immutable message object. Rust flattens `meta` into the top level, so unknown
+ * keys are allowed here on purpose. `proof` is reserved since v2 (a signed
+ * message travels in the JWT form instead) and must never be set.
+ *
+ * Deserialization stays lenient so stored records always load: call
+ * `validateMsgObject` or `msgObjectFromJsonChecked` at an ingress.
+ */
+export interface MsgObject {
+    from: DID
+    to: DID[]
+    kind: MsgObjKind
+    /**
+     * Named session under the single target entity (`to[0]/to_session`).
+     * Omitted means the default session. Only valid when `to` has exactly one
+     * DID; the value follows `isValidMsgSessionId`.
+     */
+    to_session?: string
+    thread?: TopicThread
+    relates_to?: MsgRelation
+    /** Omitted when empty, never `{}`. */
+    mentions?: MsgMentions
+    workspace?: DID
+    /** Sender-declared creation time, for display only. A checked object may omit it when it is 0. */
+    created_at_ms: number
+    expires_at_ms?: number
+    /** Random per message (`randomMsgNonce`) so identical messages keep distinct ObjIds. */
+    nonce?: number
+    content: MsgContent
+    [key: string]: unknown
+}
+
+/** Top-level keys that the flattened `meta` must not use. */
+export const MSG_OBJECT_RESERVED_KEYS: readonly string[] = [
+    'from',
+    'to',
+    'kind',
+    'to_session',
+    'thread',
+    'relates_to',
+    'mentions',
+    'workspace',
+    'created_at_ms',
+    'expires_at_ms',
+    'nonce',
+    'content',
+    'proof',
+]
+
+/** Max char length of `to_session`, same as the MailboxAddress session part. */
+export const MSG_SESSION_ID_MAX_CHARS = 200
+
+export const MSG_REACTION_KEY_MAX_BYTES = 64
+
+/**
+ * `to_session` value rule (`validate_msg_session_id`): 1-200 chars, no
+ * surrounding whitespace, no control chars, not `.` / `..`.
+ */
+export function isValidMsgSessionId(value: string): boolean {
+    if (!value || value === '.' || value === '..' || RUST_SURROUNDING_WHITESPACE.test(value)) return false
+    let chars = 0
+    for (const char of value) {
+        const code = char.codePointAt(0) ?? 0
+        if (code <= 0x1f || (code >= 0x7f && code <= 0x9f)) return false
+        chars += 1
+    }
+    return chars <= MSG_SESSION_ID_MAX_CHARS
+}
+
+/**
+ * Random `nonce` for one outgoing message (§16.6): deduplication is by ObjId,
+ * so two identical messages must not collapse into one. Kept below 2^53 so it
+ * stays a safe integer in JS and round-trips through JSON unchanged.
+ */
+export function randomMsgNonce(): number {
+    const [high, low] = crypto.getRandomValues(new Uint32Array(2))
+    return (high & 0x1f_ffff) * 0x1_0000_0000 + low
+}
+
+/** Object-level validity rules of §16. Throws `NdnError('InvalidData')` on a violation. */
+export function validateMsgObject(msg: MsgObject): void {
+    const session = msg.to_session
+    if (session !== undefined && session !== null) {
+        if (!isValidMsgSessionId(session)) {
+            throw new NdnError('InvalidData', `invalid msg to_session: ${JSON.stringify(session)}`)
+        }
+        if (msg.to.length !== 1) {
+            throw new NdnError('InvalidData', 'msg.to_session requires exactly one msg.to')
+        }
+    }
+    const mentions = msg.mentions
+    if (mentions !== undefined && mentions !== null && !mentions.dids?.length && mentions.all !== true) {
+        throw new NdnError('InvalidData', 'msg.mentions must be omitted when empty')
+    }
+    const relation = msg.relates_to
+    if (relation !== undefined && relation !== null) {
+        if (ObjId.fromString(relation.target).objType !== OBJ_TYPE_MSG) {
+            throw new NdnError('InvalidData', `msg.relates_to.target must be a ${OBJ_TYPE_MSG} object`)
+        }
+        const key = relation.key ?? undefined
+        if (relation.rel === 'reaction') {
+            if (key === undefined) {
+                throw new NdnError('InvalidData', 'reaction requires msg.relates_to.key')
+            }
+            const bytes = utf8Encode(key).length
+            if (bytes === 0 || bytes > MSG_REACTION_KEY_MAX_BYTES) {
+                throw new NdnError('InvalidData', `msg.relates_to.key must be 1-${MSG_REACTION_KEY_MAX_BYTES} bytes`)
+            }
+        } else if (MSG_KNOWN_REL_TYPES.includes(relation.rel) && key !== undefined) {
+            throw new NdnError('InvalidData', 'msg.relates_to.key is only allowed for reaction')
+        }
+    }
+    // `meta` is flat here, so the declared fields cannot land in it: of the
+    // reserved keys only `proof` can ever be seen.
+    if (msg.proof !== undefined) {
+        throw new NdnError('InvalidData', "msg meta key 'proof' is reserved")
+    }
+}
+
+function decodeTopicThread(value: unknown, field: string): TopicThread {
+    const raw = decodeRecord(value, field)
+    return omitUndefined({
+        topic: decodeOptional(raw.topic, `${field}.topic`, decodeString),
+        reply_to: decodeOptional(raw.reply_to, `${field}.reply_to`, decodeObjIdString),
+        correlation_id: decodeOptional(raw.correlation_id, `${field}.correlation_id`, decodeString),
+    })
+}
+
+function decodeMsgRelation(value: unknown, field: string): MsgRelation {
+    const raw = decodeRecord(value, field)
+    return omitUndefined({
+        rel: decodeString(raw.rel, `${field}.rel`),
+        target: decodeObjIdString(raw.target, `${field}.target`),
+        key: decodeOptional(raw.key, `${field}.key`, decodeString),
+    })
+}
+
+function decodeMsgMentions(value: unknown, field: string): MsgMentions {
+    const raw = decodeRecord(value, field)
+    const dids = raw.dids === undefined ? [] : decodeArray(raw.dids, `${field}.dids`, decodeDid)
+    if (raw.all !== undefined && typeof raw.all !== 'boolean') throw decodeError(`${field}.all`, 'a boolean')
+    return omitUndefined({
+        dids: dids.length > 0 ? dids : undefined,
+        all: raw.all === true ? true : undefined,
+    })
+}
+
+function decodeMachineContent(value: unknown, field: string): MachineContent {
+    const raw = decodeRecord(value, field)
+    const data = raw.data === undefined ? {} : decodeRecord(raw.data, `${field}.data`)
+    return omitUndefined({
+        intent: decodeOptional(raw.intent, `${field}.intent`, decodeString),
+        data: Object.keys(data).length > 0 ? data as Record<string, CanonValue> : undefined,
+    })
+}
+
+function decodeRefTarget(value: unknown, field: string): RefTarget {
+    const raw = decodeRecord(value, field)
+    switch (raw.type) {
+        case 'data_obj':
+            return omitUndefined({
+                type: 'data_obj' as const,
+                obj_id: decodeObjIdString(raw.obj_id, `${field}.obj_id`),
+                uri_hint: decodeOptional(raw.uri_hint, `${field}.uri_hint`, decodeString),
+            })
+        case 'service_did':
+            return { type: 'service_did', did: decodeDid(raw.did, `${field}.did`) }
+        default:
+            throw decodeError(`${field}.type`, 'data_obj or service_did')
+    }
+}
+
+function decodeRefItem(value: unknown, field: string): RefItem {
+    const raw = decodeRecord(value, field)
+    return omitUndefined({
+        role: decodeOneOf(REF_ROLES, raw.role, `${field}.role`),
+        target: decodeRefTarget(raw.target, `${field}.target`),
+        label: decodeOptional(raw.label, `${field}.label`, decodeString),
+    })
+}
+
+function decodeMsgContentFormat(value: unknown, field: string): MsgContentFormat {
+    const format = decodeString(value, field)
+    return MSG_CONTENT_FORMAT_ALIASES.get(format) ?? format
+}
+
+function decodeMsgContent(value: unknown, field: string): MsgContent {
+    const raw = decodeRecord(value, field)
+    const body = raw.content === undefined ? '' : decodeString(raw.content, `${field}.content`)
+    const refs = raw.refs === undefined ? [] : decodeArray(raw.refs, `${field}.refs`, decodeRefItem)
+    return omitUndefined({
+        title: decodeOptional(raw.title, `${field}.title`, decodeString),
+        format: decodeOptional(raw.format, `${field}.format`, decodeMsgContentFormat),
+        content: body.length > 0 ? body : undefined,
+        machine: decodeOptional(raw.machine, `${field}.machine`, decodeMachineContent),
+        refs: refs.length > 0 ? refs : undefined,
+    })
+}
+
+const MSG_DECLARED_KEYS = new Set(MSG_OBJECT_RESERVED_KEYS.filter(key => key !== 'proof'))
+
+// The value serde would re-serialize: defaults dropped, aliases resolved.
+function decodeMsgObject(value: unknown): MsgObject {
+    const raw = decodeRecord(value, 'MsgObject')
+    const thread = raw.thread === undefined ? {} : decodeTopicThread(raw.thread, 'MsgObject.thread')
+    const createdAt = raw.created_at_ms === undefined ? 0 : decodeU64(raw.created_at_ms, 'MsgObject.created_at_ms')
+    const msg = omitUndefined({
+        from: decodeDid(raw.from, 'MsgObject.from'),
+        to: decodeArray(raw.to, 'MsgObject.to', decodeDid),
+        kind: decodeOneOf(MSG_OBJ_KINDS, raw.kind, 'MsgObject.kind'),
+        to_session: decodeOptional(raw.to_session, 'MsgObject.to_session', decodeString),
+        thread: Object.keys(thread).length > 0 ? thread : undefined,
+        relates_to: decodeOptional(raw.relates_to, 'MsgObject.relates_to', decodeMsgRelation),
+        mentions: decodeOptional(raw.mentions, 'MsgObject.mentions', decodeMsgMentions),
+        workspace: decodeOptional(raw.workspace, 'MsgObject.workspace', decodeDid),
+        created_at_ms: createdAt !== 0 ? createdAt : undefined,
+        expires_at_ms: decodeOptional(raw.expires_at_ms, 'MsgObject.expires_at_ms', decodeU64),
+        nonce: decodeOptional(raw.nonce, 'MsgObject.nonce', decodeU64),
+        content: decodeMsgContent(raw.content, 'MsgObject.content'),
+    }) as MsgObject
+    for (const [key, item] of Object.entries(raw)) {
+        if (!MSG_DECLARED_KEYS.has(key)) setOwnJsonField(msg, key, item)
+    }
+    return msg
+}
+
+/**
+ * Parse a received MsgObject JSON (or JWT claims), validate it and make sure it
+ * re-serializes to the same canonical JSON. Returns the normalized object and
+ * the ObjId computed from `value` itself.
+ */
+export function msgObjectFromJsonChecked(value: unknown): [MsgObject, ObjId] {
+    const [objId] = buildNamedObjectByJson(OBJ_TYPE_MSG, value)
+    const msg = decodeMsgObject(value)
+    validateMsgObject(msg)
+    const [normalizedId] = buildNamedObjectByJson(OBJ_TYPE_MSG, msg)
+    if (!normalizedId.equals(objId)) {
+        throw new NdnError('InvalidData', 'MsgObject JSON is not in canonical form')
+    }
+    return [msg, objId]
+}
+
+/** A MsgObject received in JWT form. */
+export interface MsgObjectJwt {
+    msg: MsgObject
+    objId: ObjId
+    /** `kid` of the JWT header: DID URL of the signing key. */
+    kid: string
+}
+
+/**
+ * DID part of a `kid` (before `#`). It must equal `msg.from`, unless the
+ * receiver resolves it as a device/agent key authorized by `from`'s DID
+ * Document.
+ */
+export function msgJwtKidDid(kid: string): DID | null {
+    const did = kid.split('#')[0]
+    if (did === 'did' || did.startsWith('did:') && did.split(':').length < 3) return null
+    try {
+        return DidValue.fromStr(did).toString()
+    } catch {
+        return null
+    }
+}
+
+function decodeMsgJwtHeader(jwt: string): string {
+    let header: unknown
+    try {
+        header = decodeJwtHeaderWithoutVerify(jwt)
+    } catch (e) {
+        throw new NdnError('DecodeError', `decode msg jwt header failed: ${(e as Error).message}`)
+    }
+    const { alg, kid } = decodeRecord(header, 'msg jwt header')
+    if (alg !== 'EdDSA') {
+        throw new NdnError('InvalidData', `msg jwt alg must be EdDSA, got ${String(alg)}`)
+    }
+    if (typeof kid !== 'string' || kid.length === 0) {
+        throw new NdnError('InvalidData', 'msg jwt header requires kid')
+    }
+    return kid
+}
+
+/**
+ * Decode a MsgObject JWT without checking the signature. Use only where the
+ * signature is not relied upon (e.g. display); see `verifyMsgObjectJwt`.
+ */
+export function decodeMsgObjectJwt(jwt: string): MsgObjectJwt {
+    const kid = decodeMsgJwtHeader(jwt)
+    const [msg, objId] = msgObjectFromJsonChecked(decodeJwtClaims(jwt))
+    return { msg, objId, kid }
+}
+
+/**
+ * Verify the JWT signature with the public key the receiver resolved for `kid`,
+ * then decode it. The caller still has to make sure that key belongs to
+ * `msg.from` (see `msgJwtKidDid`).
+ */
+export async function verifyMsgObjectJwt(jwt: string, publicKey: Ed25519Jwk): Promise<MsgObjectJwt> {
+    const kid = decodeMsgJwtHeader(jwt)
+    let claims: unknown
+    try {
+        claims = await verifyJwtEdDSA(jwt, publicKey)
+    } catch (e) {
+        throw new NdnError('VerifyError', `verify msg jwt failed: ${(e as Error).message}`)
+    }
+    const [msg, objId] = msgObjectFromJsonChecked(claims)
+    return { msg, objId, kid }
+}
+
+// ============================================================
+// ReceiptObj (from msgobj.rs, `CYFS 标准对象` §17)
+// ============================================================
+
+export type ReceiptStatus = 'accepted' | 'rejected' | 'quarantined'
+
+const RECEIPT_STATUSES: readonly ReceiptStatus[] = ['accepted', 'rejected', 'quarantined']
+
+/** Optional immutable delivery receipt. Not the `MsgReceiptObj` DTO of msg-center. */
+export interface ReceiptObj {
+    obj_id: string
+    iss: DID
+    channel?: string
+    iat: number
+    status: ReceiptStatus
+    reason?: string
+}
+
+/** Decode with the serde rules of the Rust struct; the result re-encodes to the same ObjId. */
+export function receiptObjFromJson(value: unknown): ReceiptObj {
+    const raw = decodeRecord(value, 'ReceiptObj')
+    return omitUndefined({
+        obj_id: decodeObjIdString(raw.obj_id, 'ReceiptObj.obj_id'),
+        iss: decodeDid(raw.iss, 'ReceiptObj.iss'),
+        channel: decodeOptional(raw.channel, 'ReceiptObj.channel', decodeString),
+        iat: decodeU64(raw.iat, 'ReceiptObj.iat'),
+        status: decodeOneOf(RECEIPT_STATUSES, raw.status, 'ReceiptObj.status'),
+        reason: decodeOptional(raw.reason, 'ReceiptObj.reason', decodeString),
+    })
+}
+
+// ============================================================
+// ActionObject (from action_obj.rs)
+// ============================================================
+
+export const ACTION_TYPE_VIEWED = 'viewed'
+export const ACTION_TYPE_DOWNLOAD = 'download'
+export const ACTION_TYPE_INSTALLED = 'installed'
+export const ACTION_TYPE_SHARED = 'shared'
+export const ACTION_TYPE_LIKED = 'liked'
+export const ACTION_TYPE_UNLIKED = 'unliked'
+export const ACTION_TYPE_PURCHASED = 'purchased'
+
+/** `subject` does `action` on `target`. */
+export interface ActionObject {
+    subject: string
+    action: string
+    target: string
+    /** The action this one is based on. */
+    base_on?: string
+    details?: unknown
+    iat: number
+    exp: number
+}
+
+/** Decode with the serde rules of the Rust struct; the result re-encodes to the same ObjId. */
+export function actionObjectFromJson(value: unknown): ActionObject {
+    const raw = decodeRecord(value, 'ActionObject')
+    return omitUndefined({
+        subject: decodeObjIdString(raw.subject, 'ActionObject.subject'),
+        action: decodeString(raw.action, 'ActionObject.action'),
+        target: decodeObjIdString(raw.target, 'ActionObject.target'),
+        base_on: decodeOptional(raw.base_on, 'ActionObject.base_on', decodeObjIdString),
+        details: raw.details ?? undefined,
+        iat: decodeU64(raw.iat, 'ActionObject.iat'),
+        exp: decodeU64(raw.exp, 'ActionObject.exp'),
+    })
+}
+
+// ============================================================
+// FileObjectJson / PackageMeta (plain JSON forms)
+// ============================================================
+
+/** `geo` of a `cyfile` (`CYFS 标准对象` §10), WGS84. */
+export interface FileGeoMeta {
+    lat: number
+    lon: number
+    alt?: number
+    heading?: number
+    accuracy_m?: number
+}
+
+export interface FileCameraMeta {
+    make?: string
+    model?: string
+    lens?: string
+}
+
+export interface FileExposureMeta {
+    iso?: number
+    f_number?: number
+    /** Reduced fraction such as `1/120`; whole seconds are written `2`. */
+    exposure_time?: string
+    focal_length_mm?: number
+    focal_length_35mm?: number
+}
+
+/** The common meta of a `cyfile` (`CYFS 标准对象` §10). A field that cannot be determined is omitted. */
+export interface FileMediaMeta {
+    /** Without parameters, never `application/octet-stream`. */
+    mime?: string
+    /** Display size, rotation already applied. */
+    width?: number
+    height?: number
+    duration_ms?: number
+    video_codec?: string
+    audio_codec?: string
+    title?: string
+    artist?: string
+    album?: string
+    /** ISO 8601. Without an offset the time zone is unknown: do not read it as UTC. */
+    captured_at?: string
+    geo?: FileGeoMeta
+    camera?: FileCameraMeta
+    exposure?: FileExposureMeta
+}
+
+/** A `cyfile` as plain JSON. Other meta keys are flattened next to these. */
+export interface FileObjectJson extends FileMediaMeta {
+    did?: DID
+    name?: string
+    author?: string
+    owner?: DID
+    create_time?: number
+    last_update_time?: number
+    copyright?: string
+    tags?: string[]
+    categories?: string[]
+    base_on?: string
+    directory?: Record<string, unknown>
+    references?: Record<string, unknown>
+    exp?: number
+    size?: number
+    /** Chunk id or chunk list id. */
+    content?: string
+    [key: string]: unknown
+}
+
+export interface PackageMeta extends FileObjectJson {
+    version: string
+    version_tag?: string
+    /** Package name -> version requirement, such as `>1.0.0-alpha`. */
+    deps?: Record<string, string>
+}
+
+// Normalize a pkg_meta JSON the way Rust PackageMeta serde round-trips it
+// before hashing (gen_obj_id): default-valued fields are dropped
+// (skip_serializing_if), unknown fields are preserved via flatten.
+export function normalizePackageMetaForObjId(meta: Record<string, any>): Record<string, any> {
+    const normalized: Record<string, any> = { ...meta }
+    const dropIf = (key: string, shouldDrop: (v: any) => boolean) => {
+        if (key in normalized && shouldDrop(normalized[key])) {
+            delete normalized[key]
+        }
+    }
+    // BaseContentObject
+    dropIf('did', v => v === null || v === undefined)
+    dropIf('name', v => v === '')
+    dropIf('author', v => v === '')
+    dropIf('owner', v => v === null || v === undefined || v === 'did:undefined:undefined')
+    dropIf('copyright', v => v === null || v === undefined)
+    dropIf('tags', v => Array.isArray(v) && v.length === 0)
+    dropIf('categories', v => Array.isArray(v) && v.length === 0)
+    dropIf('base_on', v => v === null || v === undefined)
+    dropIf('directory', v => v && typeof v === 'object' && Object.keys(v).length === 0)
+    dropIf('references', v => v && typeof v === 'object' && Object.keys(v).length === 0)
+    dropIf('exp', v => v === 0)
+    // FileObject
+    dropIf('size', v => v === 0)
+    dropIf('content', v => v === '')
+    // PackageMeta
+    dropIf('version_tag', v => v === null || v === undefined)
+    dropIf('deps', v => v && typeof v === 'object' && Object.keys(v).length === 0)
+    return normalized
+}
+
+// Compute the meta object id exactly like Rust PackageMeta::gen_obj_id().
+export function calcPkgMetaObjId(metaJson: Record<string, any>): string {
+    const normalized = normalizePackageMetaForObjId(metaJson)
+    const [objId] = buildNamedObjectByJson(OBJ_TYPE_PKG, normalized)
+    return objId.toString()
+}
+
+// ============================================================
+// Dispatch encoding (from cyfs_http.rs)
+// ============================================================
+
+export const CYFS_CONTENT_TYPE_NAMED_OBJECT_JSON = 'application/cyfs-named-object+json'
+/** Dispatch body is a compact JWT whose claims are the NamedObject. */
+export const CYFS_CONTENT_TYPE_NAMED_OBJECT_JWT = 'application/cyfs-named-object+jwt'
+
+export type CyfsNamedObjectEncoding = 'json' | 'jwt'
+
+/** Parse a `Content-Type` value. Parameters such as `charset=utf-8` are accepted. */
+export function namedObjectEncodingFromContentType(contentType: string): CyfsNamedObjectEncoding | null {
+    const mime = contentType.split(';')[0].trim().toLowerCase()
+    if (mime === CYFS_CONTENT_TYPE_NAMED_OBJECT_JSON) return 'json'
+    if (mime === CYFS_CONTENT_TYPE_NAMED_OBJECT_JWT) return 'jwt'
+    return null
+}
+
+export function isCyfsNamedObjectContentType(contentType: string): boolean {
+    return namedObjectEncodingFromContentType(contentType) !== null
+}
+
+// ============================================================
 // KnownStandardObject (from lib.rs)
 // ============================================================
 
@@ -1729,7 +2480,7 @@ export const KnownStandardObject = {
                     objStr: objData,
                 }
             }
-            case OBJ_TYPE_CHUNK_LIST_SIMPLE: {
+            case OBJ_TYPE_CHUNK_LIST: {
                 return {
                     kind: 'chunkList',
                     obj: SimpleChunkList.fromJson(objData),

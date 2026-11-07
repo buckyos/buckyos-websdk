@@ -57,7 +57,7 @@ import {
 } from './device_identity'
 import { IdentityRoots } from './cert'
 import { DEV_TEST_KEYS, DevTestKeyPair, getDevTestKeyPairById } from './dev_test_keys'
-import { buildNamedObjectByJson } from './ndn_types'
+import { calcPkgMetaObjId } from './ndn_types'
 import {
   BuckyOSDeviceDocument,
   BuckyOSZoneDocument,
@@ -65,6 +65,8 @@ import {
   Ed25519Jwk,
 } from './types'
 import { hashAdminPassword } from './provision_activate'
+
+export { calcPkgMetaObjId, normalizePackageMetaForObjId } from './ndn_types'
 
 // v2 device identity layout helpers (mirror buckyos-api device_identity.rs).
 export {
@@ -891,44 +893,6 @@ export function versionToInt(version: string): bigint {
   if (build > 0xffffffn) throw new Error(`build number out of range: ${version}`)
 
   return (major << 56n) | (minor << 40n) | (patch << 24n) | build
-}
-
-// Normalize a pkg_meta JSON the way Rust PackageMeta serde round-trips it
-// before hashing (gen_obj_id): default-valued fields are dropped
-// (skip_serializing_if), unknown fields are preserved via flatten.
-export function normalizePackageMetaForObjId(meta: Record<string, any>): Record<string, any> {
-  const normalized: Record<string, any> = { ...meta }
-  const dropIf = (key: string, shouldDrop: (v: any) => boolean) => {
-    if (key in normalized && shouldDrop(normalized[key])) {
-      delete normalized[key]
-    }
-  }
-  // BaseContentObject
-  dropIf('did', v => v === null || v === undefined)
-  dropIf('name', v => v === '')
-  dropIf('author', v => v === '')
-  dropIf('owner', v => v === null || v === undefined || v === 'did:undefined:undefined')
-  dropIf('copyright', v => v === null || v === undefined)
-  dropIf('tags', v => Array.isArray(v) && v.length === 0)
-  dropIf('categories', v => Array.isArray(v) && v.length === 0)
-  dropIf('base_on', v => v === null || v === undefined)
-  dropIf('directory', v => v && typeof v === 'object' && Object.keys(v).length === 0)
-  dropIf('references', v => v && typeof v === 'object' && Object.keys(v).length === 0)
-  dropIf('exp', v => v === 0)
-  // FileObject
-  dropIf('size', v => v === 0)
-  dropIf('content', v => v === '')
-  // PackageMeta
-  dropIf('version_tag', v => v === null || v === undefined)
-  dropIf('deps', v => v && typeof v === 'object' && Object.keys(v).length === 0)
-  return normalized
-}
-
-// Compute the meta object id exactly like Rust PackageMeta::gen_obj_id().
-export function calcPkgMetaObjId(metaJson: Record<string, any>): string {
-  const normalized = normalizePackageMetaForObjId(metaJson)
-  const [objId] = buildNamedObjectByJson('pkg', normalized)
-  return objId.toString()
 }
 
 export class MetaIndexDb {

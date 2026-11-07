@@ -34,8 +34,9 @@ var __privateMethod = (obj, member, method) => {
   __accessCheck(obj, member, "access private method");
   return method;
 };
-var _listener, _listeners, _cancelled, _allowInsecure, _gzip, _headers, _method, _timeout, _url, _body, _bodyType, _creds, _preflight, _process, _retry, _signal, _throttle, _getUrlFunc, _send, send_fn, _statusCode, _statusMessage, _headers2, _body2, _request, _error, _names, _data, _dataLength, _writeData, writeData_fn, _data2, _offset, _bytesRead, _parent, _maxInflation, _incrementBytesRead, incrementBytesRead_fn, _peekBytes, peekBytes_fn, _r, _s, _v, _networkV, _privateKey, _options, _type, _to, _data3, _nonce, _gasLimit, _gasPrice, _maxPriorityFeePerGas, _maxFeePerGas, _value, _chainId, _sig, _accessList, _maxFeePerBlobGas, _blobVersionedHashes, _kzg, _blobs, _auths, _blobWrapperVersion, _getSerialized, getSerialized_fn, _types, _fullTypes, _encoderCache, _getEncoder, getEncoder_fn, _offset2, _tokens, _subTokenString, subTokenString_fn, _walkAsync, walkAsync_fn, _getCoder, getCoder_fn, _errors, _events, _functions, _abiCoder, _getFunction, getFunction_fn, _getEvent, getEvent_fn, _transactions, _logs, _startBlock, _iface, _iface2, _filter, _a, _supports2544, _resolver, _fetch, fetch_fn, _getResolver, getResolver_fn, _url2, _processFunc, _name, _chainId2, _plugins, _provider, _poller, _interval, _blockNumber, _poll, poll_fn, _provider2, _poll2, _running, _tag, _lastBlock, _filter2, _hash, _provider3, _filter3, _poller2, _running2, _blockNumber2, _poll3, poll_fn2, _subs, _plugins2, _pausedState, _destroyed, _networkPromise, _anyNetwork, _performCache, _lastBlockNumber, _nextTimer, _timers, _disableCcipRead, _requestRate, _requestTimes, _options2, _getDelay, getDelay_fn, _perform, perform_fn, _call, call_fn, _checkNetwork, checkNetwork_fn, _getAccountValue, getAccountValue_fn, _getBlock, getBlock_fn, _hasSub, hasSub_fn, _getSub, getSub_fn, _throwUnsupported, throwUnsupported_fn, _provider4, _filterIdPromise, _poller3, _running3, _network, _hault, _poll4, poll_fn3, _teardown, teardown_fn, _event, _options3, _nextId, _payloads, _drainTimer, _notReady, _network2, _pendingDetectNetwork, _scheduleDrain, scheduleDrain_fn, _pollingInterval, _connect, _signingKey, _data4, _checksum, _words, _loadWords, loadWords_fn, _account, account_fn, _fromSeed, fromSeed_fn, _fromAccount, fromAccount_fn;
-import { O as ObjId, u as DID, v as getBrowserIdentityRaw, w as clearBrowserUserInfo, x as saveBrowserIdentity, y as saveBrowserUserInfo, z as getBrowserUserInfo, A as clearBrowserIdentity, N as NODE_IDENTITY_SCHEMA_V2, f as isBuckyOSLocalNodeIdentityConfig, o as parseBuckyOSOwnerDocument, h as hashPassword, B as saveLocalAccountInfo, C as cleanLocalAccountInfo, E as canonicalize, F as signJwtEdDSA, G as ChunkId, H as sha256Bytes, I as FileObject, J as DirObject, S as SimpleChunkList } from "./namelib-b41b10cc.mjs";
+var _listener, _listeners, _cancelled, _allowInsecure, _gzip, _headers, _method, _timeout, _url, _body, _bodyType, _creds, _preflight, _process, _retry, _signal, _throttle, _getUrlFunc, _send, send_fn, _statusCode, _statusMessage, _headers2, _body2, _request, _error, _names, _data, _dataLength, _writeData, writeData_fn, _data2, _offset, _bytesRead, _parent, _maxInflation, _incrementBytesRead, incrementBytesRead_fn, _peekBytes, peekBytes_fn, _a, _r, _s, _v, _networkV, _privateKey, _options, _type, _to, _data3, _nonce, _gasLimit, _gasPrice, _maxPriorityFeePerGas, _maxFeePerGas, _value, _chainId, _sig, _accessList, _maxFeePerBlobGas, _blobVersionedHashes, _kzg, _blobs, _auths, _blobWrapperVersion, _getSerialized, getSerialized_fn, _types, _fullTypes, _encoderCache, _getEncoder, getEncoder_fn, _offset2, _tokens, _subTokenString, subTokenString_fn, _walkAsync, walkAsync_fn, _getCoder, getCoder_fn, _errors, _events, _functions, _abiCoder, _getFunction, getFunction_fn, _getEvent, getEvent_fn, _transactions, _logs, _startBlock, _iface, _iface2, _filter, _b, _supports2544, _resolver, _fetch, fetch_fn, _getResolver, getResolver_fn, _url2, _processFunc, _name, _chainId2, _plugins, _provider, _poller, _interval, _blockNumber, _poll, poll_fn, _provider2, _poll2, _running, _tag, _lastBlock, _filter2, _hash, _provider3, _filter3, _poller2, _running2, _blockNumber2, _poll3, poll_fn2, _subs, _plugins2, _pausedState, _destroyed, _networkPromise, _anyNetwork, _performCache, _lastBlockNumber, _nextTimer, _timers, _disableCcipRead, _requestRate, _requestTimes, _options2, _getDelay, getDelay_fn, _perform, perform_fn, _call, call_fn, _checkNetwork, checkNetwork_fn, _getAccountValue, getAccountValue_fn, _getBlock, getBlock_fn, _hasSub, hasSub_fn, _getSub, getSub_fn, _throwUnsupported, throwUnsupported_fn, _provider4, _filterIdPromise, _poller3, _running3, _network, _hault, _poll4, poll_fn3, _teardown, teardown_fn, _event, _options3, _nextId, _payloads, _drainTimer, _notReady, _network2, _pendingDetectNetwork, _scheduleDrain, scheduleDrain_fn, _pollingInterval, _connect, _signingKey, _data4, _checksum, _words, _loadWords, loadWords_fn, _account, account_fn, _fromSeed, fromSeed_fn, _fromAccount, fromAccount_fn;
+import { O as ObjId, t as DID, u as getBrowserIdentityRaw, v as clearBrowserUserInfo, w as saveBrowserIdentity, x as saveBrowserUserInfo, y as getBrowserUserInfo, z as clearBrowserIdentity, N as NODE_IDENTITY_SCHEMA_V2, e as isBuckyOSLocalNodeIdentityConfig, m as parseBuckyOSOwnerDocument, h as hashPassword, A as saveLocalAccountInfo, B as cleanLocalAccountInfo, C as canonicalize, E as signJwtEdDSA, F as FileObject, G as ACTION_TYPE_DOWNLOAD, H as ACTION_TYPE_INSTALLED, I as ACTION_TYPE_LIKED, J as ACTION_TYPE_PURCHASED, K as ACTION_TYPE_SHARED, L as ACTION_TYPE_UNLIKED, M as ACTION_TYPE_VIEWED, P as BaseContentObject, Q as CYFS_CONTENT_TYPE_NAMED_OBJECT_JSON, R as CYFS_CONTENT_TYPE_NAMED_OBJECT_JWT, S as ChunkId, T as ChunkType, U as DEFAULT_HASH_METHOD, V as DirObject, W as HashMethod, X as InclusionProof, Y as KnownStandardObject, Z as MSG_OBJECT_RESERVED_KEYS, _ as MSG_REACTION_KEY_MAX_BYTES, $ as MSG_SESSION_ID_MAX_CHARS, a0 as NamedObjectBase, a1 as NdnError, a2 as OBJ_TYPE_ACTION, a3 as OBJ_TYPE_CHUNK_LIST, a4 as OBJ_TYPE_DIR, a5 as OBJ_TYPE_FILE, a6 as OBJ_TYPE_INCLUSION_PROOF, a7 as OBJ_TYPE_LIST, a8 as OBJ_TYPE_MSG, a9 as OBJ_TYPE_OBJMAP, aa as OBJ_TYPE_PACK, ab as OBJ_TYPE_PATH, ac as OBJ_TYPE_PKG, ad as OBJ_TYPE_RECEIPT, ae as OBJ_TYPE_RELATION, af as PathObject, ag as RELATION_TYPE_PART_OF, ah as RELATION_TYPE_SAME, ai as RelationObject, aj as SimpleChunkList, ak as SimpleMapItem, al as SimpleObjectMap, am as actionObjectFromJson, an as base32Decode, ao as base32Encode, ap as buildNamedObjectByJson, aq as buildNamedObjectByJwt, ar as buildObjId, as as bytesToHex$2, at as calcPkgMetaObjId, au as canonicalizeJson, av as decodeMsgObjectJwt, aw as extractObjIdByPath, ax as hexToBytes$1, ay as isCyfsNamedObjectContentType, az as isValidMsgSessionId, aA as loadNamedObj, aB as loadNamedObjAndVerify, aC as loadNamedObjectFromObjStr, aD as msgJwtKidDid, aE as msgObjectFromJsonChecked, aF as namedObjectEncodingFromContentType, aG as normalizePackageMetaForObjId, aH as randomMsgNonce, aI as receiptObjFromJson, aJ as sha256Bytes, aK as sha256Utf8, aL as toCanonicalJsonString, aM as validateMsgObject, aN as varintDecode, aO as varintEncode, aP as verifyMsgObjectJwt, aQ as verifyNamedObject, aR as verifyNamedObjectFromJwt, aS as verifyNamedObjectFromStr } from "./ndn_types-08fdf59a.mjs";
+import { s as sniffMagic, m as mediaTypeFromExtension, e as extensionOf, a as stripMediaTypeParams, h as heifImageSize, i as isoBoxes } from "./content_mime-e42d5f8d.mjs";
 class RPCError extends Error {
   constructor(message, code, data) {
     super(message);
@@ -901,8 +902,8 @@ class AiWorkspaceClient {
   runClaim(workspace_id, run_id, claim_token, executor) {
     return this.call("proc.claim", { workspace_id, run_id, claim_token, ...executor ? { executor } : {} });
   }
-  runHeartbeat(workspace_id, run_id, attempt, progress) {
-    return this.call("proc.heartbeat", { workspace_id, run_id, attempt, ...progress ? { progress } : {} });
+  runHeartbeat(workspace_id, run_id, attempt2, progress) {
+    return this.call("proc.heartbeat", { workspace_id, run_id, attempt: attempt2, ...progress ? { progress } : {} });
   }
   runReport(workspace_id, report) {
     return this.call("proc.report", { workspace_id, ...report });
@@ -1657,16 +1658,16 @@ class TaskManagerClient {
   }
   async runnerStart(taskId) {
     const task = await this.getTask(taskId);
-    let attempt;
+    let attempt2;
     if (task.phase === "Accepted") {
-      attempt = this.reportStarted(this.snapshotEnvelope(task));
+      attempt2 = this.reportStarted(this.snapshotEnvelope(task));
     } else if (task.phase === "Waiting") {
-      attempt = this.reportRunning(this.snapshotEnvelope(task));
+      attempt2 = this.reportRunning(this.snapshotEnvelope(task));
     } else {
       return task;
     }
     try {
-      return await attempt;
+      return await attempt2;
     } catch (error) {
       const code = taskMgrErrorCode(error);
       if (code === TASK_ERR_REVISION_CONFLICT || code === TASK_ERR_INVALID_PHASE) {
@@ -2763,8 +2764,8 @@ function aspectRatio(value) {
   return width >= 1 && width <= 100 && height >= 1 && height <= 100 ? [width, height] : void 0;
 }
 function reducedRatio(width, height) {
-  const gcd = (a, b2) => b2 === 0 ? a : gcd(b2, a % b2);
-  const divisor = Math.max(gcd(width, height), 1);
+  const gcd2 = (a, b2) => b2 === 0 ? a : gcd2(b2, a % b2);
+  const divisor = Math.max(gcd2(width, height), 1);
   return `${width / divisor}:${height / divisor}`;
 }
 function validateResourceRef(value, field) {
@@ -2872,7 +2873,7 @@ function validateVideoEdit(request) {
     validateVideoOutput(request.output);
 }
 function videoGenerationRequirement(request) {
-  var _a2, _b;
+  var _a2, _b2;
   const conditions = request.conditions ?? [];
   const count = (type) => conditions.filter((condition) => condition.type === type).length;
   const declared = ((_a2 = request.requirements) == null ? void 0 : _a2.video) ?? {};
@@ -2881,7 +2882,7 @@ function videoGenerationRequirement(request) {
     if (value || declared[key])
       requirement[key] = true;
   };
-  flag("prompt", !!((_b = request.prompt) == null ? void 0 : _b.trim()));
+  flag("prompt", !!((_b2 = request.prompt) == null ? void 0 : _b2.trim()));
   flag("negative_prompt", request.negative_prompt !== void 0);
   flag("seed", request.seed !== void 0);
   for (const [key, type] of [["reference_images", "reference_image"], ["reference_videos", "reference_video"], ["reference_audios", "reference_audio"]]) {
@@ -3567,10 +3568,8 @@ function notifyUrl(zoneHost, notifyId) {
   return host ? `https://${host}${path}` : path;
 }
 function msgMachineData(msg, intent) {
-  const content = msg == null ? void 0 : msg.content;
-  if (!content || typeof content !== "object")
-    return null;
-  const machine = content.machine;
+  var _a2;
+  const machine = (_a2 = msg == null ? void 0 : msg.content) == null ? void 0 : _a2.machine;
   if (!machine || typeof machine !== "object" || machine.intent !== intent)
     return null;
   const data = machine.data;
@@ -3581,7 +3580,7 @@ function notifyMessageData(msg) {
   return data && typeof data.notify_id === "string" ? data : null;
 }
 async function commitNotifyAnswer(tasks, taskId, answer, submittedBy, nowMs = Date.now()) {
-  for (let attempt = 0; attempt < 3; attempt += 1) {
+  for (let attempt2 = 0; attempt2 < 3; attempt2 += 1) {
     const task2 = await tasks.getTask(taskId);
     if (isTerminalTaskPhase(task2.phase) || task2.result != null) {
       return { kind: "already_closed", task: task2 };
@@ -6083,7 +6082,7 @@ class BuckyOSSDK {
     return this.currentAccountInfo;
   }
   async loginByPassword(username, password, target) {
-    var _a2, _b, _c;
+    var _a2, _b2, _c;
     const appId = this.getAppId();
     if (appId == null) {
       console.error("BuckyOS WebSDK is not initialized,call initBuckyOS first");
@@ -6129,7 +6128,7 @@ class BuckyOSSDK {
         });
       }
       this.currentAccountInfo = accountInfo;
-      (_b = this.currentRuntime) == null ? void 0 : _b.setSessionToken(accountInfo.session_token);
+      (_b2 = this.currentRuntime) == null ? void 0 : _b2.setSessionToken(accountInfo.session_token);
       (_c = this.currentRuntime) == null ? void 0 : _c.setRefreshToken(accountInfo.refresh_token ?? null);
       return accountInfo;
     } catch (error) {
@@ -6237,12 +6236,12 @@ class BuckyOSSDK {
       throw new Error("BuckyApi is only available in browser runtime");
     }
     return (async () => {
-      var _a2, _b;
+      var _a2, _b2;
       const result = await window.BuckyApi.signJsonWithActiveDid(payloads);
       if (result.code === 0) {
         return {
           signatures: Array.isArray((_a2 = result.data) == null ? void 0 : _a2.signatures) ? result.data.signatures : [],
-          pwd_hash: typeof ((_b = result.data) == null ? void 0 : _b.pwd_hash) === "string" ? result.data.pwd_hash : null
+          pwd_hash: typeof ((_b2 = result.data) == null ? void 0 : _b2.pwd_hash) === "string" ? result.data.pwd_hash : null
         };
       }
       console.error("BuckyApi.signWithActiveDid failed: ", result.message);
@@ -6446,7 +6445,7 @@ class BuckyOSSDK {
     return runtimeType === RuntimeType.AppClient || runtimeType === RuntimeType.AppService;
   }
   detectEnvironmentRuntimeType() {
-    var _a2, _b;
+    var _a2, _b2;
     if (this.target === "browser") {
       if (typeof window !== "undefined" && window.BuckyApi) {
         return RuntimeType.AppRuntime;
@@ -6467,7 +6466,7 @@ class BuckyOSSDK {
       return RuntimeType.Browser;
     }
     const runtimeProcess = globalThis.process;
-    if ((_b = runtimeProcess == null ? void 0 : runtimeProcess.versions) == null ? void 0 : _b.node) {
+    if ((_b2 = runtimeProcess == null ? void 0 : runtimeProcess.versions) == null ? void 0 : _b2.node) {
       return RuntimeType.NodeJS;
     }
     return RuntimeType.Unknown;
@@ -8503,9 +8502,9 @@ _signal = new WeakMap();
 _throttle = new WeakMap();
 _getUrlFunc = new WeakMap();
 _send = new WeakSet();
-send_fn = async function(attempt, expires, delay2, _request2, _response) {
-  var _a2, _b, _c;
-  if (attempt >= __privateGet(this, _throttle).maxAttempts) {
+send_fn = async function(attempt2, expires, delay2, _request2, _response) {
+  var _a2, _b2, _c;
+  if (attempt2 >= __privateGet(this, _throttle).maxAttempts) {
     return _response.makeServerError("exceeded maximum retry limit");
   }
   assert(getTime$1() <= expires, "timeout", "TIMEOUT", {
@@ -8544,18 +8543,18 @@ send_fn = async function(attempt, expires, delay2, _request2, _response) {
   if ([301, 302, 307, 308].indexOf(response.statusCode) >= 0) {
     try {
       const location = response.headers.location || "";
-      return __privateMethod(_a2 = req.redirect(location), _send, send_fn).call(_a2, attempt + 1, expires, 0, _request2, response);
+      return __privateMethod(_a2 = req.redirect(location), _send, send_fn).call(_a2, attempt2 + 1, expires, 0, _request2, response);
     } catch (error) {
     }
     return response;
   } else if (response.statusCode === 429) {
-    if (this.retryFunc == null || await this.retryFunc(req, response, attempt)) {
+    if (this.retryFunc == null || await this.retryFunc(req, response, attempt2)) {
       const retryAfter = response.headers["retry-after"];
-      let delay3 = __privateGet(this, _throttle).slotInterval * Math.trunc(Math.random() * Math.pow(2, attempt));
+      let delay3 = __privateGet(this, _throttle).slotInterval * Math.trunc(Math.random() * Math.pow(2, attempt2));
       if (typeof retryAfter === "string" && retryAfter.match(/^[1-9][0-9]*$/)) {
         delay3 = parseInt(retryAfter);
       }
-      return __privateMethod(_b = req.clone(), _send, send_fn).call(_b, attempt + 1, expires, delay3, _request2, response);
+      return __privateMethod(_b2 = req.clone(), _send, send_fn).call(_b2, attempt2 + 1, expires, delay3, _request2, response);
     }
   }
   if (this.processFunc) {
@@ -8566,11 +8565,11 @@ send_fn = async function(attempt, expires, delay2, _request2, _response) {
       if (error.throttle == null || typeof error.stall !== "number") {
         response.makeServerError("error in post-processing function", error).assertOk();
       }
-      let delay3 = __privateGet(this, _throttle).slotInterval * Math.trunc(Math.random() * Math.pow(2, attempt));
+      let delay3 = __privateGet(this, _throttle).slotInterval * Math.trunc(Math.random() * Math.pow(2, attempt2));
       if (error.stall >= 0) {
         delay3 = error.stall;
       }
-      return __privateMethod(_c = req.clone(), _send, send_fn).call(_c, attempt + 1, expires, delay3, _request2, response);
+      return __privateMethod(_c = req.clone(), _send, send_fn).call(_c, attempt2 + 1, expires, delay3, _request2, response);
     }
   }
   return response;
@@ -9231,7 +9230,7 @@ writeData_fn = function(data) {
   __privateSet(this, _dataLength, __privateGet(this, _dataLength) + data.length);
   return data.length;
 };
-const _Reader = class _Reader {
+let Reader$1 = (_a = class {
   constructor(data, allowLoose, maxInflation) {
     __privateAdd(this, _incrementBytesRead);
     __privateAdd(this, _peekBytes);
@@ -9266,7 +9265,7 @@ const _Reader = class _Reader {
   }
   // Create a sub-reader with the same underlying data, but offset
   subReader(offset) {
-    const reader = new _Reader(__privateGet(this, _data2).slice(__privateGet(this, _offset) + offset), this.allowLoose, __privateGet(this, _maxInflation));
+    const reader = new _a(__privateGet(this, _data2).slice(__privateGet(this, _offset) + offset), this.allowLoose, __privateGet(this, _maxInflation));
     __privateSet(reader, _parent, this);
     return reader;
   }
@@ -9284,14 +9283,7 @@ const _Reader = class _Reader {
   readIndex() {
     return toNumber(this.readBytes(WordSize));
   }
-};
-_data2 = new WeakMap();
-_offset = new WeakMap();
-_bytesRead = new WeakMap();
-_parent = new WeakMap();
-_maxInflation = new WeakMap();
-_incrementBytesRead = new WeakSet();
-incrementBytesRead_fn = function(count) {
+}, _data2 = new WeakMap(), _offset = new WeakMap(), _bytesRead = new WeakMap(), _parent = new WeakMap(), _maxInflation = new WeakMap(), _incrementBytesRead = new WeakSet(), incrementBytesRead_fn = function(count) {
   var _a2;
   if (__privateGet(this, _parent)) {
     return __privateMethod(_a2 = __privateGet(this, _parent), _incrementBytesRead, incrementBytesRead_fn).call(_a2, count);
@@ -9306,9 +9298,7 @@ incrementBytesRead_fn = function(count) {
       dataLength: this.dataLength
     }
   });
-};
-_peekBytes = new WeakSet();
-peekBytes_fn = function(offset, length, loose) {
+}, _peekBytes = new WeakSet(), peekBytes_fn = function(offset, length, loose) {
   let alignedLength = Math.ceil(length / WordSize) * WordSize;
   if (__privateGet(this, _offset) + alignedLength > __privateGet(this, _data2).length) {
     if (this.allowLoose && loose && __privateGet(this, _offset) + length <= __privateGet(this, _data2).length) {
@@ -9322,8 +9312,7 @@ peekBytes_fn = function(offset, length, loose) {
     }
   }
   return __privateGet(this, _data2).slice(__privateGet(this, _offset), __privateGet(this, _offset) + alignedLength);
-};
-let Reader = _Reader;
+}, _a);
 function number(n2) {
   if (!Number.isSafeInteger(n2) || n2 < 0)
     throw new Error(`Wrong positive integer: ${n2}`);
@@ -10940,8 +10929,8 @@ function invert(number2, modulo) {
     const m = x - u * q;
     b2 = a, a = r, x = u, u = m;
   }
-  const gcd = b2;
-  if (gcd !== _1n$3)
+  const gcd2 = b2;
+  if (gcd2 !== _1n$3)
     throw new Error("invert: does not exist");
   return mod(x, modulo);
 }
@@ -17902,7 +17891,7 @@ const _AbiCoder = class _AbiCoder {
   decode(types, data, loose) {
     const coders = types.map((type) => __privateMethod(this, _getCoder, getCoder_fn).call(this, ParamType.from(type)));
     const coder = new TupleCoder(coders, "_");
-    return coder.decode(new Reader(data, loose, defaultMaxInflation));
+    return coder.decode(new Reader$1(data, loose, defaultMaxInflation));
   }
   static _setDefaultMaxInflation(value) {
     assertArgument(typeof value === "number" && Number.isInteger(value), "invalid defaultMaxInflation factor", "value", value);
@@ -20919,7 +20908,7 @@ const _BaseContract = class _BaseContract {
     /**
      *  @_ignore:
      */
-    __publicField(this, _a);
+    __publicField(this, _b);
     /**
      *  The fallback or receive function if any.
      */
@@ -21310,7 +21299,7 @@ const _BaseContract = class _BaseContract {
     return contract;
   }
 };
-_a = internal;
+_b = internal;
 let BaseContract = _BaseContract;
 function _ContractBase() {
   return BaseContract;
@@ -23977,8 +23966,8 @@ perform_fn = async function(req) {
   return await perform;
 };
 _call = new WeakSet();
-call_fn = async function(tx, blockTag, attempt) {
-  assert(attempt < MAX_CCIP_REDIRECTS, "CCIP read exceeded maximum redirections", "OFFCHAIN_FAULT", {
+call_fn = async function(tx, blockTag, attempt2) {
+  assert(attempt2 < MAX_CCIP_REDIRECTS, "CCIP read exceeded maximum redirections", "OFFCHAIN_FAULT", {
     reason: "TOO_MANY_REDIRECTS",
     transaction: Object.assign({}, tx, { blockTag, enableCcipRead: true })
   });
@@ -23990,7 +23979,7 @@ call_fn = async function(tx, blockTag, attempt) {
     }
     return hexlify(await this._perform({ method: "call", transaction, blockTag }));
   } catch (error) {
-    if (!this.disableCcipRead && isCallException(error) && error.data && attempt >= 0 && blockTag === "latest" && transaction.to != null && dataSlice(error.data, 0, 4) === "0x556f1830") {
+    if (!this.disableCcipRead && isCallException(error) && error.data && attempt2 >= 0 && blockTag === "latest" && transaction.to != null && dataSlice(error.data, 0, 4) === "0x556f1830") {
       const data = error.data;
       const txSender = await resolveAddress(transaction.to, this);
       let ccipArgs;
@@ -24027,7 +24016,7 @@ call_fn = async function(tx, blockTag, attempt) {
       };
       this.emit("debug", { action: "sendCcipReadCall", transaction: tx2 });
       try {
-        const result = await __privateMethod(this, _call, call_fn).call(this, tx2, blockTag, attempt + 1);
+        const result = await __privateMethod(this, _call, call_fn).call(this, tx2, blockTag, attempt2 + 1);
         this.emit("debug", { action: "receiveCcipReadCallResult", transaction: Object.assign({}, tx2), result });
         return result;
       } catch (error2) {
@@ -26143,7 +26132,7 @@ class CTR extends ModeOfOperation {
     }
   }
   encrypt(plaintext) {
-    var _a2, _b;
+    var _a2, _b2;
     const crypttext = new Uint8Array(plaintext);
     for (let i = 0; i < crypttext.length; i++) {
       if (__classPrivateFieldGet(this, _CTR_remainingIndex, "f") === 16) {
@@ -26151,7 +26140,7 @@ class CTR extends ModeOfOperation {
         __classPrivateFieldSet(this, _CTR_remainingIndex, 0, "f");
         this.increment();
       }
-      crypttext[i] ^= __classPrivateFieldGet(this, _CTR_remaining, "f")[__classPrivateFieldSet(this, _CTR_remainingIndex, (_b = __classPrivateFieldGet(this, _CTR_remainingIndex, "f"), _a2 = _b++, _b), "f"), _a2];
+      crypttext[i] ^= __classPrivateFieldGet(this, _CTR_remaining, "f")[__classPrivateFieldSet(this, _CTR_remainingIndex, (_b2 = __classPrivateFieldGet(this, _CTR_remainingIndex, "f"), _a2 = _b2++, _b2), "f"), _a2];
     }
     return crypttext;
   }
@@ -27111,7 +27100,7 @@ function canonicalJsonBytes(value) {
   }
   return bytes2;
 }
-function decodeUtf8(bytes2) {
+function decodeUtf8$1(bytes2) {
   if (typeof TextDecoder !== "undefined") {
     return new TextDecoder().decode(new Uint8Array(bytes2));
   }
@@ -27225,7 +27214,7 @@ class BnsEvmTxBuilder {
       }
       let parsed;
       try {
-        parsed = JSON.parse(decodeUtf8(current.document_state.document.inline_document));
+        parsed = JSON.parse(decodeUtf8$1(current.document_state.document.inline_document));
       } catch (error) {
         throw new BnsEvmTxError(
           "INVALID_DOCUMENT",
@@ -28468,6 +28457,1473 @@ const sn_client = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.definePro
   parseSnRegionProbeConfig,
   validateSnRegionProbeConfig
 }, Symbol.toStringTag, { value: "Module" }));
+const FILE_META_READ_LIMIT = 8 * 1024 * 1024;
+const READ_WINDOW = 64 * 1024;
+const SNIFF_BYTES = 4096;
+const MAX_TEXT_BYTES = 4096;
+const MAX_TEXT_CHARS = 128;
+const MAX_JPEG_SEGMENTS = 1024;
+const MAX_PNG_CHUNKS = 1024;
+const MAX_RIFF_CHUNKS = 64;
+const MAX_ISO_BOXES = 4096;
+const MAX_ID3_FRAMES = 1024;
+const MP4_EPOCH_TO_UNIX_SECS = 2082844800;
+const MAX_UNIX_SECS = 253402300799;
+const MEDIA_ELEMENT_TIMEOUT_MS = 5e3;
+function isBlob(source) {
+  return typeof Blob !== "undefined" && source instanceof Blob;
+}
+function blobSource(blob) {
+  return {
+    size: blob.size,
+    readAt: async (offset, length) => new Uint8Array(await blob.slice(offset, offset + length).arrayBuffer())
+  };
+}
+function isMediaType(mime) {
+  return mime.startsWith("image/") || mime.startsWith("video/") || mime.startsWith("audio/");
+}
+function declaredMediaType(declared) {
+  const mime = stripMediaTypeParams(declared);
+  if (mime === "application/octet-stream" || mime === "binary/octet-stream")
+    return void 0;
+  return /^[\w.+-]+\/[\w.+-]+$/.test(mime) ? mime : void 0;
+}
+function resolveMime(magic, name, declared) {
+  if (magic && isMediaType(magic))
+    return magic;
+  return declaredMediaType(declared) ?? mediaTypeFromExtension(extensionOf(name)) ?? magic ?? void 0;
+}
+class Reader {
+  constructor(source) {
+    this.source = source;
+    this.remaining = FILE_META_READ_LIMIT;
+    this.windowStart = 0;
+    this.window = new Uint8Array(0);
+    this.size = source.size;
+  }
+  async read(offset, length) {
+    const end = offset + length;
+    if (!Number.isSafeInteger(end) || end > this.size)
+      throw STOP;
+    if (length === 0)
+      return new Uint8Array(0);
+    const windowEnd = this.windowStart + this.window.length;
+    if (offset >= this.windowStart && end <= windowEnd) {
+      const from = offset - this.windowStart;
+      return this.window.subarray(from, from + length);
+    }
+    const fetch2 = Math.min(Math.max(length, READ_WINDOW), this.size - offset);
+    if (fetch2 > this.remaining)
+      throw STOP;
+    this.remaining -= fetch2;
+    const bytes2 = await this.source.readAt(offset, fetch2);
+    if (bytes2.length !== fetch2)
+      throw STOP;
+    this.windowStart = offset;
+    this.window = bytes2;
+    return bytes2.subarray(0, length);
+  }
+}
+const STOP = new Error("stop parsing");
+async function attempt(run) {
+  try {
+    return await run();
+  } catch {
+    return void 0;
+  }
+}
+function attemptSync(run) {
+  try {
+    return run();
+  } catch {
+    return void 0;
+  }
+}
+function be16(b2, at) {
+  if (at + 2 > b2.length)
+    throw STOP;
+  return b2[at] * 256 + b2[at + 1];
+}
+function be32(b2, at) {
+  if (at + 4 > b2.length)
+    throw STOP;
+  return b2[at] * 16777216 + b2[at + 1] * 65536 + b2[at + 2] * 256 + b2[at + 3];
+}
+function be64(b2, at) {
+  const value = be32(b2, at) * 4294967296 + be32(b2, at + 4);
+  if (!Number.isSafeInteger(value))
+    throw STOP;
+  return value;
+}
+function beUint(b2, at, bytes2) {
+  switch (bytes2) {
+    case 0:
+      return 0;
+    case 2:
+      return be16(b2, at);
+    case 4:
+      return be32(b2, at);
+    case 8:
+      return be64(b2, at);
+    default:
+      throw STOP;
+  }
+}
+function le16(b2, at) {
+  if (at + 2 > b2.length)
+    throw STOP;
+  return b2[at] + b2[at + 1] * 256;
+}
+function le24(b2, at) {
+  if (at + 3 > b2.length)
+    throw STOP;
+  return b2[at] + b2[at + 1] * 256 + b2[at + 2] * 65536;
+}
+function le32(b2, at) {
+  if (at + 4 > b2.length)
+    throw STOP;
+  return b2[at] + b2[at + 1] * 256 + b2[at + 2] * 65536 + b2[at + 3] * 16777216;
+}
+function asciiAt(b2, at, expected) {
+  if (at + expected.length > b2.length)
+    return false;
+  for (let i = 0; i < expected.length; i += 1) {
+    if (b2[at + i] !== expected.charCodeAt(i))
+      return false;
+  }
+  return true;
+}
+function fourCC(b2, at) {
+  return String.fromCharCode(b2[at], b2[at + 1], b2[at + 2], b2[at + 3]);
+}
+function roundTo(value, scale) {
+  if (!Number.isFinite(value))
+    return void 0;
+  const rounded = Math.round(Math.abs(value) * scale) / scale;
+  const signed2 = value < 0 ? -rounded : rounded;
+  return signed2 === 0 ? 0 : signed2;
+}
+function millis(amount, perSecond) {
+  if (amount === 0 || perSecond === 0)
+    return void 0;
+  const ms = Math.round(amount * 1e3 / perSecond);
+  return ms >= 1 && Number.isSafeInteger(ms) ? ms : void 0;
+}
+const WHITESPACE = "\\u0009-\\u000d\\u0020\\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000";
+const LEADING_WHITESPACE = new RegExp(`^[${WHITESPACE}]+`);
+const TRAILING_WHITESPACE = new RegExp(`[${WHITESPACE}]+$`);
+function trimEnd(text) {
+  return text.replace(TRAILING_WHITESPACE, "");
+}
+function trim(text) {
+  return trimEnd(text.replace(LEADING_WHITESPACE, ""));
+}
+function firstValue(text) {
+  const start = text.replace(/^\0+/, "");
+  const end = start.indexOf("\0");
+  return end < 0 ? start : start.slice(0, end);
+}
+function cleanText(text) {
+  const visible = firstValue(text).replace(/[\u0000-\u001f\u007f-\u009f]/g, "");
+  const out = trimEnd(Array.from(trim(visible)).slice(0, MAX_TEXT_CHARS).join(""));
+  return out.length > 0 ? out : void 0;
+}
+const utf8Decoder = new TextDecoder("utf-8", { ignoreBOM: true });
+function decodeUtf8(bytes2) {
+  return utf8Decoder.decode(bytes2);
+}
+function cleanBytes(bytes2) {
+  return cleanText(decodeUtf8(bytes2));
+}
+function digits(text) {
+  return /^[0-9]+$/.test(text) ? Number(text) : void 0;
+}
+function daysInMonth(year, month) {
+  switch (month) {
+    case 1:
+    case 3:
+    case 5:
+    case 7:
+    case 8:
+    case 10:
+    case 12:
+      return 31;
+    case 4:
+    case 6:
+    case 9:
+    case 11:
+      return 30;
+    case 2:
+      return year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0) ? 29 : 28;
+    default:
+      return 0;
+  }
+}
+function parseDateTime(text, dateSep, timeSep) {
+  if (text.length !== 19 || text[4] !== dateSep || text[7] !== dateSep || text[10] !== timeSep || text[13] !== ":" || text[16] !== ":")
+    return void 0;
+  const year = digits(text.slice(0, 4));
+  const month = digits(text.slice(5, 7));
+  const day = digits(text.slice(8, 10));
+  const hour = digits(text.slice(11, 13));
+  const minute = digits(text.slice(14, 16));
+  const second = digits(text.slice(17, 19));
+  if (year === void 0 || month === void 0 || day === void 0 || hour === void 0 || minute === void 0 || second === void 0)
+    return void 0;
+  if (year === 0 || day === 0 || day > daysInMonth(year, month) || hour > 23 || minute > 59 || second > 59)
+    return void 0;
+  return `${text.slice(0, 4)}-${text.slice(5, 7)}-${text.slice(8, 10)}T${text.slice(11, 13)}:${text.slice(14, 16)}:${text.slice(17, 19)}`;
+}
+function parseFraction(text) {
+  const value = trim(text);
+  return /^[0-9]+$/.test(value) ? `.${value.slice(0, 9)}` : void 0;
+}
+function parseOffset(text) {
+  const value = trim(text);
+  if (value === "Z")
+    return "Z";
+  const match = /^([+-])([0-9]{2})(?::?([0-9]{2}))?$/.exec(value);
+  if (!match)
+    return void 0;
+  const hours = Number(match[2]);
+  const minutes = Number(match[3] ?? "00");
+  if (hours > 14 || minutes > 59)
+    return void 0;
+  return `${match[1]}${match[2]}:${match[3] ?? "00"}`;
+}
+function parseIsoDateTime(text) {
+  if (text.length < 19 || !/^[\x00-\x7f]*$/.test(text))
+    return void 0;
+  const base = parseDateTime(text.slice(0, 19), "-", "T");
+  if (base === void 0)
+    return void 0;
+  let rest = text.slice(19);
+  let out = base;
+  if (rest.startsWith(".")) {
+    const fraction = /^[0-9]*/.exec(rest.slice(1))[0];
+    const parsed = parseFraction(fraction);
+    if (parsed === void 0)
+      return void 0;
+    out += parsed;
+    rest = rest.slice(1 + fraction.length);
+  }
+  if (rest.length > 0) {
+    const offset = parseOffset(rest);
+    if (offset === void 0)
+      return void 0;
+    out += offset;
+  }
+  return out;
+}
+function utcFromMp4Time(seconds) {
+  if (seconds <= MP4_EPOCH_TO_UNIX_SECS)
+    return void 0;
+  const unix = seconds - MP4_EPOCH_TO_UNIX_SECS;
+  if (unix > MAX_UNIX_SECS)
+    return void 0;
+  return new Date(unix * 1e3).toISOString().replace(".000Z", "Z");
+}
+function gcd(a, b2) {
+  while (b2 !== 0) {
+    const next = a % b2;
+    a = b2;
+    b2 = next;
+  }
+  return a;
+}
+function someIfAny(value) {
+  const entries = Object.entries(value).filter(([, item]) => item !== void 0);
+  return entries.length > 0 ? Object.fromEntries(entries) : void 0;
+}
+const TAG_MAKE = 271;
+const TAG_MODEL = 272;
+const TAG_ORIENTATION = 274;
+const TAG_EXIF_IFD = 34665;
+const TAG_GPS_IFD = 34853;
+const TAG_EXPOSURE_TIME = 33434;
+const TAG_F_NUMBER = 33437;
+const TAG_ISO = 34855;
+const TAG_DATE_TIME_ORIGINAL = 36867;
+const TAG_DATE_TIME_DIGITIZED = 36868;
+const TAG_OFFSET_TIME_ORIGINAL = 36881;
+const TAG_OFFSET_TIME_DIGITIZED = 36882;
+const TAG_FOCAL_LENGTH = 37386;
+const TAG_SUB_SEC_ORIGINAL = 37521;
+const TAG_SUB_SEC_DIGITIZED = 37522;
+const TAG_FOCAL_LENGTH_35MM = 41989;
+const TAG_LENS_MODEL = 42036;
+const TAG_GPS_LAT_REF = 1;
+const TAG_GPS_LAT = 2;
+const TAG_GPS_LON_REF = 3;
+const TAG_GPS_LON = 4;
+const TAG_GPS_ALT_REF = 5;
+const TAG_GPS_ALT = 6;
+const TAG_GPS_IMG_DIRECTION = 17;
+const TAG_GPS_H_ERROR = 31;
+function exifTypeSize(kind) {
+  switch (kind) {
+    case 1:
+    case 2:
+    case 6:
+    case 7:
+    case 129:
+      return 1;
+    case 3:
+    case 8:
+      return 2;
+    case 4:
+    case 9:
+    case 11:
+    case 13:
+      return 4;
+    case 5:
+    case 10:
+    case 12:
+      return 8;
+    default:
+      return void 0;
+  }
+}
+class Tiff {
+  constructor(reader, base, limit, littleEndian) {
+    this.reader = reader;
+    this.base = base;
+    this.limit = limit;
+    this.littleEndian = littleEndian;
+  }
+  u16At(b2, at) {
+    return this.littleEndian ? le16(b2, at) : be16(b2, at);
+  }
+  u32At(b2, at) {
+    return this.littleEndian ? le32(b2, at) : be32(b2, at);
+  }
+  async readIfd(offset) {
+    if (offset + 2 > this.limit)
+      throw STOP;
+    const head = await this.reader.read(this.base + offset, 2);
+    const count = this.u16At(head, 0);
+    if (offset + 2 + count * 12 > this.limit)
+      throw STOP;
+    const first = this.base + offset + 2;
+    const bytes2 = await this.reader.read(first, count * 12);
+    const ifd = /* @__PURE__ */ new Map();
+    for (let i = 0; i < count; i += 1) {
+      const at = i * 12;
+      const tag = this.u16At(bytes2, at);
+      if (!ifd.has(tag)) {
+        ifd.set(tag, { kind: this.u16At(bytes2, at + 2), count: this.u32At(bytes2, at + 4), valueAt: first + at + 8 });
+      }
+    }
+    return ifd;
+  }
+  async value(entry, maxBytes) {
+    const unit = exifTypeSize(entry.kind);
+    if (unit === void 0)
+      throw STOP;
+    const total = unit * entry.count;
+    const wanted = Math.min(total, maxBytes);
+    if (total <= 4)
+      return this.reader.read(entry.valueAt, wanted);
+    const field = await this.reader.read(entry.valueAt, 4);
+    const offset = this.u32At(field, 0);
+    if (offset + total > this.limit)
+      throw STOP;
+    return this.reader.read(this.base + offset, wanted);
+  }
+  async text(ifd, tag) {
+    const entry = ifd.get(tag);
+    if (!entry || entry.kind !== 2 && entry.kind !== 129)
+      return void 0;
+    const bytes2 = await attempt(() => this.value(entry, MAX_TEXT_BYTES));
+    return bytes2 ? cleanBytes(bytes2) : void 0;
+  }
+  async uint(ifd, tag) {
+    const entry = ifd.get(tag);
+    if (!entry || entry.count === 0)
+      return void 0;
+    switch (entry.kind) {
+      case 1: {
+        const bytes2 = await attempt(() => this.value(entry, 1));
+        return bytes2 == null ? void 0 : bytes2[0];
+      }
+      case 3: {
+        const bytes2 = await attempt(() => this.value(entry, 2));
+        return bytes2 ? attemptSync(() => this.u16At(bytes2, 0)) : void 0;
+      }
+      case 4:
+      case 13: {
+        const bytes2 = await attempt(() => this.value(entry, 4));
+        return bytes2 ? attemptSync(() => this.u32At(bytes2, 0)) : void 0;
+      }
+      default:
+        return void 0;
+    }
+  }
+  // `count` (numerator, denominator) pairs, none with a zero denominator.
+  async rationals(ifd, tag, count) {
+    const entry = ifd.get(tag);
+    if (!entry || entry.kind !== 5 && entry.kind !== 10 || entry.count < count)
+      return void 0;
+    const bytes2 = await attempt(() => this.value(entry, count * 8));
+    if (!bytes2 || bytes2.length < count * 8)
+      return void 0;
+    const out = [];
+    for (let i = 0; i < count; i += 1) {
+      const rawNum = this.u32At(bytes2, i * 8);
+      const rawDen = this.u32At(bytes2, i * 8 + 4);
+      const num = entry.kind === 10 ? rawNum | 0 : rawNum;
+      const den = entry.kind === 10 ? rawDen | 0 : rawDen;
+      if (den === 0)
+        return void 0;
+      out.push([num, den]);
+    }
+    return out;
+  }
+  async rational(ifd, tag) {
+    const values = await this.rationals(ifd, tag, 1);
+    return values ? values[0][0] / values[0][1] : void 0;
+  }
+  async subIfd(ifd, tag) {
+    const offset = await this.uint(ifd, tag);
+    if (offset === void 0)
+      return void 0;
+    return attempt(() => this.readIfd(offset));
+  }
+  async degrees(ifd, tag, refTag, negative) {
+    const parts = await this.rationals(ifd, tag, 3);
+    if (!parts)
+      return void 0;
+    const reference = await this.text(ifd, refTag);
+    if (reference === void 0)
+      return void 0;
+    const first = /^[a-z]/.test(reference) ? reference[0].toUpperCase() : reference[0];
+    const value = parts[0][0] / parts[0][1] + parts[1][0] / parts[1][1] / 60 + parts[2][0] / parts[2][1] / 3600;
+    if (!Number.isFinite(value) || value < 0)
+      return void 0;
+    const positive = negative === "S" ? "N" : "E";
+    if (first === negative)
+      return -value;
+    return first === positive ? value : void 0;
+  }
+}
+function validGeo(lat, lon) {
+  const roundedLat = roundTo(lat, 1e6);
+  const roundedLon = roundTo(lon, 1e6);
+  if (roundedLat === void 0 || roundedLon === void 0)
+    return void 0;
+  if (roundedLat < -90 || roundedLat > 90 || roundedLon < -180 || roundedLon > 180 || roundedLat === 0 && roundedLon === 0)
+    return void 0;
+  return [roundedLat, roundedLon];
+}
+async function readCapturedAt(tiff, exif) {
+  const date = async (tag) => {
+    const text = await tiff.text(exif, tag);
+    return text === void 0 ? void 0 : parseDateTime(text, ":", " ");
+  };
+  let base = await date(TAG_DATE_TIME_ORIGINAL);
+  const digitized = base === void 0;
+  if (digitized)
+    base = await date(TAG_DATE_TIME_DIGITIZED);
+  if (base === void 0)
+    return void 0;
+  let fraction = await tiff.text(exif, TAG_SUB_SEC_ORIGINAL);
+  let offset = await tiff.text(exif, TAG_OFFSET_TIME_ORIGINAL);
+  if (digitized) {
+    if (fraction === void 0)
+      fraction = await tiff.text(exif, TAG_SUB_SEC_DIGITIZED);
+    if (offset === void 0)
+      offset = await tiff.text(exif, TAG_OFFSET_TIME_DIGITIZED);
+  }
+  let out = base;
+  if (fraction !== void 0)
+    out += parseFraction(fraction) ?? "";
+  if (offset !== void 0)
+    out += parseOffset(offset) ?? "";
+  return out;
+}
+async function readGeo(tiff, gps) {
+  const lat = await tiff.degrees(gps, TAG_GPS_LAT, TAG_GPS_LAT_REF, "S");
+  if (lat === void 0)
+    return void 0;
+  const lon = await tiff.degrees(gps, TAG_GPS_LON, TAG_GPS_LON_REF, "W");
+  if (lon === void 0)
+    return void 0;
+  const valid = validGeo(lat, lon);
+  if (!valid)
+    return void 0;
+  const geo = { lat: valid[0], lon: valid[1] };
+  const alt = await tiff.rational(gps, TAG_GPS_ALT);
+  if (alt !== void 0) {
+    const below = await tiff.uint(gps, TAG_GPS_ALT_REF) === 1;
+    const rounded = roundTo(below ? -Math.abs(alt) : alt, 10);
+    if (rounded !== void 0)
+      geo.alt = rounded;
+  }
+  const heading = await tiff.rational(gps, TAG_GPS_IMG_DIRECTION);
+  if (heading !== void 0 && heading >= 0 && heading <= 360) {
+    const rounded = roundTo(heading, 10);
+    if (rounded !== void 0)
+      geo.heading = rounded;
+  }
+  const accuracy = await tiff.rational(gps, TAG_GPS_H_ERROR);
+  if (accuracy !== void 0 && accuracy >= 0) {
+    const rounded = roundTo(accuracy, 10);
+    if (rounded !== void 0)
+      geo.accuracy_m = rounded;
+  }
+  return geo;
+}
+async function readExposure(tiff, exif) {
+  const positive = (value, scale) => value !== void 0 && value > 0 ? roundTo(value, scale) : void 0;
+  const positiveUint = (value) => value !== void 0 && value > 0 ? value : void 0;
+  const exposure = {
+    iso: positiveUint(await tiff.uint(exif, TAG_ISO)),
+    f_number: positive(await tiff.rational(exif, TAG_F_NUMBER), 100),
+    focal_length_mm: positive(await tiff.rational(exif, TAG_FOCAL_LENGTH), 100),
+    focal_length_35mm: positiveUint(await tiff.uint(exif, TAG_FOCAL_LENGTH_35MM))
+  };
+  const parts = await tiff.rationals(exif, TAG_EXPOSURE_TIME, 1);
+  if (parts) {
+    const [num, den] = parts[0];
+    if (num > 0 && den > 0) {
+      const divisor = gcd(num, den);
+      const reducedDen = den / divisor;
+      exposure.exposure_time = reducedDen === 1 ? String(num / divisor) : `${num / divisor}/${reducedDen}`;
+    }
+  }
+  return someIfAny(exposure);
+}
+async function readExif(reader, base, limit) {
+  if (limit < 8)
+    return void 0;
+  const head = await attempt(() => reader.read(base, 8));
+  if (!head)
+    return void 0;
+  let littleEndian;
+  if (head[0] === 73 && head[1] === 73)
+    littleEndian = true;
+  else if (head[0] === 77 && head[1] === 77)
+    littleEndian = false;
+  else
+    return void 0;
+  const tiff = new Tiff(reader, base, limit, littleEndian);
+  if (tiff.u16At(head, 2) !== 42)
+    return void 0;
+  const first = tiff.u32At(head, 4);
+  const ifd0 = await attempt(() => tiff.readIfd(first));
+  if (!ifd0)
+    return void 0;
+  const fields = { orientation: await tiff.uint(ifd0, TAG_ORIENTATION) };
+  const exif = await tiff.subIfd(ifd0, TAG_EXIF_IFD) ?? /* @__PURE__ */ new Map();
+  fields.camera = someIfAny({
+    make: await tiff.text(ifd0, TAG_MAKE),
+    model: await tiff.text(ifd0, TAG_MODEL),
+    lens: await tiff.text(exif, TAG_LENS_MODEL)
+  });
+  fields.captured_at = await readCapturedAt(tiff, exif);
+  fields.exposure = await readExposure(tiff, exif);
+  const gps = await tiff.subIfd(ifd0, TAG_GPS_IFD);
+  if (gps)
+    fields.geo = await readGeo(tiff, gps);
+  return fields;
+}
+function applyExif(meta, fields) {
+  meta.captured_at = fields.captured_at;
+  meta.geo = fields.geo;
+  meta.camera = fields.camera;
+  meta.exposure = fields.exposure;
+}
+function setSize(meta, width, height) {
+  if (width > 0 && height > 0) {
+    meta.width = width;
+    meta.height = height;
+  }
+}
+async function probeJpeg(reader, meta) {
+  let exifAt;
+  let frame;
+  let at = 2;
+  for (let i = 0; i < MAX_JPEG_SEGMENTS; i += 1) {
+    const head = await attempt(() => reader.read(at, 2));
+    if (!head || head[0] !== 255)
+      break;
+    const marker = head[1];
+    if (marker === 255) {
+      at += 1;
+      continue;
+    }
+    if (marker === 1 || marker >= 208 && marker <= 216) {
+      at += 2;
+      continue;
+    }
+    if (marker === 217 || marker === 218)
+      break;
+    const length = await attempt(async () => be16(await reader.read(at + 2, 2), 0));
+    if (length === void 0 || length < 2)
+      break;
+    if (marker === 225 && !exifAt && length >= 8) {
+      const prefix = await attempt(() => reader.read(at + 4, 6));
+      if (prefix && asciiAt(prefix, 0, "Exif\0\0"))
+        exifAt = [at + 10, length - 8];
+    }
+    if (marker >= 192 && marker <= 207 && marker !== 196 && marker !== 200 && marker !== 204) {
+      const sof = await attempt(() => reader.read(at + 4, 5));
+      if (sof)
+        frame = [be16(sof, 3), be16(sof, 1)];
+      break;
+    }
+    at += 2 + length;
+  }
+  let orientation;
+  if (exifAt) {
+    const fields = await readExif(reader, exifAt[0], exifAt[1]);
+    if (fields) {
+      orientation = fields.orientation;
+      applyExif(meta, fields);
+    }
+  }
+  if (frame) {
+    if (orientation !== void 0 && orientation >= 5 && orientation <= 8)
+      setSize(meta, frame[1], frame[0]);
+    else
+      setSize(meta, frame[0], frame[1]);
+  }
+}
+async function probePng(reader, meta) {
+  const head = await attempt(() => reader.read(8, 16));
+  if (head && asciiAt(head, 4, "IHDR"))
+    setSize(meta, be32(head, 8), be32(head, 12));
+  let at = 8;
+  for (let i = 0; i < MAX_PNG_CHUNKS; i += 1) {
+    const chunk = await attempt(() => reader.read(at, 8));
+    if (!chunk)
+      return;
+    const length = be32(chunk, 0);
+    const kind = fourCC(chunk, 4);
+    if (kind === "IDAT" || kind === "IEND")
+      return;
+    if (kind === "eXIf") {
+      const fields = await readExif(reader, at + 8, length);
+      if (fields)
+        applyExif(meta, fields);
+      return;
+    }
+    at += 12 + length;
+  }
+}
+async function probeGif(reader, meta) {
+  const head = await attempt(() => reader.read(6, 4));
+  if (head)
+    setSize(meta, le16(head, 0), le16(head, 2));
+}
+async function probeWebp(reader, meta) {
+  const riff = await attempt(() => reader.read(0, 12));
+  if (!riff)
+    return;
+  const end = Math.min(reader.size, 8 + le32(riff, 4));
+  let extended = false;
+  let at = 12;
+  for (let i = 0; i < MAX_RIFF_CHUNKS; i += 1) {
+    if (at + 8 > end)
+      return;
+    const head = await attempt(() => reader.read(at, 8));
+    if (!head)
+      return;
+    const size = le32(head, 4);
+    const data = at + 8;
+    const kind = fourCC(head, 0);
+    if (kind === "VP8 " && !extended) {
+      const frame = await attempt(() => reader.read(data, 10));
+      if (frame && frame[3] === 157 && frame[4] === 1 && frame[5] === 42) {
+        setSize(meta, le16(frame, 6) & 16383, le16(frame, 8) & 16383);
+      }
+      return;
+    }
+    if (kind === "VP8L" && !extended) {
+      const frame = await attempt(() => reader.read(data, 5));
+      if (frame && frame[0] === 47) {
+        const width = 1 + (frame[1] + (frame[2] & 63) * 256);
+        const height = 1 + ((frame[2] >> 6) + frame[3] * 4 + (frame[4] & 15) * 1024);
+        setSize(meta, width, height);
+      }
+      return;
+    }
+    if (kind === "VP8X") {
+      const header = await attempt(() => reader.read(data, 10));
+      if (!header)
+        return;
+      setSize(meta, le24(header, 4) + 1, le24(header, 7) + 1);
+      if ((header[0] & 8) === 0)
+        return;
+      extended = true;
+    } else if (kind === "EXIF") {
+      const prefix = await attempt(() => reader.read(data, Math.min(size, 6)));
+      if (!prefix)
+        return;
+      const skip = asciiAt(prefix, 0, "Exif\0\0") ? 6 : 0;
+      const fields = await readExif(reader, data + skip, size - skip);
+      if (fields)
+        applyExif(meta, fields);
+      return;
+    }
+    at = data + size + (size & 1);
+  }
+}
+async function probeTiff(reader, meta) {
+  const fields = await readExif(reader, 0, reader.size);
+  if (fields)
+    applyExif(meta, fields);
+}
+async function readIsoBox(reader, at, end) {
+  if (at + 8 > end)
+    return void 0;
+  const head = await reader.read(at, 8);
+  let size = be32(head, 0);
+  const kind = fourCC(head, 4);
+  let header = 8;
+  if (size === 1) {
+    if (at + 16 > end)
+      return void 0;
+    size = be64(await reader.read(at + 8, 8), 0);
+    header = 16;
+  } else if (size === 0) {
+    size = end - at;
+  }
+  if (size < header)
+    return void 0;
+  return { kind, at, start: at + header, end: Math.min(end, at + size), next: at + size };
+}
+async function readChildren(reader, start, end) {
+  const boxes = [];
+  let at = start;
+  while (boxes.length < MAX_ISO_BOXES) {
+    const found = await readIsoBox(reader, at, end);
+    if (!found)
+      break;
+    at = found.next;
+    boxes.push(found);
+  }
+  return boxes;
+}
+function heifExifExtent(b2) {
+  return attemptSync(() => {
+    const view = new DataView(b2.buffer, b2.byteOffset, b2.byteLength);
+    const meta = isoBoxes(view, 0, b2.length).find((box) => box.type === "meta");
+    if (!meta)
+      return void 0;
+    const children = isoBoxes(view, meta.start + 4, meta.end);
+    const iinf = children.find((box) => box.type === "iinf");
+    const iloc = children.find((box) => box.type === "iloc");
+    if (!iinf || !iloc)
+      return void 0;
+    if (iinf.start >= b2.length)
+      throw STOP;
+    const first = iinf.start + (b2[iinf.start] === 0 ? 6 : 8);
+    let wanted;
+    for (const infe of isoBoxes(view, first, iinf.end)) {
+      if (infe.type !== "infe")
+        continue;
+      if (infe.start >= b2.length)
+        throw STOP;
+      const version22 = b2[infe.start];
+      let item;
+      let kindAt;
+      if (version22 === 2) {
+        item = be16(b2, infe.start + 4);
+        kindAt = infe.start + 8;
+      } else if (version22 === 3) {
+        item = be32(b2, infe.start + 4);
+        kindAt = infe.start + 10;
+      } else {
+        continue;
+      }
+      if (asciiAt(b2, kindAt, "Exif")) {
+        wanted = item;
+        break;
+      }
+    }
+    if (wanted === void 0)
+      return void 0;
+    let at = iloc.start;
+    if (at + 6 > b2.length)
+      throw STOP;
+    const version2 = b2[at];
+    if (version2 > 2)
+      return void 0;
+    const offsetSize = b2[at + 4] >> 4;
+    const lengthSize = b2[at + 4] & 15;
+    const baseSize = b2[at + 5] >> 4;
+    const indexSize = version2 >= 1 ? b2[at + 5] & 15 : 0;
+    at += 6;
+    const count = version2 < 2 ? be16(b2, at) : be32(b2, at);
+    at += version2 < 2 ? 2 : 4;
+    for (let i = 0; i < count; i += 1) {
+      const item = version2 < 2 ? be16(b2, at) : be32(b2, at);
+      at += version2 < 2 ? 2 : 4;
+      let method = 0;
+      if (version2 >= 1) {
+        method = be16(b2, at) & 15;
+        at += 2;
+      }
+      at += 2;
+      const base = beUint(b2, at, baseSize);
+      at += baseSize;
+      const extents = be16(b2, at);
+      at += 2;
+      let extent;
+      for (let j = 0; j < extents; j += 1) {
+        at += indexSize;
+        const offset = beUint(b2, at, offsetSize);
+        at += offsetSize;
+        const length = beUint(b2, at, lengthSize);
+        at += lengthSize;
+        extent = [base + offset, length];
+      }
+      if (item === wanted)
+        return method === 0 && extents === 1 ? extent : void 0;
+    }
+    return void 0;
+  });
+}
+async function findTopLevelBox(reader, kind) {
+  let at = 0;
+  for (let i = 0; i < MAX_ISO_BOXES; i += 1) {
+    const found = await readIsoBox(reader, at, reader.size);
+    if (!found)
+      break;
+    if (found.kind === kind)
+      return found;
+    at = found.next;
+  }
+  return void 0;
+}
+async function probeHeif(reader, meta) {
+  const metaBox = await attempt(() => findTopLevelBox(reader, "meta"));
+  if (!metaBox)
+    return;
+  const bytes2 = await attempt(() => reader.read(metaBox.at, metaBox.end - metaBox.at));
+  if (!bytes2)
+    return;
+  const size = heifImageSize(bytes2);
+  if (size)
+    setSize(meta, size.width, size.height);
+  const extent = heifExifExtent(bytes2);
+  if (!extent)
+    return;
+  const [offset, length] = extent;
+  if (length < 4)
+    return;
+  const prefix = await attempt(() => reader.read(offset, 4));
+  if (!prefix)
+    return;
+  const tiffOffset = be32(prefix, 0);
+  if (tiffOffset + 4 > length)
+    return;
+  const fields = await readExif(reader, offset + 4 + tiffOffset, length - 4 - tiffOffset);
+  if (fields)
+    applyExif(meta, fields);
+}
+function codecName(format) {
+  switch (format) {
+    case "avc1":
+    case "avc3":
+      return "h264";
+    case "hvc1":
+    case "hev1":
+      return "hevc";
+    case "av01":
+      return "av1";
+    case "vp09":
+      return "vp9";
+    case "mp4a":
+      return "aac";
+    default:
+      return void 0;
+  }
+}
+function parseIso6709(text) {
+  const body = text.endsWith("/") ? text.slice(0, -1) : text;
+  const parts = [];
+  let start = -1;
+  for (let index = 0; index < body.length; index += 1) {
+    const c = body[index];
+    if (c === "+" || c === "-") {
+      if (start >= 0) {
+        const value = parseCoordinate(body.slice(start, index));
+        if (value === void 0)
+          return void 0;
+        parts.push(value);
+      }
+      start = index;
+    } else if (start < 0 || !/[0-9.]/.test(c)) {
+      return void 0;
+    }
+  }
+  if (start < 0)
+    return void 0;
+  const last = parseCoordinate(body.slice(start));
+  if (last === void 0)
+    return void 0;
+  parts.push(last);
+  if (parts.length < 2 || parts.length > 3)
+    return void 0;
+  const valid = validGeo(parts[0], parts[1]);
+  if (!valid)
+    return void 0;
+  const geo = { lat: valid[0], lon: valid[1] };
+  if (parts.length === 3) {
+    const alt = roundTo(parts[2], 10);
+    if (alt !== void 0)
+      geo.alt = alt;
+  }
+  return geo;
+}
+function parseCoordinate(text) {
+  return /^[+-][0-9]+(\.[0-9]+)?$/.test(text) ? Number(text) : void 0;
+}
+function parseDecimal(text) {
+  return /^[+-]?([0-9]+\.?[0-9]*|\.[0-9]+)([eE][+-]?[0-9]+)?$/.test(text) ? Number(text) : void 0;
+}
+function applyItem(media, key, text) {
+  const clean = cleanText(text);
+  switch (key) {
+    case "com.apple.quicktime.creationdate":
+      if (media.creationDate === void 0 && clean !== void 0)
+        media.creationDate = parseIsoDateTime(clean);
+      break;
+    case "com.apple.quicktime.location.ISO6709":
+      if (media.location === void 0 && clean !== void 0)
+        media.location = parseIso6709(clean);
+      break;
+    case "com.apple.quicktime.location.accuracy.horizontal": {
+      const value = clean === void 0 ? void 0 : parseDecimal(clean);
+      media.accuracy = value !== void 0 && Number.isFinite(value) && value >= 0 ? roundTo(value, 10) : void 0;
+      break;
+    }
+    case "com.apple.quicktime.make":
+      media.make = clean;
+      break;
+    case "com.apple.quicktime.model":
+      media.model = clean;
+      break;
+  }
+}
+async function readItemText(reader, item) {
+  for (const child of await readChildren(reader, item.start, item.end)) {
+    if (child.kind !== "data" || child.end < child.start + 8)
+      continue;
+    const head = await reader.read(child.start, 4);
+    if (be32(head, 0) % 16777216 !== 1)
+      return void 0;
+    const length = Math.min(child.end - child.start - 8, MAX_TEXT_BYTES);
+    return decodeUtf8(await reader.read(child.start + 8, length));
+  }
+  return void 0;
+}
+async function readMetaBox(reader, meta, media) {
+  if (meta.end < meta.start + 8)
+    return;
+  const probe = await reader.read(meta.start + 4, 4);
+  const first = asciiAt(probe, 0, "hdlr") ? meta.start : meta.start + 4;
+  const children = await readChildren(reader, first, meta.end);
+  const keys = [];
+  const keysBox = children.find((box) => box.kind === "keys");
+  if (keysBox) {
+    const head = await reader.read(keysBox.start, 8);
+    const count = be32(head, 4);
+    let at = keysBox.start + 8;
+    for (let i = 0; i < Math.min(count, MAX_ISO_BOXES); i += 1) {
+      const entry = await readIsoBox(reader, at, keysBox.end);
+      if (!entry)
+        break;
+      const length = Math.min(entry.end - entry.start, MAX_TEXT_BYTES);
+      keys.push(decodeUtf8(await reader.read(entry.start, length)));
+      at = entry.next;
+    }
+  }
+  const ilst = children.find((box) => box.kind === "ilst");
+  if (!ilst)
+    return;
+  for (const item of await readChildren(reader, ilst.start, ilst.end)) {
+    const index = item.kind.charCodeAt(0) * 16777216 + item.kind.charCodeAt(1) * 65536 + item.kind.charCodeAt(2) * 256 + item.kind.charCodeAt(3);
+    if (index >= 1 && index <= keys.length) {
+      const text2 = await readItemText(reader, item);
+      if (text2 !== void 0)
+        applyItem(media, keys[index - 1], text2);
+      continue;
+    }
+    if (item.kind !== "©nam" && item.kind !== "©ART" && item.kind !== "©alb")
+      continue;
+    const text = await readItemText(reader, item);
+    if (text === void 0)
+      continue;
+    const value = cleanText(text);
+    if (item.kind === "©nam")
+      media.title = value;
+    else if (item.kind === "©ART")
+      media.artist = value;
+    else
+      media.album = value;
+  }
+}
+async function readUdta(reader, udta, media) {
+  for (const child of await readChildren(reader, udta.start, udta.end)) {
+    if (child.kind === "©xyz" && child.end >= child.start + 4) {
+      const head = await reader.read(child.start, 2);
+      const length = Math.min(be16(head, 0), child.end - child.start - 4, MAX_TEXT_BYTES);
+      const bytes2 = await reader.read(child.start + 4, length);
+      if (media.location === void 0) {
+        const text = cleanBytes(bytes2);
+        media.location = text === void 0 ? void 0 : parseIso6709(text);
+      }
+    } else if (child.kind === "meta") {
+      await readMetaBox(reader, child, media);
+    }
+  }
+}
+async function readMvhd(reader, mvhd, media) {
+  const bytes2 = await reader.read(mvhd.start, Math.min(mvhd.end - mvhd.start, 32));
+  if (bytes2.length === 0)
+    throw STOP;
+  const version2 = bytes2[0];
+  const created = attemptSync(() => version2 === 1 ? be64(bytes2, 4) : be32(bytes2, 4));
+  const timescale = version2 === 1 ? be32(bytes2, 20) : be32(bytes2, 12);
+  const duration = attemptSync(() => version2 === 1 ? be64(bytes2, 24) : be32(bytes2, 16));
+  media.mvhdTime = created === void 0 ? void 0 : utcFromMp4Time(created);
+  media.durationMs = duration === void 0 || version2 !== 1 && duration === 4294967295 ? void 0 : millis(duration, timescale);
+}
+async function readTrak(reader, trak, media) {
+  const children = await readChildren(reader, trak.start, trak.end);
+  const mdia = children.find((box) => box.kind === "mdia");
+  if (!mdia)
+    return;
+  const mdiaChildren = await readChildren(reader, mdia.start, mdia.end);
+  const hdlr = mdiaChildren.find((box) => box.kind === "hdlr");
+  if (!hdlr)
+    return;
+  const handler = fourCC(await reader.read(hdlr.start + 8, 4), 0);
+  const isVideo = handler === "vide";
+  const isAudio = handler === "soun";
+  if (!isVideo && !isAudio)
+    return;
+  if (isAudio)
+    media.hasAudio = true;
+  else
+    media.hasVideo = true;
+  let format;
+  const minf = mdiaChildren.find((box) => box.kind === "minf");
+  if (minf) {
+    const minfChildren = await readChildren(reader, minf.start, minf.end);
+    const stbl = minfChildren.find((box) => box.kind === "stbl");
+    if (stbl) {
+      const stblChildren = await readChildren(reader, stbl.start, stbl.end);
+      const stsd = stblChildren.find((box) => box.kind === "stsd");
+      if (stsd && stsd.end >= stsd.start + 16)
+        format = fourCC(await reader.read(stsd.start + 12, 4), 0);
+    }
+  }
+  const codec = format === void 0 ? void 0 : codecName(format);
+  if (isAudio) {
+    if (media.audioCodec === void 0)
+      media.audioCodec = codec;
+    return;
+  }
+  if (media.width > 0)
+    return;
+  const tkhd = children.find((box) => box.kind === "tkhd");
+  if (!tkhd)
+    return;
+  const bytes2 = await reader.read(tkhd.start, Math.min(tkhd.end - tkhd.start, 96));
+  if (bytes2.length === 0)
+    throw STOP;
+  const matrix = bytes2[0] === 1 ? 52 : 40;
+  const fixed = (at) => Math.floor((be32(bytes2, at) + 32768) / 65536);
+  const width = fixed(matrix + 36);
+  const height = fixed(matrix + 40);
+  if (width === 0 || height === 0)
+    return;
+  const a = be32(bytes2, matrix);
+  const b2 = be32(bytes2, matrix + 4);
+  const c = be32(bytes2, matrix + 12);
+  const d = be32(bytes2, matrix + 16);
+  const quarterTurn = a === 0 && d === 0 && b2 !== 0 && c !== 0;
+  media.width = quarterTurn ? height : width;
+  media.height = quarterTurn ? width : height;
+  media.videoCodec = codec;
+}
+async function readMoov(reader, media) {
+  const moov = await findTopLevelBox(reader, "moov");
+  if (!moov)
+    return;
+  for (const child of await readChildren(reader, moov.start, moov.end)) {
+    switch (child.kind) {
+      case "mvhd":
+        await readMvhd(reader, child, media);
+        break;
+      case "trak":
+        await readTrak(reader, child, media);
+        break;
+      case "udta":
+        await readUdta(reader, child, media);
+        break;
+      case "meta":
+        await readMetaBox(reader, child, media);
+        break;
+    }
+  }
+}
+async function probeIsoMedia(reader, meta) {
+  var _a2;
+  const media = { hasVideo: false, hasAudio: false, width: 0, height: 0 };
+  await attempt(() => readMoov(reader, media));
+  if (meta.mime === "video/mp4" && !media.hasVideo && media.hasAudio)
+    meta.mime = "audio/mp4";
+  meta.duration_ms = media.durationMs;
+  meta.audio_codec = media.audioCodec;
+  if ((_a2 = meta.mime) == null ? void 0 : _a2.startsWith("audio/")) {
+    meta.title = media.title;
+    meta.artist = media.artist;
+    meta.album = media.album;
+    return;
+  }
+  setSize(meta, media.width, media.height);
+  meta.video_codec = media.videoCodec;
+  meta.captured_at = media.creationDate ?? media.mvhdTime;
+  meta.geo = media.location && someIfAny({ ...media.location, accuracy_m: media.accuracy });
+  meta.camera = someIfAny({ make: media.make, model: media.model });
+}
+async function probeFlac(reader, meta) {
+  const head = await attempt(() => reader.read(4, 22));
+  if (!head || (head[0] & 127) !== 0)
+    return;
+  const info = head.subarray(4);
+  const rate = info[10] * 4096 + info[11] * 16 + (info[12] >> 4);
+  const samples = (info[13] & 15) * 4294967296 + be32(info, 14);
+  meta.duration_ms = millis(samples, rate);
+}
+async function probeWav(reader, meta) {
+  const riff = await attempt(() => reader.read(0, 12));
+  if (!riff)
+    return;
+  const end = Math.min(reader.size, 8 + le32(riff, 4));
+  let byteRate;
+  let dataSize;
+  let at = 12;
+  for (let i = 0; i < MAX_RIFF_CHUNKS; i += 1) {
+    if (at + 8 > end)
+      break;
+    const head = await attempt(() => reader.read(at, 8));
+    if (!head)
+      break;
+    const size = le32(head, 4);
+    const data = at + 8;
+    const kind = fourCC(head, 0);
+    if (kind === "fmt ") {
+      const format = await attempt(() => reader.read(data, 12));
+      if (!format)
+        break;
+      byteRate = le32(format, 8);
+    } else if (kind === "data") {
+      dataSize = Math.min(size, reader.size - data);
+    }
+    if (byteRate !== void 0 && dataSize !== void 0)
+      break;
+    at = data + size + (size & 1);
+  }
+  if (byteRate !== void 0 && dataSize !== void 0)
+    meta.duration_ms = millis(dataSize, byteRate);
+}
+function syncsafe(b2, at) {
+  if (at + 4 > b2.length)
+    throw STOP;
+  if ((b2[at] | b2[at + 1] | b2[at + 2] | b2[at + 3]) & 128)
+    throw STOP;
+  return b2[at] * 2097152 + b2[at + 1] * 16384 + b2[at + 2] * 128 + b2[at + 3];
+}
+function decodeUtf16(bytes2, bigEndian) {
+  const units = [];
+  for (let at = 0; at + 2 <= bytes2.length; at += 2) {
+    units.push(bigEndian ? be16(bytes2, at) : le16(bytes2, at));
+  }
+  let out = "";
+  for (let i = 0; i < units.length; i += 1) {
+    const unit = units[i];
+    if (unit >= 55296 && unit <= 56319 && i + 1 < units.length && units[i + 1] >= 56320 && units[i + 1] <= 57343) {
+      out += String.fromCharCode(unit, units[i + 1]);
+      i += 1;
+    } else if (unit >= 55296 && unit <= 57343) {
+      out += "�";
+    } else {
+      out += String.fromCharCode(unit);
+    }
+  }
+  return out;
+}
+function decodeId3Text(b2) {
+  if (b2.length === 0)
+    return void 0;
+  const encoding = b2[0];
+  const payload = b2.subarray(1);
+  let text;
+  switch (encoding) {
+    case 0:
+      text = Array.from(payload, (c) => String.fromCharCode(c)).join("");
+      break;
+    case 1:
+      if (payload[0] === 254 && payload[1] === 255)
+        text = decodeUtf16(payload.subarray(2), true);
+      else if (payload[0] === 255 && payload[1] === 254)
+        text = decodeUtf16(payload.subarray(2), false);
+      else
+        text = decodeUtf16(payload, false);
+      break;
+    case 2:
+      text = decodeUtf16(payload, true);
+      break;
+    case 3:
+      text = decodeUtf8(payload);
+      break;
+    default:
+      return void 0;
+  }
+  return cleanText(text);
+}
+async function readId3(reader, meta) {
+  const header = await reader.read(0, 10);
+  const version2 = header[3];
+  if (!asciiAt(header, 0, "ID3") || version2 < 2 || version2 > 4 || (header[5] & 128) !== 0)
+    return;
+  const end = Math.min(10 + syncsafe(header, 6), reader.size);
+  let at = 10;
+  if ((header[5] & 64) !== 0) {
+    if (version2 === 3)
+      at += 4 + be32(await reader.read(at, 4), 0);
+    else if (version2 === 4)
+      at += syncsafe(await reader.read(at, 4), 0);
+    else
+      return;
+  }
+  const headerSize = version2 === 2 ? 6 : 10;
+  for (let i = 0; i < MAX_ID3_FRAMES; i += 1) {
+    if (at + headerSize > end)
+      break;
+    const frame = await reader.read(at, headerSize);
+    if (frame[0] === 0)
+      break;
+    let id2;
+    let size;
+    let skip;
+    if (version2 === 2) {
+      id2 = String.fromCharCode(frame[0], frame[1], frame[2]);
+      size = frame[3] * 65536 + frame[4] * 256 + frame[5];
+      skip = false;
+    } else if (version2 === 3) {
+      id2 = fourCC(frame, 0);
+      size = be32(frame, 4);
+      skip = (frame[9] & 224) !== 0;
+    } else {
+      id2 = fourCC(frame, 0);
+      size = syncsafe(frame, 4);
+      skip = (frame[9] & 79) !== 0;
+    }
+    const key = id2 === "TIT2" || id2 === "TT2" ? "title" : id2 === "TPE1" || id2 === "TP1" ? "artist" : id2 === "TALB" || id2 === "TAL" ? "album" : void 0;
+    if (key && !skip && size > 0) {
+      const length = Math.min(size, MAX_TEXT_BYTES, end - (at + headerSize));
+      const bytes2 = await reader.read(at + headerSize, length);
+      if (meta[key] === void 0)
+        meta[key] = decodeId3Text(bytes2);
+      if (meta.title !== void 0 && meta.artist !== void 0 && meta.album !== void 0)
+        break;
+    }
+    at += headerSize + size;
+  }
+}
+function withoutUndefined(meta) {
+  return Object.fromEntries(Object.entries(meta).filter(([, value]) => value !== void 0));
+}
+function loadMedia(blob, tag, read) {
+  const url = URL.createObjectURL(blob);
+  return new Promise((resolve) => {
+    const element = document.createElement(tag);
+    const done = (value) => {
+      clearTimeout(timer);
+      URL.revokeObjectURL(url);
+      resolve(value);
+    };
+    const timer = setTimeout(() => done(void 0), MEDIA_ELEMENT_TIMEOUT_MS);
+    element.addEventListener(tag === "img" ? "load" : "loadedmetadata", () => done(read(element)));
+    element.addEventListener("error", () => done(void 0));
+    if (element instanceof HTMLMediaElement)
+      element.preload = "metadata";
+    element.src = url;
+  });
+}
+function durationOf(element) {
+  const ms = Math.round(element.duration * 1e3);
+  return Number.isSafeInteger(ms) && ms >= 1 ? ms : void 0;
+}
+async function fillFromMediaElement(blob, meta) {
+  if (typeof document === "undefined" || !meta.mime || typeof URL === "undefined" || !URL.createObjectURL)
+    return;
+  if (meta.mime.startsWith("image/") && meta.width === void 0) {
+    const size = await loadMedia(blob, "img", (element) => {
+      const image = element;
+      return { width: image.naturalWidth, height: image.naturalHeight };
+    });
+    if (size)
+      setSize(meta, size.width, size.height);
+  } else if (meta.mime.startsWith("video/") && (meta.width === void 0 || meta.duration_ms === void 0)) {
+    const info = await loadMedia(blob, "video", (element) => {
+      const video = element;
+      return { width: video.videoWidth, height: video.videoHeight, duration: durationOf(video) };
+    });
+    if (info) {
+      if (meta.width === void 0)
+        setSize(meta, info.width, info.height);
+      if (meta.duration_ms === void 0)
+        meta.duration_ms = info.duration;
+    }
+  } else if (meta.mime.startsWith("audio/") && meta.duration_ms === void 0) {
+    meta.duration_ms = await loadMedia(blob, "audio", (element) => durationOf(element));
+  }
+}
+async function probeFileMeta(source, options = {}) {
+  const blob = isBlob(source) ? source : void 0;
+  const name = options.name ?? (blob && "name" in blob ? String(blob.name) : "");
+  const declaredMime = options.declaredMime ?? (blob == null ? void 0 : blob.type);
+  const reader = new Reader(blob ? blobSource(blob) : source);
+  const head = await attempt(() => reader.read(0, Math.min(reader.size, SNIFF_BYTES)));
+  const meta = { mime: resolveMime(sniffMagic(head), name, declaredMime) };
+  await attempt(async () => {
+    switch (meta.mime) {
+      case "image/jpeg":
+        await probeJpeg(reader, meta);
+        break;
+      case "image/png":
+        await probePng(reader, meta);
+        break;
+      case "image/gif":
+        await probeGif(reader, meta);
+        break;
+      case "image/webp":
+        await probeWebp(reader, meta);
+        break;
+      case "image/heic":
+      case "image/heif":
+      case "image/avif":
+        await probeHeif(reader, meta);
+        break;
+      case "image/tiff":
+        await probeTiff(reader, meta);
+        break;
+      case "video/mp4":
+      case "video/quicktime":
+      case "audio/mp4":
+        await probeIsoMedia(reader, meta);
+        break;
+      case "audio/flac":
+        await probeFlac(reader, meta);
+        break;
+      case "audio/wav":
+        await probeWav(reader, meta);
+        break;
+      case "audio/mpeg":
+        await readId3(reader, meta);
+        break;
+    }
+  });
+  if (blob)
+    await attempt(() => fillFromMediaElement(blob, meta));
+  return withoutUndefined(meta);
+}
+function buildFileObject(name, size, content, meta = {}) {
+  const file = new FileObject(name, size, content);
+  file.meta = withoutUndefined(meta);
+  return file;
+}
+const ndn = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
+  __proto__: null,
+  ACTION_TYPE_DOWNLOAD,
+  ACTION_TYPE_INSTALLED,
+  ACTION_TYPE_LIKED,
+  ACTION_TYPE_PURCHASED,
+  ACTION_TYPE_SHARED,
+  ACTION_TYPE_UNLIKED,
+  ACTION_TYPE_VIEWED,
+  BaseContentObject,
+  CYFS_CONTENT_TYPE_NAMED_OBJECT_JSON,
+  CYFS_CONTENT_TYPE_NAMED_OBJECT_JWT,
+  ChunkId,
+  ChunkType,
+  DEFAULT_HASH_METHOD,
+  DirObject,
+  FILE_META_READ_LIMIT,
+  FileObject,
+  HashMethod,
+  InclusionProof,
+  KnownStandardObject,
+  MSG_OBJECT_RESERVED_KEYS,
+  MSG_REACTION_KEY_MAX_BYTES,
+  MSG_SESSION_ID_MAX_CHARS,
+  NamedObjectBase,
+  NdnError,
+  OBJ_TYPE_ACTION,
+  OBJ_TYPE_CHUNK_LIST,
+  OBJ_TYPE_DIR,
+  OBJ_TYPE_FILE,
+  OBJ_TYPE_INCLUSION_PROOF,
+  OBJ_TYPE_LIST,
+  OBJ_TYPE_MSG,
+  OBJ_TYPE_OBJMAP,
+  OBJ_TYPE_PACK,
+  OBJ_TYPE_PATH,
+  OBJ_TYPE_PKG,
+  OBJ_TYPE_RECEIPT,
+  OBJ_TYPE_RELATION,
+  ObjId,
+  PathObject,
+  RELATION_TYPE_PART_OF,
+  RELATION_TYPE_SAME,
+  RelationObject,
+  SimpleChunkList,
+  SimpleMapItem,
+  SimpleObjectMap,
+  actionObjectFromJson,
+  base32Decode,
+  base32Encode,
+  buildFileObject,
+  buildNamedObjectByJson,
+  buildNamedObjectByJwt,
+  buildObjId,
+  bytesToHex: bytesToHex$2,
+  calcPkgMetaObjId,
+  canonicalizeJson,
+  decodeMsgObjectJwt,
+  extractObjIdByPath,
+  hexToBytes: hexToBytes$1,
+  isCyfsNamedObjectContentType,
+  isValidMsgSessionId,
+  loadNamedObj,
+  loadNamedObjAndVerify,
+  loadNamedObjectFromObjStr,
+  msgJwtKidDid,
+  msgObjectFromJsonChecked,
+  namedObjectEncodingFromContentType,
+  normalizePackageMetaForObjId,
+  probeFileMeta,
+  randomMsgNonce,
+  receiptObjFromJson,
+  sha256Bytes,
+  sha256Utf8,
+  toCanonicalJsonString,
+  validateMsgObject,
+  varintDecode,
+  varintEncode,
+  verifyMsgObjectJwt,
+  verifyNamedObject,
+  verifyNamedObjectFromJwt,
+  verifyNamedObjectFromStr
+}, Symbol.toStringTag, { value: "Module" }));
 const WORKER_SOURCE = (
   /* js */
   `
@@ -28608,7 +30064,7 @@ const browserProvider = {
   },
   pickFiles(options) {
     return new Promise((resolve, reject) => {
-      var _a2, _b;
+      var _a2, _b2;
       const input = document.createElement("input");
       input.type = "file";
       if (options.mode === "single_dir") {
@@ -28657,7 +30113,7 @@ const browserProvider = {
         onAbort();
         return;
       }
-      (_b = options.signal) == null ? void 0 : _b.addEventListener("abort", onAbort, { once: true });
+      (_b2 = options.signal) == null ? void 0 : _b2.addEventListener("abort", onAbort, { once: true });
       input.click();
     });
   }
@@ -28871,7 +30327,7 @@ async function debugDumpExpandState$1(request, options) {
 async function anchorState$1(request, options) {
   return callStoreApi("anchor_state", request, options);
 }
-async function materializeFile(file, chunkSize = DEFAULT_CHUNK_SIZE, signal) {
+async function materializeFile(file, meta, chunkSize = DEFAULT_CHUNK_SIZE, signal) {
   throwIfCancelled(signal);
   const fileSize = file.size;
   const chunks = [];
@@ -28881,7 +30337,7 @@ async function materializeFile(file, chunkSize = DEFAULT_CHUNK_SIZE, signal) {
     const chunkId = ChunkId.fromMix256Result(buf.length, hash2);
     const chunkIdStr = chunkId.toString();
     chunks.push({ chunkId: chunkIdStr, offset: 0, length: buf.length, uploaded: false });
-    const fileObj2 = new FileObject(file.name, fileSize, chunkIdStr);
+    const fileObj2 = buildFileObject(file.name, fileSize, chunkIdStr, meta);
     const [objId2, objData2] = fileObj2.genObjId();
     throwIfCancelled(signal);
     return { objectId: objId2.toString(), chunks, fileObject: fileObj2.toJSON(), objects: [{ obj_id: objId2.toString(), obj_data: objData2 }] };
@@ -28899,7 +30355,7 @@ async function materializeFile(file, chunkSize = DEFAULT_CHUNK_SIZE, signal) {
     offset = end;
   }
   const [chunkListObjId, chunkListData] = chunkList.genObjId();
-  const fileObj = new FileObject(file.name, fileSize, chunkListObjId.toString());
+  const fileObj = buildFileObject(file.name, fileSize, chunkListObjId.toString(), meta);
   const [objId, objData] = fileObj.genObjId();
   throwIfCancelled(signal);
   return { objectId: objId.toString(), chunks, fileObject: fileObj.toJSON(), objects: [
@@ -28907,9 +30363,9 @@ async function materializeFile(file, chunkSize = DEFAULT_CHUNK_SIZE, signal) {
     { obj_id: objId.toString(), obj_data: objData }
   ] };
 }
-async function materializeFileViaWorker(file, onHashProgress, chunkSize = DEFAULT_CHUNK_SIZE, signal) {
+async function materializeFileViaWorker(file, meta, onHashProgress, chunkSize = DEFAULT_CHUNK_SIZE, signal) {
   if (!isHashWorkerAvailable() || file.size === 0) {
-    const result = await materializeFile(file, chunkSize, signal);
+    const result = await materializeFile(file, meta, chunkSize, signal);
     onHashProgress == null ? void 0 : onHashProgress(file.size);
     return result;
   }
@@ -28928,7 +30384,7 @@ async function materializeFileViaWorker(file, onHashProgress, chunkSize = DEFAUL
     hashResults = await Promise.race([worker.result, timeout]);
   } catch {
     throwIfCancelled(signal);
-    return materializeFile(file, chunkSize, signal);
+    return materializeFile(file, meta, chunkSize, signal);
   } finally {
     if (timer)
       clearTimeout(timer);
@@ -28941,7 +30397,7 @@ async function materializeFileViaWorker(file, onHashProgress, chunkSize = DEFAUL
     const chunkId = ChunkId.fromMix256Result(r.length, r.hash);
     const chunkIdStr = chunkId.toString();
     chunks.push({ chunkId: chunkIdStr, offset: 0, length: r.length, uploaded: false });
-    const fileObj2 = new FileObject(file.name, fileSize, chunkIdStr);
+    const fileObj2 = buildFileObject(file.name, fileSize, chunkIdStr, meta);
     const [objId2, objData2] = fileObj2.genObjId();
     throwIfCancelled(signal);
     return { objectId: objId2.toString(), chunks, fileObject: fileObj2.toJSON(), objects: [{ obj_id: objId2.toString(), obj_data: objData2 }] };
@@ -28953,7 +30409,7 @@ async function materializeFileViaWorker(file, onHashProgress, chunkSize = DEFAUL
     chunks.push({ chunkId: chunkId.toString(), offset: r.offset, length: r.length, uploaded: false });
   }
   const [chunkListObjId, chunkListData] = chunkList.genObjId();
-  const fileObj = new FileObject(file.name, fileSize, chunkListObjId.toString());
+  const fileObj = buildFileObject(file.name, fileSize, chunkListObjId.toString(), meta);
   const [objId, objData] = fileObj.genObjId();
   throwIfCancelled(signal);
   return { objectId: objId.toString(), chunks, fileObject: fileObj.toJSON(), objects: [
@@ -28961,13 +30417,20 @@ async function materializeFileViaWorker(file, onHashProgress, chunkSize = DEFAUL
     { obj_id: objId.toString(), obj_data: objData }
   ] };
 }
-function buildFileObjectFromContentId(name, size, contentId) {
-  const fileObj = new FileObject(name, size, contentId);
-  const [objId] = fileObj.genObjId();
+function buildFileObjectFromContentId(name, size, contentId, meta) {
+  const fileObj = buildFileObject(name, size, contentId, meta);
+  const [objId, objData] = fileObj.genObjId();
   return {
     objectId: objId.toString(),
+    objData,
     fileObject: fileObj.toJSON()
   };
+}
+async function resolveFileMeta(file, known) {
+  if (known == null ? void 0 : known.mime)
+    return known;
+  const probed = await probeFileMeta(file, { name: file.name, declaredMime: file.type });
+  return { ...probed, ...known };
 }
 function resolveImportLookupEndpoint() {
   var _a2;
@@ -29021,7 +30484,7 @@ function extractLookupContentId(response, quickHash) {
   }
   return void 0;
 }
-async function lookupFileByQcid(file, options, warnings) {
+async function lookupFileByQcid(file, meta, options, warnings) {
   const endpoint = options.endpoint ?? resolveImportLookupEndpoint();
   if (!endpoint)
     return null;
@@ -29038,7 +30501,7 @@ async function lookupFileByQcid(file, options, warnings) {
     const contentId = extractLookupContentId(response, qcid);
     if (!contentId || !(ObjId.fromString(contentId).isChunk() || ObjId.fromString(contentId).isChunkList()) || contentId.startsWith("qcid:"))
       return null;
-    return { ...buildFileObjectFromContentId(file.name, file.size, contentId), locality: "store", qcid };
+    return { ...buildFileObjectFromContentId(file.name, file.size, contentId, meta), locality: "store", qcid };
   } catch (error) {
     throwIfCancelled(options.signal);
     if (!(error instanceof NdmStoreApiError && error.status === 404)) {
@@ -29212,7 +30675,7 @@ async function importDirectory(tree, options = {}) {
   return importSelectedFiles([], { ...options, mode: "single_dir" }, tree);
 }
 async function importSelectedFiles(selectedFiles, options, tree) {
-  var _a2;
+  var _a2, _b2;
   throwIfCancelled(options.signal);
   const files = [...selectedFiles];
   const treePaths = [];
@@ -29261,10 +30724,12 @@ async function importSelectedFiles(selectedFiles, options, tree) {
     const file = files[fi];
     throwIfCancelled(options.signal);
     const relativePath = treePaths[fi] || file.webkitRelativePath || void 0;
+    const fileMeta = await resolveFileMeta(file, (_a2 = options.fileMeta) == null ? void 0 : _a2.call(options, file));
+    throwIfCancelled(options.signal);
     if (onProgress) {
       onProgress({ phase: "qcid_lookup", fileIndex: fi, fileCount, fileName: file.name, fileTotalBytes: file.size });
     }
-    const lookupHit = await lookupFileByQcid(file, requestOptions, warnings);
+    const lookupHit = await lookupFileByQcid(file, fileMeta, requestOptions, warnings);
     let materialized = null;
     if (!lookupHit) {
       if (onProgress) {
@@ -29272,6 +30737,7 @@ async function importSelectedFiles(selectedFiles, options, tree) {
       }
       materialized = await materializeFileViaWorker(
         file,
+        fileMeta,
         onProgress ? (bytesHashed) => {
           onProgress({ phase: "materializing", fileIndex: fi, fileCount, fileName: file.name, bytesProcessed: bytesHashed, fileTotalBytes: file.size });
         } : void 0,
@@ -29285,10 +30751,8 @@ async function importSelectedFiles(selectedFiles, options, tree) {
     if (materialized)
       for (const object2 of materialized.objects)
         manifest.set(object2.obj_id, object2);
-    else {
-      const [, objData] = new FileObject(file.name, file.size, fileObject.content).genObjId();
-      manifest.set(objectId, { obj_id: objectId, obj_data: objData });
-    }
+    else
+      manifest.set(objectId, { obj_id: objectId, obj_data: lookupHit.objData });
     const qcid = (lookupHit == null ? void 0 : lookupHit.qcid) ?? await tryCalculateQcidFromFile(file);
     if (qcid)
       qcidLinks.push({ qcid, content_id: fileObject.content, size: file.size });
@@ -29298,7 +30762,7 @@ async function importSelectedFiles(selectedFiles, options, tree) {
       objectId,
       name: file.name,
       size: file.size,
-      mimeType: file.type || void 0,
+      mimeType: fileMeta.mime,
       relativePath,
       locality: (lookupHit == null ? void 0 : lookupHit.locality) ?? "local_only",
       _file: file,
@@ -29308,7 +30772,7 @@ async function importSelectedFiles(selectedFiles, options, tree) {
       if (onProgress) {
         onProgress({ phase: "thumbnail", fileIndex: fi, fileCount, fileName: file.name, fileTotalBytes: file.size });
       }
-      const eager = ((_a2 = options.thumbnails) == null ? void 0 : _a2.eager) !== false;
+      const eager = ((_b2 = options.thumbnails) == null ? void 0 : _b2.eager) !== false;
       if (eager) {
         imported.thumbnail = await generateThumbnail(file, options.thumbnails);
       } else {
@@ -29457,7 +30921,7 @@ async function uploadChunkViaTus(endpoint, file, chunkInfo, chunkIndex, fileHash
   const logicalPath = chunkInfo.chunkId;
   let tusModule;
   try {
-    tusModule = await import("./tus_client-04080b1e.mjs");
+    tusModule = await import("./tus_client-54fd195c.mjs");
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new NdmError("UPLOAD_FAILED", `Failed to load tus-js-client: ${message}`);
@@ -29611,7 +31075,7 @@ async function doUpload(session, concurrency) {
   let index = 0;
   let failure;
   const workers = Array.from({ length: Math.min(concurrency, states.length) }, async () => {
-    var _a3, _b;
+    var _a3, _b2;
     while (index < states.length && !failure) {
       const state = states[index++];
       try {
@@ -29620,7 +31084,7 @@ async function doUpload(session, concurrency) {
           continue;
         state.state = "uploading";
         for (const [chunkIndex, chunk] of state.chunks.entries()) {
-          throwIfCancelled((_b = session.abortController) == null ? void 0 : _b.signal);
+          throwIfCancelled((_b2 = session.abortController) == null ? void 0 : _b2.signal);
           if (chunk.uploaded)
             continue;
           let task = chunkTasks.get(chunk.chunkId);
@@ -29699,7 +31163,7 @@ function autoBindBody(bind) {
   return body;
 }
 async function uploadMissingChunk(session, state, chunk, chunkIndex) {
-  var _a2, _b;
+  var _a2, _b2;
   try {
     const found = await lookupObject({ scope: "app", quick_hash: chunk.chunkId }, session.requestOptions);
     if (found.reusable === true && "state" in found && ["completed", "same_as", "local_link"].includes(found.state) && found.chunk_size === chunk.length)
@@ -29722,7 +31186,7 @@ async function uploadMissingChunk(session, state, chunk, chunkIndex) {
       state.uploadedBytes = state.chunks.filter((c) => c.uploaded).reduce((sum, c) => sum + c.length, 0) + uploaded;
       emitProgress(session);
     },
-    (_b = session.abortController) == null ? void 0 : _b.signal
+    (_b2 = session.abortController) == null ? void 0 : _b2.signal
   );
   session.transmittedBytes += chunk.length;
 }
@@ -30592,218 +32056,219 @@ class ExecutorCommandStream {
   }
 }
 export {
-  CONTACT_TAG_ZONE_USER as $,
-  NOTIFY_TEXT_CONTROL_ID as A,
+  FRIEND_INTENT as $,
+  NOTIFY_CHOICE_CONTROL_ID as A,
   BS_SERVICE_VERIFY_HUB as B,
-  NOTIFY_ACTION_ANSWER as C,
-  NOTIFY_ACTION_DISMISS as D,
+  NOTIFY_TEXT_CONTROL_ID as C,
+  NOTIFY_ACTION_ANSWER as D,
   EXTERNAL_PRINCIPAL_CLAIM as E,
-  NOTIFY_LINK_PATH as F,
-  isNotifyClosed as G,
-  notifyCategorySessionId as H,
-  notifyCategoryFromSessionId as I,
-  inputPrompt as J,
-  promptOptions as K,
-  notifyAnswerToTaskResult as L,
+  NOTIFY_ACTION_DISMISS as F,
+  NOTIFY_LINK_PATH as G,
+  isNotifyClosed as H,
+  notifyCategorySessionId as I,
+  notifyCategoryFromSessionId as J,
+  inputPrompt as K,
+  promptOptions as L,
   MsgQueueClient as M,
   NOTIFY_INTENT as N,
-  validateNotifyAnswer as O,
-  notifyUrl as P,
-  msgMachineData as Q,
+  notifyAnswerToTaskResult as O,
+  validateNotifyAnswer as P,
+  notifyUrl as Q,
   RuntimeType as R,
   SystemConfigClient as S,
-  notifyMessageData as T,
-  commitNotifyAnswer as U,
+  msgMachineData as T,
+  notifyMessageData as U,
   VerifyHubClient as V,
   WEB3_BRIDGE_HOST as W,
-  answerNotify as X,
-  waitNotify as Y,
+  commitNotifyAnswer as X,
+  answerNotify as Y,
   ZONE_USER_TYPES as Z,
-  FRIEND_INTENT as _,
-  ndm_proxy as a,
-  TASK_ERR_INVALID_PHASE as a$,
-  CONTACT_TAG_ZONE_AGENT as a0,
-  CONTACT_TAG_HOMESTATION_FOLLOWING as a1,
-  CONTACT_CHANGED_EVENT_PATTERN as a2,
-  WELL_KNOWN_CONTACT_TAGS as a3,
-  USER_TYPE_GROUP_REF_PREFIX as a4,
-  USER_GROUP_REF_PREFIX as a5,
-  contactTagApp as a6,
-  contactTagKind as a7,
-  isUserGroupRefTag as a8,
-  DENY_REASONS as a9,
-  RAW_TASK_SCHEMA_ID as aA,
-  HUMAN_APPROVAL_SCHEMA_ID as aB,
-  DOWNLOAD_TASK_SCHEMA_ID as aC,
-  SCHEDULER_DISPATCH_THUNK_TASK_SCHEMA_ID as aD,
-  WORKFLOW_RUN_TREE_TASK_SCHEMA_ID as aE,
-  WORKFLOW_STEP_TASK_SCHEMA_ID as aF,
-  WORKFLOW_MAP_SHARD_TASK_SCHEMA_ID as aG,
-  WORKFLOW_THUNK_TASK_SCHEMA_ID as aH,
-  WORKFLOW_SCHEDULE_TASK_SCHEMA_ID as aI,
-  WORKFLOW_SEND_MESSAGE_TASK_SCHEMA_ID as aJ,
-  WORKFLOW_EXECUTE_RPC_TASK_SCHEMA_ID as aK,
-  WORKFLOW_RUN_TARGET_TASK_SCHEMA_ID as aL,
-  AGENT_DELEGATE_TASK_SCHEMA_ID as aM,
-  HUMAN_INPUT_TASK_SCHEMA_ID as aN,
-  OPENDAN_ASYNC_TOOL_TASK_SCHEMA_ID as aO,
-  OPENDAN_COMMAND_TASK_SCHEMA_ID as aP,
-  TOOL_EXEC_BASH_TASK_SCHEMA_ID as aQ,
-  AICC_COMPUTE_TASK_SCHEMA_ID as aR,
-  APP_INSTALL_TASK_SCHEMA_ID as aS,
-  APP_UNINSTALL_TASK_SCHEMA_ID as aT,
-  APP_START_TASK_SCHEMA_ID as aU,
-  APP_UPDATE_TASK_SCHEMA_ID as aV,
-  APP_UPDATE_BATCH_TASK_SCHEMA_ID as aW,
-  TASK_ERR_NOT_FOUND as aX,
-  TASK_ERR_PERMISSION_DENIED as aY,
-  TASK_ERR_REVISION_CONFLICT as aZ,
-  TASK_ERR_STALE_RUNNER_EPOCH as a_,
-  ACCESS_DENIED_ERROR_CODE as aa,
-  parseAccessDenial as ab,
-  accessDenialOf as ac,
-  ANONYMOUS_IDENTITY as ad,
-  parseCurrentIdentity as ae,
-  identityKey as af,
-  identityAllows as ag,
-  DEFAULT_JUMP_BASE_URL as ah,
-  JUMP_ACTION_PATHS as ai,
-  normalizeZoneHostname as aj,
-  zoneActionUrl as ak,
-  buildJumpUrl as al,
-  APP_LOGIN_ISSUE_METHOD as am,
-  APP_LOGIN_EXCHANGE_METHOD as an,
-  APP_LOGIN_SETTINGS_GET_METHOD as ao,
-  APP_LOGIN_SETTINGS_SET_METHOD as ap,
-  issueAppLoginCode as aq,
-  issueAppCustomerLink as ar,
-  parseAppLoginExchangeResult as as,
-  randomAppLoginNonce as at,
-  loginByAppAccessToken as au,
-  completeAppAccessTokenLogin as av,
-  TASK_MANAGER_SERVICE_UNIQUE_ID as aw,
-  TASK_MANAGER_SERVICE_NAME as ax,
-  TASK_MANAGER_SERVICE_PORT as ay,
-  TASK_POLICY_PRESET_COLLABORATIVE_TREE_V1 as az,
+  waitNotify as _,
+  ndm_client as a,
+  TASK_ERR_STALE_RUNNER_EPOCH as a$,
+  CONTACT_TAG_ZONE_USER as a0,
+  CONTACT_TAG_ZONE_AGENT as a1,
+  CONTACT_TAG_HOMESTATION_FOLLOWING as a2,
+  CONTACT_CHANGED_EVENT_PATTERN as a3,
+  WELL_KNOWN_CONTACT_TAGS as a4,
+  USER_TYPE_GROUP_REF_PREFIX as a5,
+  USER_GROUP_REF_PREFIX as a6,
+  contactTagApp as a7,
+  contactTagKind as a8,
+  isUserGroupRefTag as a9,
+  TASK_POLICY_PRESET_COLLABORATIVE_TREE_V1 as aA,
+  RAW_TASK_SCHEMA_ID as aB,
+  HUMAN_APPROVAL_SCHEMA_ID as aC,
+  DOWNLOAD_TASK_SCHEMA_ID as aD,
+  SCHEDULER_DISPATCH_THUNK_TASK_SCHEMA_ID as aE,
+  WORKFLOW_RUN_TREE_TASK_SCHEMA_ID as aF,
+  WORKFLOW_STEP_TASK_SCHEMA_ID as aG,
+  WORKFLOW_MAP_SHARD_TASK_SCHEMA_ID as aH,
+  WORKFLOW_THUNK_TASK_SCHEMA_ID as aI,
+  WORKFLOW_SCHEDULE_TASK_SCHEMA_ID as aJ,
+  WORKFLOW_SEND_MESSAGE_TASK_SCHEMA_ID as aK,
+  WORKFLOW_EXECUTE_RPC_TASK_SCHEMA_ID as aL,
+  WORKFLOW_RUN_TARGET_TASK_SCHEMA_ID as aM,
+  AGENT_DELEGATE_TASK_SCHEMA_ID as aN,
+  HUMAN_INPUT_TASK_SCHEMA_ID as aO,
+  OPENDAN_ASYNC_TOOL_TASK_SCHEMA_ID as aP,
+  OPENDAN_COMMAND_TASK_SCHEMA_ID as aQ,
+  TOOL_EXEC_BASH_TASK_SCHEMA_ID as aR,
+  AICC_COMPUTE_TASK_SCHEMA_ID as aS,
+  APP_INSTALL_TASK_SCHEMA_ID as aT,
+  APP_UNINSTALL_TASK_SCHEMA_ID as aU,
+  APP_START_TASK_SCHEMA_ID as aV,
+  APP_UPDATE_TASK_SCHEMA_ID as aW,
+  APP_UPDATE_BATCH_TASK_SCHEMA_ID as aX,
+  TASK_ERR_NOT_FOUND as aY,
+  TASK_ERR_PERMISSION_DENIED as aZ,
+  TASK_ERR_REVISION_CONFLICT as a_,
+  DENY_REASONS as aa,
+  ACCESS_DENIED_ERROR_CODE as ab,
+  parseAccessDenial as ac,
+  accessDenialOf as ad,
+  ANONYMOUS_IDENTITY as ae,
+  parseCurrentIdentity as af,
+  identityKey as ag,
+  identityAllows as ah,
+  DEFAULT_JUMP_BASE_URL as ai,
+  JUMP_ACTION_PATHS as aj,
+  normalizeZoneHostname as ak,
+  zoneActionUrl as al,
+  buildJumpUrl as am,
+  APP_LOGIN_ISSUE_METHOD as an,
+  APP_LOGIN_EXCHANGE_METHOD as ao,
+  APP_LOGIN_SETTINGS_GET_METHOD as ap,
+  APP_LOGIN_SETTINGS_SET_METHOD as aq,
+  issueAppLoginCode as ar,
+  issueAppCustomerLink as as,
+  parseAppLoginExchangeResult as at,
+  randomAppLoginNonce as au,
+  loginByAppAccessToken as av,
+  completeAppAccessTokenLogin as aw,
+  TASK_MANAGER_SERVICE_UNIQUE_ID as ax,
+  TASK_MANAGER_SERVICE_NAME as ay,
+  TASK_MANAGER_SERVICE_PORT as az,
   bns_client as b,
-  validateVideoGeneration as b$,
-  TASK_ERR_CONTROL_NOT_AVAILABLE as b0,
-  TASK_ERR_CONTROL_ALREADY_PENDING as b1,
-  TASK_ERR_ALREADY_COMPLETED as b2,
-  TASK_ERR_INPUT_SCHEMA_MISMATCH as b3,
-  TASK_ERR_RESULT_SCHEMA_MISMATCH as b4,
-  TASK_ERR_IDEMPOTENCY_CONFLICT as b5,
-  TASK_ERR_SCHEMA_NOT_FOUND as b6,
-  TASK_MGR_ERROR_CODES as b7,
-  taskMgrTaskEventPath as b8,
-  taskMgrTreeEventPath as b9,
-  WorkflowScheduledTaskStatus as bA,
-  WorkflowScheduledTaskMisfirePolicy as bB,
-  WorkflowScheduledTaskFireStatus as bC,
-  WorkflowClient as bD,
-  AICC_SERVICE_UNIQUE_ID as bE,
-  AICC_SERVICE_SERVICE_NAME as bF,
-  AICC_SERVICE_SERVICE_PORT as bG,
-  AICC_AI_METHODS as bH,
-  AICC_CORE_METHODS as bI,
-  AICC_MANAGEMENT_METHODS as bJ,
-  AICC_QUOTA_METHODS as bK,
-  AICC_METHODS as bL,
-  AICC_FEATURES as bM,
-  AICC_EXECUTION_MODES as bN,
-  AICC_POLICY_REFUSAL_CODES as bO,
-  aiccRefusalOf as bP,
-  isAiccAiMethod as bQ,
-  aiccTextMessage as bR,
-  aiccMessageTextContent as bS,
-  aiccMessageFirstText as bT,
-  validateAiccMessage as bU,
-  AiccClient as bV,
-  decisionRequirements as bW,
-  validateDecisionRequest as bX,
-  validateDecisionAnswers as bY,
-  parseVideoPrompt as bZ,
-  validateVideoOutput as b_,
-  taskMgrErrorCode as ba,
-  TaskExecutorKind as bb,
-  TaskPhase as bc,
-  isTerminalTaskPhase as bd,
-  TaskWaitReasonKind as be,
-  TaskOutcome as bf,
-  TaskControlAction as bg,
-  baselineTaskControlProfile as bh,
-  DEFAULT_CHILD_CONTROL_POLICY as bi,
-  TaskAction as bj,
-  TaskGrantScope as bk,
-  TaskDataScope as bl,
-  StorageDomain as bm,
-  TaskEventType as bn,
-  TaskManagerClient as bo,
-  WORKFLOW_SERVICE_NAME as bp,
-  WorkflowErrorCode as bq,
-  WorkflowRequestError as br,
-  WorkflowStepType as bs,
-  WorkflowOutputMode as bt,
-  WorkflowJoinMode as bu,
-  WorkflowRetryFallback as bv,
-  WorkflowDefinitionStatus as bw,
-  WorkflowRunStatus as bx,
-  WorkflowNodeRunState as by,
-  WorkflowHumanActionKind as bz,
+  validateVideoOutput as b$,
+  TASK_ERR_INVALID_PHASE as b0,
+  TASK_ERR_CONTROL_NOT_AVAILABLE as b1,
+  TASK_ERR_CONTROL_ALREADY_PENDING as b2,
+  TASK_ERR_ALREADY_COMPLETED as b3,
+  TASK_ERR_INPUT_SCHEMA_MISMATCH as b4,
+  TASK_ERR_RESULT_SCHEMA_MISMATCH as b5,
+  TASK_ERR_IDEMPOTENCY_CONFLICT as b6,
+  TASK_ERR_SCHEMA_NOT_FOUND as b7,
+  TASK_MGR_ERROR_CODES as b8,
+  taskMgrTaskEventPath as b9,
+  WorkflowHumanActionKind as bA,
+  WorkflowScheduledTaskStatus as bB,
+  WorkflowScheduledTaskMisfirePolicy as bC,
+  WorkflowScheduledTaskFireStatus as bD,
+  WorkflowClient as bE,
+  AICC_SERVICE_UNIQUE_ID as bF,
+  AICC_SERVICE_SERVICE_NAME as bG,
+  AICC_SERVICE_SERVICE_PORT as bH,
+  AICC_AI_METHODS as bI,
+  AICC_CORE_METHODS as bJ,
+  AICC_MANAGEMENT_METHODS as bK,
+  AICC_QUOTA_METHODS as bL,
+  AICC_METHODS as bM,
+  AICC_FEATURES as bN,
+  AICC_EXECUTION_MODES as bO,
+  AICC_POLICY_REFUSAL_CODES as bP,
+  aiccRefusalOf as bQ,
+  isAiccAiMethod as bR,
+  aiccTextMessage as bS,
+  aiccMessageTextContent as bT,
+  aiccMessageFirstText as bU,
+  validateAiccMessage as bV,
+  AiccClient as bW,
+  decisionRequirements as bX,
+  validateDecisionRequest as bY,
+  validateDecisionAnswers as bZ,
+  parseVideoPrompt as b_,
+  taskMgrTreeEventPath as ba,
+  taskMgrErrorCode as bb,
+  TaskExecutorKind as bc,
+  TaskPhase as bd,
+  isTerminalTaskPhase as be,
+  TaskWaitReasonKind as bf,
+  TaskOutcome as bg,
+  TaskControlAction as bh,
+  baselineTaskControlProfile as bi,
+  DEFAULT_CHILD_CONTROL_POLICY as bj,
+  TaskAction as bk,
+  TaskGrantScope as bl,
+  TaskDataScope as bm,
+  StorageDomain as bn,
+  TaskEventType as bo,
+  TaskManagerClient as bp,
+  WORKFLOW_SERVICE_NAME as bq,
+  WorkflowErrorCode as br,
+  WorkflowRequestError as bs,
+  WorkflowStepType as bt,
+  WorkflowOutputMode as bu,
+  WorkflowJoinMode as bv,
+  WorkflowRetryFallback as bw,
+  WorkflowDefinitionStatus as bx,
+  WorkflowRunStatus as by,
+  WorkflowNodeRunState as bz,
   createSDKModule as c,
-  validateVideoEdit as c0,
-  videoGenerationRequirement as c1,
-  KEventReader as c2,
-  KEventClient as c3,
-  appIdFromDid as c4,
-  parseAppId as c5,
-  appDidFromId as c6,
-  createAppInstanceId as c7,
-  parseAppInstanceId as c8,
-  BNS_EVM_DEFAULT_GAS_LIMIT as c9,
-  BNS_EVM_DEFAULT_MAX_FEE_PER_GAS as ca,
-  BNS_EVM_DEFAULT_MAX_PRIORITY_FEE_PER_GAS as cb,
-  BNS_MAX_INLINE_DOCUMENT_BYTES as cc,
-  BNS_DNS_TXT_DEFAULT_TTL as cd,
-  BNS_DNS_TXT_DOC_TYPE as ce,
-  BNS_PUBLISH_DOCUMENT_ABI as cf,
-  BnsEvmTxError as cg,
-  BnsEvmTxBuilder as ch,
-  decodeBnsPublishDocumentCalldata as ci,
-  BnsTxExecutorError as cj,
-  walletUserHasSnAccount as ck,
-  BnsTxExecutor as cl,
-  ExecutorClient as cm,
-  ExecutorStreamError as cn,
-  encodeExecutorControl as co,
-  ExecutorCommandStream as cp,
-  AIWORKSPACE_SERVICE_NAME as cq,
-  AiwsFailure as cr,
-  aiwsReferenceUrl as cs,
-  parseAiwsReferenceUrl as ct,
-  AiWorkspaceClient as cu,
-  bucket_client as d,
-  BS_SERVICE_TASK_MANAGER as e,
-  getActiveRuntimeType as f,
+  validateVideoGeneration as c0,
+  validateVideoEdit as c1,
+  videoGenerationRequirement as c2,
+  KEventReader as c3,
+  KEventClient as c4,
+  appIdFromDid as c5,
+  parseAppId as c6,
+  appDidFromId as c7,
+  createAppInstanceId as c8,
+  parseAppInstanceId as c9,
+  BNS_EVM_DEFAULT_GAS_LIMIT as ca,
+  BNS_EVM_DEFAULT_MAX_FEE_PER_GAS as cb,
+  BNS_EVM_DEFAULT_MAX_PRIORITY_FEE_PER_GAS as cc,
+  BNS_MAX_INLINE_DOCUMENT_BYTES as cd,
+  BNS_DNS_TXT_DEFAULT_TTL as ce,
+  BNS_DNS_TXT_DOC_TYPE as cf,
+  BNS_PUBLISH_DOCUMENT_ABI as cg,
+  BnsEvmTxError as ch,
+  BnsEvmTxBuilder as ci,
+  decodeBnsPublishDocumentCalldata as cj,
+  BnsTxExecutorError as ck,
+  walletUserHasSnAccount as cl,
+  BnsTxExecutor as cm,
+  ExecutorClient as cn,
+  ExecutorStreamError as co,
+  encodeExecutorControl as cp,
+  ExecutorCommandStream as cq,
+  AIWORKSPACE_SERVICE_NAME as cr,
+  AiwsFailure as cs,
+  aiwsReferenceUrl as ct,
+  parseAiwsReferenceUrl as cu,
+  AiWorkspaceClient as cv,
+  ndm_proxy as d,
+  bucket_client as e,
+  BS_SERVICE_TASK_MANAGER as f,
   getCurrentWalletUserFromHost as g,
-  getActiveZoneGatewayOrigin as h,
-  getActiveSessionToken as i,
-  BuckyOSSDK as j,
-  RepoClient as k,
-  parseZoneUserType as l,
-  isExternalPrincipal as m,
-  ndm_client as n,
+  getActiveRuntimeType as h,
+  getActiveZoneGatewayOrigin as i,
+  getActiveSessionToken as j,
+  BuckyOSSDK as k,
+  RepoClient as l,
+  parseZoneUserType as m,
+  ndn as n,
   object_url as o,
   parseSessionTokenClaims as p,
-  RPCError as q,
+  isExternalPrincipal as q,
   resolveDidFromHost as r,
   sn_client as s,
-  MsgCenterClient as t,
-  mailboxAddress as u,
-  mailboxResource as v,
-  NOTIFY_DELIVERED_INTENT as w,
-  NOTIFY_DATA_VERSION as x,
-  NOTIFY_SESSION_PREFIX as y,
-  NOTIFY_CHOICE_CONTROL_ID as z
+  RPCError as t,
+  MsgCenterClient as u,
+  mailboxAddress as v,
+  mailboxResource as w,
+  NOTIFY_DELIVERED_INTENT as x,
+  NOTIFY_DATA_VERSION as y,
+  NOTIFY_SESSION_PREFIX as z
 };
-//# sourceMappingURL=executor_client-a32bc377.mjs.map
+//# sourceMappingURL=executor_client-e9b6c233.mjs.map

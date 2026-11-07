@@ -47,3 +47,18 @@ test('ndm_client shared cases pass in a real browser', async ({ page }) => {
     expect(typeof result.total).toBe('number');
     expect(result.total).toBeGreaterThan(0);
 });
+
+// The fallback only exists where there is a DOM, so jest cannot cover it and the
+// shared case skips itself there. Make sure it really ran here.
+test('probeFileMeta media element fallback ran in a real browser', async ({ page }) => {
+    const testUrl = `https://systest.test.buckyos.io/ndm_client.html?ts=${Date.now()}`;
+    await page.goto(testUrl, { waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(() => {
+        const state = document.querySelector('#status')?.getAttribute('data-state');
+        return state === 'passed' || state === 'failed';
+    }, null, { timeout: 60000 });
+    const result = JSON.parse((await page.locator('#result').textContent()) || '{}');
+    const fallback = result.results.find((r) => r.name === 'probeFileMeta falls back to media elements for what the bytes cannot tell');
+    expect(fallback, JSON.stringify(result.results.map((r) => r.name))).toBeTruthy();
+    expect(fallback.ok, fallback.error).toBe(true);
+});

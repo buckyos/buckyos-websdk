@@ -591,6 +591,27 @@ describe('unified import lifecycle', () => {
         expect(finalizations[0].qcid_links).toHaveLength(1)
     })
 
+    it('QCID hit registers exactly the object its ObjId was computed from, meta included', async () => {
+        const bytes = new Uint8Array(20000)
+        bytes.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52, 0, 0, 2, 0x80, 0, 0, 1, 0xe0])
+        const file = makeFile('photo.png', bytes)
+        const { ChunkId, sha256Bytes, ObjId, verifyNamedObject } = await import('../src/ndn_types')
+        const contentId = ChunkId.fromMix256Result(file.size, sha256Bytes(bytes)).toString()
+        const hitFetcher = async (input: RequestInfo | URL, init?: RequestInit) => String(input).endsWith('/import/finalize')
+            ? fetcher(input, init)
+            : jsonResponse({ object_id: contentId, scope: 'app', state: 'same_as', same_as: contentId, chunk_size: file.size, reusable: true })
+        const result = remember(await importFiles([file], { ...options, fetcher: hitFetcher, mode: 'single_file' }))
+        const imported = result.items[0] as ImportedFileObject
+        expect(imported.mimeType).toBe('image/png')
+        expect(imported.locality).toBe('store')
+        await ensureUploaded(result.sessionId)
+        const registered = finalizations[0].objects[0]
+        const body = JSON.parse(registered.obj_data)
+        expect(registered.obj_id).toBe(imported.objectId)
+        expect(verifyNamedObject(ObjId.fromString(registered.obj_id), body)).toBe(true)
+        expect(body).toMatchObject({ name: 'photo.png', content: contentId, mime: 'image/png', width: 640, height: 480 })
+    })
+
     it('does not reuse presence without an explicit authorization grant', async () => {
         const file = makeFile('private.bin', new Uint8Array(20000))
         const arrayBuffer = jest.spyOn(file, 'arrayBuffer')

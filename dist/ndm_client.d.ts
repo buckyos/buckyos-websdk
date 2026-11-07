@@ -6,6 +6,7 @@
  * provider-based abstraction, plus structured `/ndm/v1/store/*` helpers for
  * trusted runtimes.
  */
+import type { FileMediaMeta } from './ndn_types';
 export type ImportMode = 'single_file' | 'multi_file' | 'single_dir' | 'mixed';
 export type MaterializationStatus = 'ok' | 'on_cache' | 'all_in_store';
 export type UploadStatus = 'not_started' | 'uploading' | 'completed' | 'failed' | 'not_required' | 'cancelled';
@@ -84,6 +85,12 @@ export interface PickupAndImportOptions<TMode extends ImportMode = ImportMode> {
     signal?: AbortSignal;
     /** Per-call provider; selected files should use importFiles instead. */
     provider?: ImportProvider;
+    /**
+     * What the caller already knows of a file's common meta. With a `mime` it is
+     * taken as the whole probe result and the file is not probed again; without
+     * one it is merged over the probe result, which keeps fields a transcode lost.
+     */
+    fileMeta?: (file: File) => FileMediaMeta | undefined;
     /**
      * Optional callback invoked during the materialization (hashing) phase.
      * Use this to drive a progress bar while large files are being processed.

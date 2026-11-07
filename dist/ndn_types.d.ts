@@ -1,3 +1,4 @@
+import type { Ed25519Jwk } from './types';
 export type NdnErrorKind = 'Internal' | 'InvalidId' | 'InvalidLink' | 'NotFound' | 'NotReady' | 'AlreadyExists' | 'VerifyError' | 'IoError' | 'DbError' | 'InComplete' | 'RemoteError' | 'DecodeError' | 'OffsetTooLarge' | 'InvalidObjType' | 'InvalidData' | 'InvalidParam' | 'InvalidState' | 'PermissionDenied' | 'Unsupported';
 export declare class NdnError extends Error {
     readonly kind: NdnErrorKind;
@@ -6,22 +7,15 @@ export declare class NdnError extends Error {
 export declare const OBJ_TYPE_FILE = "cyfile";
 export declare const OBJ_TYPE_DIR = "cydir";
 export declare const OBJ_TYPE_MSG = "cymsg";
-export declare const OBJ_TYPE_MSG_RECE = "cymsgr";
+export declare const OBJ_TYPE_RECEIPT = "cyrece";
 export declare const OBJ_TYPE_PATH = "cypath";
 export declare const OBJ_TYPE_INCLUSION_PROOF = "cyinc";
 export declare const OBJ_TYPE_RELATION = "cyrel";
 export declare const OBJ_TYPE_ACTION = "cyact";
 export declare const OBJ_TYPE_PACK = "cypack";
-export declare const OBJ_TYPE_TRIE = "cytrie";
-export declare const OBJ_TYPE_TRIE_SIMPLE = "cytrie-s";
-export declare const OBJ_TYPE_OBJMAP = "cymap-mtp";
-export declare const OBJ_TYPE_OBJMAP_SIMPLE = "cymap";
-export declare const OBJ_TYPE_LIST = "cylist-mtree";
-export declare const OBJ_TYPE_LIST_SIMPLE = "cylist";
-export declare const OBJ_TYPE_CHUNK_LIST = "cl";
-export declare const OBJ_TYPE_CHUNK_LIST_SIMPLE = "clist";
-export declare const OBJ_TYPE_CHUNK_LIST_FIX_SIZE = "clist-fix";
-export declare const OBJ_TYPE_CHUNK_LIST_SIMPLE_FIX_SIZE = "cl-sf";
+export declare const OBJ_TYPE_OBJMAP = "cymap";
+export declare const OBJ_TYPE_LIST = "cylist";
+export declare const OBJ_TYPE_CHUNK_LIST = "clist";
 export declare const OBJ_TYPE_PKG = "pkg";
 export declare const RELATION_TYPE_SAME = "same";
 export declare const RELATION_TYPE_PART_OF = "part_of";
@@ -167,11 +161,15 @@ export declare function buildNamedObjectByJson(objType: string, jsonValue: unkno
 export declare function verifyNamedObject(objId: ObjId, jsonValue: unknown): boolean;
 export declare function verifyNamedObjectFromStr(objId: ObjId, objStr: string): unknown;
 /**
- * Parse an obj-data-string. The Rust version also accepts JWT, but here we
- * just look at whether the string starts with `{`. JWT decoding is left to
- * the caller (it depends on signature verification anyway).
+ * Parse an obj-data-string: JSON when it starts with `{` or `[` after leading
+ * whitespace, otherwise a JWT whose claims are the object. The JWT signature
+ * is not checked.
  */
 export declare function loadNamedObjectFromObjStr(objStr: string): unknown;
+/** ObjId of a NamedObject in JWT form, computed from the claims only. */
+export declare function buildNamedObjectByJwt(objType: string, jwt: string): [ObjId, string];
+/** Whether the claims of `jwt` hash to `objId`. The JWT signature is not checked. */
+export declare function verifyNamedObjectFromJwt(objId: ObjId, jwt: string): boolean;
 export declare function loadNamedObj<T = unknown>(objStr: string): T;
 export declare function loadNamedObjAndVerify<T = unknown>(objId: ObjId, objStr: string): T;
 /** Walk a JSON value via a `/foo/bar/0/baz` path and parse it as ObjId. */
@@ -229,10 +227,12 @@ export declare class FileObject extends NamedObjectBase {
 }
 export declare class PathObject extends NamedObjectBase {
     path: string;
-    uptime: number;
+    iat: number;
     target: ObjId;
     exp: number;
-    constructor(path: string, target: ObjId, uptime?: number, exp?: number);
+    /** Host the JWT was issued for; omitted when there is none. */
+    host?: string;
+    constructor(path: string, target: ObjId, iat?: number, exp?: number, host?: string);
     static fromJSON(value: Record<string, unknown>): PathObject;
     getObjType(): string;
     toJSON(): Record<string, unknown>;
@@ -392,6 +392,258 @@ export declare class RelationObject extends NamedObjectBase {
     getObjType(): string;
     toJSON(): Record<string, unknown>;
 }
+export type MsgObjKind = 'chat' | 'group_msg' | 'deliver' | 'notify' | 'event' | 'operation';
+/** MIME-based. Unlisted values are kept verbatim. */
+export type MsgContentFormat = 'text/plain' | 'text/markdown' | 'text/html' | 'text/css' | 'text/xml' | 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp' | 'image/svg+xml' | 'image/bmp' | 'video/mp4' | 'video/webm' | 'video/ogg' | 'video/quicktime' | 'video/x-msvideo' | 'audio/mpeg' | 'audio/wav' | 'audio/ogg' | 'audio/webm' | 'audio/aac' | 'audio/flac' | 'application/json' | 'application/xml' | 'application/pdf' | 'application/zip' | 'application/octet-stream' | (string & {});
+/**
+ * Semantic hints only. `topic` may help to label a conversation but is never
+ * a routing key: the target session is `MsgObject.to_session`.
+ */
+export interface TopicThread {
+    topic?: string;
+    reply_to?: string;
+    correlation_id?: string;
+}
+/**
+ * Relation kind of a relation message (§16.3). Unknown values are kept
+ * verbatim; a receiver shows such a message as a plain one.
+ */
+export type MsgRelType = 'edit' | 'redact' | 'reaction' | 'thread' | (string & {});
+/**
+ * `relates_to`: this message edits / redacts / reacts to / joins the thread
+ * of another `cymsg`. The original message is never modified.
+ */
+export interface MsgRelation {
+    rel: MsgRelType;
+    /** The related message, always a `cymsg` ObjId. */
+    target: string;
+    /** Only for `reaction`: the reaction content (1-64 bytes), e.g. one emoji. */
+    key?: string;
+}
+/**
+ * Structured mentions; notification semantics come only from this field,
+ * never from `@` text in the body. Omit the whole field when it is empty:
+ * `{}` is not a canonical value and is rejected.
+ */
+export interface MsgMentions {
+    dids?: DID[];
+    /** Mentions every participant of the target session. */
+    all?: boolean;
+}
+export type CanonValue = null | boolean | number | string | number[] | CanonValue[] | {
+    [key: string]: CanonValue;
+};
+export interface MachineContent {
+    intent?: string;
+    data?: Record<string, CanonValue>;
+}
+export type RefTarget = {
+    type: 'data_obj';
+    obj_id: string;
+    uri_hint?: string;
+} | {
+    type: 'service_did';
+    did: DID;
+};
+export type RefRole = 'context' | 'input' | 'output' | 'evidence' | 'control';
+export interface RefItem {
+    role: RefRole;
+    target: RefTarget;
+    label?: string;
+}
+export interface MsgContent {
+    title?: string;
+    format?: MsgContentFormat;
+    content?: string;
+    machine?: MachineContent;
+    refs?: RefItem[];
+}
+/**
+ * Immutable message object. Rust flattens `meta` into the top level, so unknown
+ * keys are allowed here on purpose. `proof` is reserved since v2 (a signed
+ * message travels in the JWT form instead) and must never be set.
+ *
+ * Deserialization stays lenient so stored records always load: call
+ * `validateMsgObject` or `msgObjectFromJsonChecked` at an ingress.
+ */
+export interface MsgObject {
+    from: DID;
+    to: DID[];
+    kind: MsgObjKind;
+    /**
+     * Named session under the single target entity (`to[0]/to_session`).
+     * Omitted means the default session. Only valid when `to` has exactly one
+     * DID; the value follows `isValidMsgSessionId`.
+     */
+    to_session?: string;
+    thread?: TopicThread;
+    relates_to?: MsgRelation;
+    /** Omitted when empty, never `{}`. */
+    mentions?: MsgMentions;
+    workspace?: DID;
+    /** Sender-declared creation time, for display only. A checked object may omit it when it is 0. */
+    created_at_ms: number;
+    expires_at_ms?: number;
+    /** Random per message (`randomMsgNonce`) so identical messages keep distinct ObjIds. */
+    nonce?: number;
+    content: MsgContent;
+    [key: string]: unknown;
+}
+/** Top-level keys that the flattened `meta` must not use. */
+export declare const MSG_OBJECT_RESERVED_KEYS: readonly string[];
+/** Max char length of `to_session`, same as the MailboxAddress session part. */
+export declare const MSG_SESSION_ID_MAX_CHARS = 200;
+export declare const MSG_REACTION_KEY_MAX_BYTES = 64;
+/**
+ * `to_session` value rule (`validate_msg_session_id`): 1-200 chars, no
+ * surrounding whitespace, no control chars, not `.` / `..`.
+ */
+export declare function isValidMsgSessionId(value: string): boolean;
+/**
+ * Random `nonce` for one outgoing message (§16.6): deduplication is by ObjId,
+ * so two identical messages must not collapse into one. Kept below 2^53 so it
+ * stays a safe integer in JS and round-trips through JSON unchanged.
+ */
+export declare function randomMsgNonce(): number;
+/** Object-level validity rules of §16. Throws `NdnError('InvalidData')` on a violation. */
+export declare function validateMsgObject(msg: MsgObject): void;
+/**
+ * Parse a received MsgObject JSON (or JWT claims), validate it and make sure it
+ * re-serializes to the same canonical JSON. Returns the normalized object and
+ * the ObjId computed from `value` itself.
+ */
+export declare function msgObjectFromJsonChecked(value: unknown): [MsgObject, ObjId];
+/** A MsgObject received in JWT form. */
+export interface MsgObjectJwt {
+    msg: MsgObject;
+    objId: ObjId;
+    /** `kid` of the JWT header: DID URL of the signing key. */
+    kid: string;
+}
+/**
+ * DID part of a `kid` (before `#`). It must equal `msg.from`, unless the
+ * receiver resolves it as a device/agent key authorized by `from`'s DID
+ * Document.
+ */
+export declare function msgJwtKidDid(kid: string): DID | null;
+/**
+ * Decode a MsgObject JWT without checking the signature. Use only where the
+ * signature is not relied upon (e.g. display); see `verifyMsgObjectJwt`.
+ */
+export declare function decodeMsgObjectJwt(jwt: string): MsgObjectJwt;
+/**
+ * Verify the JWT signature with the public key the receiver resolved for `kid`,
+ * then decode it. The caller still has to make sure that key belongs to
+ * `msg.from` (see `msgJwtKidDid`).
+ */
+export declare function verifyMsgObjectJwt(jwt: string, publicKey: Ed25519Jwk): Promise<MsgObjectJwt>;
+export type ReceiptStatus = 'accepted' | 'rejected' | 'quarantined';
+/** Optional immutable delivery receipt. Not the `MsgReceiptObj` DTO of msg-center. */
+export interface ReceiptObj {
+    obj_id: string;
+    iss: DID;
+    channel?: string;
+    iat: number;
+    status: ReceiptStatus;
+    reason?: string;
+}
+/** Decode with the serde rules of the Rust struct; the result re-encodes to the same ObjId. */
+export declare function receiptObjFromJson(value: unknown): ReceiptObj;
+export declare const ACTION_TYPE_VIEWED = "viewed";
+export declare const ACTION_TYPE_DOWNLOAD = "download";
+export declare const ACTION_TYPE_INSTALLED = "installed";
+export declare const ACTION_TYPE_SHARED = "shared";
+export declare const ACTION_TYPE_LIKED = "liked";
+export declare const ACTION_TYPE_UNLIKED = "unliked";
+export declare const ACTION_TYPE_PURCHASED = "purchased";
+/** `subject` does `action` on `target`. */
+export interface ActionObject {
+    subject: string;
+    action: string;
+    target: string;
+    /** The action this one is based on. */
+    base_on?: string;
+    details?: unknown;
+    iat: number;
+    exp: number;
+}
+/** Decode with the serde rules of the Rust struct; the result re-encodes to the same ObjId. */
+export declare function actionObjectFromJson(value: unknown): ActionObject;
+/** `geo` of a `cyfile` (`CYFS 标准对象` §10), WGS84. */
+export interface FileGeoMeta {
+    lat: number;
+    lon: number;
+    alt?: number;
+    heading?: number;
+    accuracy_m?: number;
+}
+export interface FileCameraMeta {
+    make?: string;
+    model?: string;
+    lens?: string;
+}
+export interface FileExposureMeta {
+    iso?: number;
+    f_number?: number;
+    /** Reduced fraction such as `1/120`; whole seconds are written `2`. */
+    exposure_time?: string;
+    focal_length_mm?: number;
+    focal_length_35mm?: number;
+}
+/** The common meta of a `cyfile` (`CYFS 标准对象` §10). A field that cannot be determined is omitted. */
+export interface FileMediaMeta {
+    /** Without parameters, never `application/octet-stream`. */
+    mime?: string;
+    /** Display size, rotation already applied. */
+    width?: number;
+    height?: number;
+    duration_ms?: number;
+    video_codec?: string;
+    audio_codec?: string;
+    title?: string;
+    artist?: string;
+    album?: string;
+    /** ISO 8601. Without an offset the time zone is unknown: do not read it as UTC. */
+    captured_at?: string;
+    geo?: FileGeoMeta;
+    camera?: FileCameraMeta;
+    exposure?: FileExposureMeta;
+}
+/** A `cyfile` as plain JSON. Other meta keys are flattened next to these. */
+export interface FileObjectJson extends FileMediaMeta {
+    did?: DID;
+    name?: string;
+    author?: string;
+    owner?: DID;
+    create_time?: number;
+    last_update_time?: number;
+    copyright?: string;
+    tags?: string[];
+    categories?: string[];
+    base_on?: string;
+    directory?: Record<string, unknown>;
+    references?: Record<string, unknown>;
+    exp?: number;
+    size?: number;
+    /** Chunk id or chunk list id. */
+    content?: string;
+    [key: string]: unknown;
+}
+export interface PackageMeta extends FileObjectJson {
+    version: string;
+    version_tag?: string;
+    /** Package name -> version requirement, such as `>1.0.0-alpha`. */
+    deps?: Record<string, string>;
+}
+export declare function normalizePackageMetaForObjId(meta: Record<string, any>): Record<string, any>;
+export declare function calcPkgMetaObjId(metaJson: Record<string, any>): string;
+export declare const CYFS_CONTENT_TYPE_NAMED_OBJECT_JSON = "application/cyfs-named-object+json";
+/** Dispatch body is a compact JWT whose claims are the NamedObject. */
+export declare const CYFS_CONTENT_TYPE_NAMED_OBJECT_JWT = "application/cyfs-named-object+jwt";
+export type CyfsNamedObjectEncoding = 'json' | 'jwt';
+/** Parse a `Content-Type` value. Parameters such as `charset=utf-8` are accepted. */
+export declare function namedObjectEncodingFromContentType(contentType: string): CyfsNamedObjectEncoding | null;
+export declare function isCyfsNamedObjectContentType(contentType: string): boolean;
 export type KnownStandardObject = {
     kind: 'dir';
     obj: DirObject;

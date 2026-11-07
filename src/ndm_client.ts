@@ -11,13 +11,14 @@ import {
     sha256Bytes,
     ChunkId,
     SimpleChunkList,
-    FileObject as NdnFileObject,
     DirObject as NdnDirObject,
     ObjId,
     OBJ_TYPE_FILE,
     OBJ_TYPE_DIR,
     SimpleMapItem,
 } from './ndn_types'
+import type { FileMediaMeta } from './ndn_types'
+import { buildFileObject, probeFileMeta } from './file_meta'
 import {
     getActiveRuntimeType,
     getActiveSessionToken,
@@ -146,6 +147,12 @@ export interface PickupAndImportOptions<TMode extends ImportMode = ImportMode> {
     signal?: AbortSignal
     /** Per-call provider; selected files should use importFiles instead. */
     provider?: ImportProvider
+    /**
+     * What the caller already knows of a file's common meta. With a `mime` it is
+     * taken as the whole probe result and the file is not probed again; without
+     * one it is merged over the probe result, which keeps fields a transcode lost.
+     */
+    fileMeta?: (file: File) => FileMediaMeta | undefined
     /**
      * Optional callback invoked during the materialization (hashing) phase.
      * Use this to drive a progress bar while large files are being processed.
@@ -995,6 +1002,7 @@ export async function anchorState(
  */
 async function materializeFile(
     file: File,
+    meta: FileMediaMeta,
     chunkSize: number = DEFAULT_CHUNK_SIZE,
     signal?: AbortSignal,
 ): Promise<{ objectId: string; chunks: ObjectUploadState['chunks']; fileObject: Record<string, unknown>; objects: PutObjectRequest[] }> {
@@ -1012,7 +1020,7 @@ async function materializeFile(
         chunks.push({ chunkId: chunkIdStr, offset: 0, length: buf.length, uploaded: false })
 
         // Build a FileObject to derive the objectId
-        const fileObj = new NdnFileObject(file.name, fileSize, chunkIdStr)
+        const fileObj = buildFileObject(file.name, fileSize, chunkIdStr, meta)
         const [objId, objData] = fileObj.genObjId()
         throwIfCancelled(signal)
         return { objectId: objId.toString(), chunks, fileObject: fileObj.toJSON(), objects: [{ obj_id: objId.toString(), obj_data: objData }] }
@@ -1033,7 +1041,7 @@ async function materializeFile(
     }
 
     const [chunkListObjId, chunkListData] = chunkList.genObjId()
-    const fileObj = new NdnFileObject(file.name, fileSize, chunkListObjId.toString())
+    const fileObj = buildFileObject(file.name, fileSize, chunkListObjId.toString(), meta)
     const [objId, objData] = fileObj.genObjId()
     throwIfCancelled(signal)
     return { objectId: objId.toString(), chunks, fileObject: fileObj.toJSON(), objects: [
@@ -1049,12 +1057,13 @@ async function materializeFile(
  */
 async function materializeFileViaWorker(
     file: File,
+    meta: FileMediaMeta,
     onHashProgress?: (bytesHashed: number) => void,
     chunkSize: number = DEFAULT_CHUNK_SIZE,
     signal?: AbortSignal,
 ): Promise<{ objectId: string; chunks: ObjectUploadState['chunks']; fileObject: Record<string, unknown>; objects: PutObjectRequest[] }> {
     if (!isHashWorkerAvailable() || file.size === 0) {
-        const result = await materializeFile(file, chunkSize, signal)
+        const result = await materializeFile(file, meta, chunkSize, signal)
         onHashProgress?.(file.size)
         return result
     }
@@ -1070,7 +1079,7 @@ async function materializeFileViaWorker(
         hashResults = await Promise.race([worker.result, timeout])
     } catch {
         throwIfCancelled(signal)
-        return materializeFile(file, chunkSize, signal)
+        return materializeFile(file, meta, chunkSize, signal)
     } finally {
         if (timer) clearTimeout(timer)
     }
@@ -1085,7 +1094,7 @@ async function materializeFileViaWorker(
         const chunkIdStr = chunkId.toString()
         chunks.push({ chunkId: chunkIdStr, offset: 0, length: r.length, uploaded: false })
 
-        const fileObj = new NdnFileObject(file.name, fileSize, chunkIdStr)
+        const fileObj = buildFileObject(file.name, fileSize, chunkIdStr, meta)
         const [objId, objData] = fileObj.genObjId()
         throwIfCancelled(signal)
         return { objectId: objId.toString(), chunks, fileObject: fileObj.toJSON(), objects: [{ obj_id: objId.toString(), obj_data: objData }] }
@@ -1100,7 +1109,7 @@ async function materializeFileViaWorker(
     }
 
     const [chunkListObjId, chunkListData] = chunkList.genObjId()
-    const fileObj = new NdnFileObject(file.name, fileSize, chunkListObjId.toString())
+    const fileObj = buildFileObject(file.name, fileSize, chunkListObjId.toString(), meta)
     const [objId, objData] = fileObj.genObjId()
     throwIfCancelled(signal)
     return { objectId: objId.toString(), chunks, fileObject: fileObj.toJSON(), objects: [
@@ -1113,13 +1122,21 @@ function buildFileObjectFromContentId(
     name: string,
     size: number,
     contentId: string,
-): { objectId: string; fileObject: Record<string, unknown> } {
-    const fileObj = new NdnFileObject(name, size, contentId)
-    const [objId] = fileObj.genObjId()
+    meta: FileMediaMeta,
+): { objectId: string; objData: string; fileObject: Record<string, unknown> } {
+    const fileObj = buildFileObject(name, size, contentId, meta)
+    const [objId, objData] = fileObj.genObjId()
     return {
         objectId: objId.toString(),
+        objData,
         fileObject: fileObj.toJSON(),
     }
+}
+
+async function resolveFileMeta(file: File, known: FileMediaMeta | undefined): Promise<FileMediaMeta> {
+    if (known?.mime) return known
+    const probed = await probeFileMeta(file, { name: file.name, declaredMime: file.type })
+    return { ...probed, ...known }
 }
 
 function resolveImportLookupEndpoint(): string | undefined {
@@ -1193,9 +1210,10 @@ function extractLookupContentId(
 
 async function lookupFileByQcid(
     file: File,
+    meta: FileMediaMeta,
     options: NdmStoreRequestOptions,
     warnings: string[],
-): Promise<{ objectId: string; fileObject: Record<string, unknown>; locality: 'store'; qcid: string } | null> {
+): Promise<{ objectId: string; objData: string; fileObject: Record<string, unknown>; locality: 'store'; qcid: string } | null> {
     const endpoint = options.endpoint ?? resolveImportLookupEndpoint()
     if (!endpoint) return null
     const qcid = await tryCalculateQcidFromFile(file)
@@ -1209,7 +1227,7 @@ async function lookupFileByQcid(
         if (response.chunk_size !== file.size) return null
         const contentId = extractLookupContentId(response, qcid)
         if (!contentId || !(ObjId.fromString(contentId).isChunk() || ObjId.fromString(contentId).isChunkList()) || contentId.startsWith('qcid:')) return null
-        return { ...buildFileObjectFromContentId(file.name, file.size, contentId), locality: 'store', qcid }
+        return { ...buildFileObjectFromContentId(file.name, file.size, contentId, meta), locality: 'store', qcid }
     } catch (error) {
         throwIfCancelled(options.signal)
         if (!(error instanceof NdmStoreApiError && error.status === 404)) {
@@ -1481,11 +1499,15 @@ async function importSelectedFiles<TMode extends ImportMode>(
         throwIfCancelled(options.signal)
         const relativePath = treePaths[fi] || file.webkitRelativePath || undefined
 
+        // Common meta goes into the FileObject, so it precedes every way of building one.
+        const fileMeta = await resolveFileMeta(file, options.fileMeta?.(file))
+        throwIfCancelled(options.signal)
+
         // Phase 1: QCID fast-path lookup (skips full hash when server already has the file)
         if (onProgress) {
             onProgress({ phase: 'qcid_lookup', fileIndex: fi, fileCount, fileName: file.name, fileTotalBytes: file.size })
         }
-        const lookupHit = await lookupFileByQcid(file, requestOptions, warnings)
+        const lookupHit = await lookupFileByQcid(file, fileMeta, requestOptions, warnings)
 
         // Phase 2: Full materialization (worker-based when available)
         let materialized: Awaited<ReturnType<typeof materializeFile>> | null = null
@@ -1495,6 +1517,7 @@ async function importSelectedFiles<TMode extends ImportMode>(
             }
             materialized = await materializeFileViaWorker(
                 file,
+                fileMeta,
                 onProgress
                     ? (bytesHashed) => {
                         onProgress({ phase: 'materializing', fileIndex: fi, fileCount, fileName: file.name, bytesProcessed: bytesHashed, fileTotalBytes: file.size })
@@ -1509,10 +1532,7 @@ async function importSelectedFiles<TMode extends ImportMode>(
         const fileObject = lookupHit?.fileObject ?? materialized!.fileObject
         const chunks = lookupHit ? [] : materialized!.chunks
         if (materialized) for (const object of materialized.objects) manifest.set(object.obj_id, object)
-        else {
-            const [, objData] = new NdnFileObject(file.name, file.size, fileObject.content as string).genObjId()
-            manifest.set(objectId, { obj_id: objectId, obj_data: objData })
-        }
+        else manifest.set(objectId, { obj_id: objectId, obj_data: lookupHit!.objData })
         const qcid = lookupHit?.qcid ?? await tryCalculateQcidFromFile(file)
         if (qcid) qcidLinks.push({ qcid, content_id: fileObject.content as string, size: file.size })
         throwIfCancelled(options.signal)
@@ -1522,7 +1542,7 @@ async function importSelectedFiles<TMode extends ImportMode>(
             objectId,
             name: file.name,
             size: file.size,
-            mimeType: file.type || undefined,
+            mimeType: fileMeta.mime,
             relativePath,
             locality: lookupHit?.locality ?? 'local_only',
             _file: file,

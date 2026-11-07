@@ -1,5 +1,14 @@
 import { kRPCClient } from '../src/krpc_client'
 import { RepoClient, RepoProof } from '../src/repo_client'
+import type { ActionObject } from '../src/ndn_types'
+
+const ACTION_PROOF: ActionObject = {
+  subject: 'cyfile:aaaaaaaaaaaaaaaa',
+  action: 'download',
+  target: 'cyfile:bbbbbbbbbbbbbbbb',
+  iat: 1700000000,
+  exp: 1700086400,
+}
 
 function makeResponse(body: unknown, seq: number = 1) {
   return {
@@ -35,12 +44,12 @@ describe('RepoClient', () => {
     const fetcher = jest.fn().mockResolvedValue(makeResponse('content-xyz', 2))
     const client = new RepoClient(new kRPCClient('/kapi/repo-service/', null, 2, { fetcher }))
 
-    const id = await client.collect({ name: 'pkg' }, { signature: 'abc' })
+    const id = await client.collect({ name: 'pkg' }, ACTION_PROOF)
 
     expect(id).toBe('content-xyz')
     expect(bodyOf(fetcher).params).toEqual({
       content_meta: { name: 'pkg' },
-      referral_proof: { signature: 'abc' },
+      referral_proof: ACTION_PROOF,
     })
   })
 
@@ -62,14 +71,14 @@ describe('RepoClient', () => {
       .mockResolvedValueOnce(makeResponse(true, 4))
     const client = new RepoClient(new kRPCClient('/kapi/repo-service/', null, 1, { fetcher }))
 
-    expect(await client.pin('cid', { sig: 'x' })).toBe(true)
+    expect(await client.pin('cid', ACTION_PROOF)).toBe(true)
     expect(await client.unpin('cid', true)).toBe(true)
     expect(await client.uncollect('cid')).toBe(false)
     expect(await client.announce('cid')).toBe(true)
 
     expect(bodyOf(fetcher, 0).params).toEqual({
       content_id: 'cid',
-      download_proof: { sig: 'x' },
+      download_proof: ACTION_PROOF,
     })
     expect(bodyOf(fetcher, 1).params).toEqual({ content_id: 'cid', force: true })
     expect(bodyOf(fetcher, 2).params).toEqual({ content_id: 'cid', force: false })
@@ -80,14 +89,14 @@ describe('RepoClient', () => {
     const fetcher = jest.fn().mockResolvedValue(makeResponse('proof-id-1', 5))
     const client = new RepoClient(new kRPCClient('/kapi/repo-service/', null, 5, { fetcher }))
 
-    await client.addProof(RepoProof.action({ method: 'download', sig: 'abc' }))
+    await client.addProof(RepoProof.action(ACTION_PROOF))
 
     expect(bodyOf(fetcher)).toEqual({
       method: 'add_proof',
       params: {
         proof: {
           kind: 'Action',
-          value: { method: 'download', sig: 'abc' },
+          value: ACTION_PROOF,
         },
       },
       sys: [5],
@@ -257,6 +266,6 @@ describe('RepoClient', () => {
     const fetcher = jest.fn().mockResolvedValue(makeResponse('ok', 15))
     const client = new RepoClient(new kRPCClient('/kapi/repo-service/', null, 15, { fetcher }))
 
-    await expect(client.pin('cid', {})).rejects.toThrow('expected pin response to be a boolean')
+    await expect(client.pin('cid', ACTION_PROOF)).rejects.toThrow('expected pin response to be a boolean')
   })
 })

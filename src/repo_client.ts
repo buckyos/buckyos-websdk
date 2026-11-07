@@ -1,11 +1,12 @@
 import { kRPCClient, RPCError } from './krpc_client'
+import type { ActionObject } from './ndn_types'
 
 // Repo (repo-service) client.
 //
 // Mirrors ../../buckyos/src/kernel/buckyos-api/src/repo_client.rs.
-// Most of the heavy nested types come from ndn-lib (`ActionObject`,
-// `InclusionProof`, `ObjId`) — we keep those as opaque pass-through JSON shapes
-// to avoid drift, while modeling the small repo-service-local DTOs explicitly.
+// `InclusionProof` and `ObjId` of ndn-lib stay opaque pass-through JSON shapes;
+// an action proof is the standard `ActionObject`, and the small
+// repo-service-local DTOs are modeled explicitly.
 
 export const REPO_SERVICE_NAME = 'repo-service'
 export const REPO_SERVICE_PORT = 4000
@@ -27,9 +28,9 @@ export const REPO_PROOF_TYPE_INSTALL = 'install_proof'
 export const REPO_SERVE_STATUS_OK = 'ok'
 export const REPO_SERVE_STATUS_REJECT = 'reject'
 
-// ndn-lib types — opaque on the wire.
+// ndn-lib types. A collection proof stays opaque on the wire.
 export type ObjId = string
-export type RepoActionProof = Record<string, unknown>
+export type RepoActionProof = ActionObject
 export type RepoCollectionProof = Record<string, unknown>
 
 // `enum RepoProof` is `#[serde(tag = "kind", content = "value")]` so JSON looks

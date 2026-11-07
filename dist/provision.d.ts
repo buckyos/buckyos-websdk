@@ -2,6 +2,7 @@ import { DID } from './namelib';
 import { IdentityRoots } from './cert';
 import { DevTestKeyPair } from './dev_test_keys';
 import { BuckyOSZoneTxtRecord } from './types';
+export { calcPkgMetaObjId, normalizePackageMetaForObjId } from './ndn_types';
 export { NODE_IDENTITY_SCHEMA_V2, DEVICE_DOC_JWT_FILE_NAME, DEVICE_MINI_DOC_JWT_FILE_NAME, NODE_GATEWAY_PARAMS_FILE_NAME, buildDeviceDid, bindDeviceDocumentDid, newDeviceDocumentByJwkWithDid, newLocalNodeIdentityConfig, loadLocalNodeIdentityConfig, deviceIdentityPathsForRoots, saveLocalDeviceIdentityForRoots, saveNodeGatewayParams, loadDeviceDocJwtForRoots, loadDeviceMiniDocJwtForRoots, loadLocalDeviceDocumentForRoots, decodeDeviceDocumentWithoutVerify, } from './device_identity';
 export type { BuckyOSLocalNodeIdentityConfig, DeviceIdentityPaths, NewLocalNodeIdentityConfigParams } from './device_identity';
 export { IdentityRoots, IDENTITY_MATERIALS, IDENTITY_USAGES, createCa, createCertFromCa, createIdentityCertFromCa, didWebDocumentUrl, encodeIdentityDirName, ensureCa, identityDirName, identityFileName, identityRawHostUri, } from './cert';
@@ -60,8 +61,6 @@ export interface PackageMetaNode {
     authorPk: string;
 }
 export declare function versionToInt(version: string): bigint;
-export declare function normalizePackageMetaForObjId(meta: Record<string, any>): Record<string, any>;
-export declare function calcPkgMetaObjId(metaJson: Record<string, any>): string;
 export declare class MetaIndexDb {
     readonly dbPath: string;
     constructor(dbPath: string);

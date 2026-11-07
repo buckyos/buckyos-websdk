@@ -1,4 +1,5 @@
 import { kRPCClient } from './krpc_client';
+import type { ActionObject } from './ndn_types';
 export declare const REPO_SERVICE_NAME = "repo-service";
 export declare const REPO_SERVICE_PORT = 4000;
 export declare const REPO_STATUS_COLLECTED = "collected";
@@ -14,7 +15,7 @@ export declare const REPO_PROOF_TYPE_INSTALL = "install_proof";
 export declare const REPO_SERVE_STATUS_OK = "ok";
 export declare const REPO_SERVE_STATUS_REJECT = "reject";
 export type ObjId = string;
-export type RepoActionProof = Record<string, unknown>;
+export type RepoActionProof = ActionObject;
 export type RepoCollectionProof = Record<string, unknown>;
 export type RepoProof = {
     kind: 'Action';
