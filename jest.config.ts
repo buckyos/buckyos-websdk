@@ -18,6 +18,8 @@ const config: Config = {
     testPathIgnorePatterns: [
         '/node_modules/',
         '/tests/browser/real-browser/',
+        '/tests/browser/xllm/',
+        '/tests/deno/',
     ],
     moduleNameMapper: {
         '^@/(.*)$': '<rootDir>/src/$1'
