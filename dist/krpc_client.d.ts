@@ -22,6 +22,10 @@ type KRPCResponse<TResult> = KRPCSuccessResponse<TResult> | KRPCErrorResponse;
 declare enum RPCProtocolType {
     HttpPostJson = "HttpPostJson"
 }
+/** `RPCError.code` of a non-2xx HTTP response; `data` is `{ status }` (same shape as Rust's `http_error`). */
+declare const RPC_HTTP_ERROR_CODE = "http_error";
+/** `RPCError.code` when the request did not complete (network, fetch failure, unreadable body). */
+declare const RPC_TRANSPORT_ERROR_CODE = "transport";
 declare class RPCError extends Error {
     /** Wire error code of a detailed failure (e.g. `access_denied`). */
     readonly code?: string;
@@ -67,6 +71,6 @@ declare class kRPCClient {
     private prepareTraceId;
     private _call;
 }
-export { kRPCClient, RPCProtocolType, RPCError };
+export { kRPCClient, RPCProtocolType, RPCError, RPC_HTTP_ERROR_CODE, RPC_TRANSPORT_ERROR_CODE };
 export type { KRPCRequest, KRPCResponse, KRPCSys, KRPCRequestSys, KRPCResponseSys, KRPCCallOptions, KRPCClientOptions, };
 //# sourceMappingURL=krpc_client.d.ts.map

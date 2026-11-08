@@ -1,6 +1,6 @@
 {
   "name": "buckyos",
-  "version": "0.7.170",
+  "version": "0.7.171",
   "description": "BuckyOS WebSDK for browser and Node.js environments",
   "license": "MIT",
   "repository": {
@@ -84,6 +84,21 @@
       "types": "./dist/app-frame.d.ts",
       "import": "./dist/app-frame.mjs",
       "require": "./dist/app-frame.cjs"
+    },
+    "./xllm": {
+      "types": "./dist/xllm/index.d.ts",
+      "import": "./dist/xllm.mjs",
+      "require": "./dist/xllm.cjs"
+    },
+    "./xllm/dev": {
+      "types": "./dist/xllm/dev.d.ts",
+      "import": "./dist/xllm_dev.mjs",
+      "require": "./dist/xllm_dev.cjs"
+    },
+    "./xllm/deno": {
+      "types": "./dist/xllm/hosts/deno/index.d.ts",
+      "import": "./dist/xllm_deno.mjs",
+      "require": "./dist/xllm_deno.cjs"
     }
   },
   "files": [
@@ -112,6 +127,10 @@
     "debug:systest": "bash ./tests/scripts/debug_systest.sh",
     "test:app-service:debug": "bash ./tests/scripts/test_app_service_debug.sh",
     "test": "jest",
+    "test:xllm": "jest tests/xllm",
+    "test:xllm:deno": "deno test --config tests/deno/deno.json --allow-read --allow-write --allow-env --allow-run tests/deno/",
+    "test:xllm:conformance": "node scripts/test-xllm-conformance.mjs",
+    "test:xllm:browser": "vite build --config examples/xllm_browser/vite.config.ts && vite build --config examples/xllm_site/vite.config.ts && playwright test tests/browser/xllm/ --reporter=line",
     "check:cli-boundary": "node scripts/check-cli-boundary.mjs",
     "lint:cli": "deno lint cli/core cli/modules cli/runtime cli/tests cli/main.ts cli/system_bootstrap.ts cli/system_launcher.ts scripts/*.mjs",
     "check:cli": "pnpm run check:cli-boundary && pnpm run lint:cli && deno check --config cli/deno.json cli/system_bootstrap.ts cli/system_launcher.ts cli/tests/*.ts",
@@ -141,6 +160,7 @@
     "vite": "^4.0.0"
   },
   "dependencies": {
+    "@noble/hashes": "^2.4.0",
     "@peculiar/x509": "^1.14.3",
     "canonicalize": "2.1.0",
     "ethers": "^6.17.0",

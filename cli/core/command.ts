@@ -1,37 +1,9 @@
 import type { CommandContext } from './context.ts'
 
-export type JsonSchema = {
-  type?: 'object' | 'array' | 'string' | 'boolean' | 'integer' | 'number' | 'null'
-  title?: string
-  description?: string
-  properties?: Record<string, JsonSchema>
-  required?: string[]
-  additionalProperties?: boolean
-  items?: JsonSchema
-  enum?: unknown[]
-  minLength?: number
-  minimum?: number
-  default?: unknown
-  secret?: boolean
-}
+import type { AccessLevel, JsonSchema, OptionDefinition, PositionalDefinition } from '../../src/internal/command_args.ts'
 
-export interface PositionalDefinition {
-  name: string
-  description: string
-  required?: boolean
-}
-
-export interface OptionDefinition {
-  name: string
-  property?: string
-  description: string
-  type: 'string' | 'boolean' | 'integer' | 'number'
-  required?: boolean
-  secret?: boolean
-  enum?: string[]
-}
-
-export type AccessLevel = 'read' | 'write' | 'destructive' | 'privileged'
+export type { AccessLevel, JsonSchema, OptionDefinition, PositionalDefinition }
+export { optionProperty } from '../../src/internal/command_args.ts'
 
 export type AccessPolicy =
   | { mode: 'fixed'; level: AccessLevel }
@@ -65,8 +37,4 @@ export interface CommandModule {
 export interface RegisteredCommand extends CommandDefinition {
   module: string
   moduleSummary: string
-}
-
-export function optionProperty(option: OptionDefinition): string {
-  return option.property ?? option.name.replaceAll('-', '_')
 }

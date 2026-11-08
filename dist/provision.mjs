@@ -5,10 +5,11 @@ var __publicField = (obj, key, value) => {
   return value;
 };
 var _a;
-import { N as NODE_IDENTITY_SCHEMA_V2, t as DID, aT as newDeviceDocumentByJwk, aU as verifyJwtEdDSA, aV as deviceDocumentToOrderedJson, aW as decodeJwtClaimWithoutVerify, aX as commonjsGlobal, aY as DEFAULT_EXPIRE_TIME, h as hashPassword, aZ as buckyosGetUnixTimestamp, a_ as getPublicKeyXFromPrivatePem, a$ as getXFromJwk, b0 as createJwkByX, b1 as newOwnerDocument, b2 as ownerDocumentSetDefaultZoneDid, b3 as ownerDocumentToOrderedJson, b4 as oodDescriptionToString, b5 as parseOODDescription, b6 as encodeZoneBootDocument, b7 as newZoneBootDocument, b8 as encodeDeviceDocument, b9 as newDeviceMiniDocumentByDeviceDocument, ba as deviceMiniDocumentToJwt, bb as newZoneDocument, bc as encodeZoneDocument, bd as zoneDocumentToOrderedJson, be as newDeviceMiniDocument, bf as newDeviceDocumentByMiniDocument, at as calcPkgMetaObjId } from "./ndn_types-ab30fac0.mjs";
-import { aG } from "./ndn_types-ab30fac0.mjs";
+import { N as NODE_IDENTITY_SCHEMA_V2, s as DID, aK as newDeviceDocumentByJwk, aL as verifyJwtEdDSA, aM as deviceDocumentToOrderedJson, aN as decodeJwtClaimWithoutVerify, aO as commonjsGlobal, aP as DEFAULT_EXPIRE_TIME, aQ as buckyosGetUnixTimestamp, aR as getPublicKeyXFromPrivatePem, aS as getXFromJwk, aT as createJwkByX, aU as newOwnerDocument, aV as ownerDocumentSetDefaultZoneDid, aW as ownerDocumentToOrderedJson, aX as oodDescriptionToString, aY as parseOODDescription, aZ as encodeZoneBootDocument, a_ as newZoneBootDocument, a$ as encodeDeviceDocument, b0 as newDeviceMiniDocumentByDeviceDocument, b1 as deviceMiniDocumentToJwt, b2 as newZoneDocument, b3 as encodeZoneDocument, b4 as zoneDocumentToOrderedJson, b5 as newDeviceMiniDocument, b6 as newDeviceDocumentByMiniDocument, ak as calcPkgMetaObjId } from "./ndn_types-0fac2499.mjs";
+import { ax } from "./ndn_types-0fac2499.mjs";
 import { Buffer as Buffer$1 } from "node:buffer";
 import { pbkdf2Sync, createPublicKey, createPrivateKey, createECDH, createHmac } from "node:crypto";
+import { h as hashPassword } from "./account-7a7bde6f.mjs";
 const DEVICE_DOC_JWT_FILE_NAME = "device_doc.jwt";
 const DEVICE_MINI_DOC_JWT_FILE_NAME = "device_mini_doc.jwt";
 const NODE_GATEWAY_PARAMS_FILE_NAME = "node_gateway_params.json";
@@ -15924,7 +15925,7 @@ export {
   newDeviceDocumentByJwkWithDid,
   newLocalNodeIdentityConfig,
   nodeTestIdentityRoots,
-  aG as normalizePackageMetaForObjId,
+  ax as normalizePackageMetaForObjId,
   registerDeviceToSn,
   registerUserToSn,
   saveLocalDeviceIdentityForRoots,

@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Notes</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+  <h1>Notes</h1>
+  <div class="layout">
+    <ul id="list"></ul>
+    <section id="detail">
+      <h2 id="title"></h2>
+      <textarea id="body" rows="8"></textarea>
+      <p><button id="save">Save</button> <button id="delete">Delete</button> <button id="export">Export</button></p>
+      <pre id="exported"></pre>
+    </section>
+  </div>
+  <section id="agent">
+    <h2>Agent</h2>
+    <p><input id="ask" size="60" value="Read my work notes, add a status line to the release plan, then export the work notes.">
+      <button id="run">Run</button> <button id="stop">Stop</button></p>
+    <p>Status: <span id="status" data-state="running">loading</span></p>
+    <ol id="events"></ol>
+    <pre id="result"></pre>
+  </section>
+  <script type="module" src="./main.ts"></script>
+</body>
+</html>

@@ -1,0 +1,70 @@
+// `buckyos/xllm`: the xllm TypeScript runtime (doc/llm_context/xllm_ts_runtime.md
+// in the buckyos repo). Core and site runtime use Web standard APIs only, so
+// the same code runs in a page, a Worker, Node and Deno.
+
+export * from './core/types'
+export {
+  LLMComputeException, XllmError, asComputeError, computeErrorMessage, errorSource, infraRetrySafe, llmCorrectable, providerError,
+} from './core/errors'
+export type { XllmErrorDetail, XllmErrorKind } from './core/errors'
+export { LLMContext, SNAPSHOT_FORMAT_VERSION, stateFromRequest } from './core/loop'
+export { LLMContextInterruptHandle } from './core/interrupt'
+export { ToolDispatchException, allowAllPolicy, noopWorklog, resolveToolSpecs, MAX_INJECTIONS_PER_BOUNDARY } from './core/deps'
+export type {
+  CheckpointHook, LLMContextDeps, LLMResultParser, OutputValidator, PolicyEngine, StepRenderer, ToolCallCtx, ToolManager, WorklogSink,
+} from './core/deps'
+export { ByteHeuristicTokenizer } from './core/tokenizer'
+export { parseReply, validateJson } from './core/json_check'
+export {
+  DEFAULT_CONTEXT_YIELD_RATIO, DEFAULT_LLM_TIMEOUT_SECS, DEFAULT_MAX_CONSECUTIVE_ERRORS, DEFAULT_MAX_TOOL_ITERATIONS, DEFAULT_TASK_WAIT_MS,
+  DEFAULT_TIMEOUT_SECS, MAX_IN_TOOL_WAIT_MS, computeToolsConfig, mergeConfigLayers, parseLlmContextJson,
+} from './core/config'
+export type { MergedConfig } from './core/config'
+export { TemplateEnv, assemblePrompt } from './core/prompt'
+export { RUNTIME_PROTOCOL_VERSION, buildCmdManualSystemText, buildRulesSystemText, buildRuntimeProtocol, buildRuntimeProtocolFor } from './core/protocol'
+export { MemoryRunStore, RUN_RECORD_VERSION, exportRun, generateRunId, importRun } from './core/store'
+export type { ExportedRun, RunLock, RunStore } from './core/store'
+export { extractResult } from './core/result'
+export { XllmActionParser, REPORT_ARTIFACTS_KEY, reportArtifacts, splitReportResult } from './core/action_parser'
+export { materializeHistory, renderStepHistory, rewritableHistory } from './core/behavior_loop'
+export { charCount, rustTrim, rustTrimEnd, rustTrimStart, serdeJson } from './core/rust_text'
+export {
+  HOST_PROMPT_SECTIONS_ALL, HOST_PROMPT_SECTIONS_NONE, REFUSED_CREDENTIALS, XllmInterrupter, XllmRun, XllmTask, classifyError, inFlightCall,
+  isTerminal, runRequest,
+} from './core/run'
+export type { HostedTask, PreparedTask, ResumeLimits, ResumeStart, RunOutcome, StartOptions, XllmDeps } from './core/run'
+export { MAX_IMAGE_ATTACHMENT_BYTES, MAX_TEXT_ATTACHMENT_BYTES } from './core/prepare'
+export type { Attachment, TaskInput, TaskOverrides } from './core/prepare'
+export { createSiteRuntime, SITE_RUNTIME_KIND } from './runtime/site'
+export type { SiteRuntime, SiteRuntimeOptions } from './runtime/site'
+export { unresolvedReason } from './runtime/types'
+export type {
+  AgentRuntime, OpenedTools, RunBinding, RunToolManager, RuntimeOpenCtx, SiteTool, SiteToolCtx, SiteToolSpec,
+} from './runtime/types'
+export { SiteToolManager, envelopeObservation, isIdempotent } from './runtime/site_manager'
+export { AGENT_TOOL_PROTOCOL_VERSION, asToolResult, observationText, toHost } from './runtime/tool_result'
+export type { AgentToolResult, AgentToolStatus, ResultDedup, ResultHint } from './runtime/tool_result'
+export { XmlStepRenderer, toolResultViewFromHost } from './runtime/step_renderer'
+export type { HintView, ToolResultStatusView, ToolResultView, XmlStepRendererOptions } from './runtime/step_renderer'
+export {
+  LlmSummarizeCompressor, SUMMARIZE_MODEL_ALIAS, compactionTargetTokens, compress, compressHistory, compressOptions, isSummaryMessage,
+  parseSummaryMessage, summaryMessage, summaryModel,
+} from './runtime/compress'
+export type { CompressDeps, CompressOptions, CompressOutcome, CompressReport, CompressStrategy, CompressedSummary } from './runtime/compress'
+export { HINT_NS_DEDUP, HINT_NS_ONCE, MemoryHintLedger, applyHints, renderHintBlock, renderWithHints } from './runtime/hints'
+export type { HintLedger } from './runtime/hints'
+export {
+  followupGeneralHint, followupHint, inCallWaitMs, resultView, taskStateObservation, waitUntilMs,
+} from './runtime/task_model'
+export type { RunningTaskResolver, TaskBrief, TaskFollowup, TaskResult, TaskState } from './runtime/task_model'
+export { ACTION_RISKS, MAX_RESULT_BYTES, XCALL_USAGE, normalizeUri, pageText, siteTools } from './runtime/site_tools'
+export type {
+  ActionDecl, ActionRisk, CommandDecl, ResourceDecl, ResourceMatch, SiteToolsOptions, Versioned, WriteBody,
+} from './runtime/site_tools'
+export { INDEX_TRAIT_URI, didObjectResources, renderObjectDocument } from './runtime/did_object_resources'
+export type { DidObjectReader, DidObjectResourcesOptions } from './runtime/did_object_resources'
+export { DIDObjectClient, DIDObjectError } from '../did_object_client'
+export type { DIDObjectCard, DIDObjectClientOptions } from '../did_object_client'
+export { IndexedDbRunStore, XLLM_RUNS_DB } from './hosts/browser/store'
+export { AiccLlmClient, aiccProviderFailure, anyJsonObjectSchema, providerErrorFromRpc } from './providers/aicc'
+export { TimeoutLlmClient } from './providers/timeout'

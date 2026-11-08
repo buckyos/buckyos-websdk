@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>xllm notes demo</title>
+  <style>
+    body { font: 15px/1.5 system-ui, sans-serif; margin: 24px; max-width: 900px; }
+    button { margin: 0 8px 8px 0; }
+    #events { font: 12px/1.4 ui-monospace, monospace; max-height: 260px; overflow: auto; background: #f6f6f6; padding: 8px 8px 8px 32px; }
+    #result { white-space: pre-wrap; font: 12px/1.4 ui-monospace, monospace; }
+    #status[data-state="failed"] { color: #b00020; }
+    #status[data-state="passed"] { color: #1b6e20; }
+  </style>
+</head>
+<body>
+  <h1>xllm in this page</h1>
+  <p id="sample">Pick me</p>
+  <p>Saved note: <b id="note"></b></p>
+  <p>
+    <button id="demo-run">1–2. Build the runtime and run</button>
+    <button id="stop">Stop the run</button>
+    <button id="demo-resume">3. Export and resume</button>
+    <button id="demo-boundaries">4. Boundaries</button>
+    <button id="demo-custom_runtime">A runtime written by hand</button>
+  </p>
+  <p>Status: <span id="status" data-state="running">loading</span></p>
+  <h2>Events</h2>
+  <ol id="events"></ol>
+  <h2>Result</h2>
+  <pre id="result"></pre>
+  <script type="module" src="./main.ts"></script>
+</body>
+</html>

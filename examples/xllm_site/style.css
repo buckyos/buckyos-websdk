@@ -1,0 +1,7 @@
+body { font: 15px/1.5 system-ui, sans-serif; margin: 24px; max-width: 1000px; }
+.layout { display: grid; grid-template-columns: 220px 1fr; gap: 24px; }
+#list li { cursor: pointer; }
+textarea { width: 100%; }
+#agent { margin-top: 24px; border-top: 1px solid #ccc; padding-top: 12px; }
+#events { font: 12px/1.4 ui-monospace, monospace; max-height: 220px; overflow: auto; background: #f6f6f6; }
+#result { white-space: pre-wrap; font: 12px/1.4 ui-monospace, monospace; }

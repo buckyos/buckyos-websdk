@@ -43,6 +43,11 @@ enum RPCProtocolType {
   HttpPostJson = 'HttpPostJson',
 }
 
+/** `RPCError.code` of a non-2xx HTTP response; `data` is `{ status }` (same shape as Rust's `http_error`). */
+const RPC_HTTP_ERROR_CODE = 'http_error'
+/** `RPCError.code` when the request did not complete (network, fetch failure, unreadable body). */
+const RPC_TRANSPORT_ERROR_CODE = 'transport'
+
 class RPCError extends Error {
   /** Wire error code of a detailed failure (e.g. `access_denied`). */
   readonly code?: string
@@ -256,10 +261,15 @@ class kRPCClient {
       })
 
       if (!response.ok) {
-        throw new RPCError(`RPC call error: ${response.status}`)
+        throw new RPCError(`RPC call error: ${response.status}`, RPC_HTTP_ERROR_CODE, { status: response.status })
       }
 
-      const rpcResponse: KRPCResponse<TResult> = await response.json()
+      let rpcResponse: KRPCResponse<TResult>
+      try {
+        rpcResponse = await response.json()
+      } catch (error) {
+        throw new RPCError(`RPC call failed: invalid response body: ${error instanceof Error ? error.message : String(error)}`)
+      }
 
       this.parseResponseSys(rpcResponse.sys, currentSeq)
 
@@ -281,12 +291,12 @@ class kRPCClient {
         throw error
       }
       const message = error instanceof Error ? error.message : String(error)
-      throw new RPCError(`RPC call failed: ${message}`)
+      throw new RPCError(`RPC call failed: ${message}`, RPC_TRANSPORT_ERROR_CODE)
     }
   }
 }
 
-export { kRPCClient, RPCProtocolType, RPCError }
+export { kRPCClient, RPCProtocolType, RPCError, RPC_HTTP_ERROR_CODE, RPC_TRANSPORT_ERROR_CODE }
 export type {
   KRPCRequest,
   KRPCResponse,

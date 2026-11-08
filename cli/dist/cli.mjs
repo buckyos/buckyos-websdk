@@ -13,9 +13,6 @@ import { createInterface } from "node:readline/promises";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { createGzip, constants } from "node:zlib";
-function optionProperty(option) {
-  return option.property ?? option.name.replaceAll("-", "_");
-}
 const EXIT_SUCCESS = 0;
 const EXIT_USAGE = 2;
 const EXIT_AUTH = 3;
@@ -88,6 +85,224 @@ function normalizeError(error) {
     return new ToolError("OPERATION_FAILED", message, EXIT_OPERATION);
   }
   return new ToolError("INTERNAL_ERROR", message || "internal error", EXIT_INTERNAL);
+}
+class CommandArgsError extends Error {
+  constructor(code, message) {
+    super(message);
+    this.name = "CommandArgsError";
+    this.code = code;
+  }
+}
+function hasOwn(o, key) {
+  return Object.prototype.hasOwnProperty.call(o, key);
+}
+function optionProperty(option) {
+  return option.property ?? option.name.split("-").join("_");
+}
+function splitLongOption(token) {
+  const content = token.slice(2);
+  const equalIndex = content.indexOf("=");
+  return equalIndex < 0 ? { name: content } : { name: content.slice(0, equalIndex), inlineValue: content.slice(equalIndex + 1) };
+}
+function readOptionValue$1(argv, index, option) {
+  if (option.inlineValue !== void 0) {
+    if (!option.inlineValue)
+      throw new CommandArgsError("MISSING_ARGUMENT", `--${option.name} requires a value`);
+    return { value: option.inlineValue, consumed: 1 };
+  }
+  const value = argv[index + 1];
+  if (value === void 0 || value.startsWith("--"))
+    throw new CommandArgsError("MISSING_ARGUMENT", `--${option.name} requires a value`);
+  return { value, consumed: 2 };
+}
+function parseOptionValue(type, value, name) {
+  if (type === "string")
+    return value;
+  const number = Number(value);
+  if (!Number.isFinite(number) || type === "integer" && !Number.isInteger(number)) {
+    throw new CommandArgsError("INVALID_ARGUMENT", `--${name} requires a ${type}`);
+  }
+  return number;
+}
+function assignPositional(input, positionals, index, value) {
+  const positional = positionals[index];
+  if (!positional)
+    throw new CommandArgsError("TOO_MANY_ARGUMENTS", `unexpected positional argument: ${value}`);
+  input[positional.name] = value;
+  return index + 1;
+}
+function parseArgv(spec, argv, beforeOption) {
+  const input = {};
+  const positionals = spec.positionals ?? [];
+  const optionByName = new Map((spec.options ?? []).map((o) => [o.name, o]));
+  let positionalIndex = 0;
+  let help = false;
+  for (let index = 0; index < argv.length; ) {
+    const token = argv[index];
+    if (token === "--help" || token === "-h") {
+      help = true;
+      index += 1;
+      continue;
+    }
+    if (token === "--") {
+      for (const value2 of argv.slice(index + 1))
+        positionalIndex = assignPositional(input, positionals, positionalIndex, value2);
+      break;
+    }
+    if (!token.startsWith("--")) {
+      positionalIndex = assignPositional(input, positionals, positionalIndex, token);
+      index += 1;
+      continue;
+    }
+    const parsed = splitLongOption(token);
+    const handled = beforeOption?.(parsed, argv, index);
+    if (handled !== void 0) {
+      index += handled;
+      continue;
+    }
+    const option = optionByName.get(parsed.name);
+    if (!option)
+      throw new CommandArgsError("UNKNOWN_OPTION", `unknown option: --${parsed.name}`);
+    const property = optionProperty(option);
+    if (hasOwn(input, property))
+      throw new CommandArgsError("DUPLICATE_ARGUMENT", `argument provided more than once: ${property}`);
+    if (option.type === "boolean") {
+      if (parsed.inlineValue !== void 0)
+        throw new CommandArgsError("INVALID_ARGUMENT", `--${parsed.name} does not accept a value`);
+      input[property] = true;
+      index += 1;
+      continue;
+    }
+    const { value, consumed } = readOptionValue$1(argv, index, parsed);
+    input[property] = parseOptionValue(option.type, value, parsed.name);
+    index += consumed;
+  }
+  return { input, help, positionalCount: positionalIndex };
+}
+function checkRequiredPositionals(positionals, positionalCount, inputObject) {
+  for (let index = positionalCount; index < positionals.length; index++) {
+    if (positionals[index].required !== false && !hasOwn(inputObject ?? {}, positionals[index].name)) {
+      throw new CommandArgsError("MISSING_ARGUMENT", `missing positional argument: ${positionals[index].name}`);
+    }
+  }
+}
+function mergeCommandInput(inputObject, cliInput) {
+  const result = { ...inputObject ?? {} };
+  for (const [key, value] of Object.entries(cliInput)) {
+    if (hasOwn(result, key))
+      throw new CommandArgsError("ARGUMENT_CONFLICT", `${key} is present in both --input and argv`);
+    result[key] = value;
+  }
+  return result;
+}
+function parseShellLine$1(line) {
+  const tokens = [];
+  let current = "";
+  let quote = null;
+  let escaped = false;
+  let started = false;
+  for (const character of line) {
+    if (escaped) {
+      current += character;
+      escaped = false;
+      started = true;
+      continue;
+    }
+    if (character === "\\" && quote !== "single") {
+      escaped = true;
+      started = true;
+      continue;
+    }
+    if (quote === "single") {
+      if (character === "'")
+        quote = null;
+      else
+        current += character;
+      continue;
+    }
+    if (quote === "double") {
+      if (character === '"')
+        quote = null;
+      else
+        current += character;
+      continue;
+    }
+    if (character === "'") {
+      quote = "single";
+      started = true;
+      continue;
+    }
+    if (character === '"') {
+      quote = "double";
+      started = true;
+      continue;
+    }
+    if (/\s/.test(character)) {
+      if (started) {
+        tokens.push(current);
+        current = "";
+        started = false;
+      }
+      continue;
+    }
+    current += character;
+    started = true;
+  }
+  if (escaped)
+    throw new CommandArgsError("INVALID_COMMAND_LINE", "unfinished escape sequence");
+  if (quote)
+    throw new CommandArgsError("INVALID_COMMAND_LINE", `unterminated ${quote} quote`);
+  if (started)
+    tokens.push(current);
+  return tokens;
+}
+function validateSchema$1(value, schema, path) {
+  if (schema.enum && !schema.enum.some((candidate) => Object.is(candidate, value))) {
+    throw new CommandArgsError("SCHEMA_VALIDATION_FAILED", `${path} must be one of ${schema.enum.join(", ")}`);
+  }
+  if (schema.type === "object") {
+    if (!value || typeof value !== "object" || Array.isArray(value))
+      throw new CommandArgsError("SCHEMA_VALIDATION_FAILED", `${path} must be an object`);
+    const object2 = value;
+    for (const required of schema.required ?? []) {
+      if (!hasOwn(object2, required))
+        throw new CommandArgsError("SCHEMA_VALIDATION_FAILED", `${path}.${required} is required`);
+    }
+    if (schema.additionalProperties === false) {
+      for (const key of Object.keys(object2)) {
+        if (!hasOwn(schema.properties ?? {}, key))
+          throw new CommandArgsError("SCHEMA_VALIDATION_FAILED", `${path}.${key} is not allowed`);
+      }
+    }
+    for (const [key, propertyValue] of Object.entries(object2)) {
+      const propertySchema = schema.properties?.[key];
+      if (propertySchema)
+        validateSchema$1(propertyValue, propertySchema, `${path}.${key}`);
+    }
+    return;
+  }
+  if (schema.type === "array") {
+    if (!Array.isArray(value))
+      throw new CommandArgsError("SCHEMA_VALIDATION_FAILED", `${path} must be an array`);
+    const items = schema.items;
+    if (items)
+      value.forEach((item, index) => validateSchema$1(item, items, `${path}[${index}]`));
+    return;
+  }
+  if (schema.type === "string") {
+    if (typeof value !== "string")
+      throw new CommandArgsError("SCHEMA_VALIDATION_FAILED", `${path} must be a string`);
+    if (schema.minLength !== void 0 && value.length < schema.minLength)
+      throw new CommandArgsError("SCHEMA_VALIDATION_FAILED", `${path} is too short`);
+    return;
+  }
+  if (schema.type === "boolean" && typeof value !== "boolean")
+    throw new CommandArgsError("SCHEMA_VALIDATION_FAILED", `${path} must be a boolean`);
+  if (schema.type === "integer" && (!Number.isInteger(value) || typeof value !== "number")) {
+    throw new CommandArgsError("SCHEMA_VALIDATION_FAILED", `${path} must be an integer`);
+  }
+  if (schema.type === "number" && typeof value !== "number")
+    throw new CommandArgsError("SCHEMA_VALIDATION_FAILED", `${path} must be a number`);
 }
 const OUTPUT_FORMATS = ["json", "jsonl", "table", "text", "raw"];
 const STRING_GLOBALS = /* @__PURE__ */ new Map([
@@ -176,89 +391,41 @@ function parseInvocation(argv) {
   return { global, module, verb, actionArgv };
 }
 function parseCommandArgs(command, argv, inputObject, allowReplScopedGlobals = false, deferValidation = false) {
-  const cliInput = {};
   const scoped = {};
-  const positionals = command.positionals ?? [];
-  const optionByName = new Map((command.options ?? []).map((option) => [option.name, option]));
-  let positionalIndex = 0;
-  let help = false;
-  for (let index = 0; index < argv.length; ) {
-    const token = argv[index];
-    if (token === "--help" || token === "-h") {
-      help = true;
-      index += 1;
-      continue;
-    }
-    if (token === "--") {
-      for (const positionalValue of argv.slice(index + 1)) {
-        positionalIndex = assignPositional(
-          cliInput,
-          positionals,
-          positionalIndex,
-          positionalValue
-        );
-      }
-      break;
-    }
-    if (!token.startsWith("--")) {
-      positionalIndex = assignPositional(cliInput, positionals, positionalIndex, token);
-      index += 1;
-      continue;
-    }
-    const parsed = splitLongOption(token);
-    if (allowReplScopedGlobals && REPL_SCOPED_BOOLEAN_GLOBALS.has(parsed.name)) {
+  const replScoped = (parsed, args, index) => {
+    if (!allowReplScopedGlobals)
+      return void 0;
+    if (REPL_SCOPED_BOOLEAN_GLOBALS.has(parsed.name)) {
       if (parsed.inlineValue !== void 0) {
         throw new UsageError("INVALID_ARGUMENT", `--${parsed.name} does not accept a value`);
       }
-      const property2 = BOOLEAN_GLOBALS.get(parsed.name);
-      setGlobal(scoped, property2, true);
-      index += 1;
-      continue;
+      setGlobal(scoped, BOOLEAN_GLOBALS.get(parsed.name), true);
+      return 1;
     }
-    if (allowReplScopedGlobals && REPL_SCOPED_STRING_GLOBALS.has(parsed.name)) {
-      const property2 = STRING_GLOBALS.get(parsed.name);
-      const { value: value2, consumed: consumed2 } = readOptionValue(argv, index, parsed);
-      setGlobal(scoped, property2, normalizeGlobalValue(parsed.name, value2));
-      index += consumed2;
-      continue;
+    if (REPL_SCOPED_STRING_GLOBALS.has(parsed.name)) {
+      const property = STRING_GLOBALS.get(parsed.name);
+      const { value, consumed } = readOptionValue(args, index, parsed);
+      setGlobal(scoped, property, normalizeGlobalValue(parsed.name, value));
+      return consumed;
     }
-    if (allowReplScopedGlobals && (STRING_GLOBALS.has(parsed.name) || REPEATABLE_STRING_GLOBALS.has(parsed.name) || BOOLEAN_GLOBALS.has(parsed.name))) {
+    if (STRING_GLOBALS.has(parsed.name) || REPEATABLE_STRING_GLOBALS.has(parsed.name) || BOOLEAN_GLOBALS.has(parsed.name)) {
       throw new UsageError(
         "SESSION_OPTION_FROZEN",
         `--${parsed.name} is frozen for the interactive session`
       );
     }
-    const option = optionByName.get(parsed.name);
-    if (!option)
-      throw new UsageError("UNKNOWN_OPTION", `unknown option: --${parsed.name}`);
-    const property = optionProperty(option);
-    if (Object.hasOwn(cliInput, property)) {
-      throw new UsageError("DUPLICATE_ARGUMENT", `argument provided more than once: ${property}`);
+    return void 0;
+  };
+  return usage(() => {
+    const parsed = parseArgv(command, argv, replScoped);
+    if (!deferValidation) {
+      checkRequiredPositionals(command.positionals ?? [], parsed.positionalCount, inputObject);
     }
-    if (option.type === "boolean") {
-      if (parsed.inlineValue !== void 0) {
-        throw new UsageError("INVALID_ARGUMENT", `--${parsed.name} does not accept a value`);
-      }
-      cliInput[property] = true;
-      index += 1;
-      continue;
-    }
-    const { value, consumed } = readOptionValue(argv, index, parsed);
-    cliInput[property] = parseOptionValue(option.type, value, parsed.name);
-    index += consumed;
-  }
-  for (let index = positionalIndex; !deferValidation && index < positionals.length; index++) {
-    if (positionals[index].required !== false && !Object.hasOwn(inputObject ?? {}, positionals[index].name)) {
-      throw new UsageError(
-        "MISSING_ARGUMENT",
-        `missing positional argument: ${positionals[index].name}`
-      );
-    }
-  }
-  const input = mergeCommandInput(inputObject, cliInput);
-  if (!deferValidation)
-    validateSchema(input, command.inputSchema, "input");
-  return { input, scoped, help };
+    const input = mergeCommandInput(inputObject, parsed.input);
+    if (!deferValidation)
+      validateSchema$1(input, command.inputSchema, "input");
+    return { input, scoped, help: parsed.help };
+  });
 }
 function parseDuration(value) {
   const match = /^(\d+)(ms|s|m|h)$/.exec(value.trim());
@@ -274,169 +441,22 @@ function parseDuration(value) {
   return result;
 }
 function parseShellLine(line) {
-  const tokens = [];
-  let current = "";
-  let quote = null;
-  let escaped = false;
-  let started = false;
-  for (const character of line) {
-    if (escaped) {
-      current += character;
-      escaped = false;
-      started = true;
-      continue;
-    }
-    if (character === "\\" && quote !== "single") {
-      escaped = true;
-      started = true;
-      continue;
-    }
-    if (quote === "single") {
-      if (character === "'")
-        quote = null;
-      else
-        current += character;
-      continue;
-    }
-    if (quote === "double") {
-      if (character === '"')
-        quote = null;
-      else
-        current += character;
-      continue;
-    }
-    if (character === "'") {
-      quote = "single";
-      started = true;
-      continue;
-    }
-    if (character === '"') {
-      quote = "double";
-      started = true;
-      continue;
-    }
-    if (/\s/.test(character)) {
-      if (started) {
-        tokens.push(current);
-        current = "";
-        started = false;
-      }
-      continue;
-    }
-    current += character;
-    started = true;
-  }
-  if (escaped)
-    throw new UsageError("INVALID_COMMAND_LINE", "unfinished escape sequence");
-  if (quote)
-    throw new UsageError("INVALID_COMMAND_LINE", `unterminated ${quote} quote`);
-  if (started)
-    tokens.push(current);
-  return tokens;
+  return usage(() => parseShellLine$1(line));
 }
 function validateSchema(value, schema, path) {
-  if (schema.enum && !schema.enum.some((candidate) => Object.is(candidate, value))) {
-    throw new UsageError(
-      "SCHEMA_VALIDATION_FAILED",
-      `${path} must be one of ${schema.enum.join(", ")}`
-    );
-  }
-  if (schema.type === "object") {
-    if (!value || typeof value !== "object" || Array.isArray(value)) {
-      throw new UsageError("SCHEMA_VALIDATION_FAILED", `${path} must be an object`);
-    }
-    const object2 = value;
-    for (const required of schema.required ?? []) {
-      if (!Object.hasOwn(object2, required)) {
-        throw new UsageError("SCHEMA_VALIDATION_FAILED", `${path}.${required} is required`);
-      }
-    }
-    if (schema.additionalProperties === false) {
-      for (const key of Object.keys(object2)) {
-        if (!Object.hasOwn(schema.properties ?? {}, key)) {
-          throw new UsageError("SCHEMA_VALIDATION_FAILED", `${path}.${key} is not allowed`);
-        }
-      }
-    }
-    for (const [key, propertyValue] of Object.entries(object2)) {
-      const propertySchema = schema.properties?.[key];
-      if (propertySchema)
-        validateSchema(propertyValue, propertySchema, `${path}.${key}`);
-    }
-    return;
-  }
-  if (schema.type === "array") {
-    if (!Array.isArray(value)) {
-      throw new UsageError("SCHEMA_VALIDATION_FAILED", `${path} must be an array`);
-    }
-    if (schema.items) {
-      value.forEach((item, index) => validateSchema(item, schema.items, `${path}[${index}]`));
-    }
-    return;
-  }
-  if (schema.type === "string") {
-    if (typeof value !== "string") {
-      throw new UsageError("SCHEMA_VALIDATION_FAILED", `${path} must be a string`);
-    }
-    if (schema.minLength !== void 0 && value.length < schema.minLength) {
-      throw new UsageError("SCHEMA_VALIDATION_FAILED", `${path} is too short`);
-    }
-    return;
-  }
-  if (schema.type === "boolean" && typeof value !== "boolean") {
-    throw new UsageError("SCHEMA_VALIDATION_FAILED", `${path} must be a boolean`);
-  }
-  if (schema.type === "integer" && (!Number.isInteger(value) || typeof value !== "number")) {
-    throw new UsageError("SCHEMA_VALIDATION_FAILED", `${path} must be an integer`);
-  }
-  if (schema.type === "number" && typeof value !== "number") {
-    throw new UsageError("SCHEMA_VALIDATION_FAILED", `${path} must be a number`);
-  }
+  usage(() => validateSchema$1(value, schema, path));
 }
-function assignPositional(input, positionals, index, value) {
-  const positional = positionals[index];
-  if (!positional) {
-    throw new UsageError("TOO_MANY_ARGUMENTS", `unexpected positional argument: ${value}`);
+function usage(f) {
+  try {
+    return f();
+  } catch (error) {
+    if (error instanceof CommandArgsError)
+      throw new UsageError(error.code, error.message);
+    throw error;
   }
-  input[positional.name] = value;
-  return index + 1;
-}
-function splitLongOption(token) {
-  const content = token.slice(2);
-  const equalIndex = content.indexOf("=");
-  return equalIndex < 0 ? { name: content } : { name: content.slice(0, equalIndex), inlineValue: content.slice(equalIndex + 1) };
 }
 function readOptionValue(argv, index, option) {
-  if (option.inlineValue !== void 0) {
-    if (!option.inlineValue) {
-      throw new UsageError("MISSING_ARGUMENT", `--${option.name} requires a value`);
-    }
-    return { value: option.inlineValue, consumed: 1 };
-  }
-  const value = argv[index + 1];
-  if (value === void 0 || value.startsWith("--")) {
-    throw new UsageError("MISSING_ARGUMENT", `--${option.name} requires a value`);
-  }
-  return { value, consumed: 2 };
-}
-function parseOptionValue(type, value, name) {
-  if (type === "string")
-    return value;
-  const number = Number(value);
-  if (!Number.isFinite(number) || type === "integer" && !Number.isInteger(number)) {
-    throw new UsageError("INVALID_ARGUMENT", `--${name} requires a ${type}`);
-  }
-  return number;
-}
-function mergeCommandInput(inputObject, cliInput) {
-  const result = { ...inputObject ?? {} };
-  for (const [key, value] of Object.entries(cliInput)) {
-    if (Object.hasOwn(result, key)) {
-      throw new UsageError("ARGUMENT_CONFLICT", `${key} is present in both --input and argv`);
-    }
-    result[key] = value;
-  }
-  return result;
+  return usage(() => readOptionValue$1(argv, index, option));
 }
 function normalizeGlobalValue(name, value) {
   if (name === "output") {
@@ -5561,7 +5581,7 @@ function validateContentHandlers(value, permissions) {
   }
   return value;
 }
-const PACKAGE_VERSION = "0.7.170";
+const PACKAGE_VERSION = "0.7.171";
 const TOOL_VERSION = PACKAGE_VERSION;
 const SDK_VERSION = PACKAGE_VERSION;
 const PROTOCOL_VERSION = "1";
