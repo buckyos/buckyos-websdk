@@ -1,5 +1,5 @@
-import { c as createSDKModule } from "./executor_client-3fa50a2a.mjs";
-import { a9, aL, bG, aQ, bH, bM, bL, bI, bK, bN, bJ, bE, bF, bD, ac, aR, am, al, an, ao, aT, aS, aV, aU, bU, cc, cd, c8, c9, ca, cb, ce, f, B, cg, cf, ck, ci, k, a1, a0, $, _, bh, ag, a8, aB, E, cl, co, cm, Y, aA, aM, ah, c2, c1, q, M, A, C, y, w, v, N, D, x, z, aN, aO, az, l, R, aC, bl, S, b1, b0, a$, b4, b2, a_, aW, aX, b3, aY, b5, aZ, aw, ax, av, b6, ay, aP, bi, bf, bk, bm, ba, bj, bn, be, bb, bd, a4, a3, V, W, a2, aJ, aF, aK, aD, aH, aI, bo, aE, aG, bC, bv, bp, by, bt, bx, bs, bq, bu, bw, bB, bA, bz, br, Z, ab, bS, bR, bO, bQ, U, c5, c3, bg, b, e, ak, T, au, a5, a6, c6, bV, ch, cn, h, j, i, g, af, ae, I, bP, o, F, bc, a7, aq, ap, at, t, u, P, a, d, n, ai, K, H, G, Q, O, aa, c4, c7, ar, ad, p, bY, m, J, as, r, s, b9, b7, b8, bT, bX, bW, L, b$, b_, bZ, c0, X, cj, aj } from "./executor_client-3fa50a2a.mjs";
+import { c as createSDKModule } from "./executor_client-c620d25c.mjs";
+import { a9, aL, bG, aQ, bH, bM, bL, bI, bK, bN, bJ, bE, bF, bD, ac, aR, am, al, an, ao, aT, aS, aV, aU, bU, cc, cd, c8, c9, ca, cb, ce, f, B, cg, cf, ck, ci, k, co, cn, cm, cl, a1, a0, $, _, bh, ag, a8, aB, E, cp, cs, cq, Y, aA, aM, ah, c2, c1, q, M, A, C, y, w, v, N, D, x, z, aN, aO, az, l, R, aC, bl, S, b1, b0, a$, b4, b2, a_, aW, aX, b3, aY, b5, aZ, aw, ax, av, b6, ay, aP, bi, bf, bk, bm, ba, bj, bn, be, bb, bd, a4, a3, V, W, a2, aJ, aF, aK, aD, aH, aI, bo, aE, aG, bC, bv, bp, by, bt, bx, bs, bq, bu, bw, bB, bA, bz, br, Z, ab, bS, bR, bO, bQ, U, c5, c3, bg, b, e, ak, T, au, a5, a6, c6, bV, ch, cr, h, j, i, g, af, ae, I, bP, o, F, bc, a7, aq, ap, at, t, u, P, a, d, n, ai, K, H, G, Q, O, aa, c4, c7, ar, ad, p, bY, m, J, as, r, s, b9, b7, b8, bT, bX, bW, L, b$, b_, bZ, c0, X, cj, aj } from "./executor_client-c620d25c.mjs";
 import { h as h2 } from "./account-7a7bde6f.mjs";
 import { a as a10, D as D2, N as N2, r as r2, q as q2, g as g2, j as j2, f as f2, c, e as e2, b as b10, d as d2, k as k2, h as h3, i as i2, n as n2, o as o2, m as m2, l as l2, p as p2 } from "./ndn_types-0fac2499.mjs";
 import { o as o3 } from "./object_url-f72c1704.mjs";
@@ -93,6 +93,10 @@ export {
   ck as BnsTxExecutor,
   ci as BnsTxExecutorError,
   k as BuckyOSSDK,
+  co as COMPUTER_ELEMENT_ACTIONS,
+  cn as COMPUTER_ELEMENT_STATES,
+  cm as COMPUTER_ROLES,
+  cl as COMPUTER_SEMANTIC_FORMAT,
   a1 as CONTACT_CHANGED_EVENT_PATTERN,
   a0 as CONTACT_TAG_HOMESTATION_FOLLOWING,
   $ as CONTACT_TAG_ZONE_AGENT,
@@ -104,9 +108,9 @@ export {
   D2 as DID_OBJECT_SERVICE_TYPE,
   aB as DOWNLOAD_TASK_SCHEMA_ID,
   E as EXTERNAL_PRINCIPAL_CLAIM,
-  cl as ExecutorClient,
-  co as ExecutorCommandStream,
-  cm as ExecutorStreamError,
+  cp as ExecutorClient,
+  cs as ExecutorCommandStream,
+  cq as ExecutorStreamError,
   Y as FRIEND_INTENT,
   aA as HUMAN_APPROVAL_SCHEMA_ID,
   aM as HUMAN_INPUT_TASK_SCHEMA_ID,
@@ -227,7 +231,7 @@ export {
   create_event_reader,
   bV as decisionRequirements,
   ch as decodeBnsPublishDocumentCalldata,
-  cn as encodeExecutorControl,
+  cr as encodeExecutorControl,
   ensureFolder,
   exportBundle,
   findFolder,

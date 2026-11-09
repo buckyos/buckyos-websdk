@@ -75,6 +75,133 @@ export interface ExecutorReply {
     };
     [key: string]: unknown;
 }
+export declare const COMPUTER_SEMANTIC_FORMAT = "outline-v1";
+export declare const COMPUTER_ROLES: readonly ["window", "dialog", "document", "group", "toolbar", "heading", "button", "link", "tab", "tablist", "menu", "menubar", "menuitem", "checkbox", "radio", "switch", "textbox", "combobox", "slider", "list", "listitem", "tree", "treeitem", "table", "row", "cell", "image", "text", "generic"];
+export declare const COMPUTER_ELEMENT_STATES: readonly ["disabled", "focused", "selected", "checked", "mixed", "expanded", "collapsed", "readonly"];
+export declare const COMPUTER_ELEMENT_ACTIONS: readonly ["focus", "invoke", "set_value", "toggle", "select", "expand", "collapse", "scroll_into_view"];
+export type ComputerRole = typeof COMPUTER_ROLES[number];
+export type ComputerElementState = typeof COMPUTER_ELEMENT_STATES[number];
+export type ComputerElementAction = typeof COMPUTER_ELEMENT_ACTIONS[number];
+export type ComputerObservationMode = 'visual' | 'auto' | 'semantic' | 'hybrid';
+export type ComputerTarget = {
+    kind: 'point';
+    observation_id: string;
+    x: number;
+    y: number;
+    space: 'screenshot';
+} | {
+    kind: 'focus';
+    observation_id: string;
+} | {
+    kind: 'element';
+    observation_id: string;
+    ref: string;
+};
+export type ComputerObserveScope = {
+    kind: 'foreground';
+} | {
+    kind: 'window';
+    observation_id: string;
+    ref: string;
+};
+interface ComputerActionOptions {
+    binding_id: string;
+    target: ComputerTarget;
+    feedback?: 'after' | 'none';
+    feedback_mode?: ComputerObservationMode;
+    execution_timeout_ms?: number;
+}
+export type ComputerRequest = {
+    command: 'inspect';
+    binding_id: string;
+} | {
+    command: 'observe';
+    binding_id: string;
+    mode?: ComputerObservationMode;
+    scope?: ComputerObserveScope;
+} | ({
+    command: 'click';
+    button?: 'left' | 'right' | 'middle';
+    count?: 1 | 2;
+    modifiers?: string[];
+} & ComputerActionOptions) | ({
+    command: 'type';
+    text: string;
+    delivery?: 'text' | 'keys';
+} & ComputerActionOptions) | ({
+    command: 'keypress';
+    keys: string[];
+} & ComputerActionOptions) | ({
+    command: 'scroll';
+    delta_x: number;
+    delta_y: number;
+    unit: 'pixel' | 'line';
+} & ComputerActionOptions) | ({
+    command: 'wait_for';
+    condition: {
+        kind: 'delay';
+        duration_ms: number;
+    };
+} & ComputerActionOptions) | ({
+    command: 'invoke';
+} & ComputerActionOptions) | ({
+    command: 'set_value';
+    value: string;
+} & ComputerActionOptions);
+export interface ComputerBounds {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+}
+export interface ComputerWindow {
+    ref: string;
+    title: string;
+    process: string;
+    pid: number;
+    bounds: ComputerBounds;
+    foreground: boolean;
+    accessible: boolean;
+}
+export interface ComputerSemantic {
+    format: typeof COMPUTER_SEMANTIC_FORMAT;
+    text: string;
+    windows: ComputerWindow[];
+    coverage: {
+        visited: number;
+        returned: number;
+        truncated: boolean;
+        reason?: string;
+    };
+    captured_at_ms: number;
+}
+export interface ComputerScreenshot {
+    artifact_ref: string;
+    mime_type: string;
+    width: number;
+    height: number;
+    space: 'screenshot';
+    interactive: boolean;
+    captured_at_ms: number;
+}
+export interface ComputerObservation {
+    observation_id: string;
+    binding_id: string;
+    surface_id: string;
+    surface_epoch: number;
+    interaction_revision: number;
+    requested_mode: ComputerObservationMode;
+    effective_mode: ComputerObservationMode;
+    selection_reason: string;
+    capture_started_at_ms: number;
+    capture_completed_at_ms: number;
+    consistency: string;
+    screenshot?: ComputerScreenshot;
+    semantic?: ComputerSemantic;
+    focus_guard: string;
+    expires_at_ms: number;
+    warnings: string[];
+}
 export declare class ExecutorClient {
     private readonly rpc;
     constructor(serviceUrl: string, token?: string | null, options?: KRPCClientOptions);
@@ -132,7 +259,9 @@ export declare class ExecutorCommandStream {
         replace_all?: boolean;
     }>): Promise<ExecutorReply>;
     write(locator: ExecutorOperationLocator, path: string, content: Uint8Array, mode?: 'replace' | 'append' | 'create_new'): Promise<ExecutorReply>;
+    computer(locator: ExecutorOperationLocator, request: ComputerRequest): Promise<ExecutorReply>;
     query(locator: ExecutorOperationLocator, channel?: 'stdout' | 'stderr' | 'content', offset?: number, wait_ms?: number): Promise<ExecutorReply>;
     cancel(locator: ExecutorOperationLocator): Promise<ExecutorReply>;
 }
+export {};
 //# sourceMappingURL=executor_client.d.ts.map

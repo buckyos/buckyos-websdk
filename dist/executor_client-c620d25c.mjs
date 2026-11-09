@@ -31228,6 +31228,40 @@ const ndm_proxy = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.definePro
   unpin,
   unpinOwner
 }, Symbol.toStringTag, { value: "Module" }));
+const COMPUTER_SEMANTIC_FORMAT = "outline-v1";
+const COMPUTER_ROLES = [
+  "window",
+  "dialog",
+  "document",
+  "group",
+  "toolbar",
+  "heading",
+  "button",
+  "link",
+  "tab",
+  "tablist",
+  "menu",
+  "menubar",
+  "menuitem",
+  "checkbox",
+  "radio",
+  "switch",
+  "textbox",
+  "combobox",
+  "slider",
+  "list",
+  "listitem",
+  "tree",
+  "treeitem",
+  "table",
+  "row",
+  "cell",
+  "image",
+  "text",
+  "generic"
+];
+const COMPUTER_ELEMENT_STATES = ["disabled", "focused", "selected", "checked", "mixed", "expanded", "collapsed", "readonly"];
+const COMPUTER_ELEMENT_ACTIONS = ["focus", "invoke", "set_value", "toggle", "select", "expand", "collapse", "scroll_into_view"];
 class ExecutorClient {
   constructor(serviceUrl, token = null, options = {}) {
     this.rpc = new kRPCClient(serviceUrl, token, null, options);
@@ -31492,6 +31526,9 @@ class ExecutorCommandStream {
     this.socket.send(encodeExecutorControl({ type: "upload_end", request_id: `end${++this.sequence}`, op_id: locator.op_id }));
     return accepted;
   }
+  computer(locator, request) {
+    return this.request("computer", { ...this.fresh(locator), request });
+  }
   query(locator, channel, offset = 0, wait_ms = 0) {
     this.operation(locator);
     return this.request("query", { store_id: locator.store_id, op_id: locator.op_id, channel, offset, max_bytes: 262144, wait_ms });
@@ -31682,15 +31719,19 @@ export {
   BnsTxExecutorError as ci,
   walletUserHasSnAccount as cj,
   BnsTxExecutor as ck,
-  ExecutorClient as cl,
-  ExecutorStreamError as cm,
-  encodeExecutorControl as cn,
-  ExecutorCommandStream as co,
-  AIWORKSPACE_SERVICE_NAME as cp,
-  AiwsFailure as cq,
-  aiwsReferenceUrl as cr,
-  parseAiwsReferenceUrl as cs,
-  AiWorkspaceClient as ct,
+  COMPUTER_SEMANTIC_FORMAT as cl,
+  COMPUTER_ROLES as cm,
+  COMPUTER_ELEMENT_STATES as cn,
+  COMPUTER_ELEMENT_ACTIONS as co,
+  ExecutorClient as cp,
+  ExecutorStreamError as cq,
+  encodeExecutorControl as cr,
+  ExecutorCommandStream as cs,
+  AIWORKSPACE_SERVICE_NAME as ct,
+  AiwsFailure as cu,
+  aiwsReferenceUrl as cv,
+  parseAiwsReferenceUrl as cw,
+  AiWorkspaceClient as cx,
   ndm_proxy as d,
   bucket_client as e,
   BS_SERVICE_TASK_MANAGER as f,
@@ -31715,4 +31756,4 @@ export {
   NOTIFY_CHOICE_CONTROL_ID as y,
   NOTIFY_TEXT_CONTROL_ID as z
 };
-//# sourceMappingURL=executor_client-3fa50a2a.mjs.map
+//# sourceMappingURL=executor_client-c620d25c.mjs.map

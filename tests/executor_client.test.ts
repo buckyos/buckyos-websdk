@@ -1,4 +1,4 @@
-import { encodeExecutorControl, ExecutorCommandStream, ExecutorOperationLocator, ExecutorRoute, ExecutorTarget } from '../src/executor_client'
+import { COMPUTER_ELEMENT_ACTIONS, COMPUTER_ELEMENT_STATES, COMPUTER_ROLES, ComputerRequest, encodeExecutorControl, ExecutorCommandStream, ExecutorOperationLocator, ExecutorRoute, ExecutorTarget } from '../src/executor_client'
 
 const target: ExecutorTarget = { executor_id: 'exec-1', generation: 2, profile_id: 'user', store_id: 'ledger-1' }
 const route: ExecutorRoute = { ...target, stream_id: 'stream-1', ws_url: 'wss://zone.invalid/route/1', ticket: 'secret-ticket', expires_at_ms: Date.now() + 600000 }
@@ -59,6 +59,18 @@ test('old generation may query same ledger but cannot dispatch a new action', as
   expect(() => stream.exec(old, 'touch file', '/tmp')).toThrow('old operation')
   expect(() => stream.query({ ...old, store_id: 'wrong-ledger' })).toThrow('another executor')
   expect(Socket.instances[0].sent.map(value => value.type)).toEqual(['login', 'query'])
+  stream.close()
+})
+
+test('computer requests carry element targets and the operation locator', async () => {
+  const stream = await ExecutorCommandStream.connect(route, target, 'token', 'runtime', 'run-1')
+  const request: ComputerRequest = { command: 'set_value', binding_id: 'user:display:1', target: { kind: 'element', observation_id: 'obs_1', ref: 'e12' }, value: 'hello' }
+  await stream.computer(locator, request)
+  expect(Socket.instances[0].sent[1]).toEqual({ type: 'computer', request_id: 'q2', store_id: 'ledger-1', op_id: 'op-1', run_id: 'run-1', call_id: 'call-1', request })
+  expect(() => stream.computer({ ...locator, generation: 1 }, request)).toThrow('old operation')
+  expect(COMPUTER_ROLES).toContain('tablist')
+  expect(COMPUTER_ELEMENT_ACTIONS).toEqual(['focus', 'invoke', 'set_value', 'toggle', 'select', 'expand', 'collapse', 'scroll_into_view'])
+  expect(COMPUTER_ELEMENT_STATES).toHaveLength(8)
   stream.close()
 })
 
