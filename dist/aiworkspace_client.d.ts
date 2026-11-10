@@ -250,6 +250,38 @@ export interface AiwsRunReport {
     assumptions?: string[];
     analysis?: Record<string, unknown>;
 }
+/** One request of `doc.stage` / `doc.commit` stays under the service's 8 MiB body limit. */
+export declare const AIWS_COMMIT_PART_BYTES: number;
+/** What one Commit may hold once its parts are assembled (aiworkspace-core `Limits`). */
+export declare const AIWS_COMMIT_MAX_BYTES: number;
+export declare const AIWS_COMMIT_MAX_OPERATIONS = 50000;
+export type AiwsCall = (method: string, params: Record<string, unknown>) => Promise<unknown>;
+export interface AiwsCommitPartsOptions {
+    /** Largest serialized size of the operations of one request (default `AIWS_COMMIT_PART_BYTES`). */
+    partBytes?: number;
+    /** Called before request `part` of `total` is sent (1-based; the last one is the commit itself). Only when
+     * the Commit is sent in more than one request. */
+    onPart?: (part: number, total: number) => void;
+    /** `doc.prepare` instead of `doc.commit` (the parts it stages expire on their own). */
+    method?: 'doc.commit' | 'doc.prepare';
+}
+/** `operations` cut into runs of at most `partBytes` serialized bytes, in order; an operation larger than that
+ * is a run of its own. */
+export declare function splitCommitOperations<T>(operations: T[], partBytes?: number): T[][];
+/** Whether a Commit of these operations is within what the service assembles (`null`), or which limit it passes. */
+export declare function commitOverLimit(operations: unknown[]): {
+    limit: 'operations' | 'bytes';
+    value: number;
+    max: number;
+} | null;
+/**
+ * Send one Commit, whatever its size: a request whose operations fit `partBytes` is one `doc.commit`; a larger one
+ * has its leading parts held by `doc.stage` and the last part sent as `doc.commit { staged: [digests] }`, which the
+ * service assembles into the same single Commit (one transaction, one undo unit). Every call stages all parts again,
+ * so resending the same request after an unknown result is safe. The three-state result is returned as it is; a
+ * refused `doc.stage` comes back as a `rejected` result.
+ */
+export declare function commitWithParts<T = Record<string, unknown>>(call: AiwsCall, request: Record<string, unknown>, options?: AiwsCommitPartsOptions): Promise<T>;
 /**
  * kRPC client of the AI Workspace service (`/kapi/aiworkspace`). Every method takes the business result out of
  * `result` and throws `AiwsFailure` on `{ ok: false }`; commits return the three-state result as it is.
@@ -268,9 +300,11 @@ export declare class AiWorkspaceClient {
     read(workspace_id: string, entity_id: string, selector?: Record<string, unknown>): Promise<Record<string, unknown>>;
     query(workspace_id: string, params: Record<string, unknown>): Promise<Record<string, unknown>>;
     outline(workspace_id: string): Promise<Record<string, unknown>>;
+    private raw;
     prepare(workspace_id: string, request: Record<string, unknown>): Promise<Record<string, unknown>>;
-    /** The three-state commit result (`status: accepted | conflict | rejected`), never thrown. */
-    commit(workspace_id: string, request: Record<string, unknown>): Promise<Record<string, unknown>>;
+    /** The three-state commit result (`status: accepted | conflict | rejected`), never thrown. One call per Commit
+     * whatever its size (up to `AIWS_COMMIT_MAX_BYTES` / `AIWS_COMMIT_MAX_OPERATIONS`): a large one is sent in parts. */
+    commit(workspace_id: string, request: Record<string, unknown>, options?: Pick<AiwsCommitPartsOptions, 'partBytes' | 'onPart'>): Promise<Record<string, unknown>>;
     getSubmission(workspace_id: string, epoch: string, idempotency_key: string): Promise<Record<string, unknown>>;
     /** Changes after `after_seq` (`filter.detail: "touched"` for the touched entities only). */
     getChanges(workspace_id: string, epoch: string, after_seq: number, opts?: {

@@ -189,6 +189,94 @@ export interface AiwsRunReport {
   analysis?: Record<string, unknown>
 }
 
+/** One request of `doc.stage` / `doc.commit` stays under the service's 8 MiB body limit. */
+export const AIWS_COMMIT_PART_BYTES = 6 * 1024 * 1024
+/** What one Commit may hold once its parts are assembled (aiworkspace-core `Limits`). */
+export const AIWS_COMMIT_MAX_BYTES = 32 * 1024 * 1024
+export const AIWS_COMMIT_MAX_OPERATIONS = 50_000
+
+export type AiwsCall = (method: string, params: Record<string, unknown>) => Promise<unknown>
+
+export interface AiwsCommitPartsOptions {
+  /** Largest serialized size of the operations of one request (default `AIWS_COMMIT_PART_BYTES`). */
+  partBytes?: number
+  /** Called before request `part` of `total` is sent (1-based; the last one is the commit itself). Only when
+   * the Commit is sent in more than one request. */
+  onPart?: (part: number, total: number) => void
+  /** `doc.prepare` instead of `doc.commit` (the parts it stages expire on their own). */
+  method?: 'doc.commit' | 'doc.prepare'
+}
+
+const utf8 = new TextEncoder()
+
+function jsonBytes(value: unknown): number {
+  const text = JSON.stringify(value)
+  // a JSON string is at most 3 UTF-8 bytes per UTF-16 unit: only count when that bound does not settle it
+  return text.length
+    + (/[^\x00-\x7f]/.test(text) ? utf8.encode(text).length - text.length : 0)
+}
+
+/** `operations` cut into runs of at most `partBytes` serialized bytes, in order; an operation larger than that
+ * is a run of its own. */
+export function splitCommitOperations<T>(operations: T[], partBytes = AIWS_COMMIT_PART_BYTES): T[][] {
+  const parts: T[][] = []
+  let current: T[] = []
+  let size = 2
+  for (const op of operations) {
+    const bytes = jsonBytes(op) + 1
+    if (current.length > 0 && size + bytes > partBytes) {
+      parts.push(current)
+      current = []
+      size = 2
+    }
+    current.push(op)
+    size += bytes
+  }
+  if (current.length > 0 || parts.length === 0) parts.push(current)
+  return parts
+}
+
+/** Whether a Commit of these operations is within what the service assembles (`null`), or which limit it passes. */
+export function commitOverLimit(operations: unknown[]): { limit: 'operations' | 'bytes'; value: number; max: number } | null {
+  if (operations.length > AIWS_COMMIT_MAX_OPERATIONS) return { limit: 'operations', value: operations.length, max: AIWS_COMMIT_MAX_OPERATIONS }
+  let bytes = 2
+  for (const op of operations) bytes += jsonBytes(op) + 1
+  // the envelope of the final request counts too
+  return bytes + 4096 > AIWS_COMMIT_MAX_BYTES ? { limit: 'bytes', value: bytes, max: AIWS_COMMIT_MAX_BYTES } : null
+}
+
+/**
+ * Send one Commit, whatever its size: a request whose operations fit `partBytes` is one `doc.commit`; a larger one
+ * has its leading parts held by `doc.stage` and the last part sent as `doc.commit { staged: [digests] }`, which the
+ * service assembles into the same single Commit (one transaction, one undo unit). Every call stages all parts again,
+ * so resending the same request after an unknown result is safe. The three-state result is returned as it is; a
+ * refused `doc.stage` comes back as a `rejected` result.
+ */
+export async function commitWithParts<T = Record<string, unknown>>(call: AiwsCall, request: Record<string, unknown>, options: AiwsCommitPartsOptions = {}): Promise<T> {
+  const method = options.method ?? 'doc.commit'
+  const operations = Array.isArray(request.operations) ? request.operations as unknown[] : []
+  const parts = splitCommitOperations(operations, options.partBytes ?? AIWS_COMMIT_PART_BYTES)
+  if (parts.length <= 1) return await call(method, request) as T
+  const { workspace_id, epoch, idempotency_key } = request
+  for (let attempt = 0; ; attempt++) {
+    const staged: string[] = []
+    for (let part = 0; part < parts.length - 1; part++) {
+      options.onPart?.(part + 1, parts.length)
+      const held = await call('doc.stage', { workspace_id, epoch, idempotency_key, part, operations: parts[part] }) as { ok?: boolean; digest?: string; error?: AiwsError }
+      if (!held || held.ok === false || typeof held.digest !== 'string') {
+        const error = held?.error ?? { code: 'STORAGE_IO_ERROR', retryable: true, detail: 'doc.stage returned no digest' }
+        return { status: 'rejected', code: error.code, retryable: error.retryable, detail: error.detail, ...(error.sub_code ? { sub_code: error.sub_code } : {}), errors: [error] } as T
+      }
+      staged.push(held.digest)
+    }
+    options.onPart?.(parts.length, parts.length)
+    const result = await call(method, { ...request, staged, operations: parts[parts.length - 1] }) as { status?: string; sub_code?: string }
+    // the parts expired (or another send of this key consumed them) between staging and the commit: once more
+    if (attempt === 0 && result?.status === 'rejected' && result.sub_code === 'STAGED_PARTS_MISSING') continue
+    return result as T
+  }
+}
+
 /**
  * kRPC client of the AI Workspace service (`/kapi/aiworkspace`). Every method takes the business result out of
  * `result` and throws `AiwsFailure` on `{ ok: false }`; commits return the three-state result as it is.
@@ -219,12 +307,14 @@ export class AiWorkspaceClient {
   }
   query(workspace_id: string, params: Record<string, unknown>) { return this.call('doc.query', { workspace_id, ...params }) }
   outline(workspace_id: string) { return this.call('doc.outline', { workspace_id }) }
+  private raw: AiwsCall = (method, params) => this.rpcClient.call<Record<string, unknown>, Record<string, unknown>>(method, params)
   prepare(workspace_id: string, request: Record<string, unknown>) {
-    return this.rpcClient.call<Record<string, unknown>, Record<string, unknown>>('doc.prepare', { workspace_id, ...request })
+    return commitWithParts(this.raw, { workspace_id, ...request }, { method: 'doc.prepare' })
   }
-  /** The three-state commit result (`status: accepted | conflict | rejected`), never thrown. */
-  commit(workspace_id: string, request: Record<string, unknown>) {
-    return this.rpcClient.call<Record<string, unknown>, Record<string, unknown>>('doc.commit', { workspace_id, ...request })
+  /** The three-state commit result (`status: accepted | conflict | rejected`), never thrown. One call per Commit
+   * whatever its size (up to `AIWS_COMMIT_MAX_BYTES` / `AIWS_COMMIT_MAX_OPERATIONS`): a large one is sent in parts. */
+  commit(workspace_id: string, request: Record<string, unknown>, options: Pick<AiwsCommitPartsOptions, 'partBytes' | 'onPart'> = {}) {
+    return commitWithParts(this.raw, { workspace_id, ...request }, options)
   }
   getSubmission(workspace_id: string, epoch: string, idempotency_key: string) { return this.call('doc.get_submission', { workspace_id, epoch, idempotency_key }) }
   /** Changes after `after_seq` (`filter.detail: "touched"` for the touched entities only). */

@@ -209,9 +209,70 @@ function parseAiwsReferenceUrl(url) {
     reference.version = JSON.parse(parsed.query.version);
   return reference;
 }
+const AIWS_COMMIT_PART_BYTES = 6 * 1024 * 1024;
+const AIWS_COMMIT_MAX_BYTES = 32 * 1024 * 1024;
+const AIWS_COMMIT_MAX_OPERATIONS = 5e4;
+const utf8 = new TextEncoder();
+function jsonBytes(value) {
+  const text = JSON.stringify(value);
+  return text.length + (/[^\x00-\x7f]/.test(text) ? utf8.encode(text).length - text.length : 0);
+}
+function splitCommitOperations(operations, partBytes = AIWS_COMMIT_PART_BYTES) {
+  const parts = [];
+  let current = [];
+  let size = 2;
+  for (const op of operations) {
+    const bytes2 = jsonBytes(op) + 1;
+    if (current.length > 0 && size + bytes2 > partBytes) {
+      parts.push(current);
+      current = [];
+      size = 2;
+    }
+    current.push(op);
+    size += bytes2;
+  }
+  if (current.length > 0 || parts.length === 0)
+    parts.push(current);
+  return parts;
+}
+function commitOverLimit(operations) {
+  if (operations.length > AIWS_COMMIT_MAX_OPERATIONS)
+    return { limit: "operations", value: operations.length, max: AIWS_COMMIT_MAX_OPERATIONS };
+  let bytes2 = 2;
+  for (const op of operations)
+    bytes2 += jsonBytes(op) + 1;
+  return bytes2 + 4096 > AIWS_COMMIT_MAX_BYTES ? { limit: "bytes", value: bytes2, max: AIWS_COMMIT_MAX_BYTES } : null;
+}
+async function commitWithParts(call, request, options = {}) {
+  var _a2, _b2;
+  const method = options.method ?? "doc.commit";
+  const operations = Array.isArray(request.operations) ? request.operations : [];
+  const parts = splitCommitOperations(operations, options.partBytes ?? AIWS_COMMIT_PART_BYTES);
+  if (parts.length <= 1)
+    return await call(method, request);
+  const { workspace_id, epoch, idempotency_key } = request;
+  for (let attempt2 = 0; ; attempt2++) {
+    const staged = [];
+    for (let part = 0; part < parts.length - 1; part++) {
+      (_a2 = options.onPart) == null ? void 0 : _a2.call(options, part + 1, parts.length);
+      const held = await call("doc.stage", { workspace_id, epoch, idempotency_key, part, operations: parts[part] });
+      if (!held || held.ok === false || typeof held.digest !== "string") {
+        const error = (held == null ? void 0 : held.error) ?? { code: "STORAGE_IO_ERROR", retryable: true, detail: "doc.stage returned no digest" };
+        return { status: "rejected", code: error.code, retryable: error.retryable, detail: error.detail, ...error.sub_code ? { sub_code: error.sub_code } : {}, errors: [error] };
+      }
+      staged.push(held.digest);
+    }
+    (_b2 = options.onPart) == null ? void 0 : _b2.call(options, parts.length, parts.length);
+    const result = await call(method, { ...request, staged, operations: parts[parts.length - 1] });
+    if (attempt2 === 0 && (result == null ? void 0 : result.status) === "rejected" && result.sub_code === "STAGED_PARTS_MISSING")
+      continue;
+    return result;
+  }
+}
 class AiWorkspaceClient {
   constructor(rpcClient) {
     this.rpcClient = rpcClient;
+    this.raw = (method, params) => this.rpcClient.call(method, params);
   }
   async call(method, params) {
     const raw = await this.rpcClient.call(method, params);
@@ -249,11 +310,12 @@ class AiWorkspaceClient {
     return this.call("doc.outline", { workspace_id });
   }
   prepare(workspace_id, request) {
-    return this.rpcClient.call("doc.prepare", { workspace_id, ...request });
+    return commitWithParts(this.raw, { workspace_id, ...request }, { method: "doc.prepare" });
   }
-  /** The three-state commit result (`status: accepted | conflict | rejected`), never thrown. */
-  commit(workspace_id, request) {
-    return this.rpcClient.call("doc.commit", { workspace_id, ...request });
+  /** The three-state commit result (`status: accepted | conflict | rejected`), never thrown. One call per Commit
+   * whatever its size (up to `AIWS_COMMIT_MAX_BYTES` / `AIWS_COMMIT_MAX_OPERATIONS`): a large one is sent in parts. */
+  commit(workspace_id, request, options = {}) {
+    return commitWithParts(this.raw, { workspace_id, ...request }, options);
   }
   getSubmission(workspace_id, epoch, idempotency_key) {
     return this.call("doc.get_submission", { workspace_id, epoch, idempotency_key });
@@ -31708,7 +31770,13 @@ export {
   parseAppInstanceId as c7,
   BNS_EVM_DEFAULT_GAS_LIMIT as c8,
   BNS_EVM_DEFAULT_MAX_FEE_PER_GAS as c9,
-  releaseImportSession as cA,
+  splitCommitOperations as cA,
+  commitOverLimit as cB,
+  commitWithParts as cC,
+  AiWorkspaceClient as cD,
+  importFiles as cE,
+  ensureUploaded as cF,
+  releaseImportSession as cG,
   BNS_EVM_DEFAULT_MAX_PRIORITY_FEE_PER_GAS as ca,
   BNS_MAX_INLINE_DOCUMENT_BYTES as cb,
   BNS_DNS_TXT_DEFAULT_TTL as cc,
@@ -31732,9 +31800,9 @@ export {
   AiwsFailure as cu,
   aiwsReferenceUrl as cv,
   parseAiwsReferenceUrl as cw,
-  AiWorkspaceClient as cx,
-  importFiles as cy,
-  ensureUploaded as cz,
+  AIWS_COMMIT_PART_BYTES as cx,
+  AIWS_COMMIT_MAX_BYTES as cy,
+  AIWS_COMMIT_MAX_OPERATIONS as cz,
   ndm_proxy as d,
   bucket_client as e,
   BS_SERVICE_TASK_MANAGER as f,
@@ -31759,4 +31827,4 @@ export {
   NOTIFY_CHOICE_CONTROL_ID as y,
   NOTIFY_TEXT_CONTROL_ID as z
 };
-//# sourceMappingURL=executor_client-d75d5d16.mjs.map
+//# sourceMappingURL=executor_client-bfc8a1e1.mjs.map

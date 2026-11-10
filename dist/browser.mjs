@@ -1,8 +1,8 @@
-import { c as createSDKModule } from "./executor_client-d75d5d16.mjs";
-import { a9, aL, bG, aQ, bH, bM, bL, bI, bK, bN, bJ, bE, bF, bD, ac, aR, am, al, an, ao, aT, aS, aV, aU, bU, cc, cd, c8, c9, ca, cb, ce, f, B, cg, cf, ck, ci, k, co, cn, cm, cl, a1, a0, $, _, bh, ag, a8, aB, E, cp, cs, cq, Y, aA, aM, ah, c2, c1, q, M, A, C, y, w, v, N, D, x, z, aN, aO, az, l, R, aC, bl, S, b1, b0, a$, b4, b2, a_, aW, aX, b3, aY, b5, aZ, aw, ax, av, b6, ay, aP, bi, bf, bk, bm, ba, bj, bn, be, bb, bd, a4, a3, V, W, a2, aJ, aF, aK, aD, aH, aI, bo, aE, aG, bC, bv, bp, by, bt, bx, bs, bq, bu, bw, bB, bA, bz, br, Z, ab, bS, bR, bO, bQ, U, c5, c3, bg, b, e, ak, T, au, a5, a6, c6, bV, ch, cr, h, j, i, g, af, ae, I, bP, o, F, bc, a7, aq, ap, at, t, u, P, a, d, n, ai, K, H, G, Q, O, aa, c4, c7, ar, ad, p, bY, m, J, as, r, s, b9, b7, b8, bT, bX, bW, L, b$, b_, bZ, c0, X, cj, aj } from "./executor_client-d75d5d16.mjs";
+import { c as createSDKModule } from "./executor_client-bfc8a1e1.mjs";
+import { a9, aL, bG, aQ, bH, bM, bL, bI, bK, bN, bJ, bE, bF, bD, ct, cy, cz, cx, ac, aR, am, al, an, ao, aT, aS, aV, aU, cD, bU, cu, cc, cd, c8, c9, ca, cb, ce, f, B, cg, cf, ck, ci, k, co, cn, cm, cl, a1, a0, $, _, bh, ag, a8, aB, E, cp, cs, cq, Y, aA, aM, ah, c2, c1, q, M, A, C, y, w, v, N, D, x, z, aN, aO, az, l, R, aC, bl, S, b1, b0, a$, b4, b2, a_, aW, aX, b3, aY, b5, aZ, aw, ax, av, b6, ay, aP, bi, bf, bk, bm, ba, bj, bn, be, bb, bd, a4, a3, V, W, a2, aJ, aF, aK, aD, aH, aI, bo, aE, aG, bC, bv, bp, by, bt, bx, bs, bq, bu, bw, bB, bA, bz, br, Z, ab, bS, bR, bO, bQ, cv, U, c5, c3, bg, b, e, ak, T, cB, cC, au, a5, a6, c6, bV, ch, cr, h, j, i, g, af, ae, I, bP, o, F, bc, a7, aq, ap, at, t, u, P, a, d, n, ai, K, H, G, Q, O, aa, cw, c4, c7, ar, ad, p, bY, m, J, as, r, s, cA, b9, b7, b8, bT, bX, bW, L, b$, b_, bZ, c0, X, cj, aj } from "./executor_client-bfc8a1e1.mjs";
 import { h as h2 } from "./account-7a7bde6f.mjs";
 import { a as a10, D as D2, N as N2, r as r2, q as q2, g as g2, j as j2, f as f2, c, e as e2, b as b10, d as d2, k as k2, h as h3, i as i2, n as n2, o as o2, m as m2, l as l2, p as p2 } from "./ndn_types-0fac2499.mjs";
-import { e as e3 } from "./content_objid-030b495e.mjs";
+import { e as e3 } from "./content_objid-9232bcaf.mjs";
 import { o as o3 } from "./object_url-f72c1704.mjs";
 import { D as D3, a as a11 } from "./did_object_client-7fa36f90.mjs";
 import { R as R2 } from "./krpc_client-673448e5.mjs";
@@ -58,6 +58,10 @@ export {
   bE as AICC_SERVICE_SERVICE_NAME,
   bF as AICC_SERVICE_SERVICE_PORT,
   bD as AICC_SERVICE_UNIQUE_ID,
+  ct as AIWORKSPACE_SERVICE_NAME,
+  cy as AIWS_COMMIT_MAX_BYTES,
+  cz as AIWS_COMMIT_MAX_OPERATIONS,
+  cx as AIWS_COMMIT_PART_BYTES,
   ac as ANONYMOUS_IDENTITY,
   aR as APP_INSTALL_TASK_SCHEMA_ID,
   am as APP_LOGIN_EXCHANGE_METHOD,
@@ -68,7 +72,9 @@ export {
   aS as APP_UNINSTALL_TASK_SCHEMA_ID,
   aV as APP_UPDATE_BATCH_TASK_SCHEMA_ID,
   aU as APP_UPDATE_TASK_SCHEMA_ID,
+  cD as AiWorkspaceClient,
   bU as AiccClient,
+  cu as AiwsFailure,
   cc as BNS_DNS_TXT_DEFAULT_TTL,
   cd as BNS_DNS_TXT_DOC_TYPE,
   c8 as BNS_EVM_DEFAULT_GAS_LIMIT,
@@ -192,6 +198,7 @@ export {
   bR as aiccMessageTextContent,
   bO as aiccRefusalOf,
   bQ as aiccTextMessage,
+  cv as aiwsReferenceUrl,
   U as answerNotify,
   c5 as appDidFromId,
   c3 as appIdFromDid,
@@ -202,6 +209,8 @@ export {
   buckyos,
   ak as buildJumpUrl,
   T as commitNotifyAnswer,
+  cB as commitOverLimit,
+  cC as commitWithParts,
   au as completeAppAccessTokenLogin,
   a5 as contactTagApp,
   a6 as contactTagKind,
@@ -281,6 +290,7 @@ export {
   o3 as objectUrl,
   openExternalUrl,
   aa as parseAccessDenial,
+  cw as parseAiwsReferenceUrl,
   c4 as parseAppId,
   c7 as parseAppInstanceId,
   ar as parseAppLoginExchangeResult,
@@ -299,6 +309,7 @@ export {
   resolve_did,
   setAppSetting,
   s as sn,
+  cA as splitCommitOperations,
   subscribeKEvent,
   b9 as taskMgrErrorCode,
   b7 as taskMgrTaskEventPath,
