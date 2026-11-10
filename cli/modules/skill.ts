@@ -3,7 +3,7 @@ import type { CommandContext } from '../core/context.ts'
 import { EXIT_INTERNAL, EXIT_PERMISSION, EXIT_UNAVAILABLE, ToolError, UsageError } from '../core/errors.ts'
 import { callService, inputString, requiredInputString } from '../core/service.ts'
 import { getHost, isHostError } from '../runtime/host.ts'
-import { type AppModuleDependencies, classifySource, downloadPikg } from './app.ts'
+import { type AppModuleDependencies, classifySource, downloadPikg, isDidSource } from './app.ts'
 import { openZip, readTarGz, readZipEntry, sha256Bytes } from './pikg_archive.ts'
 import { inspectPikg } from './pikg_protocol.ts'
 import { lintSkillPackage, readSkillDirectory, SKILL_DIRS, SKILL_KINDS, type SkillPackageFile } from './skill_lint.ts'
@@ -475,7 +475,7 @@ async function skillSource(
   if (!raw) throw new UsageError('MISSING_ARGUMENT', 'a <source> or --draft <slug> is required')
   const local = host.path.isAbsolute(raw) ? host.path.resolve(raw) : host.path.resolve(ctx.cwd, raw)
   let directory = forced === 'dir'
-  if (!forced && !/^https?:\/\//i.test(raw)) {
+  if (!forced && !/^https?:\/\//i.test(raw) && !isDidSource(raw)) {
     try {
       directory = (await host.stat(local)).isDirectory
     } catch (error) {

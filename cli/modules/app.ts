@@ -915,6 +915,13 @@ export async function classifySource(
   if (forced) throw new UsageError('INVALID_ARGUMENT', `invalid --from value: ${forced}`)
 
   if (/^https?:\/\//i.test(raw)) return { kind: 'url', url: parsePikgUrl(raw) }
+  // A DID is never a local file. Probing it as one is not harmless: Windows
+  // reads `did:bns:x` as an alternate data stream and stat fails with an
+  // invalid-name error instead of NotFound.
+  if (isDidSource(raw)) {
+    const identifier = normalizeCatalogIdentifier(raw)
+    return { kind: 'catalog', display: identifier, serviceSource: { kind: 'identifier', identifier } }
+  }
   const candidatePath = resolveFromCwd(ctx, raw)
   const stat = await tryLstat(candidatePath)
   if (stat) {
@@ -1715,6 +1722,10 @@ function safeUrl(url: URL): string {
   safe.search = ''
   safe.hash = ''
   return safe.toString()
+}
+
+export function isDidSource(value: string): boolean {
+  return value.trim().startsWith('did:')
 }
 
 function looksLikeLocalPath(value: string): boolean {

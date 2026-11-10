@@ -8,6 +8,7 @@ import { CommandRegistry } from '../core/registry.ts'
 import type { RpcCallOptions, ServiceClientRegistry } from '../core/runtime.ts'
 import { validateAppDocShape } from '../modules/pikg_protocol.ts'
 import { createSkillModule, type SkillModuleDependencies } from '../modules/skill.ts'
+import { getHost, HostError, installHost, resetHostForTest } from '../runtime/host.ts'
 import { commandsInManual, lintSkillPackage, skillContentDigest, type SkillPackageFile } from '../modules/skill_lint.ts'
 import { assert, assertEquals, assertRejects, testConfig } from './test_helpers.ts'
 
@@ -240,6 +241,29 @@ Deno.test('skill install plans first, then sends the verified agent_skills paylo
     assertEquals(calls.length, 0, 'a rejected source reaches nothing')
   } finally {
     await Deno.remove(root, { recursive: true })
+  }
+})
+
+Deno.test('skill install never probes a DID as a local path (Windows stat rejects `did:bns:x` as an invalid name)', async () => {
+  const real = getHost()
+  const probed: string[] = []
+  const invalidName = (path: string) => {
+    probed.push(path)
+    return Promise.reject(new HostError('Unknown', 'The filename, directory name, or volume label syntax is incorrect. (os error 123)', path))
+  }
+  resetHostForTest()
+  installHost(Object.create(real, { stat: { value: invalidName }, lstat: { value: invalidName } }))
+  try {
+    const calls: RecordedCall[] = []
+    await assertRejects(
+      () => run('install', { source: 'did:bns:hello-skills', agent_id: AGENT }, installClients(calls), true),
+      'SKILL_SOURCE_UNSUPPORTED',
+    )
+    assertEquals(probed, [], 'a DID reaches no stat')
+    assertEquals(calls.length, 0)
+  } finally {
+    resetHostForTest()
+    installHost(real)
   }
 })
 
