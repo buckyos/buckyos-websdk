@@ -31708,6 +31708,7 @@ export {
   parseAppInstanceId as c7,
   BNS_EVM_DEFAULT_GAS_LIMIT as c8,
   BNS_EVM_DEFAULT_MAX_FEE_PER_GAS as c9,
+  releaseImportSession as cA,
   BNS_EVM_DEFAULT_MAX_PRIORITY_FEE_PER_GAS as ca,
   BNS_MAX_INLINE_DOCUMENT_BYTES as cb,
   BNS_DNS_TXT_DEFAULT_TTL as cc,
@@ -31732,6 +31733,8 @@ export {
   aiwsReferenceUrl as cv,
   parseAiwsReferenceUrl as cw,
   AiWorkspaceClient as cx,
+  importFiles as cy,
+  ensureUploaded as cz,
   ndm_proxy as d,
   bucket_client as e,
   BS_SERVICE_TASK_MANAGER as f,
@@ -31756,4 +31759,4 @@ export {
   NOTIFY_CHOICE_CONTROL_ID as y,
   NOTIFY_TEXT_CONTROL_ID as z
 };
-//# sourceMappingURL=executor_client-c620d25c.mjs.map
+//# sourceMappingURL=executor_client-d75d5d16.mjs.map

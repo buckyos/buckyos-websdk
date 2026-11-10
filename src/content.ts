@@ -274,3 +274,98 @@ export class ContentRegistryClient {
     this.listeners.forEach(cb => cb())
   }
 }
+
+/** The system file picker (`sysdlg/select`): one dialog for choosing files, a folder, or where to save. */
+export const SELECT_DIALOG_PATH = 'sysdlg/select' as const
+export interface SelectDialogParams {
+  /** open: choose existing files; folder: choose one folder; save: choose a folder and a file name. Defaults to open. */
+  mode?: 'open' | 'folder' | 'save'
+  title?: string
+  confirmLabel?: string
+  /** Where to start. A folder is opened; a file opens its folder with the file selected. Only `cyfs-path`. */
+  start?: TransferableContentRef
+  /** open: allow several items. */
+  multiple?: boolean
+  /** open with `multiple`: the most items that can be chosen (1–500, default 100). */
+  limit?: number
+  /** open: an item is selectable when it matches any of these (at most 16). */
+  accept?: ContentSelector[]
+  /** folder: only a folder that can be written to. */
+  writable?: boolean
+  /** folder, save: folders that cannot be the target, with everything below them (at most 1000; only `cyfs-path`). */
+  exclude?: TransferableContentRef[]
+  /** save: the suggested file name. */
+  suggestedName?: string
+  /** open, folder: also allow files or a folder from this device. Defaults to false (Zone content only). */
+  allowLocal?: boolean
+}
+/** A file or folder in the Zone. */
+export interface ZoneContent {
+  origin: 'zone'
+  kind: 'file' | 'folder'
+  /** The reference the user chose. A `cyfs-path` follows later changes of the file. */
+  source: TransferableContentRef
+  /** The object ID of the content at the moment of confirmation, when it is known. */
+  objId?: string
+  hints: ContentHints
+}
+/** A file from this device. */
+export interface LocalFile { origin: 'local'; kind: 'file'; file: File; hints: ContentHints }
+/** A folder from this device: every file below it, each with its path relative to (and starting with) the folder. */
+export interface LocalFolder { origin: 'local'; kind: 'folder'; name: string; files: Array<{ file: File; relativePath: string }> }
+export type SelectedContent = ZoneContent | LocalFile | LocalFolder
+export type SelectDialogResult =
+  | { action: 'selected'; items: SelectedContent[] }
+  | { action: 'save'; parent: TransferableContentRef; name: string; overwrite: boolean }
+  | { action: 'cancelled' }
+export type SystemDialogErrorCode = 'unsupported' | 'invalid_params' | 'busy' | 'closed' | 'load_failed' | 'protocol'
+export const SYSTEM_DIALOG_ERROR_CODES: readonly SystemDialogErrorCode[] = ['unsupported', 'invalid_params', 'busy', 'closed', 'load_failed', 'protocol']
+/** A system dialog could not be shown or did not complete. Cancelling is a normal result, not this error. */
+export class SystemDialogError extends Error {
+  constructor(public code: SystemDialogErrorCode, message?: string) { super(message ?? `System dialog: ${code}`); this.name = 'SystemDialogError' }
+}
+const isFile = (value: unknown): value is File => typeof File !== 'undefined' && value instanceof File
+const validName = (value: unknown): value is string =>
+  typeof value === 'string' && !!value && value.length <= 255 && value !== '.' && value !== '..' && !/[\/\\\0]/.test(value)
+function readSelectedContent(value: unknown): SelectedContent | undefined {
+  if (!value || typeof value !== 'object') return undefined
+  const v = value as Record<string, unknown>
+  if (v.origin === 'zone') {
+    if ((v.kind !== 'file' && v.kind !== 'folder') || !isTransferableRef(v.source)) return undefined
+    if (v.objId !== undefined && !(typeof v.objId === 'string' && /^[\w.-]+:[\w-]+$/.test(v.objId))) return undefined
+    return { origin: 'zone', kind: v.kind, source: v.source, ...(v.objId ? { objId: v.objId } : {}), hints: readContentHints(v.hints) }
+  }
+  if (v.origin !== 'local') return undefined
+  if (v.kind === 'file') return isFile(v.file) ? { origin: 'local', kind: 'file', file: v.file, hints: readContentHints(v.hints) } : undefined
+  if (v.kind !== 'folder' || !validName(v.name) || !Array.isArray(v.files)) return undefined
+  const files: LocalFolder['files'] = []
+  for (const entry of v.files as Array<{ file?: unknown; relativePath?: unknown }>) {
+    if (!entry || !isFile(entry.file) || typeof entry.relativePath !== 'string') return undefined
+    const parts = entry.relativePath.split('/')
+    if (parts.length < 2 || parts[0] !== v.name || !parts.every(validName)) return undefined
+    files.push({ file: entry.file, relativePath: entry.relativePath })
+  }
+  return { origin: 'local', kind: 'folder', name: v.name, files }
+}
+/**
+ * Checks a result that crossed a window boundary and returns a clean copy, or undefined when its shape is not valid.
+ * Items of one result share an origin; items from this device are only valid when the caller asked for `allowLocal`.
+ */
+export function readSelectDialogResult(value: unknown, options: { allowLocal?: boolean } = {}): SelectDialogResult | undefined {
+  if (!value || typeof value !== 'object') return undefined
+  const v = value as Record<string, unknown>
+  if (v.action === 'cancelled') return { action: 'cancelled' }
+  if (v.action === 'save') {
+    const parent = v.parent
+    return isTransferableRef(parent) && parent.kind === 'cyfs-path' && validName(v.name) && typeof v.overwrite === 'boolean'
+      ? { action: 'save', parent, name: v.name, overwrite: v.overwrite } : undefined
+  }
+  if (v.action !== 'selected' || !Array.isArray(v.items) || !v.items.length || v.items.length > 500) return undefined
+  const items: SelectedContent[] = []
+  for (const raw of v.items) {
+    const item = readSelectedContent(raw)
+    if (!item || item.origin !== (items[0]?.origin ?? item.origin) || (item.origin === 'local' && !options.allowLocal)) return undefined
+    items.push(item)
+  }
+  return { action: 'selected', items }
+}

@@ -257,8 +257,72 @@ class ContentRegistryClient {
     this.listeners.forEach((cb) => cb());
   }
 }
+const SELECT_DIALOG_PATH = "sysdlg/select";
+const SYSTEM_DIALOG_ERROR_CODES = ["unsupported", "invalid_params", "busy", "closed", "load_failed", "protocol"];
+class SystemDialogError extends Error {
+  constructor(code, message) {
+    super(message ?? `System dialog: ${code}`);
+    this.code = code;
+    this.name = "SystemDialogError";
+  }
+}
+const isFile = (value) => typeof File !== "undefined" && value instanceof File;
+const validName = (value) => typeof value === "string" && !!value && value.length <= 255 && value !== "." && value !== ".." && !/[\/\\\0]/.test(value);
+function readSelectedContent(value) {
+  if (!value || typeof value !== "object")
+    return void 0;
+  const v = value;
+  if (v.origin === "zone") {
+    if (v.kind !== "file" && v.kind !== "folder" || !isTransferableRef(v.source))
+      return void 0;
+    if (v.objId !== void 0 && !(typeof v.objId === "string" && /^[\w.-]+:[\w-]+$/.test(v.objId)))
+      return void 0;
+    return { origin: "zone", kind: v.kind, source: v.source, ...v.objId ? { objId: v.objId } : {}, hints: readContentHints(v.hints) };
+  }
+  if (v.origin !== "local")
+    return void 0;
+  if (v.kind === "file")
+    return isFile(v.file) ? { origin: "local", kind: "file", file: v.file, hints: readContentHints(v.hints) } : void 0;
+  if (v.kind !== "folder" || !validName(v.name) || !Array.isArray(v.files))
+    return void 0;
+  const files = [];
+  for (const entry of v.files) {
+    if (!entry || !isFile(entry.file) || typeof entry.relativePath !== "string")
+      return void 0;
+    const parts = entry.relativePath.split("/");
+    if (parts.length < 2 || parts[0] !== v.name || !parts.every(validName))
+      return void 0;
+    files.push({ file: entry.file, relativePath: entry.relativePath });
+  }
+  return { origin: "local", kind: "folder", name: v.name, files };
+}
+function readSelectDialogResult(value, options = {}) {
+  var _a;
+  if (!value || typeof value !== "object")
+    return void 0;
+  const v = value;
+  if (v.action === "cancelled")
+    return { action: "cancelled" };
+  if (v.action === "save") {
+    const parent = v.parent;
+    return isTransferableRef(parent) && parent.kind === "cyfs-path" && validName(v.name) && typeof v.overwrite === "boolean" ? { action: "save", parent, name: v.name, overwrite: v.overwrite } : void 0;
+  }
+  if (v.action !== "selected" || !Array.isArray(v.items) || !v.items.length || v.items.length > 500)
+    return void 0;
+  const items = [];
+  for (const raw of v.items) {
+    const item = readSelectedContent(raw);
+    if (!item || item.origin !== (((_a = items[0]) == null ? void 0 : _a.origin) ?? item.origin) || item.origin === "local" && !options.allowLocal)
+      return void 0;
+    items.push(item);
+  }
+  return { action: "selected", items };
+}
 export {
   ContentRegistryClient,
+  SELECT_DIALOG_PATH,
+  SYSTEM_DIALOG_ERROR_CODES,
+  SystemDialogError,
   T as TEXT_CODE_EXTENSIONS,
   contentDescriptor,
   contentRefString,
@@ -278,6 +342,7 @@ export {
   parseSystemOpen,
   previewHandler,
   readContentHints,
+  readSelectDialogResult,
   resolveContentHandlers,
   s as sniffMagic,
   a as stripMediaTypeParams,

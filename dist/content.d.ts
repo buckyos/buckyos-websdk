@@ -164,4 +164,81 @@ export declare class ContentRegistryClient {
     onChanged(cb: () => void): () => void;
     private persist;
 }
+/** The system file picker (`sysdlg/select`): one dialog for choosing files, a folder, or where to save. */
+export declare const SELECT_DIALOG_PATH: "sysdlg/select";
+export interface SelectDialogParams {
+    /** open: choose existing files; folder: choose one folder; save: choose a folder and a file name. Defaults to open. */
+    mode?: 'open' | 'folder' | 'save';
+    title?: string;
+    confirmLabel?: string;
+    /** Where to start. A folder is opened; a file opens its folder with the file selected. Only `cyfs-path`. */
+    start?: TransferableContentRef;
+    /** open: allow several items. */
+    multiple?: boolean;
+    /** open with `multiple`: the most items that can be chosen (1–500, default 100). */
+    limit?: number;
+    /** open: an item is selectable when it matches any of these (at most 16). */
+    accept?: ContentSelector[];
+    /** folder: only a folder that can be written to. */
+    writable?: boolean;
+    /** folder, save: folders that cannot be the target, with everything below them (at most 1000; only `cyfs-path`). */
+    exclude?: TransferableContentRef[];
+    /** save: the suggested file name. */
+    suggestedName?: string;
+    /** open, folder: also allow files or a folder from this device. Defaults to false (Zone content only). */
+    allowLocal?: boolean;
+}
+/** A file or folder in the Zone. */
+export interface ZoneContent {
+    origin: 'zone';
+    kind: 'file' | 'folder';
+    /** The reference the user chose. A `cyfs-path` follows later changes of the file. */
+    source: TransferableContentRef;
+    /** The object ID of the content at the moment of confirmation, when it is known. */
+    objId?: string;
+    hints: ContentHints;
+}
+/** A file from this device. */
+export interface LocalFile {
+    origin: 'local';
+    kind: 'file';
+    file: File;
+    hints: ContentHints;
+}
+/** A folder from this device: every file below it, each with its path relative to (and starting with) the folder. */
+export interface LocalFolder {
+    origin: 'local';
+    kind: 'folder';
+    name: string;
+    files: Array<{
+        file: File;
+        relativePath: string;
+    }>;
+}
+export type SelectedContent = ZoneContent | LocalFile | LocalFolder;
+export type SelectDialogResult = {
+    action: 'selected';
+    items: SelectedContent[];
+} | {
+    action: 'save';
+    parent: TransferableContentRef;
+    name: string;
+    overwrite: boolean;
+} | {
+    action: 'cancelled';
+};
+export type SystemDialogErrorCode = 'unsupported' | 'invalid_params' | 'busy' | 'closed' | 'load_failed' | 'protocol';
+export declare const SYSTEM_DIALOG_ERROR_CODES: readonly SystemDialogErrorCode[];
+/** A system dialog could not be shown or did not complete. Cancelling is a normal result, not this error. */
+export declare class SystemDialogError extends Error {
+    code: SystemDialogErrorCode;
+    constructor(code: SystemDialogErrorCode, message?: string);
+}
+/**
+ * Checks a result that crossed a window boundary and returns a clean copy, or undefined when its shape is not valid.
+ * Items of one result share an origin; items from this device are only valid when the caller asked for `allowLocal`.
+ */
+export declare function readSelectDialogResult(value: unknown, options?: {
+    allowLocal?: boolean;
+}): SelectDialogResult | undefined;
 //# sourceMappingURL=content.d.ts.map

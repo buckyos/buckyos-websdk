@@ -93,6 +93,7 @@ export * from './bns_tx_executor';
 export * as sn from './sn_client';
 export * as ndn from './ndn';
 export * as ndm from './ndm_client';
+export { ensureObjId, type EnsureObjIdOptions } from './content_objid';
 export * as ndm_proxy from './ndm_proxy';
 export * from './executor_client';
 export * from './aiworkspace_client';

@@ -1,4 +1,11 @@
-import { type ContentHints, type ContentOpenTarget, type OpenRequest, type TransferableContentRef, type TransferableSessionContext } from './content';
+import { type ContentHints, type ContentOpenTarget, type OpenRequest, type SelectDialogParams, type SelectDialogResult, type SystemDialogErrorCode, type TransferableContentRef, type TransferableSessionContext } from './content';
+export type SystemDialogReply = {
+    ok: true;
+    result: unknown;
+} | {
+    ok: false;
+    code: SystemDialogErrorCode;
+};
 export interface AppFrameMessage<T extends string = string, P = unknown> {
     protocol: 'buckyos.app-frame';
     version: 1;
@@ -38,8 +45,12 @@ export declare class AppFrameHost {
             newWindow: boolean;
             hints: ContentHints;
         }) => void;
+        /** Shows a system dialog the App asked for (`sysdlg.open`). `params` is untrusted input: validate it. */
+        onSystemDialog?: (path: string, params: unknown) => Promise<SystemDialogReply>;
     });
     private focused?;
+    private dialogOpen;
+    private systemDialog;
     private receive;
     update(init: Partial<FrameInit>): void;
     /** Reports whether the App's window is the focused one; only a change is sent. */
@@ -70,6 +81,8 @@ export declare class AppFrameClient {
     private readonly nonce;
     private readonly origin;
     private readonly listener;
+    private dialogs;
+    private embedAbort?;
     constructor(options: {
         shellOrigin: string;
         /** The Zone's system entry (its root origin): where content is opened when this page is not embedded in the shell. */
@@ -103,6 +116,17 @@ export declare class AppFrameClient {
         newWindow?: boolean;
         hints?: ContentHints;
     }): boolean;
+    /**
+     * Shows the system file picker (`sysdlg/select`) and resolves with what the user chose; cancelling resolves with
+     * `{ action: 'cancelled' }`. Embedded in the shell the shell draws the dialog over this App's window; in a
+     * standalone tab the picker page of the Zone's system entry (`systemOrigin`) is framed over this page. Rejects
+     * with a `SystemDialogError` when no picker is available or the request did not complete.
+     */
+    selectContent(params?: SelectDialogParams, options?: {
+        signal?: AbortSignal;
+        theme?: 'light' | 'dark';
+        locale?: string;
+    }): Promise<SelectDialogResult>;
     dispose(): void;
 }
 /**
@@ -177,6 +201,37 @@ export declare class PreviewEmbedHost {
     state(state: PreviewEmbedState): void;
     openWith(open: PreviewEmbedOpenWith): void;
     exit(): void;
+    dispose(): void;
+}
+export declare const SELECT_EMBED_PATH = "/embed/sysdlg/select";
+export interface SelectEmbedInit {
+    nonce: string;
+    params: unknown;
+    theme: 'light' | 'dark';
+    locale: string;
+}
+/** App side of `buckyos.sysdlg-embed`: the full-page layer that frames the picker. One at a time per page. */
+export declare function openSelectEmbed(systemOrigin: string, params: SelectDialogParams, options?: {
+    signal?: AbortSignal;
+    theme?: 'light' | 'dark';
+    locale?: string;
+}): Promise<SelectDialogResult>;
+/** System side: the picker page at `SELECT_EMBED_PATH`. Works only for an embedding page whose origin `accept` admits. */
+export declare class SelectEmbedHost {
+    private options;
+    readonly parentOrigin: string | null;
+    private readonly nonce;
+    private ready;
+    private readonly hello?;
+    private readonly listener;
+    constructor(options: {
+        accept: (origin: string) => boolean;
+        onInit: (init: SelectEmbedInit) => void;
+    });
+    private receive;
+    private post;
+    result(result: SelectDialogResult): void;
+    error(code: SystemDialogErrorCode): void;
     dispose(): void;
 }
 //# sourceMappingURL=app-frame.d.ts.map
