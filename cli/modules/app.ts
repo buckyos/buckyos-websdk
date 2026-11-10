@@ -883,7 +883,7 @@ async function prepareSource(
   }
 }
 
-async function classifySource(
+export async function classifySource(
   ctx: CommandContext,
   input: Record<string, unknown>,
 ): Promise<
@@ -1015,7 +1015,7 @@ async function readPikg(
   }
 }
 
-async function downloadPikg(
+export async function downloadPikg(
   url: URL,
   destination: string,
   downloader: AppModuleDependencies['download'],

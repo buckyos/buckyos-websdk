@@ -390,7 +390,7 @@ function parseInvocation(argv) {
   }
   return { global, module, verb, actionArgv };
 }
-function parseCommandArgs(command, argv, inputObject, allowReplScopedGlobals = false, deferValidation = false) {
+function parseCommandArgs(command2, argv, inputObject, allowReplScopedGlobals = false, deferValidation = false) {
   const scoped = {};
   const replScoped = (parsed, args, index) => {
     if (!allowReplScopedGlobals)
@@ -417,13 +417,13 @@ function parseCommandArgs(command, argv, inputObject, allowReplScopedGlobals = f
     return void 0;
   };
   return usage(() => {
-    const parsed = parseArgv(command, argv, replScoped);
+    const parsed = parseArgv(command2, argv, replScoped);
     if (!deferValidation) {
-      checkRequiredPositionals(command.positionals ?? [], parsed.positionalCount, inputObject);
+      checkRequiredPositionals(command2.positionals ?? [], parsed.positionalCount, inputObject);
     }
     const input = mergeCommandInput(inputObject, parsed.input);
     if (!deferValidation)
-      validateSchema$1(input, command.inputSchema, "input");
+      validateSchema$1(input, command2.inputSchema, "input");
     return { input, scoped, help: parsed.help };
   });
 }
@@ -2217,14 +2217,14 @@ class CommandRegistry {
     this.#modules.set(module.name, module);
   }
   get(module, verb) {
-    const command = this.#commands.get(`${module}.${verb}`);
-    if (!command) {
+    const command2 = this.#commands.get(`${module}.${verb}`);
+    if (!command2) {
       if (!this.#modules.has(module)) {
         throw new UsageError("UNKNOWN_MODULE", `unknown module: ${module}`);
       }
       throw new UsageError("UNKNOWN_COMMAND", `unknown command: ${module} ${verb}`);
     }
-    return command;
+    return command2;
   }
   modules() {
     return [...this.#modules.values()].sort((a, b) => a.name.localeCompare(b.name));
@@ -2235,42 +2235,42 @@ class CommandRegistry {
     );
   }
   describe(module, verb) {
-    const command = this.get(module, verb);
+    const command2 = this.get(module, verb);
     return {
       schema_version: 1,
-      module: command.module,
-      verb: command.verb,
-      summary: command.summary,
-      description: command.description ?? command.summary,
-      syntax: this.syntax(command),
+      module: command2.module,
+      verb: command2.verb,
+      summary: command2.summary,
+      description: command2.description ?? command2.summary,
+      syntax: this.syntax(command2),
       global_options: GLOBAL_OPTIONS,
       repl_command_options: GLOBAL_OPTIONS.filter(
         (option) => REPL_COMMAND_OPTION_NAMES.has(option.name)
       ),
-      positionals: command.positionals ?? [],
-      options: (command.options ?? []).map((option) => ({
+      positionals: command2.positionals ?? [],
+      options: (command2.options ?? []).map((option) => ({
         ...option,
         property: optionProperty(option)
       })),
-      input_schema: command.inputSchema,
-      output_schema: command.outputSchema,
-      result_schema_version: command.resultSchemaVersion,
-      access: command.access,
-      async_mode: command.asyncMode,
-      requires_session: command.requiresSession,
-      execution: command.execution ?? (command.requiresSession ? "service" : "local"),
-      network_access: command.networkAccess ?? command.requiresSession,
-      examples: command.examples ?? []
+      input_schema: command2.inputSchema,
+      output_schema: command2.outputSchema,
+      result_schema_version: command2.resultSchemaVersion,
+      access: command2.access,
+      async_mode: command2.asyncMode,
+      requires_session: command2.requiresSession,
+      execution: command2.execution ?? (command2.requiresSession ? "service" : "local"),
+      network_access: command2.networkAccess ?? command2.requiresSession,
+      examples: command2.examples ?? []
     };
   }
-  syntax(command) {
-    const positionals = (command.positionals ?? []).map(
+  syntax(command2) {
+    const positionals = (command2.positionals ?? []).map(
       (position) => position.required === false ? `[${position.name}]` : `<${position.name}>`
     );
-    const options = (command.options ?? []).map(
+    const options = (command2.options ?? []).map(
       (option) => option.type === "boolean" ? `[--${option.name}]` : `[--${option.name} <${option.property ?? option.name}>]`
     );
-    return ["buckyos", command.module, command.verb, ...positionals, ...options].join(" ");
+    return ["buckyos", command2.module, command2.verb, ...positionals, ...options].join(" ");
   }
   completionCandidates(tokens) {
     if (tokens.length <= 1)
@@ -2279,14 +2279,14 @@ class CommandRegistry {
     if (!module)
       return this.modules().map((candidate) => candidate.name);
     if (tokens.length === 2 && !tokens[1].startsWith("--")) {
-      return module.commands.map((command2) => command2.verb).sort();
+      return module.commands.map((command22) => command22.verb).sort();
     }
     const verb = tokens[1];
-    const command = this.#commands.get(`${module.name}.${verb}`);
-    if (!command)
+    const command2 = this.#commands.get(`${module.name}.${verb}`);
+    if (!command2)
       return module.commands.map((candidate) => candidate.verb).sort();
     return [
-      ...(command.options ?? []).map((option) => `--${option.name}`),
+      ...(command2.options ?? []).map((option) => `--${option.name}`),
       "--input",
       "--timeout",
       "--trace-id",
@@ -2326,7 +2326,7 @@ class CommandRegistry {
       throw new Error(`${label} schema must be an object`);
   }
 }
-const SECRET_WORDS = /(?:session[-_]?token|refresh[-_]?token|password|private[-_]?key|sudo[-_]?token)/i;
+const SECRET_WORDS$1 = /(?:session[-_]?token|refresh[-_]?token|password|private[-_]?key|sudo[-_]?token)/i;
 class ReplHistory {
   constructor(path, limit = 500) {
     this.#entries = [];
@@ -2347,8 +2347,8 @@ class ReplHistory {
   entries() {
     return [...this.#entries];
   }
-  async add(line, command) {
-    if (!shouldPersistHistory(line, command))
+  async add(line, command2) {
+    if (!shouldPersistHistory(line, command2))
       return;
     if (this.#entries.at(-1) !== line)
       this.#entries.push(line);
@@ -2361,12 +2361,12 @@ class ReplHistory {
       await host2.chmod(this.path, 384);
   }
 }
-function shouldPersistHistory(line, command) {
-  if (SECRET_WORDS.test(line))
+function shouldPersistHistory(line, command2) {
+  if (SECRET_WORDS$1.test(line))
     return false;
-  if (!command)
+  if (!command2)
     return true;
-  if (Object.values(command.inputSchema.properties ?? {}).some((schema) => schema.secret)) {
+  if (Object.values(command2.inputSchema.properties ?? {}).some((schema) => schema.secret)) {
     return false;
   }
   let tokens;
@@ -2376,7 +2376,7 @@ function shouldPersistHistory(line, command) {
     return false;
   }
   const secretOptions = new Set(
-    (command.options ?? []).filter((option) => option.secret).flatMap((option) => [
+    (command2.options ?? []).filter((option) => option.secret).flatMap((option) => [
       `--${option.name}`,
       optionProperty(option)
     ])
@@ -2441,14 +2441,14 @@ async function runRepl(options) {
         readline.prompt();
         continue;
       }
-      let command;
+      let command2;
       try {
         if (tokens.length >= 2)
-          command = options.registry.get(tokens[0], tokens[1]);
+          command2 = options.registry.get(tokens[0], tokens[1]);
       } catch {
-        command = void 0;
+        command2 = void 0;
       }
-      await history.add(line, command);
+      await history.add(line, command2);
       running = new AbortController();
       try {
         await options.execute(tokens, running.signal);
@@ -2466,8 +2466,8 @@ async function runRepl(options) {
   }
 }
 async function handleBuiltin(line, options, history) {
-  const command = line.split(/\s+/, 1)[0];
-  switch (command) {
+  const command2 = line.split(/\s+/, 1)[0];
+  switch (command2) {
     case ":exit":
     case ":quit":
       return true;
@@ -2508,7 +2508,7 @@ async function handleBuiltin(line, options, history) {
       }
       break;
     default:
-      await getHost().stderr(`unknown REPL command: ${command}
+      await getHost().stderr(`unknown REPL command: ${command2}
 `);
   }
   return false;
@@ -2592,9 +2592,9 @@ function createCommandModule(registry) {
           modules: registry.modules().map((module) => ({
             name: module.name,
             summary: module.summary,
-            commands: module.commands.map((command) => ({
-              verb: command.verb,
-              summary: command.summary
+            commands: module.commands.map((command2) => ({
+              verb: command2.verb,
+              summary: command2.summary
             }))
           }))
         })
@@ -2877,7 +2877,7 @@ function optionalString$4(value) {
 }
 function completionScript(registry, shell) {
   const modules = registry.modules().map((module) => module.name).join(" ");
-  const commands = registry.commands().map((command) => `${command.module}:${command.verb}`).join(
+  const commands = registry.commands().map((command2) => `${command2.module}:${command2.verb}`).join(
     " "
   );
   if (shell === "fish") {
@@ -4696,21 +4696,21 @@ function extToolsManifestErrors(value) {
   const commands = /* @__PURE__ */ new Set();
   for (const raw of Array.isArray(manifest.provides) ? manifest.provides : []) {
     const entry = raw ?? {};
-    const command = entry.command;
-    if (typeof command !== "string" || !EXT_TOOLS_COMMAND.test(command)) {
-      errors.push(`provides: ${JSON.stringify(command)} is not a command name`);
+    const command2 = entry.command;
+    if (typeof command2 !== "string" || !EXT_TOOLS_COMMAND.test(command2)) {
+      errors.push(`provides: ${JSON.stringify(command2)} is not a command name`);
       continue;
     }
-    if (commands.has(command))
-      errors.push(`provides: command ${command} is listed twice`);
-    if (EXT_TOOLS_RESERVED_COMMANDS.includes(command))
-      errors.push(`provides: ${command} is a standard command and cannot be provided by a package`);
-    commands.add(command);
+    if (commands.has(command2))
+      errors.push(`provides: command ${command2} is listed twice`);
+    if (EXT_TOOLS_RESERVED_COMMANDS.includes(command2))
+      errors.push(`provides: ${command2} is a standard command and cannot be provided by a package`);
+    commands.add(command2);
     if (typeof entry.version_probe !== "string" || !entry.version_probe.trim())
-      errors.push(`provides: ${command} has no version_probe`);
+      errors.push(`provides: ${command2} has no version_probe`);
     const smoke = entry.smoke;
     if (smoke !== void 0 && (typeof smoke !== "string" || !isSafeRelativePath(smoke))) {
-      errors.push(`provides: the smoke of ${command} must be a relative path inside the payload`);
+      errors.push(`provides: the smoke of ${command2} must be a relative path inside the payload`);
     }
   }
   if (!Array.isArray(manifest.platforms) || manifest.platforms.length === 0)
@@ -4776,8 +4776,8 @@ function extToolsPayloadErrors(manifest, platform, tree, buildPaths = []) {
     if (!path.startsWith("bin/"))
       continue;
     const name = path.slice("bin/".length);
-    const command = suffixes.map((suffix) => suffix && name.endsWith(suffix) ? name.slice(0, -suffix.length) : name).find((candidate) => declared.has(candidate));
-    if (!command)
+    const command2 = suffixes.map((suffix) => suffix && name.endsWith(suffix) ? name.slice(0, -suffix.length) : name).find((candidate) => declared.has(candidate));
+    if (!command2)
       errors.push(`${path}: not in provides, so nothing knows this package provides it`);
   }
   const decoder = new TextDecoder();
@@ -5581,7 +5581,709 @@ function validateContentHandlers(value, permissions) {
   }
   return value;
 }
-const PACKAGE_VERSION = "0.7.172";
+const SKILL_KINDS = ["work", "plan", "goal"];
+const SKILL_KIND_DIRS = {
+  work: "cmd_skills",
+  plan: "plan_skills",
+  goal: "goal_skills"
+};
+const TOOLS_DIR = "tools";
+const SKILL_DIRS = [...SKILL_KINDS.map((kind) => SKILL_KIND_DIRS[kind]), TOOLS_DIR];
+const SKILL_MANUAL = "SKILL.md";
+const SKILL_REFERENCES = "references";
+const SKILL_REVISIONS = "revisions";
+const INSTALL_TOML = "install.toml";
+const SKILL_PLATFORMS = ["linux", "macos", "windows"];
+const UI_MANUAL_WARN_BYTES = 16 * 1024;
+const PLAN_MANUAL_WARN_BYTES = 3 * 1024;
+const MAX_NAME_LEN = 200;
+const STANDARD_COMMANDS = EXT_TOOLS_RESERVED_COMMANDS;
+const SHELL_WORDS = /* @__PURE__ */ new Set([
+  "if",
+  "then",
+  "else",
+  "elif",
+  "fi",
+  "for",
+  "while",
+  "until",
+  "do",
+  "done",
+  "case",
+  "esac",
+  "in",
+  "function",
+  "select",
+  "time",
+  "cd",
+  "echo",
+  "printf",
+  "export",
+  "set",
+  "unset",
+  "read",
+  "exit",
+  "return",
+  "source",
+  "eval",
+  "exec",
+  "test",
+  "true",
+  "false",
+  "local",
+  "declare",
+  "trap",
+  "wait",
+  "shift",
+  "alias",
+  "type",
+  "command",
+  "pwd",
+  "kill",
+  "umask",
+  "ulimit",
+  "break",
+  "continue",
+  "let",
+  "readonly",
+  "ls",
+  "cat",
+  "cp",
+  "mv",
+  "rm",
+  "mkdir",
+  "rmdir",
+  "touch",
+  "ln",
+  "chmod",
+  "chown",
+  "head",
+  "tail",
+  "grep",
+  "sed",
+  "awk",
+  "sort",
+  "uniq",
+  "wc",
+  "cut",
+  "tr",
+  "tee",
+  "find",
+  "xargs",
+  "basename",
+  "dirname",
+  "date",
+  "sleep",
+  "env",
+  "which",
+  "diff",
+  "du",
+  "df",
+  "stat",
+  "mktemp",
+  "sh",
+  "bash",
+  "id",
+  "whoami",
+  "uname",
+  "realpath",
+  "readlink",
+  "seq",
+  "yes",
+  "nohup",
+  "timeout",
+  "tar",
+  "gzip",
+  "gunzip",
+  "sha256sum",
+  "base64",
+  "cmp",
+  "file",
+  "ps",
+  "less",
+  "more",
+  "printenv",
+  "hostname",
+  "expr",
+  "od",
+  "paste",
+  "comm",
+  "nl",
+  "tac",
+  "rev",
+  "fold",
+  "column",
+  "read",
+  "shell"
+]);
+const SHELL_LANGS = /* @__PURE__ */ new Set(["", "sh", "bash", "shell", "zsh", "console"]);
+const ASSIGNMENT_KEY = /^[A-Za-z0-9_]+$/;
+const PLAIN_WORD = /^[A-Za-z0-9][A-Za-z0-9._+-]*$/;
+function asciiLower(text2) {
+  return text2.replace(/[A-Z]/g, (c) => c.toLowerCase());
+}
+function commandsInManual(text2) {
+  const out = /* @__PURE__ */ new Set();
+  let inBlock = false;
+  let shell = false;
+  let heredoc;
+  let continued = false;
+  for (const raw of text2.split("\n")) {
+    let line = raw.trim();
+    if (line.startsWith("```")) {
+      inBlock = !inBlock;
+      shell = inBlock && SHELL_LANGS.has(asciiLower(line.slice(3).trim()));
+      heredoc = void 0;
+      continued = false;
+      continue;
+    }
+    if (!inBlock || !shell)
+      continue;
+    if (heredoc !== void 0) {
+      if (line === heredoc)
+        heredoc = void 0;
+      continue;
+    }
+    const wasContinued = continued;
+    continued = line.endsWith("\\");
+    const at = line.indexOf("<<");
+    if (at >= 0) {
+      const tag = line.slice(at + 2).replace(/^-+/, "").trim().split(/\s/)[0].replace(/^['"]+|['"]+$/g, "");
+      if (tag && /^[A-Za-z0-9_]+$/.test(tag))
+        heredoc = tag;
+    }
+    if (wasContinued || !line || line.startsWith("#"))
+      continue;
+    if (line.startsWith("$ "))
+      line = line.slice(2);
+    let quote;
+    const segments = [""];
+    const chars = Array.from(line);
+    for (let i = 0; i < chars.length; i += 1) {
+      const c = chars[i];
+      if (quote !== void 0) {
+        if (c === quote)
+          quote = void 0;
+      } else if (c === "'" || c === '"') {
+        quote = c;
+      } else if (c === "#" && (i === 0 || /\s/.test(chars[i - 1]))) {
+        break;
+      } else if (
+        // `a|b|c` without spaces is a list of alternatives in a usage line, not a pipe (as in skills.rs).
+        c === "|" && (chars[i + 1] === void 0 || /\s/.test(chars[i + 1]) || chars[i + 1] === "|" || i > 0 && /\s/.test(chars[i - 1])) || c === ";" || c === "&" && chars[i + 1] === "&"
+      ) {
+        if (chars[i + 1] === c)
+          i += 1;
+        segments.push("");
+        continue;
+      } else if (c === "$" && chars[i + 1] === "(") {
+        segments.push("");
+        i += 1;
+        continue;
+      }
+      segments[segments.length - 1] += c;
+    }
+    for (const segment of segments) {
+      const first = segment.split(/\s+/).filter(Boolean).find((w) => {
+        const eq = w.indexOf("=");
+        if (eq >= 0 && ASSIGNMENT_KEY.test(w.slice(0, eq)))
+          return false;
+        return w !== "sudo" && w !== "(" && w !== "{" && w !== "!";
+      });
+      if (first === void 0)
+        continue;
+      const word = first.replace(/^\(+/, "");
+      if (PLAIN_WORD.test(word) && /[a-z]/.test(word) && !SHELL_WORDS.has(word))
+        out.add(word);
+    }
+  }
+  return out;
+}
+function splitFrontMatter(text2) {
+  const trimmed = text2.replace(/^﻿+/, "");
+  const rest = trimmed.startsWith("---\n") ? trimmed.slice(4) : trimmed.startsWith("---\r\n") ? trimmed.slice(5) : void 0;
+  if (rest === void 0)
+    return { fields: /* @__PURE__ */ new Map(), body: text2.trim() };
+  const fields = /* @__PURE__ */ new Map();
+  let offset = 0;
+  while (offset < rest.length) {
+    const end = rest.indexOf("\n", offset);
+    const next = end < 0 ? rest.length : end + 1;
+    const line = rest.slice(offset, next).trim();
+    offset = next;
+    if (line === "---")
+      return { fields, body: rest.slice(offset).trim() };
+    const colon = line.indexOf(":");
+    if (colon < 0)
+      continue;
+    let value = line.slice(colon + 1).trim();
+    for (const q of ['"', "'"]) {
+      if (value.length >= 2 && value.startsWith(q) && value.endsWith(q)) {
+        value = value.slice(1, -1);
+        break;
+      }
+    }
+    fields.set(line.slice(0, colon).trim(), value);
+  }
+  return { fields: /* @__PURE__ */ new Map(), body: text2.trim() };
+}
+function skillRequirements(fields) {
+  const raw = (fields.get("baseline") ?? "").trim();
+  if (raw !== "" && raw !== "standard" && raw !== "extended") {
+    throw new Error(`baseline \`${raw}\` is not standard | extended`);
+  }
+  const platforms = [];
+  for (const part of (fields.get("platforms") ?? "").split(",")) {
+    const p = part.trim();
+    if (!p)
+      continue;
+    if (!SKILL_PLATFORMS.includes(p))
+      throw new Error(`platform \`${p}\` is not one of ${SKILL_PLATFORMS.join(", ")}`);
+    if (!platforms.includes(p))
+      platforms.push(p);
+  }
+  return { baseline: raw === "extended" ? "extended" : "standard", platforms };
+}
+function skillScope(fields) {
+  let ui = false;
+  let work = false;
+  for (const part of (fields.get("scope") ?? "").split(",")) {
+    const word = part.trim();
+    if (word === "ui")
+      ui = true;
+    else if (word === "work")
+      work = true;
+    else if (word)
+      throw new Error(`scope \`${word}\` is not ui | work`);
+  }
+  return ui ? work ? "ui,work" : "ui" : "work";
+}
+function skillCommandsOf(fields) {
+  const commands = (fields.get("commands") ?? "").split(",").map((c) => c.trim()).filter((c) => c && !c.startsWith(".") && /^[A-Za-z0-9._+-]+$/.test(c));
+  return commands.filter((c, index) => index === 0 || commands[index - 1] !== c);
+}
+function tomlValue(raw) {
+  const text2 = raw.trim();
+  const string = (item) => {
+    const s = item.trim();
+    if (s.length >= 2 && s.startsWith('"') && s.endsWith('"'))
+      return JSON.parse(s);
+    if (s.length >= 2 && s.startsWith("'") && s.endsWith("'"))
+      return s.slice(1, -1);
+    throw new Error(`\`${s}\` is not a string`);
+  };
+  if (!text2.startsWith("["))
+    return string(text2);
+  if (!text2.endsWith("]"))
+    throw new Error("an array is not closed");
+  const items = [];
+  let current = "";
+  let quote;
+  for (const c of text2.slice(1, -1)) {
+    if (quote !== void 0) {
+      if (c === quote)
+        quote = void 0;
+    } else if (c === '"' || c === "'") {
+      quote = c;
+    } else if (c === ",") {
+      if (current.trim())
+        items.push(string(current));
+      current = "";
+      continue;
+    }
+    current += c;
+  }
+  if (current.trim())
+    items.push(string(current));
+  return items;
+}
+function stripTomlComment(line) {
+  let quote;
+  for (let i = 0; i < line.length; i += 1) {
+    const c = line[i];
+    if (quote !== void 0) {
+      if (c === "\\" && quote === '"')
+        i += 1;
+      else if (c === quote)
+        quote = void 0;
+    } else if (c === '"' || c === "'")
+      quote = c;
+    else if (c === "#")
+      return line.slice(0, i);
+  }
+  return line;
+}
+function parseInstallToml(text2) {
+  const parsed = { check: {}, install: {}, uninstall: {} };
+  let table;
+  const tables = [];
+  const lines = text2.split("\n").map(stripTomlComment);
+  for (let index = 0; index < lines.length; index += 1) {
+    let line = lines[index].trim();
+    if (!line)
+      continue;
+    if (line.startsWith("[")) {
+      const header = /^\[([A-Za-z0-9_.-]+)\]$/.exec(line);
+      if (!header)
+        throw new Error(`line ${index + 1}: \`${line}\` is not a table`);
+      const path = header[1].split(".");
+      const known = path.length === 1 && path[0] === "check" || path.length === 2 && (path[0] === "install" || path[0] === "uninstall");
+      if (!known) {
+        if (path.length === 1 && (path[0] === "install" || path[0] === "uninstall")) {
+          table = { values: {}, keys: [] };
+          continue;
+        }
+        throw new Error(`unknown table \`[${header[1]}]\``);
+      }
+      const values = {};
+      tables.push({ path, values });
+      table = { values, keys: path[0] === "check" ? ["commands"] : ["script", "writes"] };
+      continue;
+    }
+    const eq = line.indexOf("=");
+    if (eq < 0)
+      throw new Error(`line ${index + 1}: expected \`key = value\``);
+    const key = line.slice(0, eq).trim();
+    if (!table)
+      throw new Error(`unknown field \`${key}\``);
+    if (!table.keys.includes(key))
+      throw new Error(`unknown field \`${key}\``);
+    line = line.slice(eq + 1).trim();
+    while (line.startsWith("[") && !line.endsWith("]") && index + 1 < lines.length) {
+      index += 1;
+      line += ` ${lines[index].trim()}`;
+    }
+    try {
+      table.values[key] = tomlValue(line);
+    } catch (error) {
+      throw new Error(`\`${key}\`: ${error.message}`);
+    }
+  }
+  const strings = (value, key) => {
+    if (value === void 0)
+      return [];
+    if (!Array.isArray(value))
+      throw new Error(`\`${key}\` is not an array of strings`);
+    return value;
+  };
+  for (const { path, values } of tables) {
+    if (path[0] === "check") {
+      if (values.commands !== void 0)
+        parsed.check.commands = strings(values.commands, "commands");
+      continue;
+    }
+    if (typeof values.script !== "string")
+      throw new Error(`[${path.join(".")}] has no \`script\``);
+    parsed[path[0]][path[1]] = { script: values.script, writes: strings(values.writes, "writes") };
+  }
+  for (const [os, script] of [...Object.entries(parsed.install), ...Object.entries(parsed.uninstall)]) {
+    if (!SKILL_PLATFORMS.includes(os))
+      throw new Error(`\`${os}\` is not one of ${SKILL_PLATFORMS.join(", ")}`);
+    if (script.script.startsWith("/") || script.script.split(/[/\\]/).some((p) => p === ".." || p === "")) {
+      throw new Error(`script \`${script.script}\` must be a path inside tools/<name>/`);
+    }
+  }
+  return parsed;
+}
+function textOf(bytes) {
+  try {
+    return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
+  } catch {
+    return void 0;
+  }
+}
+function byteLength(text2) {
+  return new TextEncoder().encode(text2).length;
+}
+function place(path) {
+  const bad = (hint = "") => {
+    throw new Error(
+      `\`${path}\` is not a skill file: a skill package holds <cmd_skills|plan_skills|goal_skills>/<name>/${SKILL_MANUAL}, their ${SKILL_REFERENCES}/… and ${TOOLS_DIR}/<work skill>/…${hint}`
+    );
+  };
+  const parts = path.split("/");
+  if (parts.some((p) => p === "" || p === "." || p === ".."))
+    bad();
+  let kind;
+  const name = parts[1];
+  if (parts[0] === TOOLS_DIR && parts.length >= 3) {
+    kind = "work";
+  } else {
+    const found = SKILL_KINDS.find((k) => SKILL_KIND_DIRS[k] === parts[0]);
+    if (!found || parts.length < 2)
+      return bad();
+    if (parts.length === 2) {
+      return bad(parts[1].endsWith(".md") ? ` (a flat ${parts[0]}/<name>.md is no skill: move it to ${parts[0]}/${parts[1].slice(0, -3)}/${SKILL_MANUAL})` : "");
+    }
+    const manual = parts.length === 3 && parts[2] === SKILL_MANUAL;
+    const reference = parts.length >= 4 && parts[2] === SKILL_REFERENCES;
+    if (!manual && !reference)
+      bad();
+    kind = found;
+  }
+  if (!name || name.length > MAX_NAME_LEN || name.startsWith(".") || !/^[A-Za-z0-9_.-]+$/.test(name))
+    bad();
+  return { kind, name };
+}
+function packageSkills(packageName, files, findings) {
+  const paths = [...files.keys()].sort();
+  const grouped = /* @__PURE__ */ new Map();
+  for (const path of paths) {
+    const { kind, name } = place(path);
+    const key = `${SKILL_KINDS.indexOf(kind)}:${name}`;
+    if (!grouped.has(key))
+      grouped.set(key, { kind, name, paths: [] });
+    grouped.get(key).paths.push(path);
+  }
+  const shadowing = paths.find((path) => {
+    if (!path.startsWith(`${TOOLS_DIR}/`))
+      return false;
+    const rest = path.slice(TOOLS_DIR.length + 1);
+    const at = rest.indexOf("/bin/");
+    return at >= 0 && STANDARD_COMMANDS.includes(rest.slice(at + 5).split(".")[0]);
+  });
+  if (shadowing) {
+    throw new Error(`${shadowing}: a skill cannot bring a command of the standard layer: it would shadow the Agent's own`);
+  }
+  if (grouped.size === 0) {
+    throw new Error(`package ${packageName} holds no skill (<cmd_skills|plan_skills|goal_skills>/<name>/${SKILL_MANUAL})`);
+  }
+  const out = [];
+  const groups = [...grouped.values()].sort(
+    (a, b) => SKILL_KINDS.indexOf(a.kind) - SKILL_KINDS.indexOf(b.kind) || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0)
+  );
+  for (const { kind, name, paths: own } of groups) {
+    const dir = SKILL_KIND_DIRS[kind];
+    const manual = `${dir}/${name}/${SKILL_MANUAL}`;
+    const file = files.get(manual);
+    if (!file) {
+      throw new Error(
+        own.every((p) => p.startsWith(TOOLS_DIR)) ? `${TOOLS_DIR}/${name}/ belongs to no work skill: the package has no ${manual}` : `${dir}/${name}/ has no ${SKILL_MANUAL}`
+      );
+    }
+    const text2 = textOf(file.bytes);
+    if (text2 === void 0)
+      throw new Error(`${manual} is not UTF-8 text`);
+    const { fields, body } = splitFrontMatter(text2);
+    let requirements;
+    let scope;
+    try {
+      requirements = skillRequirements(fields);
+      scope = skillScope(fields);
+      if (kind !== "work") {
+        for (const key of ["scope", "commands"]) {
+          if ((fields.get(key) ?? "").trim()) {
+            throw new Error(`a ${kind} skill declares no \`${key}\`: it names no commands and is read, not frozen`);
+          }
+        }
+      }
+    } catch (error) {
+      throw new Error(`${manual}: ${error.message}`);
+    }
+    if (fields.has("name") && fields.get("name") !== name) {
+      throw new Error(`${manual}: front matter name \`${fields.get("name")}\` differs from its directory`);
+    }
+    const binPrefix = `${TOOLS_DIR}/${name}/bin/`;
+    const refPrefix = `${dir}/${name}/${SKILL_REFERENCES}/`;
+    const skill = {
+      kind,
+      name,
+      scope: kind === "work" ? scope : "work",
+      description: fields.get("description") ?? "",
+      requires: fields.get("requires") ?? "",
+      baseline: requirements.baseline,
+      platforms: requirements.platforms,
+      commands: skillCommandsOf(fields),
+      size: byteLength(body),
+      tools: own.filter((p) => p.startsWith(binPrefix)).map((p) => p.slice(binPrefix.length)),
+      references: own.filter((p) => p.startsWith(refPrefix)).map((p) => p.slice(refPrefix.length))
+    };
+    const installPath = `${TOOLS_DIR}/${name}/${INSTALL_TOML}`;
+    const installFile = files.get(installPath);
+    if (installFile) {
+      const installText = textOf(installFile.bytes);
+      if (installText === void 0)
+        throw new Error(`${installPath} is not UTF-8 text`);
+      try {
+        skill.install = parseInstallToml(installText);
+      } catch (error) {
+        throw new Error(`${installPath}: ${error.message}`);
+      }
+      for (const script of [...Object.values(skill.install.install), ...Object.values(skill.install.uninstall)]) {
+        if (!files.has(`${TOOLS_DIR}/${name}/${script.script}`)) {
+          throw new Error(`${installPath}: the package has no ${TOOLS_DIR}/${name}/${script.script}`);
+        }
+      }
+    }
+    const add = (code, level, note) => findings.push({ code, level, where: manual, note });
+    if (!skill.description.trim())
+      add("no_description", "medium", "no `description`: whoever chooses manuals only sees the name");
+    const texts = [body];
+    for (const path of own) {
+      if (!path.includes(`/${SKILL_REFERENCES}/`) || !path.endsWith(".md"))
+        continue;
+      const reference = textOf(files.get(path).bytes);
+      if (reference !== void 0)
+        texts.push(reference);
+    }
+    const used = [...new Set(texts.flatMap((t) => [...commandsInManual(t)]))].sort();
+    if (kind === "work") {
+      if (skill.scope !== "work" && skill.size > UI_MANUAL_WARN_BYTES) {
+        add("ui_manual_large", "low", `${skill.size} bytes: every conversation that takes it carries them (advised: at most ${UI_MANUAL_WARN_BYTES})`);
+      }
+      const known = (c) => skill.tools.some((t) => t === c || t.split(".")[0] === c) || STANDARD_COMMANDS.includes(c);
+      const undeclared = used.filter((c) => !skill.commands.includes(c) && !known(c));
+      if (undeclared.length)
+        add("undeclared_commands", "low", `the manual runs ${undeclared.join(", ")} without naming them in \`commands\``);
+      const lower = texts.map((t) => t.toLowerCase());
+      const unused = skill.commands.filter((c) => !lower.some((t) => t.includes(c.toLowerCase())));
+      if (unused.length)
+        add("unused_commands", "low", `\`commands\` names ${unused.join(", ")} but the manual never mentions them`);
+    } else if (kind === "plan") {
+      if (skill.size > PLAN_MANUAL_WARN_BYTES) {
+        add("plan_manual_large", "low", `${skill.size} bytes (advised: at most ${PLAN_MANUAL_WARN_BYTES}): a plan reads it whole`);
+      }
+      const hard = texts.some(
+        (t) => t.includes("create-worksession") || t.includes("--cmd-skill") || t.split("\n").some((l) => l.includes("--skill ") && !l.includes("--skill <"))
+      );
+      if (hard || used.length) {
+        add(
+          "plan_depends_on_commands",
+          "medium",
+          'a plan skill says how to split, order and check work, not which commands or manuals to use: move commands into a work skill and write "give this step a manual for X"'
+        );
+      }
+    }
+    out.push(skill);
+  }
+  return out;
+}
+const PACKAGE_MANAGERS = [
+  "apt-get ",
+  "apt install",
+  "brew install",
+  "npm install -g",
+  "npm i -g",
+  "pip install",
+  "pip3 install",
+  "winget install",
+  "choco install",
+  "dnf install",
+  "yum install",
+  "apk add"
+];
+const SECRET_WORDS = ["TOKEN", "SECRET", "PASSWORD", "API_KEY", "APIKEY", "PRIVATE_KEY"];
+function riskFindings(skills, files, findings) {
+  const paths = [...files.keys()].sort();
+  for (const skill of skills) {
+    const dir = SKILL_KIND_DIRS[skill.kind];
+    const key = `${skill.kind}:${skill.name}`;
+    if (skill.scope !== "work") {
+      findings.push({ code: "ui_scope", level: "medium", where: key, note: "its scope includes `ui`: once the owner adds it to the UI set it goes into the prompt of every conversation" });
+    }
+    for (const path of paths) {
+      const tool = skill.kind === "work" && path.startsWith(`${TOOLS_DIR}/${skill.name}/`);
+      if (!tool && !path.startsWith(`${dir}/${skill.name}/`))
+        continue;
+      const text2 = textOf(files.get(path).bytes);
+      if (text2 === void 0) {
+        if (tool)
+          findings.push({ code: "binary_tool", level: "high", where: path, note: "not text: it cannot be read before it runs" });
+        continue;
+      }
+      const lower = asciiLower(text2);
+      const piped = lower.split("\n").some(
+        (l) => (l.includes("curl ") || l.includes("wget ")) && (l.includes("| sh") || l.includes("|sh") || l.includes("| bash") || l.includes("|bash"))
+      );
+      if (piped) {
+        findings.push({ code: "network_script", level: "high", where: path, note: "downloads a script and runs it (`curl … | sh`)" });
+      } else if (tool && (lower.includes("curl ") || lower.includes("wget ") || lower.includes("invoke-webrequest"))) {
+        findings.push({ code: "network_download", level: "medium", where: path, note: "downloads from the network" });
+      }
+      const managers = PACKAGE_MANAGERS.filter((m) => lower.includes(m));
+      if (managers.length) {
+        findings.push({ code: "package_manager", level: tool ? "high" : "medium", where: path, note: `uses a package manager (${managers.join(", ").replaceAll("  ", " ")})` });
+      }
+      if (lower.split("\n").some((l) => l.split(/\s+/).includes("sudo"))) {
+        findings.push({ code: "privilege", level: "high", where: path, note: "asks for root (`sudo`)" });
+      }
+      const secrets = [...new Set(
+        text2.split(/[^A-Za-z0-9_]/).filter((w) => w.length > 5 && /^[A-Z0-9_]+$/.test(w) && SECRET_WORDS.some((s) => w.includes(s)))
+      )].sort();
+      if (secrets.length) {
+        findings.push({ code: "secrets", level: "medium", where: path, note: `reads secrets from the environment (${secrets.join(", ")})` });
+      }
+    }
+    if (!skill.install)
+      continue;
+    const where = `${TOOLS_DIR}/${skill.name}/${INSTALL_TOML}`;
+    const systems = Object.keys(skill.install.install).sort();
+    if (systems.length) {
+      findings.push({ code: "system_install", level: "high", where, note: `runs an install script on the runtime (${systems.join(", ")})` });
+    }
+    for (const os of systems) {
+      const writes = skill.install.install[os].writes;
+      if (writes.some((w) => !w.startsWith("<agent_root>") && !w.startsWith("<instance_volume>"))) {
+        findings.push({ code: "volatile_writes", level: "medium", where, note: `[install.${os}] writes outside <agent_root> / <instance_volume> (${writes.join(", ")}): in a container it is gone after a restart and is checked again` });
+      }
+    }
+  }
+}
+function lintSkillPackage(packageName, files) {
+  const findings = [];
+  try {
+    const skills = packageSkills(packageName, files, findings);
+    riskFindings(skills, files, findings);
+    return { skills, findings };
+  } catch (error) {
+    findings.unshift({ code: "invalid_package", level: "error", where: packageName, note: error.message });
+    return { skills: [], findings };
+  }
+}
+async function readSkillDirectory(root, limit) {
+  const host2 = getHost();
+  const realRoot = await host2.realPath(root);
+  const files = /* @__PURE__ */ new Map();
+  const ignored = [];
+  let total = 0;
+  const walk = async (directory, prefix) => {
+    const children = (await host2.readDir(directory)).sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+    for (const child of children) {
+      const rel = prefix ? `${prefix}/${child.name}` : child.name;
+      const parts = rel.split("/");
+      if (parts.length > 32)
+        throw new Error(`${rel}: nested too deep`);
+      if (!prefix && !SKILL_DIRS.includes(child.name)) {
+        ignored.push(rel);
+        continue;
+      }
+      if (parts[0] !== TOOLS_DIR && parts.length === 3 && parts[2] === SKILL_REVISIONS)
+        continue;
+      let path = host2.path.join(directory, child.name);
+      if ((await host2.lstat(path)).isSymlink) {
+        path = await host2.realPath(path);
+        const inside = host2.path.relative(realRoot, path);
+        if (inside === ".." || inside.startsWith(`..${host2.path.sep}`) || host2.path.isAbsolute(inside)) {
+          throw new Error(`${rel}: a link out of the skill directory`);
+        }
+      }
+      const info = await host2.stat(path);
+      if (info.isDirectory) {
+        await walk(path, rel);
+      } else if (info.isFile) {
+        total += info.size;
+        if (total > limit)
+          throw new Error(`the skill directory holds more than ${limit} bytes`);
+        files.set(rel, { bytes: await host2.readFile(path), executable: ((info.mode ?? 0) & 73) !== 0 });
+      } else {
+        throw new Error(`${rel}: not a regular file`);
+      }
+    }
+  };
+  await walk(realRoot, "");
+  return { files, ignored };
+}
+const PACKAGE_VERSION = "0.7.173";
 const TOOL_VERSION = PACKAGE_VERSION;
 const SDK_VERSION = PACKAGE_VERSION;
 const PROTOCOL_VERSION = "1";
@@ -5884,6 +6586,10 @@ async function doctorCommand(ctx, input) {
         status: missingSources.length === 0 ? "ok" : "missing",
         missing: missingSources
       });
+      const skills = pikg.sub_pkgs[PATH_KINDS["agent-skills"].key];
+      if (skills?.source.type === "path" && !missingSources.includes(resolve$1(metaDir, skills.source.path))) {
+        checks.push(await skillLintCheck(app.name, resolve$1(metaDir, skills.source.path)));
+      }
       if (app.categories[0] === PATH_KINDS["ext-tools"].category) {
         const catalog = optionalInputString(input, "catalog");
         checks.push(...await extToolsChecks(app, pikg, metaDir, catalog ? resolveFromCwd$1(ctx, catalog) : void 0));
@@ -5993,6 +6699,9 @@ async function initCommand(ctx, input, docker) {
       if (kind === "aiws-controls") {
         await writeAiwsSkeleton(absoluteSource, owner, name, input.composite === true);
         sourceSummary2.skeleton = true;
+      } else if (kind === "agent-skills") {
+        await writeSkillsSkeleton(absoluteSource, name);
+        sourceSummary2.skeleton = true;
       } else {
         await ctx.io.stderr(`warning: source does not exist yet: ${sourceSummary2.path}
 `);
@@ -6055,6 +6764,62 @@ async function initCommand(ctx, input, docker) {
     pikg_file: pikgMeta.pikg_file,
     next_command: `buckyos pikg build ${metaDir}`
   };
+}
+const MAX_SKILL_SOURCE_BYTES = 64 * 1024 * 1024;
+async function skillLintCheck(packageName, source) {
+  const check = { name: "skill_lint", path: source };
+  let files;
+  let ignored = [];
+  try {
+    if ((await getHost().stat(source)).isDirectory) {
+      ;
+      ({ files, ignored } = await readSkillDirectory(source, MAX_SKILL_SOURCE_BYTES));
+    } else {
+      files = /* @__PURE__ */ new Map();
+      for (const entry of await readTarGz(await getHost().readFile(source), MAX_SKILL_SOURCE_BYTES)) {
+        if (SKILL_DIRS.includes(entry.path.split("/")[0]))
+          files.set(entry.path, { bytes: entry.bytes, executable: entry.executable });
+        else
+          ignored.push(entry.path);
+      }
+    }
+  } catch (error) {
+    return { ...check, status: "error", detail: error instanceof Error ? error.message : String(error) };
+  }
+  const { skills, findings } = lintSkillPackage(packageName, files);
+  const errors = findings.filter((finding) => finding.level === "error");
+  return {
+    ...check,
+    status: errors.length ? "error" : "ok",
+    ...errors.length ? { detail: errors.map((finding) => finding.note).join("; "), errors } : {},
+    skills: skills.map(({ kind, name, scope, size, commands }) => ({ kind, name, scope, size, commands })),
+    warnings: findings.filter((finding) => finding.level !== "error"),
+    ...ignored.length ? { ignored_files: ignored } : {}
+  };
+}
+async function writeSkillsSkeleton(dir, name) {
+  const skill = name.replaceAll("-", "_");
+  const manual = join(dir, "cmd_skills", skill);
+  await getHost().mkdir(manual, { recursive: true });
+  await getHost().writeTextFile(
+    join(manual, "SKILL.md"),
+    [
+      "---",
+      `name: ${skill}`,
+      "description: One line: what this manual is for, so whoever picks manuals can choose it",
+      "requires: What it needs beyond the commands below, in words",
+      "scope: work",
+      "---",
+      `# ${skill}`,
+      "",
+      "What to do, step by step. Commands this manual runs that are not part of every runtime go into a front matter line",
+      "`commands: name, name`; long material goes into `references/` next to this file and is read on demand.",
+      "",
+      "A package holds `cmd_skills/<name>/SKILL.md` (work and ui skills), `plan_skills/<name>/SKILL.md`,",
+      "`goal_skills/<name>/SKILL.md`, and `tools/<work skill>/bin/` for the commands a work skill brings.",
+      ""
+    ].join("\n")
+  );
 }
 async function writeAiwsSkeleton(dir, ownerDid, name, composite) {
   const kind = composite ? "composite" : "declarative";
@@ -6284,7 +7049,7 @@ async function extToolsChecks(app, pikg, metaDir, catalogDir) {
   for (const other of others.values()) {
     if (manifest.conflicts.includes(other.id) || other.conflicts.includes(manifest.id))
       continue;
-    const shared = other.provides.map((provided) => provided.command).filter((command) => commands.has(command));
+    const shared = other.provides.map((provided) => provided.command).filter((command2) => commands.has(command2));
     if (shared.length > 0)
       catalogErrors.push(`${other.id} also provides ${shared.join(", ")}: one of the two must list the other in conflicts`);
   }
@@ -7351,9 +8116,9 @@ const INSTALL_POLICIES = [
 function createAppModule(dependencies = {}) {
   const commands = [
     fetchCommand(dependencies),
-    listCommand$2(),
+    listCommand$3(),
     getCommand$3(),
-    installCommand(dependencies),
+    installCommand$1(dependencies),
     upgradeCommand(dependencies),
     uninstallCommand(dependencies),
     cancelCommand$1(),
@@ -7366,10 +8131,10 @@ function createAppModule(dependencies = {}) {
   return {
     name: "app",
     summary: "Inspect, install, upgrade, and control Apps",
-    commands: commands.map((command) => {
-      const handler = command.handler;
+    commands: commands.map((command2) => {
+      const handler = command2.handler;
       return {
-        ...command,
+        ...command2,
         handler: async (ctx, input) => sanitizeAppOutput(await handler(ctx, input))
       };
     })
@@ -7438,7 +8203,7 @@ function fetchCommand(dependencies) {
     handler: async (ctx, input) => await fetchApp(ctx, input, dependencies)
   };
 }
-function listCommand$2() {
+function listCommand$3() {
   return {
     verb: "list",
     summary: "List visible installed Apps",
@@ -7468,7 +8233,7 @@ function getCommand$3() {
     }
   });
 }
-function installCommand(dependencies) {
+function installCommand$1(dependencies) {
   return {
     verb: "install",
     summary: "Install from a v4 plan or upgrade an existing App from a source",
@@ -9490,10 +10255,10 @@ function createTaskModule() {
   return {
     name: "task",
     summary: "Inspect, wait for, cancel, and retry durable Tasks",
-    commands: [listCommand$1(), getCommand$2(), waitCommand(), cancelCommand(), retryCommand()]
+    commands: [listCommand$2(), getCommand$2(), waitCommand(), cancelCommand(), retryCommand()]
   };
 }
-function listCommand$1() {
+function listCommand$2() {
   return {
     verb: "list",
     summary: "List visible Tasks",
@@ -10250,10 +11015,12 @@ function inputFingerprint(input) {
   return hash.digestHex();
 }
 const OBJECT_OUTPUT$7 = { type: "object", additionalProperties: true };
-const SKILL_KINDS = ["cmd", "goal"];
 const SKILLS_SUB_PKG = "agent_skills";
-const SKILL_DIRS = ["cmd_skills", "goal_skills", "tools"];
+const SKILL_SCOPES = ["ui", "work"];
+const IMPORT_SCOPES = ["work", "ui", "plan"];
+const SOURCE_KINDS = ["pikg", "dir", "url", "did"];
 const MAX_SKILL_PAYLOAD_BYTES = 64 * 1024 * 1024;
+const MAX_IMPORT_TEXT_BYTES = 512 * 1024;
 const AGENT_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const AGENT_OPTION = {
   name: "agent",
@@ -10266,128 +11033,478 @@ const KIND_OPTION = {
   name: "kind",
   description: "Skill kind",
   type: "string",
-  enum: SKILL_KINDS
+  enum: [...SKILL_KINDS]
 };
-function createSkillModule() {
+const RUNTIME_OPTION = {
+  name: "runtime",
+  property: "runtime_id",
+  description: "Runtime id (default: the private runtime)",
+  type: "string"
+};
+const AGENT_PROPERTY = { type: "string", minLength: 1 };
+const NAME_PROPERTY = { type: "string", minLength: 1 };
+const KIND_PROPERTY = { type: "string", enum: [...SKILL_KINDS] };
+function command(definition) {
+  const { level, properties, required, ...rest } = definition;
+  return {
+    options: [AGENT_OPTION],
+    inputSchema: {
+      type: "object",
+      properties: { agent_id: AGENT_PROPERTY, ...properties },
+      required: ["agent_id", ...required ?? []],
+      additionalProperties: false
+    },
+    outputSchema: OBJECT_OUTPUT$7,
+    resultSchemaVersion: 1,
+    access: { mode: "fixed", level },
+    asyncMode: "sync",
+    requiresSession: true,
+    ...rest
+  };
+}
+function createSkillModule(dependencies = {}) {
   return {
     name: "skill",
-    summary: "List, install, and remove the cmd/goal skills of an Agent",
+    summary: "List, install, enable, and remove the work/plan/goal skills of an Agent",
     commands: [
-      {
+      command({
         verb: "list",
         summary: "List the skills of an Agent",
-        options: [AGENT_OPTION, KIND_OPTION],
-        inputSchema: {
-          type: "object",
-          properties: {
-            agent_id: { type: "string", minLength: 1 },
-            kind: { type: "string", enum: SKILL_KINDS }
-          },
-          required: ["agent_id"],
-          additionalProperties: false
+        description: "Skills that no new session takes (disabled by the owner, or commands not installed) are left out unless --all, which also lists the drafts waiting for the owner. --scope selects work skills by scope. --stats adds how often each manual was frozen, and the count of work created without any manual.",
+        options: [
+          AGENT_OPTION,
+          KIND_OPTION,
+          { name: "scope", description: "Work skills whose scope includes this", type: "string", enum: SKILL_SCOPES },
+          { name: "all", description: "Include skills that are not enabled, and drafts", type: "boolean" },
+          { name: "stats", description: "Include usage", type: "boolean" }
+        ],
+        level: "read",
+        properties: {
+          kind: KIND_PROPERTY,
+          scope: { type: "string", enum: SKILL_SCOPES },
+          all: { type: "boolean" },
+          stats: { type: "boolean" }
         },
-        outputSchema: OBJECT_OUTPUT$7,
-        resultSchemaVersion: 1,
-        access: { mode: "fixed", level: "read" },
-        asyncMode: "sync",
-        requiresSession: true,
         examples: [
           "buckyos skill list --agent jarvis.example.zone",
-          "buckyos skill list --agent jarvis.example.zone --kind cmd"
+          "buckyos skill list --agent jarvis.example.zone --kind work --scope ui",
+          "buckyos skill list --agent jarvis.example.zone --all --stats"
+        ],
+        handler: async (ctx, input) => await listCommand$1(ctx, input)
+      }),
+      command({
+        verb: "status",
+        summary: "Whether each work skill works on a runtime of the Agent: baseline and platform, the commands it relies on, and the extension package that would bring what is missing",
+        options: [AGENT_OPTION, RUNTIME_OPTION],
+        level: "read",
+        properties: { runtime_id: { type: "string", minLength: 1 } },
+        examples: ["buckyos skill status --agent jarvis.example.zone --runtime host"],
+        handler: async (ctx, input) => await callService(ctx, agentIdFrom(input), "skills.status", {
+          runtime_id: input.runtime_id ?? null
+        })
+      }),
+      command({
+        verb: "install",
+        summary: "Install skills into an Agent: plan, confirm, install",
+        description: "The source is a skill PIKG (local file or HTTP(S) URL; verified offline, app_type agent_skills), a directory laid out like its agent_skills sub package (cmd_skills/, plan_skills/, goal_skills/, tools/; the package is named after the directory), or --draft <slug> for a draft in the AgentRoot. The Agent plans the installation first (nothing is written): the plan and its risk findings are shown and must be confirmed; --yes accepts every risk level. A plan that is blocked is refused. Only the owner installs. Sessions created before keep their frozen manuals.",
+        positionals: [{ name: "source", description: "Skill .pikg file, skill directory, or HTTP(S) URL", required: false }],
+        options: [
+          AGENT_OPTION,
+          { name: "from", description: "Force source type", type: "string", enum: SOURCE_KINDS },
+          { name: "draft", description: "Install this draft of the AgentRoot (skills_drafts/<slug>) instead of a source", type: "string" },
+          { ...RUNTIME_OPTION, description: "Runtime the commands of the skills go to (default: the private runtime)" },
+          { name: "replace", description: "Replace skills of the same names from another package", type: "boolean" }
+        ],
+        level: "write",
+        properties: {
+          source: { type: "string", minLength: 1 },
+          from: { type: "string", enum: SOURCE_KINDS },
+          draft: { type: "string", minLength: 1 },
+          runtime_id: { type: "string", minLength: 1 },
+          replace: { type: "boolean" }
+        },
+        examples: [
+          "buckyos skill install ./dapp_dist/hello-skills-0.1.0.pikg --agent jarvis.example.zone",
+          "buckyos --yes skill install ./skills --agent jarvis.example.zone --replace",
+          "buckyos skill install https://example.com/hello-skills-0.1.0.pikg --agent jarvis.example.zone",
+          "buckyos skill install --draft notes-to-slides --agent jarvis.example.zone"
+        ],
+        handler: async (ctx, input) => await installCommand(ctx, input, dependencies)
+      }),
+      command({
+        verb: "remove",
+        summary: "Remove an installed skill from an Agent",
+        description: "Only installed and imported skills can be removed. Without --kind the kind is looked up by name.",
+        positionals: [{ name: "name", description: "Skill name" }],
+        options: [AGENT_OPTION, KIND_OPTION],
+        level: "destructive",
+        properties: { name: NAME_PROPERTY, kind: KIND_PROPERTY },
+        required: ["name"],
+        examples: ["buckyos --yes skill remove hello --agent jarvis.example.zone --kind work"],
+        handler: async (ctx, input) => {
+          const agentId = agentIdFrom(input);
+          const name = requiredInputString(input, "name");
+          const kind = await kindOf(ctx, agentId, name, input);
+          await confirm(ctx, "skill remove", `Remove ${kind} skill ${name} from ${agentId}?`);
+          const removed = await callService(ctx, agentId, "skills.remove", { kind, name });
+          return { agent_id: agentId, removed: expectObject(removed, "skills.remove") };
+        }
+      }),
+      command({
+        verb: "disable",
+        summary: "Disable a skill of an Agent: no new session takes it",
+        description: "Any skill can be disabled, package ones included. Running sessions keep what they froze. Without --kind the kind is looked up by name.",
+        positionals: [{ name: "name", description: "Skill name" }],
+        options: [AGENT_OPTION, KIND_OPTION, { name: "reason", description: "Why, for the record", type: "string" }],
+        level: "write",
+        properties: { name: NAME_PROPERTY, kind: KIND_PROPERTY, reason: { type: "string" } },
+        required: ["name"],
+        examples: ['buckyos skill disable aigc_video --agent jarvis.example.zone --reason "no provider"'],
+        handler: async (ctx, input) => await setEnabled(ctx, input, false)
+      }),
+      command({
+        verb: "enable",
+        summary: "Enable a disabled skill of an Agent",
+        positionals: [{ name: "name", description: "Skill name" }],
+        options: [AGENT_OPTION, KIND_OPTION],
+        level: "write",
+        properties: { name: NAME_PROPERTY, kind: KIND_PROPERTY },
+        required: ["name"],
+        examples: ["buckyos skill enable aigc_video --agent jarvis.example.zone"],
+        handler: async (ctx, input) => await setEnabled(ctx, input, true)
+      }),
+      command({
+        verb: "ui-list",
+        summary: "The work skills every new conversation (UI session) of the Agent takes",
+        level: "read",
+        properties: {},
+        examples: ["buckyos skill ui-list --agent jarvis.example.zone"],
+        handler: async (ctx, input) => {
+          const agentId = agentIdFrom(input);
+          return { agent_id: agentId, ...await uiGet(ctx, agentId) };
+        }
+      }),
+      command({
+        verb: "ui-add",
+        summary: "Add a skill whose scope includes ui to the conversations of the Agent",
+        description: "Takes effect in conversations created afterwards. The result gives total_bytes: every conversation carries that much manual text.",
+        positionals: [{ name: "name", description: "Skill name" }],
+        level: "write",
+        properties: { name: NAME_PROPERTY },
+        required: ["name"],
+        examples: ["buckyos skill ui-add share --agent jarvis.example.zone"],
+        handler: async (ctx, input) => await uiChange(ctx, input, true)
+      }),
+      command({
+        verb: "ui-remove",
+        summary: "Take a skill out of the conversations of the Agent",
+        positionals: [{ name: "name", description: "Skill name" }],
+        level: "write",
+        properties: { name: NAME_PROPERTY },
+        required: ["name"],
+        examples: ["buckyos skill ui-remove share --agent jarvis.example.zone"],
+        handler: async (ctx, input) => await uiChange(ctx, input, false)
+      }),
+      command({
+        verb: "import",
+        summary: "Hand a text to the Agent to turn into a skill draft",
+        description: "Reads the text from a file, an HTTP(S) URL, or stdin (-). The Agent starts a work session that writes a draft under skills_drafts/; nothing is installed. The owner reads the draft (skill drafts, skill draft-show) and installs it with skill install --draft <slug>.",
+        positionals: [{ name: "source", description: "Text file, HTTP(S) URL, or - for stdin" }],
+        options: [
+          AGENT_OPTION,
+          { name: "name", description: "Slug of the draft", type: "string" },
+          { name: "scope", description: "What to make of it", type: "string", enum: IMPORT_SCOPES },
+          { ...RUNTIME_OPTION, description: "Runtime the commands the text names are checked on (default: the private runtime)" }
+        ],
+        level: "write",
+        properties: {
+          source: { type: "string", minLength: 1 },
+          name: { type: "string", minLength: 1 },
+          scope: { type: "string", enum: IMPORT_SCOPES },
+          runtime_id: { type: "string", minLength: 1 }
+        },
+        required: ["source"],
+        examples: [
+          "buckyos skill import ./notes/release-checklist.md --agent jarvis.example.zone --name release_checklist",
+          "cat howto.md | buckyos skill import - --agent jarvis.example.zone --scope plan"
+        ],
+        handler: async (ctx, input) => await importCommand$1(ctx, input, dependencies)
+      }),
+      command({
+        verb: "drafts",
+        summary: "List the skill drafts of an Agent that wait for the owner",
+        level: "read",
+        properties: {},
+        examples: ["buckyos skill drafts --agent jarvis.example.zone"],
+        handler: async (ctx, input) => {
+          const agentId = agentIdFrom(input);
+          const drafts = await listDrafts(ctx, agentId);
+          return { agent_id: agentId, total: drafts.length, drafts };
+        }
+      }),
+      command({
+        verb: "draft-show",
+        summary: "Show a skill draft, or one of its files",
+        positionals: [{ name: "slug", description: "Draft slug" }],
+        options: [AGENT_OPTION, { name: "file", description: "Draft-relative path of a file to print", type: "string" }],
+        level: "read",
+        properties: { slug: NAME_PROPERTY, file: { type: "string", minLength: 1 } },
+        required: ["slug"],
+        examples: [
+          "buckyos skill draft-show release_checklist --agent jarvis.example.zone",
+          "buckyos skill draft-show release_checklist --file cmd_skills/release_checklist/SKILL.md --agent jarvis.example.zone"
         ],
         handler: async (ctx, input) => {
           const agentId = agentIdFrom(input);
-          const kind = typeof input.kind === "string" ? input.kind : void 0;
-          const skills = await listSkills(ctx, agentId, kind);
-          return { agent_id: agentId, ...kind ? { kind } : {}, total: skills.length, skills };
-        }
-      },
-      {
-        verb: "status",
-        summary: "The commands each cmd skill relies on, on a runtime of the Agent, and the extension package that would bring what is missing",
-        options: [
-          AGENT_OPTION,
-          { name: "runtime", property: "runtime_id", description: "Runtime id (default: the private runtime)", type: "string" }
-        ],
-        inputSchema: {
-          type: "object",
-          properties: { agent_id: { type: "string", minLength: 1 }, runtime_id: { type: "string", minLength: 1 } },
-          required: ["agent_id"],
-          additionalProperties: false
-        },
-        outputSchema: OBJECT_OUTPUT$7,
-        resultSchemaVersion: 1,
-        access: { mode: "fixed", level: "read" },
-        asyncMode: "sync",
-        requiresSession: true,
-        examples: ["buckyos skill status --agent jarvis.example.zone --runtime host"],
-        handler: async (ctx, input) => await callService(ctx, agentIdFrom(input), "skills.status", { runtime_id: input.runtime_id ?? null })
-      },
-      {
-        verb: "install",
-        summary: "Install the skills of a skill PIKG into an Agent",
-        description: "Verifies the PIKG offline, requires app_type agent_skills, and sends the files of its agent_skills sub package (cmd_skills/, goal_skills/, tools/) to the Agent. Sessions created before keep their frozen manuals.",
-        positionals: [{ name: "pikg_path", description: "Local skill .pikg file" }],
-        options: [
-          AGENT_OPTION,
-          {
-            name: "replace",
-            description: "Replace skills of the same names from another package",
-            type: "boolean"
+          const slug = requiredInputString(input, "slug");
+          const file = inputString(input, "file");
+          if (file) {
+            const shown = expectObject(await callService(ctx, agentId, "skills.draft_file", { slug, file }), "skills.draft_file");
+            return { agent_id: agentId, slug, file, text: shown.text };
           }
-        ],
-        inputSchema: {
-          type: "object",
-          properties: {
-            pikg_path: { type: "string", minLength: 1 },
-            agent_id: { type: "string", minLength: 1 },
-            replace: { type: "boolean" }
-          },
-          required: ["pikg_path", "agent_id"],
-          additionalProperties: false
-        },
-        outputSchema: OBJECT_OUTPUT$7,
-        resultSchemaVersion: 1,
-        access: { mode: "fixed", level: "write" },
-        asyncMode: "sync",
-        requiresSession: true,
-        examples: [
-          "buckyos skill install ./dapp_dist/hello-skills-0.1.0.pikg --agent jarvis.example.zone",
-          "buckyos skill install ./hello-skills-0.2.0.pikg --agent jarvis.example.zone --replace"
-        ],
-        handler: async (ctx, input) => await installSkills(ctx, input)
-      },
-      {
-        verb: "remove",
-        summary: "Remove an installed skill from an Agent",
-        description: "Only installed skills can be removed. Without --kind the kind is looked up by name.",
-        positionals: [{ name: "name", description: "Skill name" }],
-        options: [AGENT_OPTION, KIND_OPTION],
-        inputSchema: {
-          type: "object",
-          properties: {
-            name: { type: "string", minLength: 1 },
-            agent_id: { type: "string", minLength: 1 },
-            kind: { type: "string", enum: SKILL_KINDS }
-          },
-          required: ["name", "agent_id"],
-          additionalProperties: false
-        },
-        outputSchema: OBJECT_OUTPUT$7,
-        resultSchemaVersion: 1,
-        access: { mode: "fixed", level: "destructive" },
-        asyncMode: "sync",
-        requiresSession: true,
-        examples: ["buckyos --yes skill remove hello --agent jarvis.example.zone --kind cmd"],
-        handler: async (ctx, input) => await removeSkill(ctx, input)
-      }
+          const draft = (await listDrafts(ctx, agentId)).find((item) => item.slug === slug);
+          if (!draft)
+            throw new ToolError("RESOURCE_NOT_FOUND", `Agent ${agentId} has no skill draft ${slug}`);
+          return { agent_id: agentId, ...draft, install_command: `buckyos skill install --draft ${slug} --agent ${agentId}` };
+        }
+      }),
+      command({
+        verb: "draft-discard",
+        summary: "Delete a skill draft",
+        positionals: [{ name: "slug", description: "Draft slug" }],
+        level: "destructive",
+        properties: { slug: NAME_PROPERTY },
+        required: ["slug"],
+        examples: ["buckyos --yes skill draft-discard release_checklist --agent jarvis.example.zone"],
+        handler: async (ctx, input) => {
+          const agentId = agentIdFrom(input);
+          const slug = requiredInputString(input, "slug");
+          await confirm(ctx, "skill draft-discard", `Discard skill draft ${slug} of ${agentId}?`);
+          await callService(ctx, agentId, "skills.draft_discard", { slug });
+          return { agent_id: agentId, discarded: slug };
+        }
+      }),
+      command({
+        verb: "install-cmd",
+        summary: "Install the commands of an installed work skill on one more runtime",
+        positionals: [{ name: "name", description: "Work skill name" }],
+        options: [AGENT_OPTION, { ...RUNTIME_OPTION, description: "Runtime id", required: true }],
+        level: "write",
+        properties: { name: NAME_PROPERTY, runtime_id: { type: "string", minLength: 1 } },
+        required: ["name", "runtime_id"],
+        examples: ["buckyos skill install-cmd hello --runtime host --agent jarvis.example.zone"],
+        handler: async (ctx, input) => {
+          const agentId = agentIdFrom(input);
+          const name = requiredInputString(input, "name");
+          const runtimeId = requiredInputString(input, "runtime_id");
+          const state = await callService(ctx, agentId, "skills.install_cmd", { name, runtime_id: runtimeId });
+          return { agent_id: agentId, name, runtime_id: runtimeId, install_state: expectObject(state, "skills.install_cmd") };
+        }
+      }),
+      command({
+        verb: "check",
+        summary: "Check again that the commands a work skill installed are on its runtimes",
+        description: "Without --runtime every runtime the skill was installed on is checked. The install state is updated.",
+        positionals: [{ name: "name", description: "Work skill name" }],
+        options: [AGENT_OPTION, { ...RUNTIME_OPTION, description: "Only this runtime" }],
+        level: "write",
+        properties: { name: NAME_PROPERTY, runtime_id: { type: "string", minLength: 1 } },
+        required: ["name"],
+        examples: ["buckyos skill check hello --agent jarvis.example.zone"],
+        handler: async (ctx, input) => {
+          const agentId = agentIdFrom(input);
+          const name = requiredInputString(input, "name");
+          const runtimeId = inputString(input, "runtime_id");
+          const state = await callService(ctx, agentId, "skills.check", { name, ...runtimeId ? { runtime_id: runtimeId } : {} });
+          return { agent_id: agentId, name, install_state: expectObject(state, "skills.check") };
+        }
+      })
     ]
   };
 }
-async function installSkills(ctx, input) {
+async function listCommand$1(ctx, input) {
   const agentId = agentIdFrom(input);
-  const raw = requiredInputString(input, "pikg_path");
-  const path = getHost().path.isAbsolute(raw) ? getHost().path.resolve(raw) : getHost().path.resolve(ctx.cwd, raw);
+  const scope = inputString(input, "scope");
+  let kind = inputString(input, "kind");
+  if (scope) {
+    if (kind && kind !== "work")
+      throw new UsageError("ARGUMENT_CONFLICT", `--scope selects work skills; a ${kind} skill has no scope`);
+    kind = "work";
+  }
+  const listed = (await listSkills(ctx, agentId, kind)).filter((skill) => {
+    if (!scope)
+      return true;
+    const own = typeof skill.scope === "string" ? skill.scope.split(",").map((word) => word.trim()) : ["work"];
+    return own.includes(scope);
+  });
+  const shown = input.all === true ? listed : listed.filter((skill) => skill.enabled !== false);
+  const stats = input.stats === true;
+  const skills = stats ? shown : shown.map(({ usage: _usage, ...skill }) => skill);
+  const result = {
+    agent_id: agentId,
+    ...kind ? { kind } : {},
+    ...scope ? { scope } : {},
+    total: skills.length,
+    not_enabled: listed.length - listed.filter((skill) => skill.enabled !== false).length,
+    skills
+  };
+  if (stats) {
+    const state = expectObject(await callService(ctx, agentId, "skills.state", {}), "skills.state");
+    const usage2 = state.usage && typeof state.usage === "object" ? state.usage : {};
+    result.usage_none = usage2.none ?? { frozen: 0, last_ms: 0 };
+  }
+  if (input.all === true)
+    result.drafts = await listDrafts(ctx, agentId);
+  return result;
+}
+async function setEnabled(ctx, input, enabled) {
+  const agentId = agentIdFrom(input);
+  const name = requiredInputString(input, "name");
+  const kind = await kindOf(ctx, agentId, name, input);
+  const reason = inputString(input, "reason");
+  const skill = await callService(ctx, agentId, "skills.set_enabled", {
+    kind,
+    name,
+    enabled,
+    ...reason ? { reason } : {}
+  });
+  return { agent_id: agentId, skill: expectObject(skill, "skills.set_enabled") };
+}
+async function uiGet(ctx, agentId) {
+  const ui = expectObject(await callService(ctx, agentId, "skills.ui_get", {}), "skills.ui_get");
+  if (!Array.isArray(ui.names))
+    invalidResponse("skills.ui_get");
+  return { ...ui, names: ui.names.map(String) };
+}
+async function uiChange(ctx, input, add) {
+  const agentId = agentIdFrom(input);
+  const name = requiredInputString(input, "name");
+  const current = await uiGet(ctx, agentId);
+  const has = current.names.includes(name);
+  if (!add && !has) {
+    throw new ToolError("RESOURCE_NOT_FOUND", `${name} is not among the UI skills of ${agentId} (${current.names.join(", ") || "none"})`);
+  }
+  if (add && has)
+    return { agent_id: agentId, changed: false, ...current };
+  const names = add ? [...current.names, name] : current.names.filter((item) => item !== name);
+  const ui = expectObject(await callService(ctx, agentId, "skills.ui_set", { names }), "skills.ui_set");
+  return { agent_id: agentId, changed: true, ...ui };
+}
+async function installCommand(ctx, input, dependencies) {
+  const agentId = agentIdFrom(input);
+  const source = await skillSource(ctx, input, dependencies);
+  const runtimeId = inputString(input, "runtime_id");
+  const runtime = runtimeId ? { runtime_id: runtimeId } : {};
+  const plan = expectObject(
+    await callService(ctx, agentId, "skills.install_plan", { ...source.params, ...runtime }),
+    "skills.install_plan"
+  );
+  const planDigest = plan.plan_digest;
+  if (typeof planDigest !== "string" || !planDigest)
+    invalidResponse("skills.install_plan");
+  const blocked = Array.isArray(plan.blocked) ? plan.blocked.map(String) : [];
+  if (blocked.length) {
+    throw new ToolError("SKILL_INSTALL_BLOCKED", `the installation is blocked: ${blocked.join("; ")}`, EXIT_OPERATION, false, { plan });
+  }
+  if (!ctx.confirmed) {
+    if (ctx.config.nonInteractive || !ctx.io.inputIsTerminal) {
+      throw new ToolError(
+        "CONFIRMATION_REQUIRED",
+        `skill install requires --yes in non-interactive execution (risk: ${riskLevel(plan)})`,
+        EXIT_PERMISSION,
+        false,
+        { plan }
+      );
+    }
+    await ctx.io.stderr(planText(plan));
+    await confirm(ctx, "skill install", `Install into ${agentId} (risk: ${riskLevel(plan)})?`);
+  }
+  const report = expectObject(
+    await callService(ctx, agentId, "skills.install", {
+      ...source.params,
+      plan_digest: planDigest,
+      ...runtime,
+      replace: input.replace === true
+    }),
+    "skills.install"
+  );
+  return { agent_id: agentId, source: source.summary, ...source.extra, plan, ...report };
+}
+function riskLevel(plan) {
+  const risk = plan.risk && typeof plan.risk === "object" ? plan.risk : {};
+  return typeof risk.level === "string" ? risk.level : "unknown";
+}
+function planText(plan) {
+  const lines = [`Install plan: ${plan.package}${plan.version ? ` ${plan.version}` : ""} (${plan.digest})`];
+  for (const item of Array.isArray(plan.skills) ? plan.skills : []) {
+    const skill = item;
+    const scope = typeof skill.scope === "string" ? ` [${skill.scope}]` : "";
+    const replaces = skill.replaces ? `; replaces the ${skill.replaces} skill` : "";
+    const commands = Array.isArray(skill.commands) && skill.commands.length ? `; commands: ${skill.commands.join(", ")}` : "";
+    const scripts = Array.isArray(skill.install_scripts) && skill.install_scripts.length ? `; install scripts: ${skill.install_scripts.join(", ")}` : "";
+    lines.push(`  ${skill.kind} ${skill.name}${scope}: ${skill.description ?? ""}${commands}${scripts}${replaces}`);
+  }
+  if (plan.runtime_id)
+    lines.push(`Commands go to runtime: ${plan.runtime_id}`);
+  for (const item of Array.isArray(plan.command_status) ? plan.command_status : []) {
+    const status = item;
+    if (status.status && status.status !== "ready")
+      lines.push(`  ${status.name}: commands ${status.status}`);
+  }
+  const risk = plan.risk && typeof plan.risk === "object" ? plan.risk : {};
+  lines.push(`Risk: ${riskLevel(plan)}`);
+  for (const item of Array.isArray(risk.findings) ? risk.findings : []) {
+    const finding = item;
+    lines.push(`  [${finding.level}] ${finding.code} ${finding.where}: ${finding.note}`);
+  }
+  return `${lines.join("\n")}
+`;
+}
+async function skillSource(ctx, input, dependencies) {
+  const host2 = getHost();
+  const draft = inputString(input, "draft");
+  const raw = inputString(input, "source");
+  const forced = inputString(input, "from");
+  if (draft) {
+    if (raw || forced)
+      throw new UsageError("ARGUMENT_CONFLICT", "--draft takes no <source> and no --from: the Agent reads the draft itself");
+    return { summary: { kind: "draft", draft }, params: { draft }, extra: {} };
+  }
+  if (!raw)
+    throw new UsageError("MISSING_ARGUMENT", "a <source> or --draft <slug> is required");
+  const local = host2.path.isAbsolute(raw) ? host2.path.resolve(raw) : host2.path.resolve(ctx.cwd, raw);
+  let directory = forced === "dir";
+  if (!forced && !/^https?:\/\//i.test(raw)) {
+    try {
+      directory = (await host2.stat(local)).isDirectory;
+    } catch (error) {
+      if (!isHostError(error, "NotFound"))
+        throw error;
+    }
+  }
+  if (directory)
+    return await directorySource(local);
+  const classified = await classifySource(ctx, { source: raw, ...forced ? { from: forced === "did" ? "catalog" : forced } : {} });
+  if (classified.kind === "catalog") {
+    throw new ToolError(
+      "SKILL_SOURCE_UNSUPPORTED",
+      `${classified.display} names a Catalog App, and the Catalog cannot hand a skill PIKG to this tool yet: install from the .pikg file or its URL`,
+      EXIT_UNAVAILABLE
+    );
+  }
+  if (classified.kind === "pikg")
+    return await pikgSource(classified.path, { kind: "pikg", path: classified.path });
+  await host2.mkdir(ctx.configStore.root, { recursive: true, mode: 448 });
+  const temporary = await host2.makeTempDir({ dir: ctx.configStore.root, prefix: ".skill-pikg-" });
+  try {
+    const snapshot = await downloadPikg(classified.url, host2.path.join(temporary, "source.pikg"), dependencies.download, ctx.signal);
+    return await pikgSource(snapshot.path, { kind: "url", url: snapshot.display });
+  } finally {
+    await host2.remove(temporary, { recursive: true }).catch(() => {
+    });
+  }
+}
+async function pikgSource(path, summary2) {
   const inspection = await inspectPikg(path);
   if (inspection.app.app_type !== SKILLS_SUB_PKG) {
     throw new UsageError(
@@ -10397,78 +11514,166 @@ async function installSkills(ctx, input) {
   }
   const payload = inspection.subpackages.find((item) => item.key === SKILLS_SUB_PKG)?.payload;
   const archive = await openZip(path);
-  const bytes = await readZipEntry(
-    archive,
-    archive.byName.get(payload.path),
-    MAX_SKILL_PAYLOAD_BYTES
-  );
+  const bytes = await readZipEntry(archive, archive.byName.get(payload.path), MAX_SKILL_PAYLOAD_BYTES);
   if (`sha256:${sha256Bytes(bytes)}` !== payload.digest) {
     throw new ToolError("INVALID_PACKAGE", "PIKG changed after it was verified");
   }
-  const files = {};
+  const files = /* @__PURE__ */ new Map();
   const ignored = [];
   for (const entry of await readTarGz(bytes, MAX_SKILL_PAYLOAD_BYTES)) {
-    if (!SKILL_DIRS.includes(entry.path.split("/")[0])) {
+    if (SKILL_DIRS.includes(entry.path.split("/")[0]))
+      files.set(entry.path, { bytes: entry.bytes, executable: entry.executable });
+    else
       ignored.push(entry.path);
-      continue;
-    }
-    files[entry.path] = { content: base64(entry.bytes), executable: entry.executable };
   }
-  const skillPackage = {
-    package: inspection.app.name,
-    version: inspection.app.version,
-    pikg_digest: inspection.pikg_digest,
-    files
-  };
-  const result = await callService(ctx, agentId, "skills.install", {
-    package: skillPackage,
-    replace: input.replace === true
-  });
-  const commands = await callService(ctx, agentId, "skills.install_plan", { package: skillPackage }).catch(() => null);
   return {
-    agent_id: agentId,
-    pikg_path: inspection.pikg_path,
-    pikg_digest: inspection.pikg_digest,
-    ...expectObject(result, "skills.install"),
-    ...ignored.length ? { ignored_files: ignored } : {},
-    ...commands ? { commands } : {}
+    summary: summary2,
+    params: {
+      package: {
+        package: inspection.app.name,
+        version: inspection.app.version,
+        pikg_digest: inspection.pikg_digest,
+        files: packageFiles(files)
+      }
+    },
+    extra: { pikg_digest: inspection.pikg_digest, ...ignored.length ? { ignored_files: ignored } : {} }
   };
 }
-async function removeSkill(ctx, input) {
+async function directorySource(path) {
+  const host2 = getHost();
+  let root;
+  let read2;
+  try {
+    root = await host2.realPath(path);
+    if (!(await host2.stat(root)).isDirectory)
+      throw new Error("not a directory");
+    read2 = await readSkillDirectory(root, MAX_SKILL_PAYLOAD_BYTES);
+  } catch (error) {
+    throw new UsageError("INVALID_SKILL_SOURCE", `${path}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  const name = host2.path.basename(root);
+  const invalid2 = lintSkillPackage(name, read2.files).findings.find((finding) => finding.level === "error");
+  if (invalid2)
+    throw new UsageError("INVALID_SKILL_PACKAGE", invalid2.note);
+  return {
+    summary: { kind: "dir", path: root },
+    params: { package: { package: name, version: "", files: packageFiles(read2.files) } },
+    extra: read2.ignored.length ? { ignored_files: read2.ignored } : {}
+  };
+}
+function packageFiles(files) {
+  const out = {};
+  for (const path of [...files.keys()].sort()) {
+    const file = files.get(path);
+    out[path] = { content: base64(file.bytes), executable: file.executable };
+  }
+  return out;
+}
+async function importCommand$1(ctx, input, dependencies) {
+  const host2 = getHost();
   const agentId = agentIdFrom(input);
-  const name = requiredInputString(input, "name");
-  let kind = typeof input.kind === "string" ? input.kind : void 0;
-  if (!kind) {
-    const kinds = (await listSkills(ctx, agentId)).filter((skill) => skill.name === name).map((skill) => String(skill.kind));
-    if (kinds.length === 0) {
-      throw new ToolError("RESOURCE_NOT_FOUND", `Agent ${agentId} has no skill named ${name}`);
+  const raw = requiredInputString(input, "source");
+  let text2;
+  let source;
+  if (raw === "-") {
+    text2 = await (dependencies.readStdin ?? (() => host2.readStdin()))();
+    source = "stdin";
+  } else if (/^https?:\/\//i.test(raw)) {
+    let url;
+    try {
+      url = new URL(raw);
+    } catch {
+      throw new UsageError("INVALID_ARGUMENT", `invalid URL: ${raw}`);
     }
-    if (kinds.length > 1) {
-      throw new UsageError("AMBIGUOUS_SKILL", `${name} is both a cmd and a goal skill; use --kind`);
+    if (url.username || url.password)
+      throw new UsageError("INVALID_ARGUMENT", "the URL must not contain credentials");
+    try {
+      text2 = await (dependencies.fetchText ?? fetchText)(url, ctx.signal);
+    } catch (error) {
+      if (error instanceof ToolError)
+        throw error;
+      ctx.signal.throwIfAborted();
+      throw new ToolError("SKILL_IMPORT_FETCH_FAILED", `failed to fetch ${url.origin}${url.pathname}: ${error instanceof Error ? error.message : String(error)}`, EXIT_UNAVAILABLE, true);
     }
-    kind = kinds[0];
+    source = `${url.origin}${url.pathname}`;
+  } else {
+    const path = host2.path.isAbsolute(raw) ? host2.path.resolve(raw) : host2.path.resolve(ctx.cwd, raw);
+    try {
+      text2 = new TextDecoder("utf-8", { fatal: true }).decode(await host2.readFile(path));
+    } catch (error) {
+      throw new UsageError("FILE_ACCESS_FAILED", `failed to read ${raw} as UTF-8 text: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    source = host2.path.basename(path);
   }
-  if (!ctx.confirmed) {
-    if (ctx.config.nonInteractive || !ctx.io.inputIsTerminal) {
-      throw new ToolError(
-        "CONFIRMATION_REQUIRED",
-        "skill remove requires --yes in non-interactive execution",
-        EXIT_PERMISSION
-      );
-    }
-    const answer = (await ctx.io.prompt(`Remove ${kind} skill ${name} from ${agentId}? [y/N] `))?.trim().toLowerCase();
-    if (answer !== "y" && answer !== "yes") {
-      throw new ToolError("CONFIRMATION_DECLINED", "skill remove was declined", EXIT_PERMISSION);
-    }
+  if (!text2.trim())
+    throw new UsageError("INVALID_ARGUMENT", "the text to import is empty");
+  if (new TextEncoder().encode(text2).length > MAX_IMPORT_TEXT_BYTES) {
+    throw new UsageError("INVALID_ARGUMENT", `the text to import is larger than ${MAX_IMPORT_TEXT_BYTES} bytes`);
   }
-  const removed = await callService(ctx, agentId, "skills.remove", { kind, name });
-  return { agent_id: agentId, removed: expectObject(removed, "skills.remove") };
+  const name = inputString(input, "name");
+  const scope = inputString(input, "scope");
+  const runtimeId = inputString(input, "runtime_id");
+  const started = expectObject(
+    await callService(ctx, agentId, "skills.import", {
+      text: text2,
+      ...name ? { name } : {},
+      ...scope ? { scope } : {},
+      source,
+      ...runtimeId ? { runtime_id: runtimeId } : {}
+    }),
+    "skills.import"
+  );
+  return {
+    agent_id: agentId,
+    source,
+    ...started,
+    installed: false,
+    note: "The Agent writes a draft in that work session; nothing is installed. When it reports, the draft is listed by the drafts command; read it, then install it.",
+    drafts_command: `buckyos skill drafts --agent ${agentId}`,
+    install_command: `buckyos skill install --draft ${name ?? "<slug>"} --agent ${agentId}`
+  };
+}
+async function fetchText(url, signal) {
+  const response = await fetch(url, { method: "GET", redirect: "follow", signal });
+  if (!response.ok) {
+    await response.body?.cancel();
+    throw new ToolError("SKILL_IMPORT_FETCH_FAILED", `the URL returned HTTP ${response.status}`, EXIT_UNAVAILABLE, response.status >= 500);
+  }
+  return await response.text();
+}
+async function confirm(ctx, verb, question) {
+  if (ctx.confirmed)
+    return;
+  if (ctx.config.nonInteractive || !ctx.io.inputIsTerminal) {
+    throw new ToolError("CONFIRMATION_REQUIRED", `${verb} requires --yes in non-interactive execution`, EXIT_PERMISSION);
+  }
+  const answer = (await ctx.io.prompt(`${question} [y/N] `))?.trim().toLowerCase();
+  if (answer !== "y" && answer !== "yes") {
+    throw new ToolError("CONFIRMATION_DECLINED", `${verb} was declined`, EXIT_PERMISSION);
+  }
+}
+async function kindOf(ctx, agentId, name, input) {
+  const given = inputString(input, "kind");
+  if (given)
+    return given;
+  const kinds = (await listSkills(ctx, agentId)).filter((skill) => skill.name === name).map((skill) => String(skill.kind));
+  if (kinds.length === 0)
+    throw new ToolError("RESOURCE_NOT_FOUND", `Agent ${agentId} has no skill named ${name}`);
+  if (kinds.length > 1)
+    throw new UsageError("AMBIGUOUS_SKILL", `${name} is a ${kinds.join(" and a ")} skill; use --kind`);
+  return kinds[0];
 }
 async function listSkills(ctx, agentId, kind) {
   const skills = await callService(ctx, agentId, "skills.list", kind ? { kind } : {});
   if (!Array.isArray(skills))
     invalidResponse("skills.list");
   return skills.map((skill) => expectObject(skill, "skills.list"));
+}
+async function listDrafts(ctx, agentId) {
+  const drafts = await callService(ctx, agentId, "skills.drafts", {});
+  if (!Array.isArray(drafts))
+    invalidResponse("skills.drafts");
+  return drafts.map((draft) => expectObject(draft, "skills.drafts"));
 }
 function agentIdFrom(input) {
   const agentId = requiredInputString(input, "agent_id");
@@ -12488,10 +13693,10 @@ const pullCommand = {
   }
 };
 async function pikgVerb(ctx, verb, input) {
-  const command = createPikgModule().commands.find((c) => c.verb === verb);
-  if (!command)
+  const command2 = createPikgModule().commands.find((c) => c.verb === verb);
+  if (!command2)
     throw new ToolError("INTERNAL", `pikg ${verb} is missing`);
-  return expectObject$4(await command.handler(ctx, input), `pikg ${verb}`);
+  return expectObject$4(await command2.handler(ctx, input), `pikg ${verb}`);
 }
 async function uploadPackage(ctx, path) {
   const bucket_id = `user/aiworkspace/${ctx.principal.id}/exports`;
@@ -12981,26 +14186,26 @@ class BuckyOSToolApplication {
 `);
         return EXIT_SUCCESS;
       }
-      const command = this.registry.get(invocation.module, invocation.verb);
+      const command2 = this.registry.get(invocation.module, invocation.verb);
       if (invocation.global.help || invocation.actionArgv.includes("--help") || invocation.actionArgv.includes("-h")) {
-        await this.#stdio.stdout(`${commandHelp(this.registry, command)}
+        await this.#stdio.stdout(`${commandHelp(this.registry, command2)}
 `);
         return EXIT_SUCCESS;
       }
-      if (command.execution === "local")
-        assertNoSessionOptions(invocation.global, command);
-      const setup = await this.#resolveForCommand(command, invocation.global);
+      if (command2.execution === "local")
+        assertNoSessionOptions(invocation.global, command2);
+      const setup = await this.#resolveForCommand(command2, invocation.global);
       const inputObject = invocation.global.input ? await this.#readInputObject(invocation.global.input) : void 0;
-      const parsed = parseCommandArgs(command, invocation.actionArgv, inputObject);
-      if (setup.resolved.output === "raw" && !command.supportsRawOutput) {
+      const parsed = parseCommandArgs(command2, invocation.actionArgv, inputObject);
+      if (setup.resolved.output === "raw" && !command2.supportsRawOutput) {
         throw new UsageError(
           "RAW_OUTPUT_UNSUPPORTED",
-          `${command.module} ${command.verb} does not support raw output`
+          `${command2.module} ${command2.verb} does not support raw output`
         );
       }
-      const session = command.requiresSession ? await this.#createSession(setup.resolved) : void 0;
+      const session = command2.requiresSession ? await this.#createSession(setup.resolved) : void 0;
       return await this.#executeAndEmit(
-        command,
+        command2,
         parsed.input,
         setup.resolved,
         setup.store,
@@ -13057,19 +14262,19 @@ class BuckyOSToolApplication {
   async #executeInteractiveLine(tokens, signal, frozen, store, session) {
     if (tokens.length < 2)
       throw new UsageError("COMMAND_REQUIRED", "enter <module> <verb>");
-    const command = this.registry.get(tokens[0], tokens[1]);
+    const command2 = this.registry.get(tokens[0], tokens[1]);
     const actionArgv = tokens.slice(2);
     if (actionArgv.includes("--help") || actionArgv.includes("-h")) {
-      await this.#stdio.stdout(`${commandHelp(this.registry, command)}
+      await this.#stdio.stdout(`${commandHelp(this.registry, command2)}
 `);
       return;
     }
-    const preliminary = parseCommandArgs(command, actionArgv, void 0, true, true);
+    const preliminary = parseCommandArgs(command2, actionArgv, void 0, true, true);
     if (preliminary.scoped.input === "-") {
       throw new UsageError("STDIN_UNAVAILABLE", "--input - is not available inside --cli");
     }
     const inputObject = preliminary.scoped.input ? await this.#readInputObject(preliminary.scoped.input) : void 0;
-    const parsed = parseCommandArgs(command, actionArgv, inputObject, true);
+    const parsed = parseCommandArgs(command2, actionArgv, inputObject, true);
     const config = {
       ...frozen,
       output: parsed.scoped.output ?? frozen.output,
@@ -13079,22 +14284,22 @@ class BuckyOSToolApplication {
       wait: parsed.scoped.wait ?? false,
       yes: parsed.scoped.yes ?? false
     };
-    if (config.output === "raw" && !command.supportsRawOutput) {
+    if (config.output === "raw" && !command2.supportsRawOutput) {
       throw new UsageError(
         "RAW_OUTPUT_UNSUPPORTED",
-        `${command.module} ${command.verb} does not support raw output`
+        `${command2.module} ${command2.verb} does not support raw output`
       );
     }
-    await this.#executeAndEmit(command, parsed.input, config, store, session, true, signal);
+    await this.#executeAndEmit(command2, parsed.input, config, store, session, true, signal);
   }
-  async #executeAndEmit(command, input, config, store, session, interactive, signal) {
+  async #executeAndEmit(command2, input, config, store, session, interactive, signal) {
     const traceId = config.traceId ?? crypto.randomUUID();
     const startedAt = Date.now();
     try {
-      if (command.requiresSession && !session) {
+      if (command2.requiresSession && !session) {
         throw new ToolError("AUTH_REQUIRED", "authenticated session is required", 3);
       }
-      if (command.requiresSession)
+      if (command2.requiresSession)
         await session.authentication.ensureValid();
       const principal = session?.authentication.current().principal ?? {
         id: "local",
@@ -13102,8 +14307,8 @@ class BuckyOSToolApplication {
         authentication: "mock"
       };
       const context = {
-        command: { module: command.module, verb: command.verb },
-        definition: command,
+        command: { module: command2.module, verb: command2.verb },
+        definition: command2,
         connection: session?.connection ?? {
           zone: config.zone ?? "local",
           endpoint: config.endpoint ?? "local://",
@@ -13129,9 +14334,9 @@ class BuckyOSToolApplication {
         configStore: store,
         session: session?.authentication
       };
-      const data = await command.handler(context, input);
+      const data = await command2.handler(context, input);
       try {
-        validateSchema(data, command.outputSchema, "output");
+        validateSchema(data, command2.outputSchema, "output");
       } catch (error) {
         throw new ToolError(
           "INVALID_HANDLER_OUTPUT",
@@ -13140,7 +14345,7 @@ class BuckyOSToolApplication {
         );
       }
       const envelope = successEnvelope(data, {
-        command: `${command.module}.${command.verb}`,
+        command: `${command2.module}.${command2.verb}`,
         trace_id: traceId,
         duration_ms: Date.now() - startedAt
       });
@@ -13151,7 +14356,7 @@ class BuckyOSToolApplication {
     } catch (error) {
       const normalized = normalizeError(error);
       const envelope = errorEnvelope(normalized, {
-        command: `${command.module}.${command.verb}`,
+        command: `${command2.module}.${command2.verb}`,
         trace_id: traceId,
         duration_ms: Date.now() - startedAt
       });
@@ -13163,13 +14368,13 @@ class BuckyOSToolApplication {
       return normalized.exitCode;
     }
   }
-  async #resolveForCommand(command, global) {
-    if (command.requiresSession || command.module === "config" && command.verb === "check") {
+  async #resolveForCommand(command2, global) {
+    if (command2.requiresSession || command2.module === "config" && command2.verb === "check") {
       const setup = await resolveConfig(global, this.#environment, {
         cwd: this.#cwd,
         homeDir: this.#homeDir
       });
-      if (command.requiresSession) {
+      if (command2.requiresSession) {
         setup.resolved = await applyImplicitDeviceIdentity(setup.resolved, this.#environment);
       }
       return setup;
@@ -13258,7 +14463,7 @@ function createRegistry(pikgDependencies, appDependencies, logDependencies, diag
   registry.register(createAiwsModule());
   return registry;
 }
-function assertNoSessionOptions(global, command) {
+function assertNoSessionOptions(global, command2) {
   for (const [name, value] of [
     ["profile", global.profile],
     ["zone", global.zone],
@@ -13270,7 +14475,7 @@ function assertNoSessionOptions(global, command) {
     if (value !== void 0) {
       throw new UsageError(
         "ARGUMENT_CONFLICT",
-        `--${name} cannot be combined with the local command ${command.module} ${command.verb}`
+        `--${name} cannot be combined with the local command ${command2.module} ${command2.verb}`
       );
     }
   }
@@ -13310,28 +14515,28 @@ function moduleHelp(registry, moduleName) {
     `${module.name}: ${module.summary}`,
     "",
     "Commands:",
-    ...module.commands.map((command) => `  ${command.verb.padEnd(18)} ${command.summary}`)
+    ...module.commands.map((command2) => `  ${command2.verb.padEnd(18)} ${command2.summary}`)
   ].join("\n");
 }
-function commandHelp(registry, command) {
+function commandHelp(registry, command2) {
   return [
-    command.summary,
+    command2.summary,
     "",
-    `Usage: ${registry.syntax(command)}`,
-    ...command.description ? ["", command.description] : [],
-    ...(command.positionals?.length ?? 0) > 0 ? [
+    `Usage: ${registry.syntax(command2)}`,
+    ...command2.description ? ["", command2.description] : [],
+    ...(command2.positionals?.length ?? 0) > 0 ? [
       "",
       "Arguments:",
-      ...command.positionals.map(
+      ...command2.positionals.map(
         (position) => `  ${position.name.padEnd(20)} ${position.description}`
       )
     ] : [],
-    ...(command.options?.length ?? 0) > 0 ? [
+    ...(command2.options?.length ?? 0) > 0 ? [
       "",
       "Options:",
-      ...command.options.map((option) => `  --${option.name.padEnd(18)} ${option.description}`)
+      ...command2.options.map((option) => `  --${option.name.padEnd(18)} ${option.description}`)
     ] : [],
-    ...(command.examples?.length ?? 0) > 0 ? ["", "Examples:", ...command.examples.map((example) => `  ${example}`)] : []
+    ...(command2.examples?.length ?? 0) > 0 ? ["", "Examples:", ...command2.examples.map((example) => `  ${example}`)] : []
   ].join("\n");
 }
 function defaultStdio() {
@@ -13610,14 +14815,14 @@ class NodeHost {
       throw translateNodeError(error, destination);
     }
   }
-  async run(command, args) {
-    this.assertCommand(command);
-    return await capture(command, args);
+  async run(command2, args) {
+    this.assertCommand(command2);
+    return await capture(command2, args);
   }
-  async runGzip(command, args, destination) {
-    this.assertCommand(command);
+  async runGzip(command2, args, destination) {
+    this.assertCommand(command2);
     await this.assertPath(destination, "write", false);
-    const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"], shell: false });
+    const child = spawn(command2, args, { stdio: ["ignore", "pipe", "pipe"], shell: false });
     const stderr = [];
     child.stderr.on("data", (chunk) => stderr.push(new Uint8Array(chunk)));
     try {
@@ -13706,9 +14911,9 @@ class NodeHost {
       close: () => reader.close()
     };
   }
-  assertCommand(command) {
-    if (!this.policy.subprocesses.includes(command)) {
-      throw new HostError("PermissionDenied", `subprocess is not allowed: ${command}`);
+  assertCommand(command2) {
+    if (!this.policy.subprocesses.includes(command2)) {
+      throw new HostError("PermissionDenied", `subprocess is not allowed: ${command2}`);
     }
   }
   async assertPath(candidate, operation2, resolveLinks = true) {
@@ -13793,9 +14998,9 @@ function fileInfo(value) {
     ino: value.ino ?? null
   };
 }
-async function capture(command, args) {
+async function capture(command2, args) {
   return await new Promise((resolve2, reject) => {
-    const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"], shell: false });
+    const child = spawn(command2, args, { stdio: ["ignore", "pipe", "pipe"], shell: false });
     const stdout = [];
     const stderr = [];
     child.stdout.on("data", (chunk) => stdout.push(new Uint8Array(chunk)));

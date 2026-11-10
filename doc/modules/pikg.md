@@ -48,7 +48,7 @@ npx buckyos pikg info ./dapp_dist/demo-0.1.0.pikg
 | `static-web` | `web` | `web` | 已构建目录或 `.tar.gz` |
 | `script` | `dapp` | `script` | 已构建目录或 `.tar.gz` |
 | `docker` | `dapp` | `amd64_docker_image` / `aarch64_docker_image` | 本地 Docker image name/tag/ID |
-| `agent-skills` | `agent_skills` | `agent_skills` | skill 内容目录或 `.tar.gz` |
+| `agent-skills` | `agent_skills` | `agent_skills` | skill 内容目录或 `.tar.gz`（布局见 §8）；目录不存在时写一份 `cmd_skills/<name>/SKILL.md` 骨架 |
 | `aiws-controls` | `aiws` | `aiws` | AIWS bundle 目录（`aiws-manifest.json` + `controls/<dir>/`）；不存在时写一个 declarative 控件骨架 |
 | `ext-tools` | `ext_tools` | `ext_tools_<os>_<arch>`，初始是本机平台 | 扩展包工程目录（`ext-manifest.json` + `payload/<platform>/{bin,smoke,store/<id>}`）；没有 `ext-manifest.json` 时写一个能打包的骨架 |
 
@@ -177,13 +177,42 @@ pack 不重新读取 `dapp_meta`、源目录或 Docker tag。它核对快照所�
 
 ## 8. Agent skill 包
 
-独立 skill 包使用 `categories:["agent_skills"]`，必须有 App name，且 `pkg_list` 只能含 `agent_skills`。source 按 `cmd_skills/<name>.md`、`goal_skills/<name>.md`、`tools/<cmd_skill>/...` 组织。手册 front matter 为 `name/description/requires`。
+独立 skill 包使用 `categories:["agent_skills"]`，必须有 App name，且 `pkg_list` 只能含 `agent_skills`。
+
+source 的布局（平铺的 `<dir>/<name>.md` 不是 skill，包里出现即报错）：
+
+| 路径 | 内容 |
+| --- | --- |
+| `cmd_skills/<name>/SKILL.md` | work skill（kind `work`；`scope` 含 `ui` 的也在这里） |
+| `plan_skills/<name>/SKILL.md` | plan skill：如何拆解、排序、验收，不写具体命令 |
+| `goal_skills/<name>/SKILL.md` | goal skill |
+| `<dir>/<name>/references/**` | 手册按需读的材料，可选 |
+| `tools/<work skill>/bin/*` | work skill 自带的命令 |
+| `tools/<work skill>/install.toml` | 可选：`[check] commands = [...]`、`[install.<os>] script = "相对路径" writes = [...]`、`[uninstall.<os>] script = …` |
+
+`SKILL.md` 的 front matter：`name`（要与目录名相同）、`description`、`requires`、`commands`（逗号分隔的命令名；标准层命令和包自带的不写）、`scope`（`work` 缺省 / `ui` / `ui, work`）、`baseline`（`standard` / `extended`）、`platforms`（`linux, macos, windows`）。`scope` 与 `commands` 只有 work skill 能写。
+
+`pikg doctor` 对 `agent_skills` 子包的 source（目录或 `.tar.gz`）多做一项 `skill_lint`，规则与 Agent 安装时的检查相同（实现在 `cli/modules/skill_lint.ts`，对应 buckyos `src/frame/lib_opendan/src/skills.rs`）。装不上的问题让该项为 `error`、`healthy` 为 `false`：布局不对、缺 `SKILL.md`、`tools/` 没有对应的 work skill、front matter 的固定词或 `name` 不符、plan / goal skill 声明了 `scope` 或 `commands`、自带标准层命令、`install.toml` 无效。其余列在 `warnings`（`code` / `level` / `where` / `note`），不影响 `healthy`：`no_description`、`undeclared_commands`、`unused_commands`、`ui_manual_large`（正文超过 16 KiB）、`plan_manual_large`（超过 3 KiB）、`plan_depends_on_commands`，以及安装时会给 owner 看的风险项（`ui_scope`、`binary_tool`、`network_script`、`network_download`、`package_manager`、`privilege`、`secrets`、`system_install`、`volatile_writes`）。
 
 ```bash
 npx buckyos skill install ./dapp_dist/hello-skills-0.1.0.pikg --agent <agent_id>
+npx buckyos skill install ./skills --agent <agent_id>          # 目录：作者试用，包名取目录名
 ```
 
-skill CLI 用 TypeScript reader 严格验证，再将认可的普通文件/目录及可执行位交给 Agent `skills.install`；拒绝逃逸路径和链接，其他目录文件在 `ignored_files` 中列出。`skill list/remove` 调用同一 Agent 接口；remove 非交互需要 `--yes`。普通 Rust App Installer 不安装此类型。
+`buckyos skill`（都带 `--agent <id>`，走 Agent 的 kRPC；安装、删除、启用 / 禁用、UI 集合只有 owner 能做）：
+
+| 命令 | 作用 |
+| --- | --- |
+| `list [--kind work\|plan\|goal] [--scope ui\|work] [--all] [--stats]` | 缺省不列未启用的；`--all` 连同草稿一起列；`--stats` 带冻结次数和 `usage_none` |
+| `status [--runtime <id>]` | 每个 work skill 在该 runtime 上是否可用、命令是否齐 |
+| `install <source> [--from pikg\|dir\|url\|did] [--runtime <id>] [--replace]`、`install --draft <slug>` | 先取安装计划与风险清单，确认后安装 |
+| `remove <name> [--kind]`、`disable <name> [--kind] [--reason]`、`enable <name> [--kind]` | 删除（仅 installed / imported）、禁用、启用 |
+| `ui-list`、`ui-add <name>`、`ui-remove <name>` | 新对话默认带的手册；结果里有 `total_bytes` |
+| `import (<file> \| <url> \| -) [--name <slug>] [--scope work\|ui\|plan] [--runtime <id>]` | 把一段文本交给 Agent 写成草稿，不安装 |
+| `drafts`、`draft-show <slug> [--file <path>]`、`draft-discard <slug>` | 草稿的列表、查看、丢弃 |
+| `install-cmd <name> --runtime <id>`、`check <name> [--runtime <id>]` | 把 skill 的命令装到另一个 runtime、重新核验 |
+
+`skill install` 的来源是本地 `.pikg`、HTTP(S) URL（下载到本机后同样离线校验）、布局同上的目录，或 `--draft <slug>`（Agent 自己读草稿）。Catalog DID 目前拒绝（`SKILL_SOURCE_UNSUPPORTED`）：Catalog 还不能把 skill PIKG 交给 CLI。PIKG 由 TypeScript reader 严格验证，目录在发送前跑一遍 `skill_lint`；认可的普通文件及可执行位交给 Agent，其他文件在 `ignored_files` 中列出。流程是 `skills.install_plan`（不落盘）→ 展示计划和风险 → 确认 → `skills.install`（带 `plan_digest`）：计划里有 `blocked` 时以 `SKILL_INSTALL_BLOCKED` 失败；`--yes` 接受任何风险等级；交互终端问 `[y/N]`；非交互且没有 `--yes` 以 `CONFIRMATION_REQUIRED` 退出，错误的 `details.plan` 带着计划。`remove`、`draft-discard` 同样在非交互时要 `--yes`。普通 Rust App Installer 不安装此类型。
 
 包样例与 Session 冻结语义见 [skill 样例](https://github.com/buckyos/buckyos/blob/main/test/skills_pikg_sample/README.md) 和 [OpenDAN 开发指南](https://github.com/buckyos/buckyos/blob/main/doc/sdk/OpenDAN_Agent_Dev_Guide.md)。
 

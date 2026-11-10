@@ -962,3 +962,60 @@ Deno.test('ext-tools packages: a standard command cannot be provided, and a Wind
   assertEquals(extToolsPayloadErrors(windows, 'windows-x86_64', tree(['ext-manifest.json', 'bin/tool.cmd', 'smoke/tool.ps1'])), [])
   assert(extToolsPayloadErrors(windows, 'windows-x86_64', tree(['ext-manifest.json', 'bin/tool.cmd', 'smoke/tool.sh'])).some((error: string) => error.includes('smoke/tool.ps1')))
 })
+
+Deno.test('agent-skills packages: init writes a skill in the directory layout, doctor lints the source', async () => {
+  const root = await Deno.makeTempDir()
+  try {
+    const project = join(root, 'hello-skills')
+    await Deno.mkdir(project)
+    const io = new CaptureStdio()
+    const app = new BuckyOSToolApplication({
+      cwd: project,
+      homeDir: join(root, 'home'),
+      environment: { HOME: join(root, 'home') },
+      stdio: io,
+      pikg: { now: () => 1_800_000_000 },
+    })
+    const init = ['--non-interactive', 'pikg', 'init', '.', '--owner', 'did:bns:root', '--kind', 'agent-skills', '--source', './skills']
+    assertEquals(await app.run(init), 0, io.stdoutText)
+    assertEquals(io.takeEnvelope().data.subpackage.source.skeleton, true)
+    const skills = join(project, 'skills')
+    assert((await Deno.readTextFile(join(skills, 'cmd_skills', 'hello_skills', 'SKILL.md'))).startsWith('---\nname: hello_skills\n'))
+    const lint = async () => {
+      assertEquals(await app.run(['pikg', 'doctor']), 0, io.stdoutText)
+      const data = io.takeEnvelope().data
+      const check = data.checks.find((item: { name: string }) => item.name === 'skill_lint')
+      return { healthy: data.healthy as boolean, check }
+    }
+    let result = await lint()
+    assertEquals([result.healthy, result.check.status, result.check.warnings], [true, 'ok', []], JSON.stringify(result.check))
+    assertEquals(result.check.skills, [{ kind: 'work', name: 'hello_skills', scope: 'work', size: result.check.skills[0].size, commands: [] }])
+
+    // Warnings do not fail the doctor.
+    await Deno.mkdir(join(skills, 'plan_skills', 'plan_hello'), { recursive: true })
+    await Deno.writeTextFile(join(skills, 'plan_skills', 'plan_hello', 'SKILL.md'), '---\ndescription: p\n---\nRun `agent-session create-worksession`.\n')
+    await Deno.writeTextFile(join(skills, 'cmd_skills', 'hello_skills', 'SKILL.md'), '---\ndescription: d\nscope: ui\n---\n```sh\nffmpeg -i a b\n```\n')
+    await Deno.writeTextFile(join(skills, 'README.md'), 'not a skill file')
+    result = await lint()
+    assertEquals([result.healthy, result.check.status], [true, 'ok'])
+    assertEquals(result.check.warnings.map((finding: { code: string }) => finding.code), ['undeclared_commands', 'plan_depends_on_commands', 'ui_scope'])
+    assertEquals(result.check.ignored_files, ['README.md'])
+    assertEquals(await app.run(['pikg', 'build']), 0, io.stdoutText)
+    io.takeEnvelope()
+
+    // What the Agent would refuse does.
+    await Deno.writeTextFile(join(skills, 'goal_skills.md'), 'ignored: not in a skill directory')
+    await Deno.mkdir(join(skills, 'goal_skills'))
+    await Deno.writeTextFile(join(skills, 'goal_skills', 'flat.md'), 'flat')
+    result = await lint()
+    assertEquals([result.healthy, result.check.status], [false, 'error'])
+    assert(result.check.detail.includes('move it to goal_skills/flat/SKILL.md'), result.check.detail)
+    await Deno.remove(join(skills, 'goal_skills'), { recursive: true })
+    await Deno.writeTextFile(join(skills, 'plan_skills', 'plan_hello', 'SKILL.md'), '---\ncommands: ffmpeg\n---\nx')
+    result = await lint()
+    assertEquals(result.check.status, 'error')
+    assert(result.check.detail.includes('a plan skill declares no `commands`'), result.check.detail)
+  } finally {
+    await Deno.remove(root, { recursive: true })
+  }
+})

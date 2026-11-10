@@ -2,7 +2,8 @@ import type { CommandContext } from '../core/context.ts'
 import type { CommandModule } from '../core/command.ts'
 import { EXIT_PERMISSION, EXIT_UNAVAILABLE, ToolError, UsageError } from '../core/errors.ts'
 import { AIWS_MANIFEST_FILE, AIWS_MANIFEST_VERSION, aiwsContentDigest, controlSkeleton } from 'buckyos/node'
-import { createDeterministicTarGz, digestFile, sha256Bytes } from './pikg_archive.ts'
+import { createDeterministicTarGz, digestFile, readTarGz, sha256Bytes } from './pikg_archive.ts'
+import { lintSkillPackage, readSkillDirectory, SKILL_DIRS, type SkillPackageFile } from './skill_lint.ts'
 import {
   APPDOC_ENTRY,
   appDocObjectId,
@@ -439,6 +440,10 @@ async function doctorCommand(
         status: missingSources.length === 0 ? 'ok' : 'missing',
         missing: missingSources,
       })
+      const skills = pikg.sub_pkgs[PATH_KINDS['agent-skills'].key]
+      if (skills?.source.type === 'path' && !missingSources.includes(resolve(metaDir, skills.source.path))) {
+        checks.push(await skillLintCheck(app.name, resolve(metaDir, skills.source.path)))
+      }
       if (app.categories[0] === PATH_KINDS['ext-tools'].category) {
         const catalog = optionalInputString(input, 'catalog')
         checks.push(...await extToolsChecks(app, pikg, metaDir, catalog ? resolveFromCwd(ctx, catalog) : undefined))
@@ -555,6 +560,9 @@ async function initCommand(
       if (kind === 'aiws-controls') {
         await writeAiwsSkeleton(absoluteSource, owner, name, input.composite === true)
         sourceSummary.skeleton = true
+      } else if (kind === 'agent-skills') {
+        await writeSkillsSkeleton(absoluteSource, name)
+        sourceSummary.skeleton = true
       } else {
         await ctx.io.stderr(`warning: source does not exist yet: ${sourceSummary.path}\n`)
       }
@@ -617,6 +625,65 @@ async function initCommand(
     pikg_file: pikgMeta.pikg_file,
     next_command: `buckyos pikg build ${metaDir}`,
   }
+}
+
+const MAX_SKILL_SOURCE_BYTES = 64 * 1024 * 1024
+
+/** `pikg doctor` of an `agent_skills` source (a directory or a `.tar.gz`): the checks the Agent makes when the package is
+ * installed. What makes it uninstallable fails the check; the rest are warnings. */
+async function skillLintCheck(packageName: string, source: string): Promise<Record<string, unknown>> {
+  const check = { name: 'skill_lint', path: source }
+  let files: Map<string, SkillPackageFile>
+  let ignored: string[] = []
+  try {
+    if ((await getHost().stat(source)).isDirectory) {
+      ;({ files, ignored } = await readSkillDirectory(source, MAX_SKILL_SOURCE_BYTES))
+    } else {
+      files = new Map()
+      for (const entry of await readTarGz(await getHost().readFile(source), MAX_SKILL_SOURCE_BYTES)) {
+        if (SKILL_DIRS.includes(entry.path.split('/')[0])) files.set(entry.path, { bytes: entry.bytes, executable: entry.executable })
+        else ignored.push(entry.path)
+      }
+    }
+  } catch (error) {
+    return { ...check, status: 'error', detail: error instanceof Error ? error.message : String(error) }
+  }
+  const { skills, findings } = lintSkillPackage(packageName, files)
+  const errors = findings.filter((finding) => finding.level === 'error')
+  return {
+    ...check,
+    status: errors.length ? 'error' : 'ok',
+    ...(errors.length ? { detail: errors.map((finding) => finding.note).join('; '), errors } : {}),
+    skills: skills.map(({ kind, name, scope, size, commands }) => ({ kind, name, scope, size, commands })),
+    warnings: findings.filter((finding) => finding.level !== 'error'),
+    ...(ignored.length ? { ignored_files: ignored } : {}),
+  }
+}
+
+/** A skill package skeleton: one work skill in the directory layout. */
+async function writeSkillsSkeleton(dir: string, name: string): Promise<void> {
+  const skill = name.replaceAll('-', '_')
+  const manual = join(dir, 'cmd_skills', skill)
+  await getHost().mkdir(manual, { recursive: true })
+  await getHost().writeTextFile(
+    join(manual, 'SKILL.md'),
+    [
+      '---',
+      `name: ${skill}`,
+      'description: One line: what this manual is for, so whoever picks manuals can choose it',
+      'requires: What it needs beyond the commands below, in words',
+      'scope: work',
+      '---',
+      `# ${skill}`,
+      '',
+      'What to do, step by step. Commands this manual runs that are not part of every runtime go into a front matter line',
+      '`commands: name, name`; long material goes into `references/` next to this file and is read on demand.',
+      '',
+      'A package holds `cmd_skills/<name>/SKILL.md` (work and ui skills), `plan_skills/<name>/SKILL.md`,',
+      '`goal_skills/<name>/SKILL.md`, and `tools/<work skill>/bin/` for the commands a work skill brings.',
+      '',
+    ].join('\n'),
+  )
 }
 
 /** A control package skeleton: one declarative control (or a composite one) under controls/<name>/ and its manifest
