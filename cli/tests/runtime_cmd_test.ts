@@ -198,28 +198,21 @@ Deno.test('runtime assign: enabled only, and a device in use names who has it', 
   await assertRejects(() => run('runtime', ['assign', 'host', '--agent', '../control-panel'], [], () => ({})), 'INVALID_AGENT_ID')
 })
 
-Deno.test('runtime unassign: shows the impact, always asks, then removes with confirm', async () => {
-  const respond = (call: RecordedCall) => call.method === 'runtimes.impact' ? IDLE : SETTINGS
+Deno.test('runtime unassign: refused while sessions run there, otherwise removed without asking', async () => {
   let calls: RecordedCall[] = []
-  const required = await failure(() => run('runtime', ['unassign', 'exec-laptop', '--agent', JARVIS], calls, respond))
-  assertEquals([required.code, required.exitCode], ['CONFIRMATION_REQUIRED', 4])
-  assertEquals(required.details, { impact: IDLE }, 'asked even when nothing is in progress')
-  assertEquals(calls.map((call) => call.method), ['runtimes.impact'])
-
-  calls = []
-  const stderr: string[] = []
-  await assertRejects(
-    () => run('runtime', ['unassign', 'exec-laptop', '--agent', JARVIS], calls, (call) => call.method === 'runtimes.impact' ? IMPACT : SETTINGS, { answer: 'n', stderr }),
-    'CONFIRMATION_DECLINED',
+  const busy = await failure(() =>
+    run('runtime', ['unassign', 'exec-laptop', '--agent', JARVIS], calls, (call) => call.method === 'runtimes.impact' ? IMPACT : SETTINGS, { confirmed: true })
   )
-  assertEquals(stderr.join(''), impactText(JARVIS, IMPACT))
-  assertEquals(calls.map((call) => call.method), ['runtimes.impact'])
+  assertEquals([busy.code, busy.exitCode], ['SESSIONS_IN_PROGRESS', 6])
+  assert(busy.message.includes('session work-1'), busy.message)
+  assertEquals(busy.details, { impact: IMPACT })
+  assertEquals(calls.map((call) => call.method), ['runtimes.impact'], '--yes does not override it')
 
   calls = []
-  const removed = await run('runtime', ['unassign', 'exec-laptop', '--agent', JARVIS], calls, respond, { confirmed: true })
+  const removed = await run('runtime', ['unassign', 'exec-laptop', '--agent', JARVIS], calls, (call) => call.method === 'runtimes.impact' ? IDLE : SETTINGS)
   assertEquals(calls, [
     { service: JARVIS, method: 'runtimes.impact', params: { runtime_id: 'exec-laptop' } },
-    { service: JARVIS, method: 'runtimes.remove', params: { runtime_id: 'exec-laptop', confirm: true } },
+    { service: JARVIS, method: 'runtimes.remove', params: { runtime_id: 'exec-laptop' } },
   ])
   assertEquals([removed.removed, removed.via, removed.settings], [true, 'agent', SETTINGS])
 })
@@ -246,20 +239,27 @@ Deno.test('runtime unassign: an unreachable Agent service is said, and only --ye
   )
 })
 
-Deno.test('runtime revoke: devices only, shows the Agents and the impact of the one using it', async () => {
+Deno.test('runtime revoke: devices only, refused while the Agent using it runs sessions there, otherwise asks', async () => {
+  let impact: Record<string, unknown> = IMPACT
   const respond = (call: RecordedCall) => {
     if (call.method === 'agent.runtime_catalog') return CATALOG
-    if (call.method === 'runtimes.impact') return IMPACT
+    if (call.method === 'runtimes.impact') return impact
     return { unassigned: [HELPER, JARVIS] }
   }
   await assertRejects(() => run('runtime', ['revoke', 'host'], [], respond, { confirmed: true }), 'INVALID_ARGUMENT')
   await assertRejects(() => run('runtime', ['revoke', 'node-b'], [], respond, { confirmed: true }), 'INVALID_ARGUMENT')
 
   let calls: RecordedCall[] = []
+  const busy = await failure(() => run('runtime', ['revoke', 'exec-laptop'], calls, respond, { confirmed: true }))
+  assertEquals(busy.code, 'SESSIONS_IN_PROGRESS')
+  assertEquals((busy.details.impacts as unknown[]).length, 1)
+  assert(busy.message.includes('session work-1 [work/task, running] Cut the video'), busy.message)
+  assertEquals(calls.map((call) => [call.service, call.method]), [['control-panel', 'agent.runtime_catalog'], [JARVIS, 'runtimes.impact']])
+
+  impact = IDLE
+  calls = []
   const required = await failure(() => run('runtime', ['revoke', 'exec-laptop'], calls, respond))
   assertEquals(required.code, 'CONFIRMATION_REQUIRED')
-  assertEquals((required.details.impacts as unknown[]).length, 1)
-  assertEquals(calls.map((call) => [call.service, call.method]), [['control-panel', 'agent.runtime_catalog'], [JARVIS, 'runtimes.impact']])
 
   calls = []
   const stderr: string[] = []
@@ -267,8 +267,6 @@ Deno.test('runtime revoke: devices only, shows the Agents and the impact of the 
   const shown = stderr.join('')
   assert(shown.includes('Device exec-laptop (Laptop) is assigned to 2 Agent(s)'), shown)
   assert(shown.includes(`    ${HELPER}`) && shown.includes(`  * ${JARVIS}`), shown)
-  assert(shown.includes('session work-1 [work/task, running] Cut the video'), shown)
-  assert(shown.includes('todo plan-1/t2 [pending] Render') && shown.includes('workspace ws-1 video /work/video [active]'), shown)
   assertEquals(calls.at(-1), { service: 'control-panel', method: 'executor.device.revoke', params: { executor_id: 'laptop' } })
   assertEquals([revoked.runtime_id, revoked.executor_id, revoked.unassigned], ['exec-laptop', 'laptop', [HELPER, JARVIS]])
 
@@ -335,42 +333,30 @@ Deno.test('agent runtime list: current ones, then history; the control panel whe
   await assertRejects(() => run('agent', ['runtime', 'list', 'host', '--agent', JARVIS], [], respond), 'ARGUMENT_CONFLICT')
 })
 
-Deno.test('agent runtime enable, disable and default: settings_set, with the impact before a disable that interrupts', async () => {
-  let impact: Record<string, unknown> = IDLE
+Deno.test('agent runtime enable, disable and default: settings_set; a disable with sessions in progress is refused', async () => {
+  let busy = false
   const respond = (call: RecordedCall) => {
-    if (call.method === 'runtimes.impact') return impact
-    if (call.params.enabled === false && impact.blocking === true && call.params.confirm !== true) {
-      throw new Error('confirm_required: runtime `exec-laptop` has 1 session(s) in progress')
+    if (call.params.enabled === false && busy) {
+      throw new Error('RPC call error: Failed due to reason: {"at_ms":1,"kind":"invalid_argument","message":"invalid argument: sessions_in_progress: runtime `exec-laptop` has 1 session(s) in progress (work-1); stop them or let them finish, then switch it off"}')
     }
     return SETTINGS
   }
   let calls: RecordedCall[] = []
   await run('agent', ['runtime', 'enable', 'host', '--agent', JARVIS], calls, respond)
   await run('agent', ['runtime', 'default', 'private', '--agent', JARVIS], calls, respond)
-  await run('agent', ['runtime', 'disable', 'exec-laptop', '--agent', JARVIS], calls, respond)
+  const disabled = await run('agent', ['runtime', 'disable', 'exec-laptop', '--agent', JARVIS], calls, respond)
   assertEquals(calls, [
     { service: JARVIS, method: 'runtimes.settings_set', params: { runtime_id: 'host', enabled: true } },
     { service: JARVIS, method: 'runtimes.settings_set', params: { runtime_id: 'private', default: true } },
-    { service: JARVIS, method: 'runtimes.impact', params: { runtime_id: 'exec-laptop' } },
     { service: JARVIS, method: 'runtimes.settings_set', params: { runtime_id: 'exec-laptop', enabled: false } },
   ])
+  assertEquals(disabled.enabled, false)
 
-  impact = IMPACT
+  busy = true
   calls = []
-  const required = await failure(() => run('agent', ['runtime', 'disable', 'exec-laptop', '--agent', JARVIS], calls, respond))
-  assertEquals(required.code, 'CONFIRMATION_REQUIRED')
-  assertEquals(required.details, { impact: IMPACT })
-  assertEquals(calls.map((call) => call.method), ['runtimes.impact'])
-
-  calls = []
-  const stderr: string[] = []
-  await run('agent', ['runtime', 'disable', 'exec-laptop', '--agent', JARVIS], calls, respond, { answer: 'y', stderr })
-  assertEquals(stderr.join(''), impactText(JARVIS, IMPACT))
-  assertEquals(calls.at(-1)?.params, { runtime_id: 'exec-laptop', enabled: false, confirm: true })
-  calls = []
-  const disabled = await run('agent', ['runtime', 'disable', 'exec-laptop', '--agent', JARVIS], calls, respond, { confirmed: true })
-  assertEquals(calls.at(-1)?.params, { runtime_id: 'exec-laptop', enabled: false, confirm: true })
-  assertEquals([disabled.enabled, disabled.impact], [false, IMPACT])
+  const refused = await failure(() => run('agent', ['runtime', 'disable', 'exec-laptop', '--agent', JARVIS], calls, respond, { confirmed: true }))
+  assertEquals([refused.code, refused.exitCode], ['SESSIONS_IN_PROGRESS', 6])
+  assert(refused.message.includes('work-1') && !refused.message.includes('"}'), refused.message)
 
   const inUse = await failure(() =>
     run('agent', ['runtime', 'enable', 'exec-laptop', '--agent', HELPER], [], () => {

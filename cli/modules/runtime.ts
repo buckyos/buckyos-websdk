@@ -121,7 +121,7 @@ export function impactText(agentId: string, impact: Json): string {
   for (const workspace of workspaces) {
     lines.push(`  workspace ${workspace.workspace_id} ${workspace.name ?? ''} ${workspace.directory ?? ''} [${workspace.lifecycle ?? ''}]`)
   }
-  if (sessions.length + todos.length + workspaces.length > 0) lines.push('  None of them is moved to another runtime.')
+  if (sessions.length > 0) lines.push('  It cannot be switched off or taken away while these sessions run.')
   return `${lines.join('\n')}\n`
 }
 
@@ -139,8 +139,20 @@ export function deviceOf(given: string, runtimes: Json[]): { runtime_id: string;
   return { runtime_id: runtime ? String(runtime.runtime_id) : `${DEVICE_PREFIX}${executorId}`, executor_id: executorId, ...(runtime ? { runtime } : {}) }
 }
 
-function serviceReason(error: unknown, prefix: string): string | undefined {
+function reasonText(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error)
+  const brace = message.indexOf('{')
+  if (brace < 0) return message
+  try {
+    const parsed = JSON.parse(message.slice(brace)) as { message?: unknown }
+    return typeof parsed.message === 'string' ? parsed.message : message
+  } catch {
+    return message
+  }
+}
+
+function serviceReason(error: unknown, prefix: string): string | undefined {
+  const message = reasonText(error)
   const at = message.indexOf(`${prefix}:`)
   return at < 0 ? undefined : message.slice(at + prefix.length + 1).trim()
 }
@@ -163,6 +175,10 @@ async function confirm(ctx: CommandContext, verb: string, shown: string, questio
   await ctx.io.stderr(shown)
   const answer = (await ctx.io.prompt(`${question} [y/N] `))?.trim().toLowerCase()
   if (answer !== 'y' && answer !== 'yes') throw new ToolError('CONFIRMATION_DECLINED', `${verb} was declined`, EXIT_PERMISSION)
+}
+
+function inProgress(verb: string, shown: string, details: Json): ToolError {
+  return new ToolError('SESSIONS_IN_PROGRESS', `${verb}: sessions still run on it; stop them or let them finish first\n${shown}`, EXIT_OPERATION, false, details)
 }
 
 async function controlPanel(ctx: CommandContext, method: string, params: Json): Promise<Json> {
@@ -248,20 +264,20 @@ export function createRuntimeModule(): CommandModule {
         verb: 'unassign',
         summary: 'Take a runtime away from an Agent',
         description:
-          'Shows what the Agent has on the runtime (sessions in progress, Todos waiting, workspaces; none is moved) and asks; --yes skips the question. The Agent keeps the record as history; the runtime stays in your directory. When the service of the Agent cannot be reached the impact is unknown and only --yes removes the assignment, through the control panel.',
+          'Refused while sessions of the Agent run on the runtime (SESSIONS_IN_PROGRESS): stop them or let them finish first. The Agent keeps the record as history; the runtime stays in your directory. When the service of the Agent cannot be reached what runs there is unknown and only --yes removes the assignment, through the control panel.',
         positionals: [{ name: 'runtime_id', description: 'Runtime id' }],
         options: [AGENT_OPTION],
         level: 'destructive',
         properties: { runtime_id: ID, agent_id: ID },
         required: ['runtime_id', 'agent_id'],
-        examples: ['buckyos runtime unassign host --agent jarvis.example.zone', 'buckyos --yes runtime unassign exec-laptop --agent jarvis.example.zone'],
+        examples: ['buckyos runtime unassign host --agent jarvis.example.zone'],
         handler: async (ctx, input) => await unassign(ctx, input),
       }),
       command({
         verb: 'revoke',
         summary: 'Revoke a device: it stops serving and is taken away from its Agents',
         description:
-          'Devices only (exec-<executor_id>, or the executor id). Shows the Agents the device is assigned to and what the Agent using it has in progress there, and asks; --yes skips the question.',
+          'Devices only (exec-<executor_id>, or the executor id). Refused while sessions of the Agent using it run there (SESSIONS_IN_PROGRESS); otherwise shows the Agents the device is assigned to and asks; --yes skips the question.',
         positionals: [{ name: 'runtime_id', description: 'Device runtime id (exec-<executor_id>) or executor id' }],
         level: 'destructive',
         properties: { runtime_id: ID },
@@ -279,7 +295,7 @@ export function agentRuntimeCommand(): CommandDefinition {
     verb: 'runtime',
     summary: 'The runtimes of one Agent: list them, switch one on or off, choose the default',
     description:
-      'list: the runtimes the Agent has now (its private one first), then the retired ones with their usage; from the control panel when the service of the Agent cannot be reached. enable / disable <runtime_id>: whether the Agent uses a runtime it was assigned; disable shows what is in progress there and asks unless --yes. default <runtime_id|private>: where new work of the Agent runs. Runtimes are assigned with `buckyos runtime assign`.',
+      'list: the runtimes the Agent has now (its private one first), then the retired ones with their usage; from the control panel when the service of the Agent cannot be reached. enable / disable <runtime_id>: whether the Agent uses a runtime it was assigned; disable is refused while sessions run on it (SESSIONS_IN_PROGRESS). default <runtime_id|private>: the owner default runtime, the machine \"my computer\" means to the Agent (work it starts on its own runs on its private runtime). Runtimes are assigned with `buckyos runtime assign`.',
     positionals: [
       { name: 'action', description: AGENT_RUNTIME_ACTIONS.join(' | ') },
       { name: 'runtime_id', description: 'Runtime id (enable, disable, default); `private` is the own runtime of the Agent', required: false },
@@ -299,7 +315,7 @@ export function agentRuntimeCommand(): CommandDefinition {
     examples: [
       'buckyos agent runtime list --agent jarvis.example.zone',
       'buckyos agent runtime enable host --agent jarvis.example.zone',
-      'buckyos --yes agent runtime disable exec-laptop --agent jarvis.example.zone',
+      'buckyos agent runtime disable exec-laptop --agent jarvis.example.zone',
       'buckyos agent runtime default private --agent jarvis.example.zone',
     ],
     handler: async (ctx, input) => {
@@ -319,16 +335,8 @@ export function agentRuntimeCommand(): CommandDefinition {
         const settings = await settingsSet(ctx, agentId, { runtime_id: runtimeId, enabled: true })
         return { agent_id: agentId, runtime_id: runtimeId, enabled: true, settings }
       }
-      const impact = await impactOf(ctx, agentId, runtimeId)
-      if (impact.blocking === true) {
-        await confirm(ctx, 'agent runtime disable', impactText(agentId, impact), `Switch ${runtimeId} off for ${agentId} anyway?`, { impact })
-      }
-      const settings = await settingsSet(ctx, agentId, {
-        runtime_id: runtimeId,
-        enabled: false,
-        ...(impact.blocking === true ? { confirm: true } : {}),
-      })
-      return { agent_id: agentId, runtime_id: runtimeId, enabled: false, impact, settings }
+      const settings = await settingsSet(ctx, agentId, { runtime_id: runtimeId, enabled: false })
+      return { agent_id: agentId, runtime_id: runtimeId, enabled: false, settings }
     },
   }
 }
@@ -342,9 +350,9 @@ async function settingsSet(ctx: CommandContext, agentId: string, params: Json): 
 }
 
 function runtimeError(error: unknown, agentId: string, runtimeId: string): ToolError | undefined {
-  const needed = serviceReason(error, 'confirm_required')
-  if (needed !== undefined) {
-    return new ToolError('CONFIRMATION_REQUIRED', `${needed} (buckyos agent runtime list --agent ${agentId}; --yes confirms)`, EXIT_PERMISSION)
+  const busy = serviceReason(error, 'sessions_in_progress')
+  if (busy !== undefined) {
+    return new ToolError('SESSIONS_IN_PROGRESS', `${busy} (buckyos agent runtime list --agent ${agentId})`, EXIT_OPERATION)
   }
   const inUse = serviceReason(error, 'runtime_in_use')
   if (inUse !== undefined) {
@@ -445,10 +453,10 @@ async function unassign(ctx: CommandContext, input: Json): Promise<Json> {
     await controlPanel(ctx, 'agent.update', { agent_id: agentId, runtimes: { [runtimeId]: null } })
     return { agent_id: agentId, runtime_id: runtimeId, removed: true, via: CONTROL_PANEL, impact: null, warning: why }
   }
-  await confirm(ctx, 'runtime unassign', impactText(agentId, impact), `Take ${runtimeId} away from ${agentId}?`, { impact })
+  if (impact.blocking === true) throw inProgress('runtime unassign', impactText(agentId, impact), { impact })
   let settings: Json
   try {
-    settings = expectObject(await callService(ctx, agentId, 'runtimes.remove', { runtime_id: runtimeId, confirm: true }), 'runtimes.remove')
+    settings = expectObject(await callService(ctx, agentId, 'runtimes.remove', { runtime_id: runtimeId }), 'runtimes.remove')
   } catch (error) {
     throw runtimeError(error, agentId, runtimeId) ?? error
   }
@@ -476,6 +484,9 @@ async function revoke(ctx: CommandContext, input: Json): Promise<Json> {
       impacts.push({ agent_id: agentId, impact: null, error: message(error) })
       lines.push(`  what ${agentId} has in progress on it is unknown: ${message(error)}`)
     }
+  }
+  if (impacts.some((item) => (item.impact as Json | null)?.blocking === true)) {
+    throw inProgress('runtime revoke', `${lines.join('\n')}\n`, { assigned_to: assigned, impacts })
   }
   await confirm(ctx, 'runtime revoke', `${lines.join('\n')}\n`, `Revoke ${device.runtime_id} and take it away from its Agents?`, {
     assigned_to: assigned,
