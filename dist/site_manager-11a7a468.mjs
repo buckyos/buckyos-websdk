@@ -1536,9 +1536,11 @@ class LLMContext {
       abort.signal.addEventListener("abort", onAbort);
     let deadlineHit = new Promise(() => {
     });
+    let deadlineFired = false;
     if (deadline !== void 0) {
       deadlineHit = new Promise((resolve) => {
         timers.push(setTimeout(() => {
+          deadlineFired = true;
           controller.abort();
           resolve();
         }, Math.max(0, deadline - nowMs())));
@@ -1547,7 +1549,7 @@ class LLMContext {
     const cause = () => {
       if (abort.isAborted())
         return "interrupted";
-      if (deadline !== void 0 && nowMs() >= deadline)
+      if (deadline !== void 0 && (deadlineFired || nowMs() >= deadline))
         return "deadline";
       if (abort.isFinishing())
         return "finishing";
@@ -6405,4 +6407,4 @@ export {
   assemblePrompt as y,
   RUNTIME_PROTOCOL_VERSION as z
 };
-//# sourceMappingURL=site_manager-1e6b759f.mjs.map
+//# sourceMappingURL=site_manager-11a7a468.mjs.map

@@ -11,15 +11,18 @@ import type { Config } from 'jest';
 const config: Config = {
     preset: 'ts-jest',
     testEnvironment: 'node',
+    // tests/deno/ 是 `deno test` 的用例（test:xllm:deno），jest 不能跑。排除写在
+    // testMatch 里而不是 testPathIgnorePatterns：命令行 --testPathIgnorePatterns
+    // 会整个替换配置里的忽略列表（发布 workflow 就这么用），那样 deno 用例会被捡回来。
     testMatch: [
         '<rootDir>/tests/**/*.test.ts',
-        '<rootDir>/tests/**/*_test.ts'
+        '<rootDir>/tests/**/*_test.ts',
+        '!**/tests/deno/**'
     ],
     testPathIgnorePatterns: [
         '/node_modules/',
         '/tests/browser/real-browser/',
         '/tests/browser/xllm/',
-        '/tests/deno/',
     ],
     moduleNameMapper: {
         '^@/(.*)$': '<rootDir>/src/$1'

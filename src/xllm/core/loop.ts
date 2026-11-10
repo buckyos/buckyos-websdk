@@ -508,9 +508,14 @@ export class LLMContext {
     if (abort.signal.aborted) controller.abort()
     else abort.signal.addEventListener('abort', onAbort)
     let deadlineHit: Promise<void> = new Promise(() => {})
+    // The timer can fire up to ~1 ms before `nowMs()` reaches `deadline`
+    // (timer clock and Date.now() round differently), so `cause()` trusts the
+    // timer too; otherwise the deadline abort reads as a cancel with no cause.
+    let deadlineFired = false
     if (deadline !== undefined) {
       deadlineHit = new Promise(resolve => {
         timers.push(setTimeout(() => {
+          deadlineFired = true
           controller.abort()
           resolve()
         }, Math.max(0, deadline - nowMs())))
@@ -518,7 +523,7 @@ export class LLMContext {
     }
     const cause = (): CancelCause | undefined => {
       if (abort.isAborted()) return 'interrupted'
-      if (deadline !== undefined && nowMs() >= deadline) return 'deadline'
+      if (deadline !== undefined && (deadlineFired || nowMs() >= deadline)) return 'deadline'
       if (abort.isFinishing()) return 'finishing'
       return undefined
     }

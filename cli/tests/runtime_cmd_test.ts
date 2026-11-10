@@ -5,7 +5,7 @@ import { createMockCommandContext } from '../core/context.ts'
 import { CommandRegistry } from '../core/registry.ts'
 import type { RpcCallOptions, ServiceClientRegistry } from '../core/runtime.ts'
 import { createAgentModule } from '../modules/agent.ts'
-import { agentRuntimeRows, catalogRows, createRuntimeModule, deviceOf, impactText } from '../modules/runtime.ts'
+import { agentRuntimeRows, catalogRows, createRuntimeModule, deviceOf } from '../modules/runtime.ts'
 import { assert, assertEquals, assertRejects, testConfig } from './test_helpers.ts'
 
 interface RecordedCall {
