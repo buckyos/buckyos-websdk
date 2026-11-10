@@ -3,7 +3,7 @@ import type { CommandModule } from '../core/command.ts'
 import { EXIT_PERMISSION, EXIT_UNAVAILABLE, ToolError, UsageError } from '../core/errors.ts'
 import { AIWS_MANIFEST_FILE, AIWS_MANIFEST_VERSION, aiwsContentDigest, controlSkeleton } from 'buckyos/node'
 import { createDeterministicTarGz, digestFile, readTarGz, sha256Bytes } from './pikg_archive.ts'
-import { lintSkillPackage, readSkillDirectory, SKILL_DIRS, type SkillPackageFile } from './skill_lint.ts'
+import { lintSkillPackage, readSkillDirectory, SKILL_DIRS, skillContentDigest, type SkillPackageFile } from './skill_lint.ts'
 import {
   APPDOC_ENTRY,
   appDocObjectId,
@@ -641,7 +641,7 @@ async function skillLintCheck(packageName: string, source: string): Promise<Reco
     } else {
       files = new Map()
       for (const entry of await readTarGz(await getHost().readFile(source), MAX_SKILL_SOURCE_BYTES)) {
-        if (SKILL_DIRS.includes(entry.path.split('/')[0])) files.set(entry.path, { bytes: entry.bytes, executable: entry.executable })
+        if (SKILL_DIRS.includes(entry.path.split('/')[0])) files.set(entry.path, { bytes: entry.bytes })
         else ignored.push(entry.path)
       }
     }
@@ -654,6 +654,7 @@ async function skillLintCheck(packageName: string, source: string): Promise<Reco
     ...check,
     status: errors.length ? 'error' : 'ok',
     ...(errors.length ? { detail: errors.map((finding) => finding.note).join('; '), errors } : {}),
+    ...(errors.length ? {} : { digest: skillContentDigest(files) }),
     skills: skills.map(({ kind, name, scope, size, commands }) => ({ kind, name, scope, size, commands })),
     warnings: findings.filter((finding) => finding.level !== 'error'),
     ...(ignored.length ? { ignored_files: ignored } : {}),
@@ -679,8 +680,9 @@ async function writeSkillsSkeleton(dir: string, name: string): Promise<void> {
       'What to do, step by step. Commands this manual runs that are not part of every runtime go into a front matter line',
       '`commands: name, name`; long material goes into `references/` next to this file and is read on demand.',
       '',
-      'A package holds `cmd_skills/<name>/SKILL.md` (work and ui skills), `plan_skills/<name>/SKILL.md`,',
-      '`goal_skills/<name>/SKILL.md`, and `tools/<work skill>/bin/` for the commands a work skill brings.',
+      'A package holds `cmd_skills/<name>/SKILL.md` (work and ui skills), `plan_skills/<name>/SKILL.md` and',
+      '`goal_skills/<name>/SKILL.md`, each with an optional `references/`. A skill is text only: it brings no command and no',
+      'install script. Commands come from the standard layer or from extension packages (`buckyos ext-tools`).',
       '',
     ].join('\n'),
   )

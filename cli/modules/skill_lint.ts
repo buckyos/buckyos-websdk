@@ -2,6 +2,7 @@
 // content rules of `plan()` in buckyos `src/frame/lib_opendan/src/skills.rs`, with the front matter rules of
 // `protocol/behavior.rs`. The Agent runs the Rust ones again at install; keep the two in step.
 import { getHost } from '../runtime/host.ts'
+import { sha256Bytes } from './pikg_archive.ts'
 import { EXT_TOOLS_RESERVED_COMMANDS } from './pikg_protocol.ts'
 
 export const SKILL_KINDS = ['work', 'plan', 'goal'] as const
@@ -16,14 +17,13 @@ export const SKILL_DIRS = [...SKILL_KINDS.map((kind) => SKILL_KIND_DIRS[kind]), 
 export const SKILL_MANUAL = 'SKILL.md'
 export const SKILL_REFERENCES = 'references'
 export const SKILL_REVISIONS = 'revisions'
-export const INSTALL_TOML = 'install.toml'
 export const SKILL_PLATFORMS = ['linux', 'macos', 'windows']
 export const UI_MANUAL_WARN_BYTES = 16 * 1024
 export const PLAN_MANUAL_WARN_BYTES = 3 * 1024
 const MAX_NAME_LEN = 200
 
 /** Commands of the standard layer (Rust: `STANDARD_TOOLS` in buckyos `src/frame/lib_opendan/src/baseline.rs`): a manual
- * does not declare them and a skill cannot bring them. */
+ * does not declare them. */
 export const STANDARD_COMMANDS: readonly string[] = EXT_TOOLS_RESERVED_COMMANDS
 
 export interface SkillFinding {
@@ -36,21 +36,9 @@ export interface SkillFinding {
 
 export interface SkillPackageFile {
   bytes: Uint8Array
-  executable: boolean
 }
 
 export type SkillScope = 'work' | 'ui' | 'ui,work'
-
-export interface SkillInstallScript {
-  script: string
-  writes: string[]
-}
-
-export interface SkillInstallToml {
-  check: { commands?: string[] }
-  install: Record<string, SkillInstallScript>
-  uninstall: Record<string, SkillInstallScript>
-}
 
 export interface LintedSkill {
   kind: SkillKind
@@ -62,9 +50,7 @@ export interface LintedSkill {
   platforms: string[]
   commands: string[]
   size: number
-  tools: string[]
   references: string[]
-  install?: SkillInstallToml
 }
 
 export interface SkillLintResult {
@@ -228,115 +214,6 @@ function skillCommandsOf(fields: Map<string, string>): string[] {
   return commands.filter((c, index) => index === 0 || commands[index - 1] !== c)
 }
 
-function tomlValue(raw: string): string | string[] {
-  const text = raw.trim()
-  const string = (item: string): string => {
-    const s = item.trim()
-    if (s.length >= 2 && s.startsWith('"') && s.endsWith('"')) return JSON.parse(s) as string
-    if (s.length >= 2 && s.startsWith("'") && s.endsWith("'")) return s.slice(1, -1)
-    throw new Error(`\`${s}\` is not a string`)
-  }
-  if (!text.startsWith('[')) return string(text)
-  if (!text.endsWith(']')) throw new Error('an array is not closed')
-  const items: string[] = []
-  let current = ''
-  let quote: string | undefined
-  for (const c of text.slice(1, -1)) {
-    if (quote !== undefined) {
-      if (c === quote) quote = undefined
-    } else if (c === '"' || c === "'") {
-      quote = c
-    } else if (c === ',') {
-      if (current.trim()) items.push(string(current))
-      current = ''
-      continue
-    }
-    current += c
-  }
-  if (current.trim()) items.push(string(current))
-  return items
-}
-
-function stripTomlComment(line: string): string {
-  let quote: string | undefined
-  for (let i = 0; i < line.length; i += 1) {
-    const c = line[i]
-    if (quote !== undefined) {
-      if (c === '\\' && quote === '"') i += 1
-      else if (c === quote) quote = undefined
-    } else if (c === '"' || c === "'") quote = c
-    else if (c === '#') return line.slice(0, i)
-  }
-  return line
-}
-
-/** `tools/<name>/install.toml` (Rust: `InstallToml::parse`). Reads the subset the format uses: `[check]`,
- * `[install.<os>]`, `[uninstall.<os>]` tables with string and string-array values; anything else is an error, as an
- * unknown field is in Rust. */
-export function parseInstallToml(text: string): SkillInstallToml {
-  const parsed: SkillInstallToml = { check: {}, install: {}, uninstall: {} }
-  let table: { values: Record<string, string | string[]>; keys: string[] } | undefined
-  const tables: Array<{ path: string[]; values: Record<string, string | string[]> }> = []
-  const lines = text.split('\n').map(stripTomlComment)
-  for (let index = 0; index < lines.length; index += 1) {
-    let line = lines[index].trim()
-    if (!line) continue
-    if (line.startsWith('[')) {
-      const header = /^\[([A-Za-z0-9_.-]+)\]$/.exec(line)
-      if (!header) throw new Error(`line ${index + 1}: \`${line}\` is not a table`)
-      const path = header[1].split('.')
-      const known = (path.length === 1 && path[0] === 'check') ||
-        (path.length === 2 && (path[0] === 'install' || path[0] === 'uninstall'))
-      if (!known) {
-        if (path.length === 1 && (path[0] === 'install' || path[0] === 'uninstall')) {
-          table = { values: {}, keys: [] }
-          continue
-        }
-        throw new Error(`unknown table \`[${header[1]}]\``)
-      }
-      const values = {}
-      tables.push({ path, values })
-      table = { values, keys: path[0] === 'check' ? ['commands'] : ['script', 'writes'] }
-      continue
-    }
-    const eq = line.indexOf('=')
-    if (eq < 0) throw new Error(`line ${index + 1}: expected \`key = value\``)
-    const key = line.slice(0, eq).trim()
-    if (!table) throw new Error(`unknown field \`${key}\``)
-    if (!table.keys.includes(key)) throw new Error(`unknown field \`${key}\``)
-    line = line.slice(eq + 1).trim()
-    while (line.startsWith('[') && !line.endsWith(']') && index + 1 < lines.length) {
-      index += 1
-      line += ` ${lines[index].trim()}`
-    }
-    try {
-      table.values[key] = tomlValue(line)
-    } catch (error) {
-      throw new Error(`\`${key}\`: ${(error as Error).message}`)
-    }
-  }
-  const strings = (value: string | string[] | undefined, key: string): string[] => {
-    if (value === undefined) return []
-    if (!Array.isArray(value)) throw new Error(`\`${key}\` is not an array of strings`)
-    return value
-  }
-  for (const { path, values } of tables) {
-    if (path[0] === 'check') {
-      if (values.commands !== undefined) parsed.check.commands = strings(values.commands, 'commands')
-      continue
-    }
-    if (typeof values.script !== 'string') throw new Error(`[${path.join('.')}] has no \`script\``)
-    parsed[path[0] as 'install' | 'uninstall'][path[1]] = { script: values.script, writes: strings(values.writes, 'writes') }
-  }
-  for (const [os, script] of [...Object.entries(parsed.install), ...Object.entries(parsed.uninstall)]) {
-    if (!SKILL_PLATFORMS.includes(os)) throw new Error(`\`${os}\` is not one of ${SKILL_PLATFORMS.join(', ')}`)
-    if (script.script.startsWith('/') || script.script.split(/[/\\]/).some((p) => p === '..' || p === '')) {
-      throw new Error(`script \`${script.script}\` must be a path inside tools/<name>/`)
-    }
-  }
-  return parsed
-}
-
 function textOf(bytes: Uint8Array): string | undefined {
   try {
     return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes)
@@ -353,27 +230,26 @@ function byteLength(text: string): number {
 function place(path: string): { kind: SkillKind; name: string } {
   const bad = (hint = ''): never => {
     throw new Error(
-      `\`${path}\` is not a skill file: a skill package holds <cmd_skills|plan_skills|goal_skills>/<name>/${SKILL_MANUAL}, their ${SKILL_REFERENCES}/… and ${TOOLS_DIR}/<work skill>/…${hint}`,
+      `\`${path}\` is not a skill file: a skill package holds <cmd_skills|plan_skills|goal_skills>/<name>/${SKILL_MANUAL} and their ${SKILL_REFERENCES}/…${hint}`,
     )
   }
   const parts = path.split('/')
   if (parts.some((p) => p === '' || p === '.' || p === '..')) bad()
-  let kind: SkillKind
-  const name = parts[1]
-  if (parts[0] === TOOLS_DIR && parts.length >= 3) {
-    kind = 'work'
-  } else {
-    const found = SKILL_KINDS.find((k) => SKILL_KIND_DIRS[k] === parts[0])
-    if (!found || parts.length < 2) return bad()
-    if (parts.length === 2) {
-      return bad(parts[1].endsWith('.md') ? ` (a flat ${parts[0]}/<name>.md is no skill: move it to ${parts[0]}/${parts[1].slice(0, -3)}/${SKILL_MANUAL})` : '')
-    }
-    const manual = parts.length === 3 && parts[2] === SKILL_MANUAL
-    const reference = parts.length >= 4 && parts[2] === SKILL_REFERENCES
-    if (!manual && !reference) bad()
-    kind = found
+  if (parts[0] === TOOLS_DIR) {
+    throw new Error(
+      `\`${path}\`: a skill is text only and brings no command or install script; publish the commands as an extension package and name them in the manual's \`commands\``,
+    )
   }
-  if (!name || name.length > MAX_NAME_LEN || name.startsWith('.') || !/^[A-Za-z0-9_.-]+$/.test(name)) bad()
+  const kind = SKILL_KINDS.find((k) => SKILL_KIND_DIRS[k] === parts[0])
+  if (!kind || parts.length < 2) return bad()
+  if (parts.length === 2) {
+    return bad(parts[1].endsWith('.md') ? ` (a flat ${parts[0]}/<name>.md is no skill: move it to ${parts[0]}/${parts[1].slice(0, -3)}/${SKILL_MANUAL})` : '')
+  }
+  const manual = parts.length === 3 && parts[2] === SKILL_MANUAL
+  const reference = parts.length >= 4 && parts[2] === SKILL_REFERENCES
+  if (!manual && !reference) bad()
+  const name = parts[1]
+  if (name.length > MAX_NAME_LEN || name.startsWith('.') || !/^[A-Za-z0-9_.-]+$/.test(name)) bad()
   return { kind, name }
 }
 
@@ -386,15 +262,8 @@ function packageSkills(packageName: string, files: Map<string, SkillPackageFile>
     if (!grouped.has(key)) grouped.set(key, { kind, name, paths: [] })
     grouped.get(key)!.paths.push(path)
   }
-  const shadowing = paths.find((path) => {
-    if (!path.startsWith(`${TOOLS_DIR}/`)) return false
-    const rest = path.slice(TOOLS_DIR.length + 1)
-    const at = rest.indexOf('/bin/')
-    return at >= 0 && STANDARD_COMMANDS.includes(rest.slice(at + 5).split('.')[0])
-  })
-  if (shadowing) {
-    throw new Error(`${shadowing}: a skill cannot bring a command of the standard layer: it would shadow the Agent's own`)
-  }
+  const binary = paths.find((path) => textOf(files.get(path)!.bytes) === undefined)
+  if (binary) throw new Error(`${binary} is not UTF-8 text: a skill is text only`)
   if (grouped.size === 0) {
     throw new Error(`package ${packageName} holds no skill (<cmd_skills|plan_skills|goal_skills>/<name>/${SKILL_MANUAL})`)
   }
@@ -406,13 +275,7 @@ function packageSkills(packageName: string, files: Map<string, SkillPackageFile>
     const dir = SKILL_KIND_DIRS[kind]
     const manual = `${dir}/${name}/${SKILL_MANUAL}`
     const file = files.get(manual)
-    if (!file) {
-      throw new Error(
-        own.every((p) => p.startsWith(TOOLS_DIR))
-          ? `${TOOLS_DIR}/${name}/ belongs to no work skill: the package has no ${manual}`
-          : `${dir}/${name}/ has no ${SKILL_MANUAL}`,
-      )
-    }
+    if (!file) throw new Error(`${dir}/${name}/ has no ${SKILL_MANUAL}`)
     const text = textOf(file.bytes)
     if (text === undefined) throw new Error(`${manual} is not UTF-8 text`)
     const { fields, body } = splitFrontMatter(text)
@@ -434,7 +297,6 @@ function packageSkills(packageName: string, files: Map<string, SkillPackageFile>
     if (fields.has('name') && fields.get('name') !== name) {
       throw new Error(`${manual}: front matter name \`${fields.get('name')}\` differs from its directory`)
     }
-    const binPrefix = `${TOOLS_DIR}/${name}/bin/`
     const refPrefix = `${dir}/${name}/${SKILL_REFERENCES}/`
     const skill: LintedSkill = {
       kind,
@@ -446,24 +308,7 @@ function packageSkills(packageName: string, files: Map<string, SkillPackageFile>
       platforms: requirements.platforms,
       commands: skillCommandsOf(fields),
       size: byteLength(body),
-      tools: own.filter((p) => p.startsWith(binPrefix)).map((p) => p.slice(binPrefix.length)),
       references: own.filter((p) => p.startsWith(refPrefix)).map((p) => p.slice(refPrefix.length)),
-    }
-    const installPath = `${TOOLS_DIR}/${name}/${INSTALL_TOML}`
-    const installFile = files.get(installPath)
-    if (installFile) {
-      const installText = textOf(installFile.bytes)
-      if (installText === undefined) throw new Error(`${installPath} is not UTF-8 text`)
-      try {
-        skill.install = parseInstallToml(installText)
-      } catch (error) {
-        throw new Error(`${installPath}: ${(error as Error).message}`)
-      }
-      for (const script of [...Object.values(skill.install.install), ...Object.values(skill.install.uninstall)]) {
-        if (!files.has(`${TOOLS_DIR}/${name}/${script.script}`)) {
-          throw new Error(`${installPath}: the package has no ${TOOLS_DIR}/${name}/${script.script}`)
-        }
-      }
     }
     const add = (code: string, level: string, note: string) => findings.push({ code, level, where: manual, note })
     if (!skill.description.trim()) add('no_description', 'medium', 'no `description`: whoever chooses manuals only sees the name')
@@ -478,8 +323,7 @@ function packageSkills(packageName: string, files: Map<string, SkillPackageFile>
       if (skill.scope !== 'work' && skill.size > UI_MANUAL_WARN_BYTES) {
         add('ui_manual_large', 'low', `${skill.size} bytes: every conversation that takes it carries them (advised: at most ${UI_MANUAL_WARN_BYTES})`)
       }
-      const known = (c: string) => skill.tools.some((t) => t === c || t.split('.')[0] === c) || STANDARD_COMMANDS.includes(c)
-      const undeclared = used.filter((c) => !skill.commands.includes(c) && !known(c))
+      const undeclared = used.filter((c) => !skill.commands.includes(c) && !STANDARD_COMMANDS.includes(c))
       if (undeclared.length) add('undeclared_commands', 'low', `the manual runs ${undeclared.join(', ')} without naming them in \`commands\``)
       const lower = texts.map((t) => t.toLowerCase())
       const unused = skill.commands.filter((c) => !lower.some((t) => t.includes(c.toLowerCase())))
@@ -512,7 +356,7 @@ const PACKAGE_MANAGERS = [
 const SECRET_WORDS = ['TOKEN', 'SECRET', 'PASSWORD', 'API_KEY', 'APIKEY', 'PRIVATE_KEY']
 
 /** What `skills.install_plan` tells the owner about the content of a package (Rust: `plan()`), as far as it can be told
- * without the Agent: nothing about what it replaces or the runtime its commands go to. */
+ * without the Agent: nothing about what it replaces. */
 function riskFindings(skills: LintedSkill[], files: Map<string, SkillPackageFile>, findings: SkillFinding[]): void {
   const paths = [...files.keys()].sort()
   for (const skill of skills) {
@@ -522,25 +366,19 @@ function riskFindings(skills: LintedSkill[], files: Map<string, SkillPackageFile
       findings.push({ code: 'ui_scope', level: 'medium', where: key, note: 'its scope includes `ui`: once the owner adds it to the UI set it goes into the prompt of every conversation' })
     }
     for (const path of paths) {
-      const tool = skill.kind === 'work' && path.startsWith(`${TOOLS_DIR}/${skill.name}/`)
-      if (!tool && !path.startsWith(`${dir}/${skill.name}/`)) continue
+      if (!path.startsWith(`${dir}/${skill.name}/`)) continue
       const text = textOf(files.get(path)!.bytes)
-      if (text === undefined) {
-        if (tool) findings.push({ code: 'binary_tool', level: 'high', where: path, note: 'not text: it cannot be read before it runs' })
-        continue
-      }
+      if (text === undefined) continue
       const lower = asciiLower(text)
       const piped = lower.split('\n').some((l) =>
         (l.includes('curl ') || l.includes('wget ')) && (l.includes('| sh') || l.includes('|sh') || l.includes('| bash') || l.includes('|bash'))
       )
       if (piped) {
-        findings.push({ code: 'network_script', level: 'high', where: path, note: 'downloads a script and runs it (`curl … | sh`)' })
-      } else if (tool && (lower.includes('curl ') || lower.includes('wget ') || lower.includes('invoke-webrequest'))) {
-        findings.push({ code: 'network_download', level: 'medium', where: path, note: 'downloads from the network' })
+        findings.push({ code: 'network_script', level: 'high', where: path, note: 'tells the agent to download a script and run it (`curl … | sh`)' })
       }
       const managers = PACKAGE_MANAGERS.filter((m) => lower.includes(m))
       if (managers.length) {
-        findings.push({ code: 'package_manager', level: tool ? 'high' : 'medium', where: path, note: `uses a package manager (${managers.join(', ').replaceAll('  ', ' ')})` })
+        findings.push({ code: 'package_manager', level: 'medium', where: path, note: `uses a package manager (${managers.join(', ').replaceAll('  ', ' ')})` })
       }
       if (lower.split('\n').some((l) => l.split(/\s+/).includes('sudo'))) {
         findings.push({ code: 'privilege', level: 'high', where: path, note: 'asks for root (`sudo`)' })
@@ -552,19 +390,14 @@ function riskFindings(skills: LintedSkill[], files: Map<string, SkillPackageFile
         findings.push({ code: 'secrets', level: 'medium', where: path, note: `reads secrets from the environment (${secrets.join(', ')})` })
       }
     }
-    if (!skill.install) continue
-    const where = `${TOOLS_DIR}/${skill.name}/${INSTALL_TOML}`
-    const systems = Object.keys(skill.install.install).sort()
-    if (systems.length) {
-      findings.push({ code: 'system_install', level: 'high', where, note: `runs an install script on the runtime (${systems.join(', ')})` })
-    }
-    for (const os of systems) {
-      const writes = skill.install.install[os].writes
-      if (writes.some((w) => !w.startsWith('<agent_root>') && !w.startsWith('<instance_volume>'))) {
-        findings.push({ code: 'volatile_writes', level: 'medium', where, note: `[install.${os}] writes outside <agent_root> / <instance_volume> (${writes.join(', ')}): in a container it is gone after a restart and is checked again` })
-      }
-    }
   }
+}
+
+/** The content digest of a package (Rust: `content_digest`): `sha256:<hex>` over the lines `<path>|<sha256 of the file>`
+ * in path order. The Agent reports the same value as `digest` of the install plan and of the installed package. */
+export function skillContentDigest(files: Map<string, SkillPackageFile>): string {
+  const lines = [...files.keys()].sort().map((path) => `${path}|${sha256Bytes(files.get(path)!.bytes)}\n`)
+  return `sha256:${sha256Bytes(new TextEncoder().encode(lines.join('')))}`
 }
 
 /** Check a skill package without an Agent (`pikg doctor`, a directory given to `skill install`). A package that cannot
@@ -582,7 +415,8 @@ export function lintSkillPackage(packageName: string, files: Map<string, SkillPa
 }
 
 /** A directory laid out like the `agent_skills` sub package, read as `pikg build` archives it: the skill directories
- * only (`revisions/` of a manual left out), links followed while they stay inside. */
+ * only (`revisions/` of a manual left out; a `tools/` is read so that the package is refused for it), links followed
+ * while they stay inside. */
 export async function readSkillDirectory(
   root: string,
   limit: number,
@@ -617,7 +451,7 @@ export async function readSkillDirectory(
       } else if (info.isFile) {
         total += info.size
         if (total > limit) throw new Error(`the skill directory holds more than ${limit} bytes`)
-        files.set(rel, { bytes: await host.readFile(path), executable: ((info.mode ?? 0) & 0o111) !== 0 })
+        files.set(rel, { bytes: await host.readFile(path) })
       } else {
         throw new Error(`${rel}: not a regular file`)
       }

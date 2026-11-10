@@ -8,7 +8,7 @@ import { CommandRegistry } from '../core/registry.ts'
 import type { RpcCallOptions, ServiceClientRegistry } from '../core/runtime.ts'
 import { validateAppDocShape } from '../modules/pikg_protocol.ts'
 import { createSkillModule, type SkillModuleDependencies } from '../modules/skill.ts'
-import { commandsInManual, lintSkillPackage, parseInstallToml, type SkillPackageFile } from '../modules/skill_lint.ts'
+import { commandsInManual, lintSkillPackage, skillContentDigest, type SkillPackageFile } from '../modules/skill_lint.ts'
 import { assert, assertEquals, assertRejects, testConfig } from './test_helpers.ts'
 
 interface RecordedCall {
@@ -138,15 +138,12 @@ const HELLO_MANUAL = '---\nname: hello\ndescription: say hello\nrequires: nothin
 async function writeHello(src: string): Promise<void> {
   await Deno.mkdir(join(src, 'cmd_skills', 'hello', 'references'), { recursive: true })
   await Deno.mkdir(join(src, 'plan_skills', 'plan_hello'), { recursive: true })
-  await Deno.mkdir(join(src, 'tools', 'hello', 'bin'), { recursive: true })
   await Deno.writeTextFile(join(src, 'cmd_skills', 'hello', 'SKILL.md'), HELLO_MANUAL)
   await Deno.writeTextFile(join(src, 'cmd_skills', 'hello', 'references', 'more.md'), 'More.\n')
   await Deno.writeTextFile(
     join(src, 'plan_skills', 'plan_hello', 'SKILL.md'),
     '---\nname: plan_hello\ndescription: how to split a greeting\n---\nGreet first, then check.\n',
   )
-  await Deno.writeTextFile(join(src, 'tools', 'hello', 'bin', 'hello'), '#!/bin/sh\necho hi\n')
-  await Deno.chmod(join(src, 'tools', 'hello', 'bin', 'hello'), 0o755)
   await Deno.writeTextFile(join(src, 'README.md'), 'not a skill file')
 }
 
@@ -154,7 +151,6 @@ const HELLO_FILES = [
   'cmd_skills/hello/SKILL.md',
   'cmd_skills/hello/references/more.md',
   'plan_skills/plan_hello/SKILL.md',
-  'tools/hello/bin/hello',
 ]
 
 function planOf(params: Record<string, unknown>, extra: Record<string, unknown> = {}): Record<string, unknown> {
@@ -167,6 +163,7 @@ function planOf(params: Record<string, unknown>, extra: Record<string, unknown> 
     skills: [{ kind: 'work', name: 'hello', description: 'say hello', origin: 'installed', baseline: 'standard', size: 12, enabled: true }],
     risk: { level: 'low', findings: [] },
     command_status: [],
+    checked_runtime_id: params.runtime_id ?? 'private',
     ...extra,
   }
 }
@@ -201,19 +198,15 @@ Deno.test('skill install plans first, then sends the verified agent_skills paylo
     const params = calls[1].params
     assertEquals(params.replace, false)
     assertEquals(params.plan_digest, 'sha256:plan')
-    assertEquals(params.runtime_id, 'host')
+    assertEquals(Object.keys(params).sort(), ['package', 'plan_digest', 'replace'], 'the runtime only chooses what the plan checks')
     assertEquals(JSON.stringify(params.package), JSON.stringify(calls[0].params.package), 'what was planned is what is installed')
     const pkg = params.package as Record<string, unknown>
     assertEquals(pkg.package, 'hello-skills')
     assertEquals(pkg.version, '0.1.0')
     assertEquals(pkg.pikg_digest, info.pikg_digest)
-    const files = pkg.files as Record<string, { content: string; executable: boolean }>
+    const files = pkg.files as Record<string, { content: string }>
     assertEquals(Object.keys(files).sort(), HELLO_FILES)
-    assertEquals(atob(files['tools/hello/bin/hello'].content), '#!/bin/sh\necho hi\n')
-    if (Deno.build.os !== 'windows') {
-      assertEquals(files['tools/hello/bin/hello'].executable, true)
-    }
-    assertEquals(files['cmd_skills/hello/SKILL.md'].executable, false)
+    assertEquals(files['cmd_skills/hello/SKILL.md'], { content: btoa(HELLO_MANUAL) })
     assertEquals(result.ignored_files, ['README.md'])
     assertEquals(result.pikg_digest, info.pikg_digest)
     assertEquals(result.package, 'hello-skills')
@@ -232,7 +225,7 @@ Deno.test('skill install plans first, then sends the verified agent_skills paylo
     assertEquals(calls.map((call) => call.method), ['skills.install_plan', 'skills.install'])
     assertEquals(fromUrl.source, { kind: 'url', url: 'https://example.com/pkgs/hello-skills-0.1.0.pikg' })
     assertEquals(fromUrl.pikg_digest, info.pikg_digest)
-    assertEquals('runtime_id' in calls[1].params, false)
+    assertEquals('runtime_id' in calls[0].params, false)
 
     calls.length = 0
     const web = await buildPikg(root, 'web-demo', 'static-web', async (src) => {
@@ -250,14 +243,23 @@ Deno.test('skill install plans first, then sends the verified agent_skills paylo
   }
 })
 
-Deno.test('skill install confirms the plan: --yes takes every risk level, no terminal needs it, a blocked plan fails', async () => {
+Deno.test('skill install confirms the plan: --yes takes every risk level, no terminal needs it', async () => {
   const root = await Deno.makeTempDir()
   try {
     const dir = join(root, 'my-skills')
     await writeHello(dir)
     const high = {
-      risk: { level: 'high', findings: [{ code: 'privilege', level: 'high', where: 'tools/hello/bin/hello', note: 'asks for root (`sudo`)' }] },
-      runtime_id: 'private',
+      risk: { level: 'high', findings: [{ code: 'privilege', level: 'high', where: 'cmd_skills/hello/SKILL.md', note: 'asks for root (`sudo`)' }] },
+      command_status: [{
+        name: 'hello',
+        commands: ['ffmpeg', 'mytool'],
+        status: {
+          state: 'partial',
+          commands: { ffmpeg: { present: false }, mytool: { present: false } },
+          recommended_packages: [{ id: 'ext-media', version: '1.0.0', provides: ['ffmpeg'] }],
+          no_package: ['mytool'],
+        },
+      }],
     }
 
     // A directory: the package is named after it and has no PIKG digest.
@@ -295,18 +297,14 @@ Deno.test('skill install confirms the plan: --yes takes every risk level, no ter
       'CONFIRMATION_DECLINED',
     )
     assertEquals(calls.map((call) => call.method), ['skills.install_plan'])
-    assert(stderr.join('').includes('[high] privilege tools/hello/bin/hello'), stderr.join(''))
-    assert(stderr.join('').includes('Commands go to runtime: private'))
+    assert(stderr.join('').includes('[high] privilege cmd_skills/hello/SKILL.md'), stderr.join(''))
+    assert(stderr.join('').includes('Commands checked on runtime: private'))
+    assert(
+      stderr.join('').includes('hello: missing ffmpeg, mytool; extension packages that bring them: ext-media (buckyos ext-tools enable); no package provides mytool'),
+      stderr.join(''),
+    )
     await run('install', { source: dir, agent_id: AGENT }, installClients(calls, high), { answer: 'y' })
     assertEquals(calls.at(-1)?.method, 'skills.install')
-
-    // Blocked: --yes does not get past it.
-    calls = []
-    await assertRejects(
-      () => run('install', { source: dir, agent_id: AGENT }, installClients(calls, { blocked: ['no runtime takes its commands'] }), true),
-      'SKILL_INSTALL_BLOCKED',
-    )
-    assertEquals(calls.map((call) => call.method), ['skills.install_plan'])
 
     // A draft: the Agent reads it itself.
     calls = []
@@ -316,8 +314,16 @@ Deno.test('skill install confirms the plan: --yes takes every risk level, no ter
 
     // What the Agent would refuse is refused before it is sent.
     calls = []
-    await Deno.writeTextFile(join(dir, 'cmd_skills', 'flat.md'), HELLO_MANUAL)
-    await assertRejects(() => run('install', { source: dir, agent_id: AGENT }, installClients(calls), true), 'INVALID_SKILL_PACKAGE')
+    await Deno.mkdir(join(dir, 'tools', 'hello', 'bin'), { recursive: true })
+    await Deno.writeTextFile(join(dir, 'tools', 'hello', 'bin', 'hello'), '#!/bin/sh\necho hi\n')
+    let invalid: unknown
+    try {
+      await run('install', { source: dir, agent_id: AGENT }, installClients(calls), true)
+    } catch (error) {
+      invalid = error
+    }
+    assertEquals((invalid as { code: string }).code, 'INVALID_SKILL_PACKAGE')
+    assert((invalid as Error).message.includes('`tools/hello/bin/hello`: a skill is text only'), (invalid as Error).message)
     assertEquals(calls.length, 0)
   } finally {
     await Deno.remove(root, { recursive: true })
@@ -385,7 +391,7 @@ Deno.test('skill list leaves out what is not enabled, selects by scope, and adds
   assertEquals(stats.usage_none, { frozen: 3, last_ms: 9 })
 })
 
-Deno.test('skill enable/disable, the UI set, and the commands of a skill', async () => {
+Deno.test('skill enable/disable, the UI set, and the commands of the skills on a runtime', async () => {
   const calls: RecordedCall[] = []
   let ui = ['ui_core']
   const clients = clientsFor(calls, (method, params) => {
@@ -393,7 +399,6 @@ Deno.test('skill enable/disable, the UI set, and the commands of a skill', async
     if (method === 'skills.set_enabled') return { ...params, origin: 'package' }
     if (method === 'skills.ui_set') ui = params.names as string[]
     if (method === 'skills.ui_get' || method === 'skills.ui_set') return { names: ui, source: method === 'skills.ui_get' && ui.length === 1 ? 'template' : 'state', total_bytes: 6000 * ui.length }
-    if (method === 'skills.install_cmd' || method === 'skills.check') return { status: 'enabled', runtimes: { host: { status: 'ok', at_ms: 1 } } }
     if (method === 'skills.status') return { runtime_id: params.runtime_id ?? 'private', skills: [{ name: 'share', scope: 'ui,work', enabled: true, commands: { state: 'ready', commands: {} } }] }
     throw new Error(`unexpected ${method}`)
   })
@@ -415,11 +420,6 @@ Deno.test('skill enable/disable, the UI set, and the commands of a skill', async
   assertEquals(removed.names, ['share'])
   await assertRejects(() => run('ui-remove', { name: 'ui_core', agent_id: AGENT }, clients), 'RESOURCE_NOT_FOUND')
 
-  const installed = await run('install-cmd', { name: 'hello', runtime_id: 'host', agent_id: AGENT }, clients)
-  assertEquals(calls.at(-1)?.params, { name: 'hello', runtime_id: 'host' })
-  assertEquals((installed.install_state as Record<string, unknown>).status, 'enabled')
-  await run('check', { name: 'hello', agent_id: AGENT }, clients)
-  assertEquals(calls.at(-1), { service: AGENT, method: 'skills.check', params: { name: 'hello' } })
   const status = await run('status', { agent_id: AGENT }, clients)
   assertEquals(calls.at(-1)?.params, { runtime_id: null })
   assertEquals((status.skills as { name: string }[])[0].name, 'share')
@@ -472,7 +472,7 @@ Deno.test('skill import hands a text to the Agent; drafts are listed, shown, and
 function pkg(files: Record<string, string | Uint8Array>): Map<string, SkillPackageFile> {
   return new Map(Object.entries(files).map(([path, content]) => [
     path,
-    { bytes: typeof content === 'string' ? new TextEncoder().encode(content) : content, executable: path.includes('/bin/') },
+    { bytes: typeof content === 'string' ? new TextEncoder().encode(content) : content },
   ]))
 }
 
@@ -493,9 +493,6 @@ Deno.test('skill lint: what the Agent refuses is an error', () => {
   assert(error({ 'cmd_skills/a/SKILL.md': ok, 'cmd_skills/.b/SKILL.md': ok }).includes('is not a skill file'))
   assert(error({ 'other/a/SKILL.md': ok }).includes('is not a skill file'))
   assert(error({ 'cmd_skills/a/references/x.md': 'x' }).includes('cmd_skills/a/ has no SKILL.md'))
-  assert(error({ 'cmd_skills/a/SKILL.md': ok, 'tools/b/bin/b': '#!/bin/sh\n' }).includes('tools/b/ belongs to no work skill'))
-  assert(error({ 'plan_skills/a/SKILL.md': ok, 'tools/a/bin/a': '#!/bin/sh\n' }).includes('tools/a/ belongs to no work skill'))
-  assert(error({ 'cmd_skills/a/SKILL.md': ok, 'tools/a/bin/buckyos': '#!/bin/sh\n' }).includes('standard layer'))
   assert(error({}).includes('holds no skill'))
   assert(error({ 'cmd_skills/a/SKILL.md': manual({ name: 'b' }, 'x') }).includes('differs from its directory'))
   assert(error({ 'cmd_skills/a/SKILL.md': manual({ scope: 'chat' }, 'x') }).includes('scope `chat` is not ui | work'))
@@ -504,9 +501,45 @@ Deno.test('skill lint: what the Agent refuses is an error', () => {
   assert(error({ 'plan_skills/a/SKILL.md': manual({ scope: 'work' }, 'x') }).includes('a plan skill declares no `scope`'))
   assert(error({ 'goal_skills/a/SKILL.md': manual({ commands: 'ffmpeg' }, 'x') }).includes('a goal skill declares no `commands`'))
   assert(error({ 'cmd_skills/a/SKILL.md': new Uint8Array([0xff, 0xfe]) }).includes('is not UTF-8 text'))
-  assert(error({ 'cmd_skills/a/SKILL.md': ok, 'tools/a/install.toml': '[install.bsd]\nscript = "s.sh"\n' }).includes('`bsd` is not one of'))
-  assert(error({ 'cmd_skills/a/SKILL.md': ok, 'tools/a/install.toml': '[install.linux]\nscript = "setup/linux.sh"\n' }).includes('the package has no tools/a/setup/linux.sh'))
-  assert(error({ 'cmd_skills/a/SKILL.md': ok, 'tools/a/install.toml': '[check]\ncmds = ["x"]\n' }).includes('unknown field `cmds`'))
+})
+
+Deno.test('skill lint: a skill is text only', () => {
+  const ok = manual({ name: 'x', description: 'd' }, 'Do it.\n')
+  const refusal = (files: Record<string, string | Uint8Array>) => {
+    const { skills, findings } = lintSkillPackage('p', pkg(files))
+    assertEquals(skills, [])
+    assertEquals(findings.map((finding) => [finding.code, finding.level, finding.where]), [['invalid_package', 'error', 'p']])
+    return findings[0].note
+  }
+  assertEquals(
+    refusal({ 'cmd_skills/x/SKILL.md': ok, 'tools/x/bin/y': '#!/bin/sh\necho hi\n' }),
+    "`tools/x/bin/y`: a skill is text only and brings no command or install script; publish the commands as an extension package and name them in the manual's `commands`",
+  )
+  assert(refusal({ 'cmd_skills/x/SKILL.md': ok, 'tools/x/install.toml': '[check]\ncommands = ["y"]\n' }).startsWith('`tools/x/install.toml`: a skill is text only'))
+  assert(refusal({ 'tools/x/bin/y': 'echo' }).includes('text only'))
+  assertEquals(
+    refusal({ 'cmd_skills/x/SKILL.md': ok, 'cmd_skills/x/references/logo.md': new Uint8Array([0x89, 0x50, 0xff, 0xfe]) }),
+    'cmd_skills/x/references/logo.md is not UTF-8 text: a skill is text only',
+  )
+  assertEquals(refusal({ 'cmd_skills/x/SKILL.md': new Uint8Array([0xff, 0xfe]) }), 'cmd_skills/x/SKILL.md is not UTF-8 text: a skill is text only')
+  assertEquals(lintSkillPackage('p', pkg({ 'cmd_skills/x/SKILL.md': ok, 'cmd_skills/x/references/more.md': 'More.\n' })).findings, [])
+})
+
+async function sha256Hex(text: string): Promise<string> {
+  const bytes = new TextEncoder().encode(text)
+  return [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].map((byte) => byte.toString(16).padStart(2, '0')).join('')
+}
+
+Deno.test('skill content digest: sha256 over `path|sha256(bytes)` lines in path order', async () => {
+  const files = { 'plan_skills/p/SKILL.md': 'Plan.\n', 'cmd_skills/a/references/more.md': 'More.\n', 'cmd_skills/a/SKILL.md': 'Do it.\n' }
+  const order = ['cmd_skills/a/SKILL.md', 'cmd_skills/a/references/more.md', 'plan_skills/p/SKILL.md'] as const
+  let lines = ''
+  for (const path of order) lines += `${path}|${await sha256Hex(files[path])}\n`
+  const digest = skillContentDigest(pkg(files))
+  assertEquals(digest, `sha256:${await sha256Hex(lines)}`)
+  assertEquals(digest, 'sha256:df810733a9b32c4a7c20bf3246f79002283f7b8b784be797de255922c5b1098d', 'the value sha256sum gives for the same lines')
+  assertEquals(lines.includes('|0|') || lines.includes('|1|'), false)
+  assert(skillContentDigest(pkg({ ...files, 'cmd_skills/a/SKILL.md': 'Do it!\n' })) !== digest)
 })
 
 Deno.test('skill lint: the rest is advice', () => {
@@ -521,14 +554,12 @@ Deno.test('skill lint: the rest is advice', () => {
       'cmd_skills/a/SKILL.md': manual({ name: 'a', description: 'd', commands: 'ffmpeg, ffprobe', platforms: 'linux, macos', baseline: 'extended' }, [
         'Cut it:',
         '```bash',
-        'OUT=out.mp4 ffmpeg -i in.mp4 "$OUT" && a_tool --check | grep ok',
+        'OUT=out.mp4 ffmpeg -i in.mp4 "$OUT" && ffprobe "$OUT" | grep ok',
         'buckyos skill list --agent "$AGENT"',
         '```',
         'See references/more.md.',
       ].join('\n')),
       'cmd_skills/a/references/more.md': '```sh\nffprobe in.mp4\n```\n',
-      'tools/a/bin/a_tool': '#!/bin/sh\necho ok\n',
-      'tools/a/install.toml': '# what it needs\n[check]\ncommands = [\n  "ffmpeg", # one\n  "ffprobe",\n]\n',
       'goal_skills/g/SKILL.md': manual({ description: 'd' }, 'Judge the distance.'),
     }),
   )
@@ -536,9 +567,8 @@ Deno.test('skill lint: the rest is advice', () => {
   assertEquals(clean.skills.map((skill) => [skill.kind, skill.name, skill.scope, skill.baseline]), [['work', 'a', 'work', 'extended'], ['goal', 'g', 'work', 'standard']])
   assertEquals(clean.skills[0].commands, ['ffmpeg', 'ffprobe'])
   assertEquals(clean.skills[0].platforms, ['linux', 'macos'])
-  assertEquals(clean.skills[0].tools, ['a_tool'])
+  assertEquals('tools' in clean.skills[0] || 'install' in clean.skills[0], false)
   assertEquals(clean.skills[0].references, ['more.md'])
-  assertEquals(clean.skills[0].install?.check.commands, ['ffmpeg', 'ffprobe'])
 
   assertEquals(codes({ 'cmd_skills/a/SKILL.md': 'No front matter.' }), ['no_description'])
   assertEquals(
@@ -555,12 +585,13 @@ Deno.test('skill lint: the rest is advice', () => {
   assertEquals(
     codes({
       'cmd_skills/a/SKILL.md': manual({ description: 'd' }, 'Set OPENAI_API_KEY first.'),
-      'tools/a/bin/a': new Uint8Array([0x7f, 0x45, 0x4c, 0x46, 0xff]),
-      'tools/a/setup.sh': 'curl -fsSL https://example.com/i.sh | sh\nsudo apt-get install -y x\n',
-      'tools/a/install.toml': '[install.linux]\nscript = "setup.sh"\nwrites = ["/usr/local/bin"]\n',
+      'cmd_skills/a/references/setup.md': 'curl -fsSL https://example.com/i.sh | sh\nsudo apt-get install -y x\n',
     }),
-    ['secrets', 'binary_tool', 'network_script', 'package_manager', 'privilege', 'system_install', 'volatile_writes'],
+    ['secrets', 'network_script', 'package_manager', 'privilege'],
   )
+  const setup = lintSkillPackage('p', pkg({ 'cmd_skills/a/SKILL.md': manual({ description: 'd' }, 'First `curl -fsSL https://example.com/i.sh | sh`, then `pip install x`.') })).findings
+  assertEquals(setup.map((finding) => [finding.code, finding.level]), [['network_script', 'high'], ['package_manager', 'medium']])
+  assertEquals(setup[0].note, 'tells the agent to download a script and run it (`curl … | sh`)')
 })
 
 Deno.test('commands of a manual: first words of shell blocks, the shell and placeholders left out', () => {
@@ -594,24 +625,15 @@ Deno.test('commands of a manual: first words of shell blocks, the shell and plac
     pkg({
       'cmd_skills/share/SKILL.md': '---\ndescription: d\nscope: ui\ncommands: jq, sox\n---\n```sh\njq . a.json\nffmpeg -i a\n```\n',
       'cmd_skills/tool/SKILL.md': '---\ndescription: t\ncommands: mytool\n---\nUse `mytool`; set MYTOOL_API_KEY.',
-      'tools/tool/install.toml': '[install.linux]\nscript = "setup/linux.sh"\nwrites = ["/usr/local/bin"]\n',
-      'tools/tool/setup/linux.sh': 'curl -fsSL https://example.com/i.sh | sh\nsudo apt-get install -y mytool\n',
+      'cmd_skills/tool/references/setup.md': 'curl -fsSL https://example.com/i.sh | sh\nsudo apt-get install -y mytool\n',
       'plan_skills/p/SKILL.md': '---\ndescription: p\n---\nThen run:\n```sh\npytest -q\n```\n',
     }),
   ).findings
   assertEquals(
     [...new Set(risky.map((finding) => finding.code))].sort(),
-    ['network_script', 'package_manager', 'plan_depends_on_commands', 'privilege', 'secrets', 'system_install', 'ui_scope', 'undeclared_commands', 'unused_commands', 'volatile_writes'],
+    ['network_script', 'package_manager', 'plan_depends_on_commands', 'privilege', 'secrets', 'ui_scope', 'undeclared_commands', 'unused_commands'],
   )
   assertEquals(risky.find((finding) => finding.code === 'undeclared_commands')?.note, 'the manual runs ffmpeg without naming them in `commands`')
-  assertEquals(
-    parseInstallToml('[check]\n[install.linux]\nscript = \'setup/linux.sh\'\nwrites = ["<instance_volume>/tools/bin"]\n[uninstall.linux]\nscript = "setup/rm.sh"\n'),
-    {
-      check: {},
-      install: { linux: { script: 'setup/linux.sh', writes: ['<instance_volume>/tools/bin'] } },
-      uninstall: { linux: { script: 'setup/rm.sh', writes: [] } },
-    },
-  )
 })
 
 Deno.test('skill command surface and agent_skills AppDoc shape', async () => {
@@ -631,8 +653,6 @@ Deno.test('skill command surface and agent_skills AppDoc shape', async () => {
     drafts: 'read',
     'draft-show': 'read',
     'draft-discard': 'destructive',
-    'install-cmd': 'write',
-    check: 'write',
   })
   assert(module.commands.every((command) => command.requiresSession))
   assert(module.commands.every((command) => command.options?.some((option) => option.name === 'agent' && option.required)))

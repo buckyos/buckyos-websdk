@@ -2,6 +2,7 @@ import type { CommandModule, JsonSchema, PositionalDefinition } from '../core/co
 import type { CommandContext } from '../core/context.ts'
 import { EXIT_INTERNAL, ToolError, UsageError } from '../core/errors.ts'
 import { callService, expectObject, requiredInputString } from '../core/service.ts'
+import { agentRuntimeCommand } from './runtime.ts'
 
 const CONTROL_PANEL = 'control-panel'
 const OBJECT_OUTPUT: JsonSchema = { type: 'object', additionalProperties: true }
@@ -21,7 +22,7 @@ const PROFILE_FIELDS = ['display_name', 'bio']
 export function createAgentModule(): CommandModule {
   return {
     name: 'agent',
-    summary: 'List Agents and read or change their profiles',
+    summary: 'List Agents, read or change their profiles, and manage the runtimes each one uses',
     commands: [
       {
         verb: 'list',
@@ -144,6 +145,7 @@ export function createAgentModule(): CommandModule {
           }
         },
       },
+      agentRuntimeCommand(),
     ],
   }
 }

@@ -23,8 +23,8 @@ const EXIT_PARTIAL = 7;
 const EXIT_TIMEOUT = 8;
 const EXIT_INTERNAL = 9;
 class ToolError extends Error {
-  constructor(code, message, exitCode = EXIT_OPERATION, retryable = false, details = {}) {
-    super(message);
+  constructor(code, message2, exitCode = EXIT_OPERATION, retryable = false, details = {}) {
+    super(message2);
     this.name = "ToolError";
     this.code = code;
     this.exitCode = exitCode;
@@ -33,15 +33,15 @@ class ToolError extends Error {
   }
 }
 class UsageError extends ToolError {
-  constructor(code, message, details = {}) {
-    super(code, message, EXIT_USAGE, false, details);
+  constructor(code, message2, details = {}) {
+    super(code, message2, EXIT_USAGE, false, details);
   }
 }
 const JWT_PATTERN = /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g;
 const URL_CREDENTIAL_PATTERN = /(\w+:\/\/)[^\s/@:]+:[^\s/@]+@/g;
 const DATABASE_URI_PATTERN = /\b(?:postgres(?:ql)?|mysql|mariadb|mongodb(?:\+srv)?|redis|rediss|sqlite):\/\/[^\s,;]+/gi;
-function sanitizeMessage(message) {
-  return message.replaceAll(JWT_PATTERN, "[REDACTED_TOKEN]").replaceAll(URL_CREDENTIAL_PATTERN, "$1[REDACTED]@").replaceAll(DATABASE_URI_PATTERN, "[REDACTED_DATABASE_URI]").replace(
+function sanitizeMessage(message2) {
+  return message2.replaceAll(JWT_PATTERN, "[REDACTED_TOKEN]").replaceAll(URL_CREDENTIAL_PATTERN, "$1[REDACTED]@").replaceAll(DATABASE_URI_PATTERN, "[REDACTED_DATABASE_URI]").replace(
     /(session[_-]?token|refresh[_-]?token|access[_-]?token|private[_-]?key|password|passwd|api[_-]?key|client[_-]?secret|secret)\s*[=:]\s*[^\s,;]+/gi,
     "$1=[REDACTED]"
   );
@@ -57,8 +57,8 @@ function normalizeError(error) {
     );
   }
   const raw = error instanceof Error ? error.message : String(error);
-  const message = sanitizeMessage(raw);
-  const lower = message.toLowerCase();
+  const message2 = sanitizeMessage(raw);
+  const lower = message2.toLowerCase();
   if (lower.includes("abort") || lower.includes("cancel")) {
     return new ToolError("CANCELED", "operation canceled", EXIT_TIMEOUT);
   }
@@ -66,29 +66,29 @@ function normalizeError(error) {
     return new ToolError("TIMEOUT", "operation timed out", EXIT_TIMEOUT, true);
   }
   if (lower.includes("permission denied") || lower.includes("no permission") || lower.includes("rpc call error: 403")) {
-    return new ToolError("PERMISSION_DENIED", message, EXIT_PERMISSION);
+    return new ToolError("PERMISSION_DENIED", message2, EXIT_PERMISSION);
   }
   if (lower.includes("rpc call error: 401") || lower.includes("unauthorized") || lower.includes("token expired") || lower.includes("session expired") || lower.includes("invalid token")) {
     return new ToolError(
       lower.includes("expired") ? "SESSION_EXPIRED" : "INVALID_SESSION",
-      lower.includes("expired") ? "the session token has expired" : message,
+      lower.includes("expired") ? "the session token has expired" : message2,
       EXIT_AUTH
     );
   }
   if (lower.includes("fetch failed") || lower.includes("connection refused") || lower.includes("rpc call error: 502") || lower.includes("rpc call error: 503") || lower.includes("rpc call error: 504")) {
-    return new ToolError("SERVICE_UNAVAILABLE", message, EXIT_UNAVAILABLE, true);
+    return new ToolError("SERVICE_UNAVAILABLE", message2, EXIT_UNAVAILABLE, true);
   }
   if (lower.includes("not found") || lower.includes("key not exist")) {
-    return new ToolError("RESOURCE_NOT_FOUND", message, EXIT_OPERATION);
+    return new ToolError("RESOURCE_NOT_FOUND", message2, EXIT_OPERATION);
   }
   if (lower.includes("rpc call error:")) {
-    return new ToolError("OPERATION_FAILED", message, EXIT_OPERATION);
+    return new ToolError("OPERATION_FAILED", message2, EXIT_OPERATION);
   }
-  return new ToolError("INTERNAL_ERROR", message || "internal error", EXIT_INTERNAL);
+  return new ToolError("INTERNAL_ERROR", message2 || "internal error", EXIT_INTERNAL);
 }
 class CommandArgsError extends Error {
-  constructor(code, message) {
-    super(message);
+  constructor(code, message2) {
+    super(message2);
     this.name = "CommandArgsError";
     this.code = code;
   }
@@ -474,8 +474,8 @@ function setGlobal(target, property, value) {
   target[property] = value;
 }
 class HostError extends Error {
-  constructor(code, message, path, cause) {
-    super(message, { cause });
+  constructor(code, message2, path, cause) {
+    super(message2, { cause });
     this.name = "HostError";
     this.code = code;
     this.path = path;
@@ -1096,8 +1096,8 @@ function redactUrl(value) {
     return "[INVALID_URL]";
   }
 }
-function configValueError(message) {
-  return new ToolError("INVALID_CONFIG_VALUE", message, 2);
+function configValueError(message2) {
+  return new ToolError("INVALID_CONFIG_VALUE", message2, 2);
 }
 class BuckyOSRuntimeAdapter {
   #sdk = new BuckyOSSDK("node");
@@ -2102,11 +2102,11 @@ function renderTable(data) {
 function renderRows(rows) {
   if (rows.length === 0)
     return "(empty)";
-  const objects = rows.map(
+  const objects2 = rows.map(
     (row) => row && typeof row === "object" && !Array.isArray(row) ? row : { value: row }
   );
-  const columns = [...new Set(objects.flatMap((row) => Object.keys(row)))];
-  const rendered = objects.map((row) => columns.map((column) => displayValue(row[column])));
+  const columns = [...new Set(objects2.flatMap((row) => Object.keys(row)))];
+  const rendered = objects2.map((row) => columns.map((column) => displayValue(row[column])));
   const widths = columns.map(
     (column, index) => Math.max(column.length, ...rendered.map((row) => row[index].length))
   );
@@ -2520,7 +2520,7 @@ function replPrompt(config) {
   return `buckyos[${profile}|${zone}|${identity}]> `;
 }
 const EMPTY_INPUT$3 = { type: "object", properties: {}, additionalProperties: false };
-const OBJECT_OUTPUT$g = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$h = { type: "object", additionalProperties: true };
 function createAuthModule() {
   return {
     name: "auth",
@@ -2530,7 +2530,7 @@ function createAuthModule() {
         verb: "whoami",
         summary: "Show the effective principal and application identity",
         inputSchema: EMPTY_INPUT$3,
-        outputSchema: OBJECT_OUTPUT$g,
+        outputSchema: OBJECT_OUTPUT$h,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -2548,7 +2548,7 @@ function createAuthModule() {
         verb: "session-status",
         summary: "Show the in-memory session state without exposing credentials",
         inputSchema: EMPTY_INPUT$3,
-        outputSchema: OBJECT_OUTPUT$g,
+        outputSchema: OBJECT_OUTPUT$h,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -2569,7 +2569,7 @@ const EMPTY_INPUT$2 = {
   properties: {},
   additionalProperties: false
 };
-const OBJECT_OUTPUT$f = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$g = { type: "object", additionalProperties: true };
 function createCoreModules(registry) {
   return [createCommandModule(registry), createConfigModule(), createCompletionModule(registry)];
 }
@@ -2582,7 +2582,7 @@ function createCommandModule(registry) {
         verb: "list",
         summary: "List registered modules and commands",
         inputSchema: EMPTY_INPUT$2,
-        outputSchema: OBJECT_OUTPUT$f,
+        outputSchema: OBJECT_OUTPUT$g,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -2615,7 +2615,7 @@ function createCommandModule(registry) {
           required: ["target_module", "target_verb"],
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$f,
+        outputSchema: OBJECT_OUTPUT$g,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -2637,7 +2637,7 @@ function createConfigModule() {
         verb: "list",
         summary: "List the global configuration and available profiles",
         inputSchema: EMPTY_INPUT$2,
-        outputSchema: OBJECT_OUTPUT$f,
+        outputSchema: OBJECT_OUTPUT$g,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -2668,7 +2668,7 @@ function createConfigModule() {
           },
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$f,
+        outputSchema: OBJECT_OUTPUT$g,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -2714,7 +2714,7 @@ function createConfigModule() {
           required: ["key", "value"],
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$f,
+        outputSchema: OBJECT_OUTPUT$g,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "write" },
         asyncMode: "sync",
@@ -2754,7 +2754,7 @@ function createConfigModule() {
           required: ["profile_name"],
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$f,
+        outputSchema: OBJECT_OUTPUT$g,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "write" },
         asyncMode: "sync",
@@ -2786,7 +2786,7 @@ function createConfigModule() {
           properties: { effective: { type: "boolean" } },
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$f,
+        outputSchema: OBJECT_OUTPUT$g,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -2912,10 +2912,10 @@ async function callService(ctx, service, method, params) {
   try {
     return await ctx.clients.call(service, method, params, rpcOptions$2(ctx));
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    const stable = message.match(/\b((?:TASK|AUDIT|DIAGNOSTIC|LOG)_[A-Z0-9_]+):/);
+    const message2 = error instanceof Error ? error.message : String(error);
+    const stable = message2.match(/\b((?:TASK|AUDIT|DIAGNOSTIC|LOG)_[A-Z0-9_]+):/);
     if (stable)
-      throw new ToolError(stable[1], message);
+      throw new ToolError(stable[1], message2);
     throw error;
   }
 }
@@ -2964,7 +2964,7 @@ function splitServices(value) {
   const items = Array.isArray(value) ? value : typeof value === "string" ? value.split(",") : [];
   return [...new Set(items.map((item) => String(item).trim()).filter(Boolean))];
 }
-const CONTROL_PANEL$4 = "control-panel";
+const CONTROL_PANEL$5 = "control-panel";
 const EMPTY_INPUT$1 = { type: "object", properties: {}, additionalProperties: false };
 const BUCKYOS_INFO = {
   type: "object",
@@ -2999,7 +2999,7 @@ function createSystemModule() {
         examples: ["buckyos --profile production system status"],
         handler: async (ctx) => {
           const [status, buckyos2] = await Promise.all([
-            callService(ctx, CONTROL_PANEL$4, "system.status", {}),
+            callService(ctx, CONTROL_PANEL$5, "system.status", {}),
             buckyosInfo(ctx)
           ]);
           return { ...expectObject$4(status, "system.status"), buckyos: buckyos2 };
@@ -3023,12 +3023,12 @@ function createSystemModule() {
 }
 async function buckyosInfo(ctx) {
   return expectObject$4(
-    await callService(ctx, CONTROL_PANEL$4, "system.buckyos_info.get", {}),
+    await callService(ctx, CONTROL_PANEL$5, "system.buckyos_info.get", {}),
     "system.buckyos_info.get"
   );
 }
 const SERVICE_NAME = "system_config";
-const OBJECT_OUTPUT$e = { type: "object", additionalProperties: false };
+const OBJECT_OUTPUT$f = { type: "object", additionalProperties: false };
 const KEY_INPUT = {
   type: "object",
   properties: { key: { type: "string", minLength: 1 } },
@@ -3046,7 +3046,7 @@ function createSystemConfigModule() {
         positionals: [{ name: "key", description: "System-config key" }],
         inputSchema: KEY_INPUT,
         outputSchema: {
-          ...OBJECT_OUTPUT$e,
+          ...OBJECT_OUTPUT$f,
           properties: {
             key: { type: "string" },
             value: { type: "string" },
@@ -3089,7 +3089,7 @@ function createSystemConfigModule() {
           additionalProperties: false
         },
         outputSchema: {
-          ...OBJECT_OUTPUT$e,
+          ...OBJECT_OUTPUT$f,
           properties: {
             key: { type: "string" },
             items: { type: "array", items: { type: "string" } }
@@ -3143,7 +3143,7 @@ function setCommand() {
       additionalProperties: false
     },
     outputSchema: {
-      ...OBJECT_OUTPUT$e,
+      ...OBJECT_OUTPUT$f,
       properties: { key: { type: "string" }, updated: { type: "boolean" } },
       required: ["key", "updated"]
     },
@@ -3182,7 +3182,7 @@ function setFileCommand() {
       additionalProperties: false
     },
     outputSchema: {
-      ...OBJECT_OUTPUT$e,
+      ...OBJECT_OUTPUT$f,
       properties: { key: { type: "string" }, updated: { type: "boolean" } },
       required: ["key", "updated"]
     },
@@ -3219,7 +3219,7 @@ function mutationCommand(options) {
       additionalProperties: false
     },
     outputSchema: {
-      ...OBJECT_OUTPUT$e,
+      ...OBJECT_OUTPUT$f,
       properties: {
         key: { type: "string" },
         [options.resultProperty]: { type: "boolean" }
@@ -4104,8 +4104,8 @@ function validateZipEntryName(name) {
     }
   }
 }
-function invalidZip(stage, message, entry) {
-  return new ToolError("INVALID_PACKAGE", message, 6, false, {
+function invalidZip(stage, message2, entry) {
+  return new ToolError("INVALID_PACKAGE", message2, 6, false, {
     stage,
     ...entry ? { entry } : {}
   });
@@ -5519,8 +5519,8 @@ function rejectUnknown(value, allowed, label) {
     throw new UsageError("SCHEMA_VALIDATION_FAILED", `${label}.${unknown[0]} is not allowed`);
   }
 }
-function invalid(stage, message, entry) {
-  return new ToolError("INVALID_PACKAGE", message, 6, false, {
+function invalid(stage, message2, entry) {
+  return new ToolError("INVALID_PACKAGE", message2, 6, false, {
     stage,
     ...entry ? { entry: basename$1(entry) } : {}
   });
@@ -5592,7 +5592,6 @@ const SKILL_DIRS = [...SKILL_KINDS.map((kind) => SKILL_KIND_DIRS[kind]), TOOLS_D
 const SKILL_MANUAL = "SKILL.md";
 const SKILL_REFERENCES = "references";
 const SKILL_REVISIONS = "revisions";
-const INSTALL_TOML = "install.toml";
 const SKILL_PLATFORMS = ["linux", "macos", "windows"];
 const UI_MANUAL_WARN_BYTES = 16 * 1024;
 const PLAN_MANUAL_WARN_BYTES = 3 * 1024;
@@ -5862,129 +5861,6 @@ function skillCommandsOf(fields) {
   const commands = (fields.get("commands") ?? "").split(",").map((c) => c.trim()).filter((c) => c && !c.startsWith(".") && /^[A-Za-z0-9._+-]+$/.test(c));
   return commands.filter((c, index) => index === 0 || commands[index - 1] !== c);
 }
-function tomlValue(raw) {
-  const text2 = raw.trim();
-  const string = (item) => {
-    const s = item.trim();
-    if (s.length >= 2 && s.startsWith('"') && s.endsWith('"'))
-      return JSON.parse(s);
-    if (s.length >= 2 && s.startsWith("'") && s.endsWith("'"))
-      return s.slice(1, -1);
-    throw new Error(`\`${s}\` is not a string`);
-  };
-  if (!text2.startsWith("["))
-    return string(text2);
-  if (!text2.endsWith("]"))
-    throw new Error("an array is not closed");
-  const items = [];
-  let current = "";
-  let quote;
-  for (const c of text2.slice(1, -1)) {
-    if (quote !== void 0) {
-      if (c === quote)
-        quote = void 0;
-    } else if (c === '"' || c === "'") {
-      quote = c;
-    } else if (c === ",") {
-      if (current.trim())
-        items.push(string(current));
-      current = "";
-      continue;
-    }
-    current += c;
-  }
-  if (current.trim())
-    items.push(string(current));
-  return items;
-}
-function stripTomlComment(line) {
-  let quote;
-  for (let i = 0; i < line.length; i += 1) {
-    const c = line[i];
-    if (quote !== void 0) {
-      if (c === "\\" && quote === '"')
-        i += 1;
-      else if (c === quote)
-        quote = void 0;
-    } else if (c === '"' || c === "'")
-      quote = c;
-    else if (c === "#")
-      return line.slice(0, i);
-  }
-  return line;
-}
-function parseInstallToml(text2) {
-  const parsed = { check: {}, install: {}, uninstall: {} };
-  let table;
-  const tables = [];
-  const lines = text2.split("\n").map(stripTomlComment);
-  for (let index = 0; index < lines.length; index += 1) {
-    let line = lines[index].trim();
-    if (!line)
-      continue;
-    if (line.startsWith("[")) {
-      const header = /^\[([A-Za-z0-9_.-]+)\]$/.exec(line);
-      if (!header)
-        throw new Error(`line ${index + 1}: \`${line}\` is not a table`);
-      const path = header[1].split(".");
-      const known = path.length === 1 && path[0] === "check" || path.length === 2 && (path[0] === "install" || path[0] === "uninstall");
-      if (!known) {
-        if (path.length === 1 && (path[0] === "install" || path[0] === "uninstall")) {
-          table = { values: {}, keys: [] };
-          continue;
-        }
-        throw new Error(`unknown table \`[${header[1]}]\``);
-      }
-      const values = {};
-      tables.push({ path, values });
-      table = { values, keys: path[0] === "check" ? ["commands"] : ["script", "writes"] };
-      continue;
-    }
-    const eq = line.indexOf("=");
-    if (eq < 0)
-      throw new Error(`line ${index + 1}: expected \`key = value\``);
-    const key = line.slice(0, eq).trim();
-    if (!table)
-      throw new Error(`unknown field \`${key}\``);
-    if (!table.keys.includes(key))
-      throw new Error(`unknown field \`${key}\``);
-    line = line.slice(eq + 1).trim();
-    while (line.startsWith("[") && !line.endsWith("]") && index + 1 < lines.length) {
-      index += 1;
-      line += ` ${lines[index].trim()}`;
-    }
-    try {
-      table.values[key] = tomlValue(line);
-    } catch (error) {
-      throw new Error(`\`${key}\`: ${error.message}`);
-    }
-  }
-  const strings = (value, key) => {
-    if (value === void 0)
-      return [];
-    if (!Array.isArray(value))
-      throw new Error(`\`${key}\` is not an array of strings`);
-    return value;
-  };
-  for (const { path, values } of tables) {
-    if (path[0] === "check") {
-      if (values.commands !== void 0)
-        parsed.check.commands = strings(values.commands, "commands");
-      continue;
-    }
-    if (typeof values.script !== "string")
-      throw new Error(`[${path.join(".")}] has no \`script\``);
-    parsed[path[0]][path[1]] = { script: values.script, writes: strings(values.writes, "writes") };
-  }
-  for (const [os, script] of [...Object.entries(parsed.install), ...Object.entries(parsed.uninstall)]) {
-    if (!SKILL_PLATFORMS.includes(os))
-      throw new Error(`\`${os}\` is not one of ${SKILL_PLATFORMS.join(", ")}`);
-    if (script.script.startsWith("/") || script.script.split(/[/\\]/).some((p) => p === ".." || p === "")) {
-      throw new Error(`script \`${script.script}\` must be a path inside tools/<name>/`);
-    }
-  }
-  return parsed;
-}
 function textOf(bytes) {
   try {
     return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
@@ -5998,30 +5874,29 @@ function byteLength(text2) {
 function place(path) {
   const bad = (hint = "") => {
     throw new Error(
-      `\`${path}\` is not a skill file: a skill package holds <cmd_skills|plan_skills|goal_skills>/<name>/${SKILL_MANUAL}, their ${SKILL_REFERENCES}/… and ${TOOLS_DIR}/<work skill>/…${hint}`
+      `\`${path}\` is not a skill file: a skill package holds <cmd_skills|plan_skills|goal_skills>/<name>/${SKILL_MANUAL} and their ${SKILL_REFERENCES}/…${hint}`
     );
   };
   const parts = path.split("/");
   if (parts.some((p) => p === "" || p === "." || p === ".."))
     bad();
-  let kind;
-  const name = parts[1];
-  if (parts[0] === TOOLS_DIR && parts.length >= 3) {
-    kind = "work";
-  } else {
-    const found = SKILL_KINDS.find((k) => SKILL_KIND_DIRS[k] === parts[0]);
-    if (!found || parts.length < 2)
-      return bad();
-    if (parts.length === 2) {
-      return bad(parts[1].endsWith(".md") ? ` (a flat ${parts[0]}/<name>.md is no skill: move it to ${parts[0]}/${parts[1].slice(0, -3)}/${SKILL_MANUAL})` : "");
-    }
-    const manual = parts.length === 3 && parts[2] === SKILL_MANUAL;
-    const reference = parts.length >= 4 && parts[2] === SKILL_REFERENCES;
-    if (!manual && !reference)
-      bad();
-    kind = found;
+  if (parts[0] === TOOLS_DIR) {
+    throw new Error(
+      `\`${path}\`: a skill is text only and brings no command or install script; publish the commands as an extension package and name them in the manual's \`commands\``
+    );
   }
-  if (!name || name.length > MAX_NAME_LEN || name.startsWith(".") || !/^[A-Za-z0-9_.-]+$/.test(name))
+  const kind = SKILL_KINDS.find((k) => SKILL_KIND_DIRS[k] === parts[0]);
+  if (!kind || parts.length < 2)
+    return bad();
+  if (parts.length === 2) {
+    return bad(parts[1].endsWith(".md") ? ` (a flat ${parts[0]}/<name>.md is no skill: move it to ${parts[0]}/${parts[1].slice(0, -3)}/${SKILL_MANUAL})` : "");
+  }
+  const manual = parts.length === 3 && parts[2] === SKILL_MANUAL;
+  const reference = parts.length >= 4 && parts[2] === SKILL_REFERENCES;
+  if (!manual && !reference)
+    bad();
+  const name = parts[1];
+  if (name.length > MAX_NAME_LEN || name.startsWith(".") || !/^[A-Za-z0-9_.-]+$/.test(name))
     bad();
   return { kind, name };
 }
@@ -6035,16 +5910,9 @@ function packageSkills(packageName, files, findings) {
       grouped.set(key, { kind, name, paths: [] });
     grouped.get(key).paths.push(path);
   }
-  const shadowing = paths.find((path) => {
-    if (!path.startsWith(`${TOOLS_DIR}/`))
-      return false;
-    const rest = path.slice(TOOLS_DIR.length + 1);
-    const at = rest.indexOf("/bin/");
-    return at >= 0 && STANDARD_COMMANDS.includes(rest.slice(at + 5).split(".")[0]);
-  });
-  if (shadowing) {
-    throw new Error(`${shadowing}: a skill cannot bring a command of the standard layer: it would shadow the Agent's own`);
-  }
+  const binary = paths.find((path) => textOf(files.get(path).bytes) === void 0);
+  if (binary)
+    throw new Error(`${binary} is not UTF-8 text: a skill is text only`);
   if (grouped.size === 0) {
     throw new Error(`package ${packageName} holds no skill (<cmd_skills|plan_skills|goal_skills>/<name>/${SKILL_MANUAL})`);
   }
@@ -6056,11 +5924,8 @@ function packageSkills(packageName, files, findings) {
     const dir = SKILL_KIND_DIRS[kind];
     const manual = `${dir}/${name}/${SKILL_MANUAL}`;
     const file = files.get(manual);
-    if (!file) {
-      throw new Error(
-        own.every((p) => p.startsWith(TOOLS_DIR)) ? `${TOOLS_DIR}/${name}/ belongs to no work skill: the package has no ${manual}` : `${dir}/${name}/ has no ${SKILL_MANUAL}`
-      );
-    }
+    if (!file)
+      throw new Error(`${dir}/${name}/ has no ${SKILL_MANUAL}`);
     const text2 = textOf(file.bytes);
     if (text2 === void 0)
       throw new Error(`${manual} is not UTF-8 text`);
@@ -6083,7 +5948,6 @@ function packageSkills(packageName, files, findings) {
     if (fields.has("name") && fields.get("name") !== name) {
       throw new Error(`${manual}: front matter name \`${fields.get("name")}\` differs from its directory`);
     }
-    const binPrefix = `${TOOLS_DIR}/${name}/bin/`;
     const refPrefix = `${dir}/${name}/${SKILL_REFERENCES}/`;
     const skill = {
       kind,
@@ -6095,26 +5959,8 @@ function packageSkills(packageName, files, findings) {
       platforms: requirements.platforms,
       commands: skillCommandsOf(fields),
       size: byteLength(body),
-      tools: own.filter((p) => p.startsWith(binPrefix)).map((p) => p.slice(binPrefix.length)),
       references: own.filter((p) => p.startsWith(refPrefix)).map((p) => p.slice(refPrefix.length))
     };
-    const installPath = `${TOOLS_DIR}/${name}/${INSTALL_TOML}`;
-    const installFile = files.get(installPath);
-    if (installFile) {
-      const installText = textOf(installFile.bytes);
-      if (installText === void 0)
-        throw new Error(`${installPath} is not UTF-8 text`);
-      try {
-        skill.install = parseInstallToml(installText);
-      } catch (error) {
-        throw new Error(`${installPath}: ${error.message}`);
-      }
-      for (const script of [...Object.values(skill.install.install), ...Object.values(skill.install.uninstall)]) {
-        if (!files.has(`${TOOLS_DIR}/${name}/${script.script}`)) {
-          throw new Error(`${installPath}: the package has no ${TOOLS_DIR}/${name}/${script.script}`);
-        }
-      }
-    }
     const add = (code, level, note) => findings.push({ code, level, where: manual, note });
     if (!skill.description.trim())
       add("no_description", "medium", "no `description`: whoever chooses manuals only sees the name");
@@ -6131,8 +5977,7 @@ function packageSkills(packageName, files, findings) {
       if (skill.scope !== "work" && skill.size > UI_MANUAL_WARN_BYTES) {
         add("ui_manual_large", "low", `${skill.size} bytes: every conversation that takes it carries them (advised: at most ${UI_MANUAL_WARN_BYTES})`);
       }
-      const known = (c) => skill.tools.some((t) => t === c || t.split(".")[0] === c) || STANDARD_COMMANDS.includes(c);
-      const undeclared = used.filter((c) => !skill.commands.includes(c) && !known(c));
+      const undeclared = used.filter((c) => !skill.commands.includes(c) && !STANDARD_COMMANDS.includes(c));
       if (undeclared.length)
         add("undeclared_commands", "low", `the manual runs ${undeclared.join(", ")} without naming them in \`commands\``);
       const lower = texts.map((t) => t.toLowerCase());
@@ -6182,27 +6027,21 @@ function riskFindings(skills, files, findings) {
       findings.push({ code: "ui_scope", level: "medium", where: key, note: "its scope includes `ui`: once the owner adds it to the UI set it goes into the prompt of every conversation" });
     }
     for (const path of paths) {
-      const tool = skill.kind === "work" && path.startsWith(`${TOOLS_DIR}/${skill.name}/`);
-      if (!tool && !path.startsWith(`${dir}/${skill.name}/`))
+      if (!path.startsWith(`${dir}/${skill.name}/`))
         continue;
       const text2 = textOf(files.get(path).bytes);
-      if (text2 === void 0) {
-        if (tool)
-          findings.push({ code: "binary_tool", level: "high", where: path, note: "not text: it cannot be read before it runs" });
+      if (text2 === void 0)
         continue;
-      }
       const lower = asciiLower(text2);
       const piped = lower.split("\n").some(
         (l) => (l.includes("curl ") || l.includes("wget ")) && (l.includes("| sh") || l.includes("|sh") || l.includes("| bash") || l.includes("|bash"))
       );
       if (piped) {
-        findings.push({ code: "network_script", level: "high", where: path, note: "downloads a script and runs it (`curl … | sh`)" });
-      } else if (tool && (lower.includes("curl ") || lower.includes("wget ") || lower.includes("invoke-webrequest"))) {
-        findings.push({ code: "network_download", level: "medium", where: path, note: "downloads from the network" });
+        findings.push({ code: "network_script", level: "high", where: path, note: "tells the agent to download a script and run it (`curl … | sh`)" });
       }
       const managers = PACKAGE_MANAGERS.filter((m) => lower.includes(m));
       if (managers.length) {
-        findings.push({ code: "package_manager", level: tool ? "high" : "medium", where: path, note: `uses a package manager (${managers.join(", ").replaceAll("  ", " ")})` });
+        findings.push({ code: "package_manager", level: "medium", where: path, note: `uses a package manager (${managers.join(", ").replaceAll("  ", " ")})` });
       }
       if (lower.split("\n").some((l) => l.split(/\s+/).includes("sudo"))) {
         findings.push({ code: "privilege", level: "high", where: path, note: "asks for root (`sudo`)" });
@@ -6214,20 +6053,12 @@ function riskFindings(skills, files, findings) {
         findings.push({ code: "secrets", level: "medium", where: path, note: `reads secrets from the environment (${secrets.join(", ")})` });
       }
     }
-    if (!skill.install)
-      continue;
-    const where = `${TOOLS_DIR}/${skill.name}/${INSTALL_TOML}`;
-    const systems = Object.keys(skill.install.install).sort();
-    if (systems.length) {
-      findings.push({ code: "system_install", level: "high", where, note: `runs an install script on the runtime (${systems.join(", ")})` });
-    }
-    for (const os of systems) {
-      const writes = skill.install.install[os].writes;
-      if (writes.some((w) => !w.startsWith("<agent_root>") && !w.startsWith("<instance_volume>"))) {
-        findings.push({ code: "volatile_writes", level: "medium", where, note: `[install.${os}] writes outside <agent_root> / <instance_volume> (${writes.join(", ")}): in a container it is gone after a restart and is checked again` });
-      }
-    }
   }
+}
+function skillContentDigest(files) {
+  const lines = [...files.keys()].sort().map((path) => `${path}|${sha256Bytes(files.get(path).bytes)}
+`);
+  return `sha256:${sha256Bytes(new TextEncoder().encode(lines.join("")))}`;
 }
 function lintSkillPackage(packageName, files) {
   const findings = [];
@@ -6274,7 +6105,7 @@ async function readSkillDirectory(root, limit) {
         total += info.size;
         if (total > limit)
           throw new Error(`the skill directory holds more than ${limit} bytes`);
-        files.set(rel, { bytes: await host2.readFile(path), executable: ((info.mode ?? 0) & 73) !== 0 });
+        files.set(rel, { bytes: await host2.readFile(path) });
       } else {
         throw new Error(`${rel}: not a regular file`);
       }
@@ -6283,7 +6114,7 @@ async function readSkillDirectory(root, limit) {
   await walk(realRoot, "");
   return { files, ignored };
 }
-const PACKAGE_VERSION = "0.7.173";
+const PACKAGE_VERSION = "0.7.174";
 const TOOL_VERSION = PACKAGE_VERSION;
 const SDK_VERSION = PACKAGE_VERSION;
 const PROTOCOL_VERSION = "1";
@@ -6300,7 +6131,7 @@ const VERSION$1 = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 const SHA256_ID = /^sha256:[0-9a-f]{64}$/;
 const OBJECT_ID = /^(?:appdoc|pkg):[0-9a-f]{64}$/;
 const SAFE_GENERATED_FILE = /^[A-Za-z0-9._-]+$/;
-const OBJECT_OUTPUT$d = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$e = { type: "object", additionalProperties: true };
 const APP_KINDS = ["static-web", "script", "docker", "agent-skills", "aiws-controls", "ext-tools"];
 const PATH_KINDS = {
   "static-web": { key: "web", category: "web", selectorType: "static" },
@@ -6358,7 +6189,7 @@ function createPikgModule(dependencies = {}) {
           },
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$d,
+        outputSchema: OBJECT_OUTPUT$e,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -6415,7 +6246,7 @@ function createPikgModule(dependencies = {}) {
           },
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$d,
+        outputSchema: OBJECT_OUTPUT$e,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "write" },
         asyncMode: "sync",
@@ -6443,7 +6274,7 @@ function createPikgModule(dependencies = {}) {
           properties: { meta_dir: { type: "string", minLength: 1 } },
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$d,
+        outputSchema: OBJECT_OUTPUT$e,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "write" },
         asyncMode: "sync",
@@ -6464,7 +6295,7 @@ function createPikgModule(dependencies = {}) {
           properties: { dist_dir: { type: "string", minLength: 1 } },
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$d,
+        outputSchema: OBJECT_OUTPUT$e,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "write" },
         asyncMode: "sync",
@@ -6484,7 +6315,7 @@ function createPikgModule(dependencies = {}) {
           required: ["pikg_path"],
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$d,
+        outputSchema: OBJECT_OUTPUT$e,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -6505,7 +6336,7 @@ function createPikgModule(dependencies = {}) {
           properties: { meta_dir: { type: "string", minLength: 1 } },
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$d,
+        outputSchema: OBJECT_OUTPUT$e,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "destructive" },
         asyncMode: "sync",
@@ -6591,8 +6422,8 @@ async function doctorCommand(ctx, input) {
         checks.push(await skillLintCheck(app.name, resolve$1(metaDir, skills.source.path)));
       }
       if (app.categories[0] === PATH_KINDS["ext-tools"].category) {
-        const catalog = optionalInputString(input, "catalog");
-        checks.push(...await extToolsChecks(app, pikg, metaDir, catalog ? resolveFromCwd$1(ctx, catalog) : void 0));
+        const catalog2 = optionalInputString(input, "catalog");
+        checks.push(...await extToolsChecks(app, pikg, metaDir, catalog2 ? resolveFromCwd$1(ctx, catalog2) : void 0));
       }
     } catch (error) {
       checks.push({
@@ -6778,7 +6609,7 @@ async function skillLintCheck(packageName, source) {
       files = /* @__PURE__ */ new Map();
       for (const entry of await readTarGz(await getHost().readFile(source), MAX_SKILL_SOURCE_BYTES)) {
         if (SKILL_DIRS.includes(entry.path.split("/")[0]))
-          files.set(entry.path, { bytes: entry.bytes, executable: entry.executable });
+          files.set(entry.path, { bytes: entry.bytes });
         else
           ignored.push(entry.path);
       }
@@ -6792,6 +6623,7 @@ async function skillLintCheck(packageName, source) {
     ...check,
     status: errors.length ? "error" : "ok",
     ...errors.length ? { detail: errors.map((finding) => finding.note).join("; "), errors } : {},
+    ...errors.length ? {} : { digest: skillContentDigest(files) },
     skills: skills.map(({ kind, name, scope, size, commands }) => ({ kind, name, scope, size, commands })),
     warnings: findings.filter((finding) => finding.level !== "error"),
     ...ignored.length ? { ignored_files: ignored } : {}
@@ -6815,8 +6647,9 @@ async function writeSkillsSkeleton(dir, name) {
       "What to do, step by step. Commands this manual runs that are not part of every runtime go into a front matter line",
       "`commands: name, name`; long material goes into `references/` next to this file and is read on demand.",
       "",
-      "A package holds `cmd_skills/<name>/SKILL.md` (work and ui skills), `plan_skills/<name>/SKILL.md`,",
-      "`goal_skills/<name>/SKILL.md`, and `tools/<work skill>/bin/` for the commands a work skill brings.",
+      "A package holds `cmd_skills/<name>/SKILL.md` (work and ui skills), `plan_skills/<name>/SKILL.md` and",
+      "`goal_skills/<name>/SKILL.md`, each with an optional `references/`. A skill is text only: it brings no command and no",
+      "install script. Commands come from the standard layer or from extension packages (`buckyos ext-tools`).",
       ""
     ].join("\n")
   );
@@ -7845,11 +7678,11 @@ function deriveAppDid(name, owner) {
   }
   return `did:bns:${name}.${match[1]}`;
 }
-async function requiredPrompt(ctx, canPrompt, message, field) {
+async function requiredPrompt(ctx, canPrompt, message2, field) {
   if (!canPrompt) {
     throw new UsageError("MISSING_REQUIRED_INPUT", `${field} is required`);
   }
-  const answer = await ctx.io.prompt(message);
+  const answer = await ctx.io.prompt(message2);
   if (!answer?.trim())
     throw new UsageError("MISSING_REQUIRED_INPUT", `${field} is required`);
   return answer.trim();
@@ -8105,7 +7938,7 @@ const CONTROL_PANEL_SERVICE = "control-panel";
 const PLAN_SCHEMA_VERSION = 4;
 const STAGING_RELEASE_TIMEOUT_MS = 5e3;
 const ZIP_LOCAL_MAGIC = [80, 75, 3, 4];
-const OBJECT_OUTPUT$c = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$d = { type: "object", additionalProperties: true };
 const INSTALL_POLICIES = [
   "strict-public",
   "normal",
@@ -8156,7 +7989,7 @@ function cancelCommand$1() {
       required: ["task_id"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$c,
+    outputSchema: OBJECT_OUTPUT$d,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "sync",
@@ -8191,7 +8024,7 @@ function fetchCommand(dependencies) {
       target: { type: "object", additionalProperties: true },
       install_params: { type: "object", additionalProperties: true }
     }),
-    outputSchema: OBJECT_OUTPUT$c,
+    outputSchema: OBJECT_OUTPUT$d,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -8208,7 +8041,7 @@ function listCommand$3() {
     verb: "list",
     summary: "List visible installed Apps",
     inputSchema: emptyInputSchema(),
-    outputSchema: OBJECT_OUTPUT$c,
+    outputSchema: OBJECT_OUTPUT$d,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -8266,7 +8099,7 @@ function installCommand$1(dependencies) {
       no_wait: { type: "boolean" },
       policy: { type: "string", enum: [...INSTALL_POLICIES] }
     }),
-    outputSchema: OBJECT_OUTPUT$c,
+    outputSchema: OBJECT_OUTPUT$d,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "either",
@@ -8310,7 +8143,7 @@ function upgradeCommand(dependencies) {
       },
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$c,
+    outputSchema: OBJECT_OUTPUT$d,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "either",
@@ -8439,7 +8272,7 @@ function statusCommand$1() {
       properties: { app_name: { type: "string", minLength: 1 } },
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$c,
+    outputSchema: OBJECT_OUTPUT$d,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -8510,7 +8343,7 @@ function publishCommand() {
       required: ["local_dir", "app_doc"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$c,
+    outputSchema: OBJECT_OUTPUT$d,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "sync",
@@ -9231,24 +9064,24 @@ async function callControl(ctx, method, params) {
 function normalizeAppServiceError(error) {
   if (error instanceof ToolError)
     return error;
-  const message = errorMessage(error);
-  const structured = parseEmbeddedJson(message);
+  const message2 = errorMessage(error);
+  const structured = parseEmbeddedJson(message2);
   if (structured && typeof structured.code === "string") {
     const rawDetails = isObject(structured.details) ? structured.details : structured;
     const details = sanitizeAppOutput(rawDetails);
     return new ToolError(
       structured.code,
-      typeof structured.message === "string" ? structured.message : message,
+      typeof structured.message === "string" ? structured.message : message2,
       structured.code === "AMBIGUOUS_APP_TARGET" ? EXIT_OPERATION : EXIT_OPERATION,
       structured.retryable === true,
       isObject(details) ? details : {}
     );
   }
-  const lower = message.toLowerCase();
+  const lower = message2.toLowerCase();
   if (lower.includes("invalid token") || lower.includes("unauthorized") || lower.includes("rpc call error: 401") || lower.includes("session expired") || lower.includes("token expired")) {
     return new ToolError(
       lower.includes("expired") ? "SESSION_EXPIRED" : "INVALID_SESSION",
-      lower.includes("expired") ? "the session token has expired" : message,
+      lower.includes("expired") ? "the session token has expired" : message2,
       EXIT_AUTH
     );
   }
@@ -9259,18 +9092,18 @@ function normalizeAppServiceError(error) {
     return new ToolError("TIMEOUT", "operation timed out", EXIT_TIMEOUT, true);
   }
   if (lower.includes("fetch failed") || lower.includes("connection refused") || lower.includes("rpc call error: 502") || lower.includes("rpc call error: 503") || lower.includes("rpc call error: 504")) {
-    return new ToolError("SERVICE_UNAVAILABLE", message, EXIT_UNAVAILABLE, true);
+    return new ToolError("SERVICE_UNAVAILABLE", message2, EXIT_UNAVAILABLE, true);
   }
-  if (message.includes("APP_NOT_INSTALLED") || /not found/i.test(message)) {
-    return new ToolError("RESOURCE_NOT_FOUND", message);
+  if (message2.includes("APP_NOT_INSTALLED") || /not found/i.test(message2)) {
+    return new ToolError("RESOURCE_NOT_FOUND", message2);
   }
-  if (/permission|forbidden/i.test(message)) {
-    return new ToolError("PERMISSION_DENIED", message, EXIT_PERMISSION);
+  if (/permission|forbidden/i.test(message2)) {
+    return new ToolError("PERMISSION_DENIED", message2, EXIT_PERMISSION);
   }
-  if (/rolling restart is not supported/i.test(message)) {
-    return new ToolError("UNSUPPORTED_STRATEGY", message);
+  if (/rolling restart is not supported/i.test(message2)) {
+    return new ToolError("UNSUPPORTED_STRATEGY", message2);
   }
-  return new ToolError("OPERATION_FAILED", message, EXIT_OPERATION);
+  return new ToolError("OPERATION_FAILED", message2, EXIT_OPERATION);
 }
 function sourceRpcParams(source) {
   return { source: source.serviceSource };
@@ -9606,10 +9439,10 @@ async function tryLstat(path) {
 function resolveFromCwd(ctx, path) {
   return isAbsolute(path) ? resolve(path) : resolve(ctx.cwd, path);
 }
-function parseEmbeddedJson(message) {
-  for (let index = message.indexOf("{"); index >= 0; index = message.indexOf("{", index + 1)) {
+function parseEmbeddedJson(message2) {
+  for (let index = message2.indexOf("{"); index >= 0; index = message2.indexOf("{", index + 1)) {
     try {
-      const value = JSON.parse(message.slice(index));
+      const value = JSON.parse(message2.slice(index));
       if (isObject(value))
         return value;
     } catch {
@@ -9649,7 +9482,7 @@ function selectorCommand(options) {
       required: ["app_name"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$c,
+    outputSchema: OBJECT_OUTPUT$d,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: options.access },
     asyncMode: options.asyncMode,
@@ -9812,8 +9645,8 @@ async function defaultArtifactFetcher(url, ctx) {
 function toHex(bytes) {
   return [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
-const CONTROL_PANEL$3 = "control-panel";
-const OBJECT_OUTPUT$b = { type: "object", additionalProperties: true };
+const CONTROL_PANEL$4 = "control-panel";
+const OBJECT_OUTPUT$c = { type: "object", additionalProperties: true };
 function createDiagnosticModule(dependencies = {}) {
   return {
     name: "diagnostic",
@@ -9852,7 +9685,7 @@ function collectCommand() {
       required: ["services"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$b,
+    outputSchema: OBJECT_OUTPUT$c,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "privileged" },
     asyncMode: "task",
@@ -9868,7 +9701,7 @@ function collectCommand() {
       const response = expectObject$4(
         await callService(
           ctx,
-          CONTROL_PANEL$3,
+          CONTROL_PANEL$4,
           "diagnostic.collect",
           compact$2({
             services,
@@ -9906,7 +9739,7 @@ function exportCommand$2(dependencies) {
       required: ["bundle_id", "path"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$b,
+    outputSchema: OBJECT_OUTPUT$c,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "privileged" },
     asyncMode: "sync",
@@ -9917,14 +9750,14 @@ function exportCommand$2(dependencies) {
 }
 async function exportDiagnostic(ctx, input, dependencies) {
   const response = expectObject$4(
-    await callService(ctx, CONTROL_PANEL$3, "diagnostic.export", {
+    await callService(ctx, CONTROL_PANEL$4, "diagnostic.export", {
       bundle_id: requiredInputString(input, "bundle_id")
     }),
     "Control Panel diagnostic.export response"
   );
   const downloaded = await downloadArtifact(
     ctx,
-    CONTROL_PANEL$3,
+    CONTROL_PANEL$4,
     expectString$2(response.url, "diagnostic.export.url"),
     requiredInputString(input, "path"),
     dependencies.download
@@ -9947,8 +9780,8 @@ async function exportDiagnostic(ctx, input, dependencies) {
 function compact$2(value) {
   return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== void 0));
 }
-const CONTROL_PANEL$2 = "control-panel";
-const OBJECT_OUTPUT$a = { type: "object", additionalProperties: true };
+const CONTROL_PANEL$3 = "control-panel";
+const OBJECT_OUTPUT$b = { type: "object", additionalProperties: true };
 const LOG_LEVELS = ["error", "warning", "info", "debug", "trace"];
 function createLogModule(dependencies = {}) {
   return {
@@ -9969,7 +9802,7 @@ function servicesCommand() {
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
     outputSchema: {
       type: "object",
-      properties: { services: { type: "array", items: OBJECT_OUTPUT$a } },
+      properties: { services: { type: "array", items: OBJECT_OUTPUT$b } },
       required: ["services"],
       additionalProperties: false
     },
@@ -9980,7 +9813,7 @@ function servicesCommand() {
     examples: ["buckyos log services"],
     handler: async (ctx) => {
       const response = expectObject$4(
-        await callService(ctx, CONTROL_PANEL$2, "system.logs.list", {}),
+        await callService(ctx, CONTROL_PANEL$3, "system.logs.list", {}),
         "Control Panel log service list"
       );
       if (!Array.isArray(response.services))
@@ -10018,7 +9851,7 @@ function queryCommand$1() {
     handler: async (ctx, input) => {
       const params = normalizeFilter(input, true);
       const response = expectObject$4(
-        await callService(ctx, CONTROL_PANEL$2, "system.logs.query", params),
+        await callService(ctx, CONTROL_PANEL$3, "system.logs.query", params),
         "Control Panel log query response"
       );
       if (!Array.isArray(response.entries))
@@ -10042,7 +9875,7 @@ function tailCommand(dependencies) {
       }
     ],
     inputSchema: filterSchema({ from: { type: "string", enum: ["start", "end"] } }),
-    outputSchema: OBJECT_OUTPUT$a,
+    outputSchema: OBJECT_OUTPUT$b,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "stream",
@@ -10059,7 +9892,7 @@ function tailCommand(dependencies) {
         if (remaining <= 0)
           throw timeoutError();
         const response = expectObject$4(
-          await callService(ctx, CONTROL_PANEL$2, "system.logs.tail", {
+          await callService(ctx, CONTROL_PANEL$3, "system.logs.tail", {
             ...params,
             cursor,
             from: inputString(input, "from") ?? "end",
@@ -10098,7 +9931,7 @@ function exportCommand$1(dependencies) {
       ...filterSchema({ path: { type: "string", minLength: 1 } }),
       required: ["path"]
     },
-    outputSchema: OBJECT_OUTPUT$a,
+    outputSchema: OBJECT_OUTPUT$b,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -10118,7 +9951,7 @@ function exportCommand$1(dependencies) {
         );
       }
       const response = expectObject$4(
-        await callService(ctx, CONTROL_PANEL$2, "system.logs.download", {
+        await callService(ctx, CONTROL_PANEL$3, "system.logs.download", {
           ...params,
           mode: "filtered"
         }),
@@ -10126,7 +9959,7 @@ function exportCommand$1(dependencies) {
       );
       const downloaded = await downloadArtifact(
         ctx,
-        CONTROL_PANEL$2,
+        CONTROL_PANEL$3,
         expectString$2(response.url, "log export url"),
         requiredInputString(input, "path"),
         dependencies.download
@@ -10249,8 +10082,8 @@ function abortableSleep(milliseconds, signal) {
   });
 }
 const TASK_MANAGER = "task-manager";
-const CONTROL_PANEL$1 = "control-panel";
-const OBJECT_OUTPUT$9 = { type: "object", additionalProperties: true };
+const CONTROL_PANEL$2 = "control-panel";
+const OBJECT_OUTPUT$a = { type: "object", additionalProperties: true };
 function createTaskModule() {
   return {
     name: "task",
@@ -10353,7 +10186,7 @@ function getCommand$2() {
       required: ["task_id"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$9,
+    outputSchema: OBJECT_OUTPUT$a,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -10394,7 +10227,7 @@ function waitCommand() {
     summary: "Stream changes until a Task becomes terminal",
     positionals: [{ name: "task_id", description: "Opaque Task ID", required: true }],
     inputSchema: taskIdSchema(),
-    outputSchema: OBJECT_OUTPUT$9,
+    outputSchema: OBJECT_OUTPUT$a,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "stream",
@@ -10445,7 +10278,7 @@ function cancelCommand() {
       required: ["task_id"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$9,
+    outputSchema: OBJECT_OUTPUT$a,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "sync",
@@ -10488,7 +10321,7 @@ function retryCommand() {
       required: ["task_id"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$9,
+    outputSchema: OBJECT_OUTPUT$a,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "either",
@@ -10505,7 +10338,7 @@ function retryCommand() {
         throw new UsageError("TASK_NOT_RETRYABLE", "only a terminal failed Task can be retried");
       }
       const response = expectObject$4(
-        await callService(ctx, CONTROL_PANEL$1, "task.retry", {
+        await callService(ctx, CONTROL_PANEL$2, "task.retry", {
           task_id: taskId,
           idempotency_key: ctx.idempotencyKey ?? `retry-${crypto.randomUUID()}`
         }),
@@ -10562,7 +10395,7 @@ function invalidResponse$1(label) {
   throw new ToolError("INVALID_SERVICE_RESPONSE", `${label} is invalid`, EXIT_INTERNAL);
 }
 const sdk = provisionSdk;
-const OBJECT_OUTPUT$8 = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$9 = { type: "object", additionalProperties: true };
 const ROOT_OPTION = {
   name: "root",
   description: "Installed BuckyOS root on this machine (BUCKYOS_ROOT); read by status/check, written by activate",
@@ -10646,7 +10479,7 @@ function statusCommand(deps) {
       additionalProperties: false
     },
     outputSchema: {
-      ...OBJECT_OUTPUT$8,
+      ...OBJECT_OUTPUT$9,
       properties: {
         root: { type: "string" },
         state: {
@@ -10684,7 +10517,7 @@ function checkCommand(deps) {
       additionalProperties: false
     },
     outputSchema: {
-      ...OBJECT_OUTPUT$8,
+      ...OBJECT_OUTPUT$9,
       properties: {
         ready: { type: "boolean" },
         root: { type: "string" },
@@ -10732,7 +10565,7 @@ function activateCommand(deps) {
       additionalProperties: false
     },
     outputSchema: {
-      ...OBJECT_OUTPUT$8,
+      ...OBJECT_OUTPUT$9,
       properties: {
         root: { type: "string" },
         state: { type: "string", enum: ["configured"] },
@@ -11014,7 +10847,7 @@ function inputFingerprint(input) {
   hash.update(new TextEncoder().encode(JSON.stringify(material)));
   return hash.digestHex();
 }
-const OBJECT_OUTPUT$7 = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$8 = { type: "object", additionalProperties: true };
 const SKILLS_SUB_PKG = "agent_skills";
 const SKILL_SCOPES = ["ui", "work"];
 const IMPORT_SCOPES = ["work", "ui", "plan"];
@@ -11022,7 +10855,7 @@ const SOURCE_KINDS = ["pikg", "dir", "url", "did"];
 const MAX_SKILL_PAYLOAD_BYTES = 64 * 1024 * 1024;
 const MAX_IMPORT_TEXT_BYTES = 512 * 1024;
 const AGENT_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
-const AGENT_OPTION = {
+const AGENT_OPTION$1 = {
   name: "agent",
   property: "agent_id",
   description: "Agent ID; the Agent serves kRPC at /kapi/<agent_id>",
@@ -11044,17 +10877,17 @@ const RUNTIME_OPTION = {
 const AGENT_PROPERTY = { type: "string", minLength: 1 };
 const NAME_PROPERTY = { type: "string", minLength: 1 };
 const KIND_PROPERTY = { type: "string", enum: [...SKILL_KINDS] };
-function command(definition) {
+function command$1(definition) {
   const { level, properties, required, ...rest } = definition;
   return {
-    options: [AGENT_OPTION],
+    options: [AGENT_OPTION$1],
     inputSchema: {
       type: "object",
       properties: { agent_id: AGENT_PROPERTY, ...properties },
       required: ["agent_id", ...required ?? []],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$7,
+    outputSchema: OBJECT_OUTPUT$8,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level },
     asyncMode: "sync",
@@ -11067,12 +10900,12 @@ function createSkillModule(dependencies = {}) {
     name: "skill",
     summary: "List, install, enable, and remove the work/plan/goal skills of an Agent",
     commands: [
-      command({
+      command$1({
         verb: "list",
         summary: "List the skills of an Agent",
-        description: "Skills that no new session takes (disabled by the owner, or commands not installed) are left out unless --all, which also lists the drafts waiting for the owner. --scope selects work skills by scope. --stats adds how often each manual was frozen, and the count of work created without any manual.",
+        description: "Skills that no new session takes (disabled by the owner) are left out unless --all, which also lists the drafts waiting for the owner. --scope selects work skills by scope. --stats adds how often each manual was frozen, and the count of work created without any manual.",
         options: [
-          AGENT_OPTION,
+          AGENT_OPTION$1,
           KIND_OPTION,
           { name: "scope", description: "Work skills whose scope includes this", type: "string", enum: SKILL_SCOPES },
           { name: "all", description: "Include skills that are not enabled, and drafts", type: "boolean" },
@@ -11092,10 +10925,10 @@ function createSkillModule(dependencies = {}) {
         ],
         handler: async (ctx, input) => await listCommand$1(ctx, input)
       }),
-      command({
+      command$1({
         verb: "status",
         summary: "Whether each work skill works on a runtime of the Agent: baseline and platform, the commands it relies on, and the extension package that would bring what is missing",
-        options: [AGENT_OPTION, RUNTIME_OPTION],
+        options: [AGENT_OPTION$1, RUNTIME_OPTION],
         level: "read",
         properties: { runtime_id: { type: "string", minLength: 1 } },
         examples: ["buckyos skill status --agent jarvis.example.zone --runtime host"],
@@ -11103,16 +10936,16 @@ function createSkillModule(dependencies = {}) {
           runtime_id: input.runtime_id ?? null
         })
       }),
-      command({
+      command$1({
         verb: "install",
         summary: "Install skills into an Agent: plan, confirm, install",
-        description: "The source is a skill PIKG (local file or HTTP(S) URL; verified offline, app_type agent_skills), a directory laid out like its agent_skills sub package (cmd_skills/, plan_skills/, goal_skills/, tools/; the package is named after the directory), or --draft <slug> for a draft in the AgentRoot. The Agent plans the installation first (nothing is written): the plan and its risk findings are shown and must be confirmed; --yes accepts every risk level. A plan that is blocked is refused. Only the owner installs. Sessions created before keep their frozen manuals.",
+        description: "The source is a skill PIKG (local file or HTTP(S) URL; verified offline, app_type agent_skills), a directory laid out like its agent_skills sub package (cmd_skills/, plan_skills/, goal_skills/; the package is named after the directory), or --draft <slug> for a draft in the AgentRoot. A skill is text only: a package with tools/ (commands, install scripts) or a file that is not UTF-8 text is refused; commands come from the standard layer or from extension packages (buckyos ext-tools) and a manual only names them in `commands`. The Agent plans the installation first (nothing is written): the plan and its risk findings are shown and must be confirmed; --yes accepts every risk level. Installing is checking and copying: nothing runs. Only the owner installs. Sessions created before keep their frozen manuals.",
         positionals: [{ name: "source", description: "Skill .pikg file, skill directory, or HTTP(S) URL", required: false }],
         options: [
-          AGENT_OPTION,
+          AGENT_OPTION$1,
           { name: "from", description: "Force source type", type: "string", enum: SOURCE_KINDS },
           { name: "draft", description: "Install this draft of the AgentRoot (skills_drafts/<slug>) instead of a source", type: "string" },
-          { ...RUNTIME_OPTION, description: "Runtime the commands of the skills go to (default: the private runtime)" },
+          { ...RUNTIME_OPTION, description: "Runtime the commands the manuals name are checked against in the plan (default: the private runtime)" },
           { name: "replace", description: "Replace skills of the same names from another package", type: "boolean" }
         ],
         level: "write",
@@ -11131,12 +10964,12 @@ function createSkillModule(dependencies = {}) {
         ],
         handler: async (ctx, input) => await installCommand(ctx, input, dependencies)
       }),
-      command({
+      command$1({
         verb: "remove",
         summary: "Remove an installed skill from an Agent",
         description: "Only installed and imported skills can be removed. Without --kind the kind is looked up by name.",
         positionals: [{ name: "name", description: "Skill name" }],
-        options: [AGENT_OPTION, KIND_OPTION],
+        options: [AGENT_OPTION$1, KIND_OPTION],
         level: "destructive",
         properties: { name: NAME_PROPERTY, kind: KIND_PROPERTY },
         required: ["name"],
@@ -11145,35 +10978,35 @@ function createSkillModule(dependencies = {}) {
           const agentId = agentIdFrom(input);
           const name = requiredInputString(input, "name");
           const kind = await kindOf(ctx, agentId, name, input);
-          await confirm(ctx, "skill remove", `Remove ${kind} skill ${name} from ${agentId}?`);
+          await confirm$1(ctx, "skill remove", `Remove ${kind} skill ${name} from ${agentId}?`);
           const removed = await callService(ctx, agentId, "skills.remove", { kind, name });
           return { agent_id: agentId, removed: expectObject(removed, "skills.remove") };
         }
       }),
-      command({
+      command$1({
         verb: "disable",
         summary: "Disable a skill of an Agent: no new session takes it",
         description: "Any skill can be disabled, package ones included. Running sessions keep what they froze. Without --kind the kind is looked up by name.",
         positionals: [{ name: "name", description: "Skill name" }],
-        options: [AGENT_OPTION, KIND_OPTION, { name: "reason", description: "Why, for the record", type: "string" }],
+        options: [AGENT_OPTION$1, KIND_OPTION, { name: "reason", description: "Why, for the record", type: "string" }],
         level: "write",
         properties: { name: NAME_PROPERTY, kind: KIND_PROPERTY, reason: { type: "string" } },
         required: ["name"],
         examples: ['buckyos skill disable aigc_video --agent jarvis.example.zone --reason "no provider"'],
         handler: async (ctx, input) => await setEnabled(ctx, input, false)
       }),
-      command({
+      command$1({
         verb: "enable",
         summary: "Enable a disabled skill of an Agent",
         positionals: [{ name: "name", description: "Skill name" }],
-        options: [AGENT_OPTION, KIND_OPTION],
+        options: [AGENT_OPTION$1, KIND_OPTION],
         level: "write",
         properties: { name: NAME_PROPERTY, kind: KIND_PROPERTY },
         required: ["name"],
         examples: ["buckyos skill enable aigc_video --agent jarvis.example.zone"],
         handler: async (ctx, input) => await setEnabled(ctx, input, true)
       }),
-      command({
+      command$1({
         verb: "ui-list",
         summary: "The work skills every new conversation (UI session) of the Agent takes",
         level: "read",
@@ -11184,7 +11017,7 @@ function createSkillModule(dependencies = {}) {
           return { agent_id: agentId, ...await uiGet(ctx, agentId) };
         }
       }),
-      command({
+      command$1({
         verb: "ui-add",
         summary: "Add a skill whose scope includes ui to the conversations of the Agent",
         description: "Takes effect in conversations created afterwards. The result gives total_bytes: every conversation carries that much manual text.",
@@ -11195,7 +11028,7 @@ function createSkillModule(dependencies = {}) {
         examples: ["buckyos skill ui-add share --agent jarvis.example.zone"],
         handler: async (ctx, input) => await uiChange(ctx, input, true)
       }),
-      command({
+      command$1({
         verb: "ui-remove",
         summary: "Take a skill out of the conversations of the Agent",
         positionals: [{ name: "name", description: "Skill name" }],
@@ -11205,13 +11038,13 @@ function createSkillModule(dependencies = {}) {
         examples: ["buckyos skill ui-remove share --agent jarvis.example.zone"],
         handler: async (ctx, input) => await uiChange(ctx, input, false)
       }),
-      command({
+      command$1({
         verb: "import",
         summary: "Hand a text to the Agent to turn into a skill draft",
         description: "Reads the text from a file, an HTTP(S) URL, or stdin (-). The Agent starts a work session that writes a draft under skills_drafts/; nothing is installed. The owner reads the draft (skill drafts, skill draft-show) and installs it with skill install --draft <slug>.",
         positionals: [{ name: "source", description: "Text file, HTTP(S) URL, or - for stdin" }],
         options: [
-          AGENT_OPTION,
+          AGENT_OPTION$1,
           { name: "name", description: "Slug of the draft", type: "string" },
           { name: "scope", description: "What to make of it", type: "string", enum: IMPORT_SCOPES },
           { ...RUNTIME_OPTION, description: "Runtime the commands the text names are checked on (default: the private runtime)" }
@@ -11230,7 +11063,7 @@ function createSkillModule(dependencies = {}) {
         ],
         handler: async (ctx, input) => await importCommand$1(ctx, input, dependencies)
       }),
-      command({
+      command$1({
         verb: "drafts",
         summary: "List the skill drafts of an Agent that wait for the owner",
         level: "read",
@@ -11242,11 +11075,11 @@ function createSkillModule(dependencies = {}) {
           return { agent_id: agentId, total: drafts.length, drafts };
         }
       }),
-      command({
+      command$1({
         verb: "draft-show",
         summary: "Show a skill draft, or one of its files",
         positionals: [{ name: "slug", description: "Draft slug" }],
-        options: [AGENT_OPTION, { name: "file", description: "Draft-relative path of a file to print", type: "string" }],
+        options: [AGENT_OPTION$1, { name: "file", description: "Draft-relative path of a file to print", type: "string" }],
         level: "read",
         properties: { slug: NAME_PROPERTY, file: { type: "string", minLength: 1 } },
         required: ["slug"],
@@ -11268,7 +11101,7 @@ function createSkillModule(dependencies = {}) {
           return { agent_id: agentId, ...draft, install_command: `buckyos skill install --draft ${slug} --agent ${agentId}` };
         }
       }),
-      command({
+      command$1({
         verb: "draft-discard",
         summary: "Delete a skill draft",
         positionals: [{ name: "slug", description: "Draft slug" }],
@@ -11279,44 +11112,9 @@ function createSkillModule(dependencies = {}) {
         handler: async (ctx, input) => {
           const agentId = agentIdFrom(input);
           const slug = requiredInputString(input, "slug");
-          await confirm(ctx, "skill draft-discard", `Discard skill draft ${slug} of ${agentId}?`);
+          await confirm$1(ctx, "skill draft-discard", `Discard skill draft ${slug} of ${agentId}?`);
           await callService(ctx, agentId, "skills.draft_discard", { slug });
           return { agent_id: agentId, discarded: slug };
-        }
-      }),
-      command({
-        verb: "install-cmd",
-        summary: "Install the commands of an installed work skill on one more runtime",
-        positionals: [{ name: "name", description: "Work skill name" }],
-        options: [AGENT_OPTION, { ...RUNTIME_OPTION, description: "Runtime id", required: true }],
-        level: "write",
-        properties: { name: NAME_PROPERTY, runtime_id: { type: "string", minLength: 1 } },
-        required: ["name", "runtime_id"],
-        examples: ["buckyos skill install-cmd hello --runtime host --agent jarvis.example.zone"],
-        handler: async (ctx, input) => {
-          const agentId = agentIdFrom(input);
-          const name = requiredInputString(input, "name");
-          const runtimeId = requiredInputString(input, "runtime_id");
-          const state = await callService(ctx, agentId, "skills.install_cmd", { name, runtime_id: runtimeId });
-          return { agent_id: agentId, name, runtime_id: runtimeId, install_state: expectObject(state, "skills.install_cmd") };
-        }
-      }),
-      command({
-        verb: "check",
-        summary: "Check again that the commands a work skill installed are on its runtimes",
-        description: "Without --runtime every runtime the skill was installed on is checked. The install state is updated.",
-        positionals: [{ name: "name", description: "Work skill name" }],
-        options: [AGENT_OPTION, { ...RUNTIME_OPTION, description: "Only this runtime" }],
-        level: "write",
-        properties: { name: NAME_PROPERTY, runtime_id: { type: "string", minLength: 1 } },
-        required: ["name"],
-        examples: ["buckyos skill check hello --agent jarvis.example.zone"],
-        handler: async (ctx, input) => {
-          const agentId = agentIdFrom(input);
-          const name = requiredInputString(input, "name");
-          const runtimeId = inputString(input, "runtime_id");
-          const state = await callService(ctx, agentId, "skills.check", { name, ...runtimeId ? { runtime_id: runtimeId } : {} });
-          return { agent_id: agentId, name, install_state: expectObject(state, "skills.check") };
         }
       })
     ]
@@ -11402,10 +11200,6 @@ async function installCommand(ctx, input, dependencies) {
   const planDigest = plan.plan_digest;
   if (typeof planDigest !== "string" || !planDigest)
     invalidResponse("skills.install_plan");
-  const blocked = Array.isArray(plan.blocked) ? plan.blocked.map(String) : [];
-  if (blocked.length) {
-    throw new ToolError("SKILL_INSTALL_BLOCKED", `the installation is blocked: ${blocked.join("; ")}`, EXIT_OPERATION, false, { plan });
-  }
   if (!ctx.confirmed) {
     if (ctx.config.nonInteractive || !ctx.io.inputIsTerminal) {
       throw new ToolError(
@@ -11417,13 +11211,12 @@ async function installCommand(ctx, input, dependencies) {
       );
     }
     await ctx.io.stderr(planText(plan));
-    await confirm(ctx, "skill install", `Install into ${agentId} (risk: ${riskLevel(plan)})?`);
+    await confirm$1(ctx, "skill install", `Install into ${agentId} (risk: ${riskLevel(plan)})?`);
   }
   const report = expectObject(
     await callService(ctx, agentId, "skills.install", {
       ...source.params,
       plan_digest: planDigest,
-      ...runtime,
       replace: input.replace === true
     }),
     "skills.install"
@@ -11441,15 +11234,22 @@ function planText(plan) {
     const scope = typeof skill.scope === "string" ? ` [${skill.scope}]` : "";
     const replaces = skill.replaces ? `; replaces the ${skill.replaces} skill` : "";
     const commands = Array.isArray(skill.commands) && skill.commands.length ? `; commands: ${skill.commands.join(", ")}` : "";
-    const scripts = Array.isArray(skill.install_scripts) && skill.install_scripts.length ? `; install scripts: ${skill.install_scripts.join(", ")}` : "";
-    lines.push(`  ${skill.kind} ${skill.name}${scope}: ${skill.description ?? ""}${commands}${scripts}${replaces}`);
+    lines.push(`  ${skill.kind} ${skill.name}${scope}: ${skill.description ?? ""}${commands}${replaces}`);
   }
-  if (plan.runtime_id)
-    lines.push(`Commands go to runtime: ${plan.runtime_id}`);
+  if (plan.checked_runtime_id)
+    lines.push(`Commands checked on runtime: ${plan.checked_runtime_id}`);
   for (const item of Array.isArray(plan.command_status) ? plan.command_status : []) {
-    const status = item;
-    if (status.status && status.status !== "ready")
-      lines.push(`  ${status.name}: commands ${status.status}`);
+    const entry = item;
+    const status = entry.status && typeof entry.status === "object" ? entry.status : {};
+    if (status.state !== "partial")
+      continue;
+    const states = status.commands && typeof status.commands === "object" ? status.commands : {};
+    const missing = Object.keys(states).filter((name) => states[name]?.present === false);
+    const packages = (Array.isArray(status.recommended_packages) ? status.recommended_packages : []).map((pkg) => String(pkg.id));
+    const none = Array.isArray(status.no_package) ? status.no_package.map(String) : [];
+    lines.push(
+      `  ${entry.name}: missing ${missing.join(", ")}` + (packages.length ? `; extension packages that bring them: ${packages.join(", ")} (buckyos ext-tools enable)` : "") + (none.length ? `; no package provides ${none.join(", ")}` : "")
+    );
   }
   const risk = plan.risk && typeof plan.risk === "object" ? plan.risk : {};
   lines.push(`Risk: ${riskLevel(plan)}`);
@@ -11522,7 +11322,7 @@ async function pikgSource(path, summary2) {
   const ignored = [];
   for (const entry of await readTarGz(bytes, MAX_SKILL_PAYLOAD_BYTES)) {
     if (SKILL_DIRS.includes(entry.path.split("/")[0]))
-      files.set(entry.path, { bytes: entry.bytes, executable: entry.executable });
+      files.set(entry.path, { bytes: entry.bytes });
     else
       ignored.push(entry.path);
   }
@@ -11563,10 +11363,8 @@ async function directorySource(path) {
 }
 function packageFiles(files) {
   const out = {};
-  for (const path of [...files.keys()].sort()) {
-    const file = files.get(path);
-    out[path] = { content: base64(file.bytes), executable: file.executable };
-  }
+  for (const path of [...files.keys()].sort())
+    out[path] = { content: base64(files.get(path).bytes) };
   return out;
 }
 async function importCommand$1(ctx, input, dependencies) {
@@ -11641,7 +11439,7 @@ async function fetchText(url, signal) {
   }
   return await response.text();
 }
-async function confirm(ctx, verb, question) {
+async function confirm$1(ctx, verb, question) {
   if (ctx.confirmed)
     return;
   if (ctx.config.nonInteractive || !ctx.io.inputIsTerminal) {
@@ -11701,6 +11499,439 @@ function base64(bytes) {
   }
   return btoa(binary);
 }
+const CONTROL_PANEL$1 = "control-panel";
+const OBJECT_OUTPUT$7 = { type: "object", additionalProperties: true };
+const ID$1 = { type: "string", minLength: 1 };
+const DEVICE_PREFIX = "exec-";
+const AGENT_RUNTIME_ACTIONS = ["list", "enable", "disable", "default"];
+const AGENT_OPTION = {
+  name: "agent",
+  property: "agent_id",
+  description: "Agent ID as `agent list` prints it",
+  type: "string",
+  required: true
+};
+function objects(value) {
+  return Array.isArray(value) ? value.filter((item) => item && typeof item === "object" && !Array.isArray(item)) : [];
+}
+function strings(value) {
+  return Array.isArray(value) ? value.map(String) : [];
+}
+function time(value) {
+  return typeof value === "number" && value > 0 ? new Date(value).toISOString() : "";
+}
+function allows(roots, mode, computer, baseline) {
+  return [
+    strings(roots).join(",") || "-",
+    mode,
+    ...computer && computer !== "none" ? [`computer=${computer}`] : [],
+    ...baseline ? [`baseline=${baseline}`] : []
+  ].join(" ");
+}
+function catalogRows(runtimes) {
+  return runtimes.map((runtime) => ({
+    id: String(runtime.runtime_id ?? ""),
+    kind: runtime.kind === "executor" ? "device" : String(runtime.kind ?? ""),
+    name: String(runtime.name ?? ""),
+    state: runtime.closed === true ? "closed" : "open",
+    online: runtime.online === true ? "yes" : runtime.online === false ? "no" : "",
+    expires: time(runtime.expires_at_ms),
+    allows: allows(runtime.workdir_roots, runtime.read_only === true ? "ro" : "rw", runtime.computer, runtime.baseline),
+    agents: objects(runtime.assigned_to).map((agent) => `${agent.enabled === true ? "*" : ""}${agent.agent_id}${agent.default === true ? " (default)" : ""}`).join(", ")
+  }));
+}
+function splitAgentRuntimes(records) {
+  const current = records.filter((record) => record.lifecycle !== "retired");
+  return {
+    current: [...current.filter((record) => record.runtime_id === "private"), ...current.filter((record) => record.runtime_id !== "private")],
+    history: records.filter((record) => record.lifecycle === "retired")
+  };
+}
+function agentRuntimeRows(records, settings) {
+  const { current, history } = splitAgentRuntimes(records);
+  return [...current, ...history].map((record) => {
+    const caps = record.caps ?? {};
+    const grant = record.grant ?? {};
+    const usage2 = record.usage ?? {};
+    const connector = record.connector ?? {};
+    const retired = record.lifecycle === "retired";
+    return {
+      id: String(record.runtime_id ?? ""),
+      name: String(record.name ?? ""),
+      type: String(connector.type ?? ""),
+      state: retired ? "retired" : record.enabled === false ? "off" : String(record.availability ?? "on"),
+      default: !retired && (record.default === true || record.runtime_id === settings.default_runtime_id) ? "*" : "",
+      os: String(caps.os ?? ""),
+      allows: allows(grant.roots, strings(grant.ops).join(",") || "-", grant.computer, caps.baseline),
+      expires: time(grant.expires_at_ms),
+      sessions: String(usage2.sessions_total ?? 0),
+      workspaces: String(usage2.workspaces ?? 0),
+      last_used: time(usage2.last_used_at_ms)
+    };
+  });
+}
+function directoryRows(runtimes, directory) {
+  return runtimes.map((runtime) => ({
+    id: String(runtime.runtime_id ?? ""),
+    name: String(runtime.name ?? ""),
+    type: runtime.kind === "executor" ? "device" : String(runtime.kind ?? ""),
+    state: runtime.withdrawn === true ? "withdrawn" : runtime.enabled === true ? runtime.closed === true ? "closed" : "on" : "off",
+    default: runtime.runtime_id === directory.default_runtime_id ? "*" : "",
+    os: String(runtime.os ?? ""),
+    allows: allows(runtime.workdir_roots, runtime.read_only === true ? "ro" : "rw", runtime.computer, runtime.baseline),
+    expires: time(runtime.expires_at_ms)
+  }));
+}
+function impactText(agentId, impact) {
+  const sessions = objects(impact.active_sessions);
+  const todos = objects(impact.pending_todos);
+  const workspaces = objects(impact.workspaces);
+  const lines = [
+    `Runtime ${impact.runtime_id} of ${agentId}: ${sessions.length} session(s) in progress, ${todos.length} Todo(s) waiting, ${workspaces.length} workspace(s)` + (impact.owner_default === true ? "; it is the default runtime" : "")
+  ];
+  for (const session of sessions) {
+    lines.push(`  session ${session.session_id} [${session.kind}${session.class ? `/${session.class}` : ""}, ${session.run_state}] ${session.title ?? ""}`);
+  }
+  for (const todo of todos)
+    lines.push(`  todo ${todo.session_id}/${todo.todo_id} [${todo.status}] ${todo.title ?? ""}`);
+  for (const workspace of workspaces) {
+    lines.push(`  workspace ${workspace.workspace_id} ${workspace.name ?? ""} ${workspace.directory ?? ""} [${workspace.lifecycle ?? ""}]`);
+  }
+  if (sessions.length + todos.length + workspaces.length > 0)
+    lines.push("  None of them is moved to another runtime.");
+  return `${lines.join("\n")}
+`;
+}
+function deviceOf(given, runtimes) {
+  const runtime = runtimes.find((item) => item.runtime_id === given || item.executor_id && item.executor_id === given);
+  if (runtime ? runtime.kind !== "executor" : given === "host" || given === "private" || given.startsWith("node-")) {
+    throw new UsageError("INVALID_ARGUMENT", `${given} is not a device: only device runtimes (${DEVICE_PREFIX}<executor_id>) are revoked; a node runtime is closed on its node`);
+  }
+  const executorId = runtime?.executor_id ? String(runtime.executor_id) : given.startsWith(DEVICE_PREFIX) ? given.slice(DEVICE_PREFIX.length) : given;
+  return { runtime_id: runtime ? String(runtime.runtime_id) : `${DEVICE_PREFIX}${executorId}`, executor_id: executorId, ...runtime ? { runtime } : {} };
+}
+function serviceReason(error, prefix) {
+  const message2 = error instanceof Error ? error.message : String(error);
+  const at = message2.indexOf(`${prefix}:`);
+  return at < 0 ? void 0 : message2.slice(at + prefix.length + 1).trim();
+}
+function unreachable(error) {
+  const normalized = normalizeError(error);
+  return normalized.code === "SERVICE_UNAVAILABLE" || normalized.code === "TIMEOUT" || normalized.message.toLowerCase().includes("rpc call error: 404");
+}
+function message(error) {
+  return normalizeError(error).message;
+}
+async function confirm(ctx, verb, shown, question, details) {
+  if (ctx.confirmed)
+    return;
+  if (ctx.config.nonInteractive || !ctx.io.inputIsTerminal) {
+    throw new ToolError("CONFIRMATION_REQUIRED", `${verb} requires --yes in non-interactive execution`, EXIT_PERMISSION, false, details);
+  }
+  await ctx.io.stderr(shown);
+  const answer = (await ctx.io.prompt(`${question} [y/N] `))?.trim().toLowerCase();
+  if (answer !== "y" && answer !== "yes")
+    throw new ToolError("CONFIRMATION_DECLINED", `${verb} was declined`, EXIT_PERMISSION);
+}
+async function controlPanel(ctx, method, params) {
+  try {
+    return expectObject$4(await callService(ctx, CONTROL_PANEL$1, method, params), method);
+  } catch (error) {
+    if (message(error).includes("agent_not_found")) {
+      throw new ToolError("RESOURCE_NOT_FOUND", `Agent not found or not yours: ${params.agent_id}`);
+    }
+    for (const [prefix, code] of [["runtime_not_offered", "RUNTIME_NOT_OFFERED"], ["invalid_runtimes", "INVALID_RUNTIMES"]]) {
+      const reason = serviceReason(error, prefix);
+      if (reason !== void 0)
+        throw new ToolError(code, reason, EXIT_OPERATION);
+    }
+    throw error;
+  }
+}
+async function catalog(ctx) {
+  const response = await controlPanel(ctx, "agent.runtime_catalog", {});
+  return { response, runtimes: objects(response.runtimes) };
+}
+async function impactOf(ctx, agentId, runtimeId) {
+  return expectObject$4(await callService(ctx, agentId, "runtimes.impact", { runtime_id: runtimeId }), "runtimes.impact");
+}
+function command(definition) {
+  const { level, properties, required, ...rest } = definition;
+  return {
+    inputSchema: { type: "object", properties, required: required ?? [], additionalProperties: false },
+    outputSchema: OBJECT_OUTPUT$7,
+    resultSchemaVersion: 1,
+    access: { mode: "fixed", level },
+    asyncMode: "sync",
+    requiresSession: true,
+    ...rest
+  };
+}
+function createRuntimeModule() {
+  return {
+    name: "runtime",
+    summary: "List the runtimes of your directory, assign them to Agents, and revoke devices",
+    commands: [
+      command({
+        verb: "list",
+        summary: "List the runtimes of your directory and the Agents each is assigned to",
+        description: "Node runtimes (host, node-*) and devices (exec-<executor_id>). What a runtime allows (directories, ro|rw, computer use, baseline, expiry) is its own configuration. In the agents column `*` marks an Agent that has the runtime switched on and (default) the Agent whose default it is. A device is used by one Agent at a time.",
+        level: "read",
+        properties: {},
+        examples: ["buckyos runtime list", "buckyos --output table runtime list"],
+        handler: async (ctx) => {
+          const { response, runtimes } = await catalog(ctx);
+          return { ...response, runtimes: ctx.output.format === "table" ? catalogRows(runtimes) : runtimes };
+        }
+      }),
+      command({
+        verb: "assign",
+        summary: "Assign a runtime of your directory to an Agent",
+        description: "Records that the Agent may use the runtime, switched on unless --disabled. Nothing about what the runtime allows is set per Agent. A device another Agent has switched on is refused (RUNTIME_IN_USE): switch it off there first; this command never does that for you.",
+        positionals: [{ name: "runtime_id", description: "Runtime id as `runtime list` prints it" }],
+        options: [AGENT_OPTION, { name: "disabled", description: "Assign it switched off", type: "boolean" }],
+        level: "write",
+        properties: { runtime_id: ID$1, agent_id: ID$1, disabled: { type: "boolean" } },
+        required: ["runtime_id", "agent_id"],
+        examples: [
+          "buckyos runtime assign host --agent jarvis.example.zone",
+          "buckyos runtime assign exec-laptop --agent jarvis.example.zone --disabled"
+        ],
+        handler: async (ctx, input) => await assign(ctx, input)
+      }),
+      command({
+        verb: "unassign",
+        summary: "Take a runtime away from an Agent",
+        description: "Shows what the Agent has on the runtime (sessions in progress, Todos waiting, workspaces; none is moved) and asks; --yes skips the question. The Agent keeps the record as history; the runtime stays in your directory. When the service of the Agent cannot be reached the impact is unknown and only --yes removes the assignment, through the control panel.",
+        positionals: [{ name: "runtime_id", description: "Runtime id" }],
+        options: [AGENT_OPTION],
+        level: "destructive",
+        properties: { runtime_id: ID$1, agent_id: ID$1 },
+        required: ["runtime_id", "agent_id"],
+        examples: ["buckyos runtime unassign host --agent jarvis.example.zone", "buckyos --yes runtime unassign exec-laptop --agent jarvis.example.zone"],
+        handler: async (ctx, input) => await unassign(ctx, input)
+      }),
+      command({
+        verb: "revoke",
+        summary: "Revoke a device: it stops serving and is taken away from its Agents",
+        description: "Devices only (exec-<executor_id>, or the executor id). Shows the Agents the device is assigned to and what the Agent using it has in progress there, and asks; --yes skips the question.",
+        positionals: [{ name: "runtime_id", description: "Device runtime id (exec-<executor_id>) or executor id" }],
+        level: "destructive",
+        properties: { runtime_id: ID$1 },
+        required: ["runtime_id"],
+        examples: ["buckyos runtime revoke exec-laptop", "buckyos --yes runtime revoke laptop"],
+        handler: async (ctx, input) => await revoke(ctx, input)
+      })
+    ]
+  };
+}
+function agentRuntimeCommand() {
+  return {
+    verb: "runtime",
+    summary: "The runtimes of one Agent: list them, switch one on or off, choose the default",
+    description: "list: the runtimes the Agent has now (its private one first), then the retired ones with their usage; from the control panel when the service of the Agent cannot be reached. enable / disable <runtime_id>: whether the Agent uses a runtime it was assigned; disable shows what is in progress there and asks unless --yes. default <runtime_id|private>: where new work of the Agent runs. Runtimes are assigned with `buckyos runtime assign`.",
+    positionals: [
+      { name: "action", description: AGENT_RUNTIME_ACTIONS.join(" | ") },
+      { name: "runtime_id", description: "Runtime id (enable, disable, default); `private` is the own runtime of the Agent", required: false }
+    ],
+    options: [AGENT_OPTION],
+    inputSchema: {
+      type: "object",
+      properties: { action: { type: "string", enum: AGENT_RUNTIME_ACTIONS }, runtime_id: ID$1, agent_id: ID$1 },
+      required: ["action", "agent_id"],
+      additionalProperties: false
+    },
+    outputSchema: OBJECT_OUTPUT$7,
+    resultSchemaVersion: 1,
+    access: { mode: "operation", operationIdField: "action", possibleLevels: ["read", "write"] },
+    asyncMode: "sync",
+    requiresSession: true,
+    examples: [
+      "buckyos agent runtime list --agent jarvis.example.zone",
+      "buckyos agent runtime enable host --agent jarvis.example.zone",
+      "buckyos --yes agent runtime disable exec-laptop --agent jarvis.example.zone",
+      "buckyos agent runtime default private --agent jarvis.example.zone"
+    ],
+    handler: async (ctx, input) => {
+      const agentId = agentIdFrom(input);
+      const action = requiredInputString(input, "action");
+      const runtimeId = inputString(input, "runtime_id");
+      if (action === "list") {
+        if (runtimeId)
+          throw new UsageError("ARGUMENT_CONFLICT", "agent runtime list takes no runtime id");
+        return await agentRuntimeList(ctx, agentId);
+      }
+      if (!runtimeId)
+        throw new UsageError("MISSING_ARGUMENT", `agent runtime ${action} needs a runtime id`);
+      if (action === "default") {
+        const settings2 = await settingsSet(ctx, agentId, { runtime_id: runtimeId, default: true });
+        return { agent_id: agentId, runtime_id: runtimeId, default: true, settings: settings2 };
+      }
+      if (action === "enable") {
+        const settings2 = await settingsSet(ctx, agentId, { runtime_id: runtimeId, enabled: true });
+        return { agent_id: agentId, runtime_id: runtimeId, enabled: true, settings: settings2 };
+      }
+      const impact = await impactOf(ctx, agentId, runtimeId);
+      if (impact.blocking === true) {
+        await confirm(ctx, "agent runtime disable", impactText(agentId, impact), `Switch ${runtimeId} off for ${agentId} anyway?`, { impact });
+      }
+      const settings = await settingsSet(ctx, agentId, {
+        runtime_id: runtimeId,
+        enabled: false,
+        ...impact.blocking === true ? { confirm: true } : {}
+      });
+      return { agent_id: agentId, runtime_id: runtimeId, enabled: false, impact, settings };
+    }
+  };
+}
+async function settingsSet(ctx, agentId, params) {
+  try {
+    return expectObject$4(await callService(ctx, agentId, "runtimes.settings_set", params), "runtimes.settings_set");
+  } catch (error) {
+    throw runtimeError(error, agentId, String(params.runtime_id)) ?? error;
+  }
+}
+function runtimeError(error, agentId, runtimeId) {
+  const needed = serviceReason(error, "confirm_required");
+  if (needed !== void 0) {
+    return new ToolError("CONFIRMATION_REQUIRED", `${needed} (buckyos agent runtime list --agent ${agentId}; --yes confirms)`, EXIT_PERMISSION);
+  }
+  const inUse = serviceReason(error, "runtime_in_use");
+  if (inUse !== void 0) {
+    const user = /in use by Agent `([^`]+)`/.exec(inUse)?.[1];
+    return new ToolError(
+      "RUNTIME_IN_USE",
+      `${inUse}${user ? ` (buckyos agent runtime disable ${runtimeId} --agent ${user})` : ""}`,
+      EXIT_OPERATION,
+      false,
+      user ? { in_use_by: user, disable_command: `buckyos agent runtime disable ${runtimeId} --agent ${user}` } : {}
+    );
+  }
+  return void 0;
+}
+async function agentRuntimeList(ctx, agentId) {
+  let records;
+  let settings;
+  try {
+    const listed = await callService(ctx, agentId, "runtimes.list", {});
+    if (!Array.isArray(listed))
+      throw new ToolError("INVALID_SERVICE_RESPONSE", "runtimes.list must be an array");
+    records = objects(listed);
+    settings = expectObject$4(await callService(ctx, agentId, "runtimes.settings", {}), "runtimes.settings");
+  } catch (error) {
+    if (!unreachable(error))
+      throw error;
+    const directory = await controlPanel(ctx, "agent.runtime_directory", { agent_id: agentId });
+    const assigned = objects(directory.runtimes).filter((runtime) => runtime.assigned === true);
+    const { runtimes: _all, ...rest } = directory;
+    return {
+      agent_id: agentId,
+      source: CONTROL_PANEL$1,
+      note: `the service of ${agentId} cannot be reached (${message(error)}): these are its assignments in the control panel; availability, usage and retired runtimes are not known`,
+      runtimes: ctx.output.format === "table" ? directoryRows(assigned, directory) : assigned,
+      ...rest
+    };
+  }
+  const { current, history } = splitAgentRuntimes(records);
+  return {
+    agent_id: agentId,
+    source: "agent",
+    ...ctx.output.format === "table" ? { runtimes: agentRuntimeRows(records, settings) } : { runtimes: current, history },
+    default_runtime_id: settings.default_runtime_id ?? null,
+    configured_default_runtime_id: settings.configured_default_runtime_id ?? null,
+    settings: settings.runtimes ?? {}
+  };
+}
+async function assign(ctx, input) {
+  const agentId = agentIdFrom(input);
+  const runtimeId = requiredInputString(input, "runtime_id");
+  const enabled = input.disabled !== true;
+  try {
+    await controlPanel(ctx, "agent.update", { agent_id: agentId, runtimes: { [runtimeId]: { enabled } } });
+  } catch (error) {
+    const inUse = serviceReason(error, "runtime_in_use");
+    if (inUse === void 0)
+      throw error;
+    let user = /in use by Agent `([^`]+)`/.exec(inUse)?.[1];
+    let theirs = runtimeId;
+    try {
+      const device = deviceOf(runtimeId, (await catalog(ctx)).runtimes).runtime;
+      const using = objects(device?.assigned_to).find((agent) => agent.enabled === true && agent.agent_id !== agentId);
+      if (using) {
+        user = String(using.agent_id);
+        theirs = String(using.runtime_id ?? runtimeId);
+      }
+    } catch {
+    }
+    const disable = user ? `buckyos agent runtime disable ${theirs} --agent ${user}` : void 0;
+    throw new ToolError(
+      "RUNTIME_IN_USE",
+      `${inUse}${disable ? `: ${disable}` : ""}`,
+      EXIT_OPERATION,
+      false,
+      user ? { in_use_by: user, disable_command: disable } : {}
+    );
+  }
+  return { agent_id: agentId, runtime_id: runtimeId, assigned: true, enabled };
+}
+async function unassign(ctx, input) {
+  const agentId = agentIdFrom(input);
+  const runtimeId = requiredInputString(input, "runtime_id");
+  let impact;
+  try {
+    impact = await impactOf(ctx, agentId, runtimeId);
+  } catch (error) {
+    if (!unreachable(error))
+      throw error;
+    const why = `the service of ${agentId} cannot be reached (${message(error)}): what it has in progress on ${runtimeId} is unknown`;
+    if (!ctx.confirmed) {
+      throw new ToolError(
+        "AGENT_SERVICE_UNAVAILABLE",
+        `${why}. Nothing was changed; --yes removes the assignment through the control panel anyway`,
+        EXIT_UNAVAILABLE,
+        true
+      );
+    }
+    await controlPanel(ctx, "agent.update", { agent_id: agentId, runtimes: { [runtimeId]: null } });
+    return { agent_id: agentId, runtime_id: runtimeId, removed: true, via: CONTROL_PANEL$1, impact: null, warning: why };
+  }
+  await confirm(ctx, "runtime unassign", impactText(agentId, impact), `Take ${runtimeId} away from ${agentId}?`, { impact });
+  let settings;
+  try {
+    settings = expectObject$4(await callService(ctx, agentId, "runtimes.remove", { runtime_id: runtimeId, confirm: true }), "runtimes.remove");
+  } catch (error) {
+    throw runtimeError(error, agentId, runtimeId) ?? error;
+  }
+  return { agent_id: agentId, runtime_id: runtimeId, removed: true, via: "agent", impact, settings };
+}
+async function revoke(ctx, input) {
+  const given = requiredInputString(input, "runtime_id");
+  const device = deviceOf(given, (await catalog(ctx)).runtimes);
+  const assigned = objects(device.runtime?.assigned_to);
+  const lines = [
+    device.runtime ? `Device ${device.runtime_id} (${device.runtime.name ?? device.executor_id}) is assigned to ${assigned.length} Agent(s)` : `Device ${device.runtime_id} is not in your runtime directory: nothing is known about its Agents`,
+    ...assigned.map((agent) => `  ${agent.enabled === true ? "*" : " "} ${agent.agent_id}${agent.default === true ? " (default)" : ""}`)
+  ];
+  const impacts = [];
+  for (const agent of assigned.filter((item) => item.enabled === true)) {
+    const agentId = String(agent.agent_id);
+    try {
+      const impact = await impactOf(ctx, agentId, String(agent.runtime_id ?? device.runtime_id));
+      impacts.push({ agent_id: agentId, impact });
+      lines.push(impactText(agentId, impact).trimEnd());
+    } catch (error) {
+      impacts.push({ agent_id: agentId, impact: null, error: message(error) });
+      lines.push(`  what ${agentId} has in progress on it is unknown: ${message(error)}`);
+    }
+  }
+  await confirm(ctx, "runtime revoke", `${lines.join("\n")}
+`, `Revoke ${device.runtime_id} and take it away from its Agents?`, {
+    assigned_to: assigned,
+    impacts
+  });
+  const revoked = await controlPanel(ctx, "executor.device.revoke", { executor_id: device.executor_id });
+  return { runtime_id: device.runtime_id, executor_id: device.executor_id, revoked: true, assigned_to: assigned, impacts, ...revoked };
+}
 const CONTROL_PANEL = "control-panel";
 const OBJECT_OUTPUT$6 = { type: "object", additionalProperties: true };
 const AGENT_POSITIONAL = {
@@ -11717,7 +11948,7 @@ const PROFILE_FIELDS = ["display_name", "bio"];
 function createAgentModule() {
   return {
     name: "agent",
-    summary: "List Agents and read or change their profiles",
+    summary: "List Agents, read or change their profiles, and manage the runtimes each one uses",
     commands: [
       {
         verb: "list",
@@ -11836,7 +12067,8 @@ function createAgentModule() {
             profile: expectObject$4(after.profile, "agent.profile.set profile")
           };
         }
-      }
+      },
+      agentRuntimeCommand()
     ]
   };
 }
@@ -11844,8 +12076,8 @@ async function callAgent(ctx, method, params) {
   try {
     return expectObject$4(await callService(ctx, CONTROL_PANEL, method, params), method);
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (message.includes("agent_not_found")) {
+    const message2 = error instanceof Error ? error.message : String(error);
+    if (message2.includes("agent_not_found")) {
       throw new ToolError("RESOURCE_NOT_FOUND", `Agent not found or not yours: ${params.agent_id}`);
     }
     throw error;
@@ -12407,10 +12639,10 @@ async function call$2(ctx, method, params) {
   try {
     return await callService(ctx, SERVICE$1, method, params);
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    const code = BUCKET_ERROR_CODES.find((c) => message.includes(`${c}: `));
+    const message2 = error instanceof Error ? error.message : String(error);
+    const code = BUCKET_ERROR_CODES.find((c) => message2.includes(`${c}: `));
     if (code)
-      throw new ToolError(`BUCKET_${code.toUpperCase()}`, message);
+      throw new ToolError(`BUCKET_${code.toUpperCase()}`, message2);
     throw error;
   }
 }
@@ -14325,7 +14557,7 @@ class BuckyOSToolApplication {
         io: {
           stdout: (value) => this.#stdio.stdout(value),
           stderr: (value) => this.#stdio.stderr(value),
-          prompt: (message) => this.#stdio.prompt?.(message) ?? Promise.resolve(null),
+          prompt: (message2) => this.#stdio.prompt?.(message2) ?? Promise.resolve(null),
           inputIsTerminal: this.#stdio.inputIsTerminal?.() ?? false
         },
         interactive,
@@ -14460,6 +14692,7 @@ function createRegistry(pikgDependencies, appDependencies, logDependencies, diag
   registry.register(createObjModule());
   registry.register(createExecutorModule());
   registry.register(createExtToolsModule());
+  registry.register(createRuntimeModule());
   registry.register(createAiwsModule());
   return registry;
 }
@@ -14544,7 +14777,7 @@ function defaultStdio() {
     stdout: async (value) => await getHost().stdout(value),
     stderr: async (value) => await getHost().stderr(value),
     readStdin: async () => await getHost().readStdin(),
-    prompt: async (message) => await getHost().readLine(message),
+    prompt: async (message2) => await getHost().readLine(message2),
     inputIsTerminal: () => getHost().inputIsTerminal()
   };
 }

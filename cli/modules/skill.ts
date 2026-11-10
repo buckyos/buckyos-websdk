@@ -1,6 +1,6 @@
 import type { CommandDefinition, CommandModule, JsonSchema, OptionDefinition } from '../core/command.ts'
 import type { CommandContext } from '../core/context.ts'
-import { EXIT_INTERNAL, EXIT_OPERATION, EXIT_PERMISSION, EXIT_UNAVAILABLE, ToolError, UsageError } from '../core/errors.ts'
+import { EXIT_INTERNAL, EXIT_PERMISSION, EXIT_UNAVAILABLE, ToolError, UsageError } from '../core/errors.ts'
 import { callService, inputString, requiredInputString } from '../core/service.ts'
 import { getHost, isHostError } from '../runtime/host.ts'
 import { type AppModuleDependencies, classifySource, downloadPikg } from './app.ts'
@@ -85,7 +85,7 @@ export function createSkillModule(dependencies: SkillModuleDependencies = {}): C
         verb: 'list',
         summary: 'List the skills of an Agent',
         description:
-          'Skills that no new session takes (disabled by the owner, or commands not installed) are left out unless --all, which also lists the drafts waiting for the owner. --scope selects work skills by scope. --stats adds how often each manual was frozen, and the count of work created without any manual.',
+          'Skills that no new session takes (disabled by the owner) are left out unless --all, which also lists the drafts waiting for the owner. --scope selects work skills by scope. --stats adds how often each manual was frozen, and the count of work created without any manual.',
         options: [
           AGENT_OPTION,
           KIND_OPTION,
@@ -124,13 +124,13 @@ export function createSkillModule(dependencies: SkillModuleDependencies = {}): C
         verb: 'install',
         summary: 'Install skills into an Agent: plan, confirm, install',
         description:
-          'The source is a skill PIKG (local file or HTTP(S) URL; verified offline, app_type agent_skills), a directory laid out like its agent_skills sub package (cmd_skills/, plan_skills/, goal_skills/, tools/; the package is named after the directory), or --draft <slug> for a draft in the AgentRoot. The Agent plans the installation first (nothing is written): the plan and its risk findings are shown and must be confirmed; --yes accepts every risk level. A plan that is blocked is refused. Only the owner installs. Sessions created before keep their frozen manuals.',
+          'The source is a skill PIKG (local file or HTTP(S) URL; verified offline, app_type agent_skills), a directory laid out like its agent_skills sub package (cmd_skills/, plan_skills/, goal_skills/; the package is named after the directory), or --draft <slug> for a draft in the AgentRoot. A skill is text only: a package with tools/ (commands, install scripts) or a file that is not UTF-8 text is refused; commands come from the standard layer or from extension packages (buckyos ext-tools) and a manual only names them in `commands`. The Agent plans the installation first (nothing is written): the plan and its risk findings are shown and must be confirmed; --yes accepts every risk level. Installing is checking and copying: nothing runs. Only the owner installs. Sessions created before keep their frozen manuals.',
         positionals: [{ name: 'source', description: 'Skill .pikg file, skill directory, or HTTP(S) URL', required: false }],
         options: [
           AGENT_OPTION,
           { name: 'from', description: 'Force source type', type: 'string', enum: SOURCE_KINDS },
           { name: 'draft', description: 'Install this draft of the AgentRoot (skills_drafts/<slug>) instead of a source', type: 'string' },
-          { ...RUNTIME_OPTION, description: 'Runtime the commands of the skills go to (default: the private runtime)' },
+          { ...RUNTIME_OPTION, description: 'Runtime the commands the manuals name are checked against in the plan (default: the private runtime)' },
           { name: 'replace', description: 'Replace skills of the same names from another package', type: 'boolean' },
         ],
         level: 'write',
@@ -304,41 +304,6 @@ export function createSkillModule(dependencies: SkillModuleDependencies = {}): C
           return { agent_id: agentId, discarded: slug }
         },
       }),
-      command({
-        verb: 'install-cmd',
-        summary: 'Install the commands of an installed work skill on one more runtime',
-        positionals: [{ name: 'name', description: 'Work skill name' }],
-        options: [AGENT_OPTION, { ...RUNTIME_OPTION, description: 'Runtime id', required: true }],
-        level: 'write',
-        properties: { name: NAME_PROPERTY, runtime_id: { type: 'string', minLength: 1 } },
-        required: ['name', 'runtime_id'],
-        examples: ['buckyos skill install-cmd hello --runtime host --agent jarvis.example.zone'],
-        handler: async (ctx, input) => {
-          const agentId = agentIdFrom(input)
-          const name = requiredInputString(input, 'name')
-          const runtimeId = requiredInputString(input, 'runtime_id')
-          const state = await callService<unknown>(ctx, agentId, 'skills.install_cmd', { name, runtime_id: runtimeId })
-          return { agent_id: agentId, name, runtime_id: runtimeId, install_state: expectObject(state, 'skills.install_cmd') }
-        },
-      }),
-      command({
-        verb: 'check',
-        summary: 'Check again that the commands a work skill installed are on its runtimes',
-        description: 'Without --runtime every runtime the skill was installed on is checked. The install state is updated.',
-        positionals: [{ name: 'name', description: 'Work skill name' }],
-        options: [AGENT_OPTION, { ...RUNTIME_OPTION, description: 'Only this runtime' }],
-        level: 'write',
-        properties: { name: NAME_PROPERTY, runtime_id: { type: 'string', minLength: 1 } },
-        required: ['name'],
-        examples: ['buckyos skill check hello --agent jarvis.example.zone'],
-        handler: async (ctx, input) => {
-          const agentId = agentIdFrom(input)
-          const name = requiredInputString(input, 'name')
-          const runtimeId = inputString(input, 'runtime_id')
-          const state = await callService<unknown>(ctx, agentId, 'skills.check', { name, ...(runtimeId ? { runtime_id: runtimeId } : {}) })
-          return { agent_id: agentId, name, install_state: expectObject(state, 'skills.check') }
-        },
-      }),
     ],
   }
 }
@@ -431,10 +396,6 @@ async function installCommand(
   )
   const planDigest = plan.plan_digest
   if (typeof planDigest !== 'string' || !planDigest) invalidResponse('skills.install_plan')
-  const blocked = Array.isArray(plan.blocked) ? plan.blocked.map(String) : []
-  if (blocked.length) {
-    throw new ToolError('SKILL_INSTALL_BLOCKED', `the installation is blocked: ${blocked.join('; ')}`, EXIT_OPERATION, false, { plan })
-  }
   if (!ctx.confirmed) {
     if (ctx.config.nonInteractive || !ctx.io.inputIsTerminal) {
       throw new ToolError(
@@ -452,7 +413,6 @@ async function installCommand(
     await callService<unknown>(ctx, agentId, 'skills.install', {
       ...source.params,
       plan_digest: planDigest,
-      ...runtime,
       replace: input.replace === true,
     }),
     'skills.install',
@@ -472,15 +432,23 @@ function planText(plan: Record<string, unknown>): string {
     const scope = typeof skill.scope === 'string' ? ` [${skill.scope}]` : ''
     const replaces = skill.replaces ? `; replaces the ${skill.replaces} skill` : ''
     const commands = Array.isArray(skill.commands) && skill.commands.length ? `; commands: ${skill.commands.join(', ')}` : ''
-    const scripts = Array.isArray(skill.install_scripts) && skill.install_scripts.length
-      ? `; install scripts: ${skill.install_scripts.join(', ')}`
-      : ''
-    lines.push(`  ${skill.kind} ${skill.name}${scope}: ${skill.description ?? ''}${commands}${scripts}${replaces}`)
+    lines.push(`  ${skill.kind} ${skill.name}${scope}: ${skill.description ?? ''}${commands}${replaces}`)
   }
-  if (plan.runtime_id) lines.push(`Commands go to runtime: ${plan.runtime_id}`)
+  if (plan.checked_runtime_id) lines.push(`Commands checked on runtime: ${plan.checked_runtime_id}`)
   for (const item of Array.isArray(plan.command_status) ? plan.command_status : []) {
-    const status = item as Record<string, unknown>
-    if (status.status && status.status !== 'ready') lines.push(`  ${status.name}: commands ${status.status}`)
+    const entry = item as Record<string, unknown>
+    const status = entry.status && typeof entry.status === 'object' ? entry.status as Record<string, unknown> : {}
+    if (status.state !== 'partial') continue
+    const states = status.commands && typeof status.commands === 'object' ? status.commands as Record<string, { present?: boolean }> : {}
+    const missing = Object.keys(states).filter((name) => states[name]?.present === false)
+    const packages = (Array.isArray(status.recommended_packages) ? status.recommended_packages : [])
+      .map((pkg) => String((pkg as Record<string, unknown>).id))
+    const none = Array.isArray(status.no_package) ? status.no_package.map(String) : []
+    lines.push(
+      `  ${entry.name}: missing ${missing.join(', ')}` +
+        (packages.length ? `; extension packages that bring them: ${packages.join(', ')} (buckyos ext-tools enable)` : '') +
+        (none.length ? `; no package provides ${none.join(', ')}` : ''),
+    )
   }
   const risk = plan.risk && typeof plan.risk === 'object' ? plan.risk as Record<string, unknown> : {}
   lines.push(`Risk: ${riskLevel(plan)}`)
@@ -553,7 +521,7 @@ async function pikgSource(path: string, summary: Record<string, unknown>): Promi
   const files = new Map<string, SkillPackageFile>()
   const ignored: string[] = []
   for (const entry of await readTarGz(bytes, MAX_SKILL_PAYLOAD_BYTES)) {
-    if (SKILL_DIRS.includes(entry.path.split('/')[0])) files.set(entry.path, { bytes: entry.bytes, executable: entry.executable })
+    if (SKILL_DIRS.includes(entry.path.split('/')[0])) files.set(entry.path, { bytes: entry.bytes })
     else ignored.push(entry.path)
   }
   return {
@@ -591,12 +559,9 @@ async function directorySource(path: string): Promise<SkillSource> {
   }
 }
 
-function packageFiles(files: Map<string, SkillPackageFile>): Record<string, { content: string; executable: boolean }> {
-  const out: Record<string, { content: string; executable: boolean }> = {}
-  for (const path of [...files.keys()].sort()) {
-    const file = files.get(path)!
-    out[path] = { content: base64(file.bytes), executable: file.executable }
-  }
+function packageFiles(files: Map<string, SkillPackageFile>): Record<string, { content: string }> {
+  const out: Record<string, { content: string }> = {}
+  for (const path of [...files.keys()].sort()) out[path] = { content: base64(files.get(path)!.bytes) }
   return out
 }
 
@@ -708,7 +673,7 @@ async function listDrafts(ctx: CommandContext, agentId: string): Promise<Record<
   return (drafts as unknown[]).map((draft) => expectObject(draft, 'skills.drafts'))
 }
 
-function agentIdFrom(input: Record<string, unknown>): string {
+export function agentIdFrom(input: Record<string, unknown>): string {
   const agentId = requiredInputString(input, 'agent_id')
   if (!AGENT_ID.test(agentId)) {
     throw new UsageError('INVALID_AGENT_ID', `invalid Agent ID: ${agentId}`)

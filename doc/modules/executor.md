@@ -43,3 +43,42 @@ The client supports `listOnline` and an abortable `watchOnline` polling iterator
 Obtain the route and use the same authenticated App session token for stream
 login. Persist the locator before calling a mutating method; after an unknown
 outcome reconnect to a freshly discovered target and query the old locator.
+
+## Runtimes
+
+A runtime is a sandbox with its own configuration (directories, read-only or
+read-write, computer use, baseline, expiry). Assigning one to an Agent only
+records that the Agent may use it; nothing about what it allows is set per
+Agent. A device (`exec-<executor_id>`) is used by one Agent at a time; node
+runtimes (`host`, `node-*`) are not exclusive.
+
+```sh
+buckyos --output table runtime list
+buckyos runtime assign <runtime_id> --agent <agent_id> [--disabled]
+buckyos runtime unassign <runtime_id> --agent <agent_id>
+buckyos runtime revoke <exec-...|executor_id>
+buckyos agent runtime list --agent <agent_id>
+buckyos agent runtime enable|disable <runtime_id> --agent <agent_id>
+buckyos agent runtime default <runtime_id|private> --agent <agent_id>
+```
+
+`runtime list`, `assign` and `revoke` talk to control-panel
+(`agent.runtime_catalog`, `agent.update`, `executor.device.revoke`); the
+`agent runtime` actions and `runtime unassign` talk to the Agent's own service
+(`runtimes.list`, `runtimes.settings`, `runtimes.impact`,
+`runtimes.settings_set`, `runtimes.remove`). JSON is the default output;
+`--output table` gives one compact row per runtime.
+
+- `assign` on a device another Agent has switched on fails with
+  `RUNTIME_IN_USE` and prints the `agent runtime disable` command for that
+  Agent; it is never switched off for you.
+- `unassign` and `revoke` show what is in progress (sessions, waiting Todos,
+  workspaces; none is moved) and always ask; the global `--yes` skips the
+  question, and non-interactive runs without it fail with
+  `CONFIRMATION_REQUIRED` carrying the impact in `details`.
+- `agent runtime disable` asks only when something is in progress on the
+  runtime.
+- When the Agent's service cannot be reached, `agent runtime list` shows the
+  control panel's assignments (`source: control-panel`) and `runtime unassign`
+  changes nothing unless `--yes`, which removes the assignment through
+  control-panel.
