@@ -305,6 +305,7 @@ export class PreviewEmbed {
   private readonly origin: string
   private readonly listener = (event: MessageEvent) => this.receive(event)
   private init: Omit<PreviewEmbedInit, 'nonce'>
+  private ready = false
   constructor(private options: {
     systemOrigin: string
     frame: () => HTMLIFrameElement | null
@@ -324,7 +325,7 @@ export class PreviewEmbed {
   private receive(event: MessageEvent): void {
     if (event.origin !== this.origin || event.source !== this.options.frame()?.contentWindow || !isEmbedMessage(event.data)) return
     const { type, payload: p } = event.data
-    if (type === 'embed.hello') { if (p.nonce === this.nonce) this.post('embed.init', { ...this.init, nonce: this.nonce }); return }
+    if (type === 'embed.hello') { if (p.nonce === this.nonce) { this.ready = true; this.post('embed.init', { ...this.init, nonce: this.nonce }) } return }
     if (type === 'embed.state' && (p.status === 'loading' || p.status === 'ready' || p.status === 'error')) {
       const error = p.error as { kind?: unknown; code?: unknown } | undefined
       this.options.onState?.({ status: p.status,
@@ -341,7 +342,9 @@ export class PreviewEmbed {
   }
   update(patch: Partial<Pick<PreviewEmbedInit, 'theme' | 'locale'>>): void {
     this.init = { ...this.init, ...patch }
-    this.post('embed.update', patch)
+    // Before the handshake the frame still holds its initial about:blank (this App's origin, so the browser rejects
+    // the target origin); `embed.init` carries the patch.
+    if (this.ready) this.post('embed.update', patch)
   }
   dispose(): void { window.removeEventListener('message', this.listener) }
 }

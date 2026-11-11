@@ -170,6 +170,7 @@ export declare class PreviewEmbed {
     private readonly origin;
     private readonly listener;
     private init;
+    private ready;
     constructor(options: {
         systemOrigin: string;
         frame: () => HTMLIFrameElement | null;

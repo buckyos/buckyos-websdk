@@ -320,6 +320,7 @@ class PreviewEmbed {
     this.options = options;
     this.nonce = crypto.randomUUID();
     this.listener = (event) => this.receive(event);
+    this.ready = false;
     this.origin = new URL(options.systemOrigin).origin;
     this.init = options.init;
     this.url = `${this.origin}${PREVIEW_EMBED_PATH}#bpe=${this.nonce}&po=${encodeURIComponent(window.location.origin)}`;
@@ -335,8 +336,10 @@ class PreviewEmbed {
       return;
     const { type, payload: p } = event.data;
     if (type === "embed.hello") {
-      if (p.nonce === this.nonce)
+      if (p.nonce === this.nonce) {
+        this.ready = true;
         this.post("embed.init", { ...this.init, nonce: this.nonce });
+      }
       return;
     }
     if (type === "embed.state" && (p.status === "loading" || p.status === "ready" || p.status === "error")) {
@@ -359,7 +362,8 @@ class PreviewEmbed {
   }
   update(patch) {
     this.init = { ...this.init, ...patch };
-    this.post("embed.update", patch);
+    if (this.ready)
+      this.post("embed.update", patch);
   }
   dispose() {
     window.removeEventListener("message", this.listener);
