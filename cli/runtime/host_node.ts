@@ -24,6 +24,7 @@ import { createInterface } from 'node:readline/promises'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { constants as zlibConstants, createGzip } from 'node:zlib'
+import { retryWindowsLock } from './fs_retry.ts'
 import { assertPathAccess } from './path_policy.ts'
 import {
   type DistributionPolicy,
@@ -185,7 +186,11 @@ export class NodeHost implements ToolHost {
     await this.assertPath(from, 'write')
     await this.assertPath(to, 'write')
     try {
-      await rename(from, to)
+      await retryWindowsLock(
+        this.platform === 'windows',
+        () => rename(from, to),
+        nodeSharingViolation,
+      )
     } catch (error) {
       throw translateNodeError(error, `${from} -> ${to}`)
     }
@@ -194,7 +199,11 @@ export class NodeHost implements ToolHost {
   async remove(path: string, options: { recursive?: boolean } = {}): Promise<void> {
     await this.assertPath(path, 'write', false)
     try {
-      await rm(path, { recursive: options.recursive ?? false })
+      await retryWindowsLock(
+        this.platform === 'windows',
+        () => rm(path, { recursive: options.recursive ?? false }),
+        nodeSharingViolation,
+      )
     } catch (error) {
       throw translateNodeError(error, path)
     }
@@ -572,6 +581,11 @@ async function readInputChunk(): Promise<Uint8Array | null> {
     process.stdin.once('end', onEnd)
     process.stdin.once('error', onError)
   })
+}
+
+function nodeSharingViolation(error: unknown): boolean {
+  const code = (error as { code?: string }).code
+  return code === 'EPERM' || code === 'EACCES' || code === 'EBUSY'
 }
 
 function translateNodeError(error: unknown, path?: string): HostError {

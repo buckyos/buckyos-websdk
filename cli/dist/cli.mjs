@@ -6114,7 +6114,7 @@ async function readSkillDirectory(root, limit) {
   await walk(realRoot, "");
   return { files, ignored };
 }
-const PACKAGE_VERSION = "0.7.178";
+const PACKAGE_VERSION = "0.7.179";
 const TOOL_VERSION = PACKAGE_VERSION;
 const SDK_VERSION = PACKAGE_VERSION;
 const PROTOCOL_VERSION = "1";
@@ -6423,7 +6423,14 @@ async function doctorCommand(ctx, input) {
       }
       if (app.categories[0] === PATH_KINDS["ext-tools"].category) {
         const catalog2 = optionalInputString(input, "catalog");
-        checks.push(...await extToolsChecks(app, pikg, metaDir, catalog2 ? resolveFromCwd$1(ctx, catalog2) : void 0));
+        checks.push(
+          ...await extToolsChecks(
+            app,
+            pikg,
+            metaDir,
+            catalog2 ? resolveFromCwd$1(ctx, catalog2) : void 0
+          )
+        );
       }
     } catch (error) {
       checks.push({
@@ -6496,9 +6503,15 @@ async function initCommand(ctx, input, docker) {
     selector = platform.selector;
     sourceValue = {
       type: "path",
-      path: toPortablePath(relative(join(projectDir, "dapp_meta"), join(absoluteSource, "payload", platform.name)))
+      path: toPortablePath(
+        relative(join(projectDir, "dapp_meta"), join(absoluteSource, "payload", platform.name))
+      )
     };
-    sourceSummary2 = { type: "path", path: displaySource(projectDir, absoluteSource), platform: platform.name };
+    sourceSummary2 = {
+      type: "path",
+      path: displaySource(projectDir, absoluteSource),
+      platform: platform.name
+    };
     try {
       await getHost().lstat(join(absoluteSource, EXT_TOOLS_MANIFEST_FILE));
     } catch (error) {
@@ -6608,14 +6621,18 @@ async function skillLintCheck(packageName, source) {
     } else {
       files = /* @__PURE__ */ new Map();
       for (const entry of await readTarGz(await getHost().readFile(source), MAX_SKILL_SOURCE_BYTES)) {
-        if (SKILL_DIRS.includes(entry.path.split("/")[0]))
+        if (SKILL_DIRS.includes(entry.path.split("/")[0])) {
           files.set(entry.path, { bytes: entry.bytes });
-        else
+        } else
           ignored.push(entry.path);
       }
     }
   } catch (error) {
-    return { ...check, status: "error", detail: error instanceof Error ? error.message : String(error) };
+    return {
+      ...check,
+      status: "error",
+      detail: error instanceof Error ? error.message : String(error)
+    };
   }
   const { skills, findings } = lintSkillPackage(packageName, files);
   const errors = findings.filter((finding) => finding.level === "error");
@@ -6624,7 +6641,13 @@ async function skillLintCheck(packageName, source) {
     status: errors.length ? "error" : "ok",
     ...errors.length ? { detail: errors.map((finding) => finding.note).join("; "), errors } : {},
     ...errors.length ? {} : { digest: skillContentDigest(files) },
-    skills: skills.map(({ kind, name, scope, size, commands }) => ({ kind, name, scope, size, commands })),
+    skills: skills.map(({ kind, name, scope, size, commands }) => ({
+      kind,
+      name,
+      scope,
+      size,
+      commands
+    })),
     warnings: findings.filter((finding) => finding.level !== "error"),
     ...ignored.length ? { ignored_files: ignored } : {}
   };
@@ -6660,14 +6683,27 @@ async function writeAiwsSkeleton(dir, ownerDid, name, composite) {
   const encoder = new TextEncoder();
   const host2 = getHost();
   await host2.mkdir(join(dir, "controls", name), { recursive: true });
-  for (const [file, text2] of Object.entries(files))
+  for (const [file, text2] of Object.entries(files)) {
     await host2.writeTextFile(join(dir, "controls", name, file), text2);
-  const digest = await aiwsContentDigest(Object.entries(files).map(([file, text2]) => [file, encoder.encode(text2)]));
+  }
+  const digest = await aiwsContentDigest(
+    Object.entries(files).map(
+      ([file, text2]) => [file, encoder.encode(text2)]
+    )
+  );
   const manifest = {
     manifest_version: AIWS_MANIFEST_VERSION,
     purpose: "aiws",
     host_api: composite ? {} : { declarative: 1 },
-    controls: [{ ident: `${ownerDid}#${name}`, name, kind, version: 1, digest, dir: `controls/${name}/`, title: name }],
+    controls: [{
+      ident: `${ownerDid}#${name}`,
+      name,
+      kind,
+      version: 1,
+      digest,
+      dir: `controls/${name}/`,
+      title: name
+    }],
     workspace_templates: []
   };
   await host2.writeTextFile(join(dir, AIWS_MANIFEST_FILE), `${JSON.stringify(manifest, null, 2)}
@@ -6677,9 +6713,14 @@ function hostExtToolsPlatform() {
   const host2 = getHost();
   const os = host2.platform === "darwin" ? "macos" : host2.platform === "win32" ? "windows" : host2.platform;
   const arch = normalizeArch$1(host2.arch);
-  const platform = EXT_TOOLS_PLATFORMS.find((known) => known.selector.os === os && known.selector.arch === arch);
+  const platform = EXT_TOOLS_PLATFORMS.find(
+    (known) => known.selector.os === os && known.selector.arch === arch
+  );
   if (!platform) {
-    throw new UsageError("UNSUPPORTED_PLATFORM", `extension packages have no payload for ${os}/${arch}`);
+    throw new UsageError(
+      "UNSUPPORTED_PLATFORM",
+      `extension packages have no payload for ${os}/${arch}`
+    );
   }
   return platform;
 }
@@ -6699,8 +6740,9 @@ async function writeExtToolsSkeleton(dir, id, version, platform) {
   const text2 = `${JSON.stringify(manifest, null, 2)}
 `;
   const payload = join(dir, "payload", platform);
-  for (const sub of ["bin", "smoke", join("store", id)])
+  for (const sub of ["bin", "smoke", join("store", id)]) {
     await host2.mkdir(join(payload, sub), { recursive: true });
+  }
   await host2.writeTextFile(join(dir, EXT_TOOLS_MANIFEST_FILE), text2);
   await host2.writeTextFile(join(payload, EXT_TOOLS_MANIFEST_FILE), text2);
   const windows = platform.startsWith("windows-");
@@ -6750,7 +6792,11 @@ async function readExtToolsManifestFile(path) {
 }
 async function readExtToolsPayloadTree(root) {
   const host2 = getHost();
-  const tree = { files: /* @__PURE__ */ new Map(), directories: /* @__PURE__ */ new Set(), launchers: /* @__PURE__ */ new Map() };
+  const tree = {
+    files: /* @__PURE__ */ new Map(),
+    directories: /* @__PURE__ */ new Set(),
+    launchers: /* @__PURE__ */ new Map()
+  };
   const errors = [];
   const realRoot = await host2.realPath(root);
   const walk = async (directory, prefix) => {
@@ -6764,7 +6810,9 @@ async function readExtToolsPayloadTree(root) {
         try {
           physical = await host2.realPath(path);
         } catch (error) {
-          errors.push(`${archivePath}: ${isHostError(error, "NotFound") ? "a dangling symlink" : "a symlink out of the payload"}`);
+          errors.push(
+            `${archivePath}: ${isHostError(error, "NotFound") ? "a dangling symlink" : "a symlink out of the payload"}`
+          );
           continue;
         }
         const inside = relative(realRoot, physical);
@@ -6806,20 +6854,27 @@ async function extToolsChecks(app, pikg, metaDir, catalogDir) {
   const source = sources.length > 0 ? dirname(dirname(sources[0])) : dirname(metaDir);
   const master = await readExtToolsManifestFile(join(source, EXT_TOOLS_MANIFEST_FILE));
   const manifestErrors = [...master.errors];
-  if (stray.length > 0)
-    manifestErrors.push(`sub packages must be ext_tools_<os>_<arch> from a directory: ${stray.join(", ")}`);
+  if (stray.length > 0) {
+    manifestErrors.push(
+      `sub packages must be ext_tools_<os>_<arch> from a directory: ${stray.join(", ")}`
+    );
+  }
   const manifest = master.manifest;
   if (manifest) {
-    if (manifest.id !== app.name)
+    if (manifest.id !== app.name) {
       manifestErrors.push(`id ${manifest.id} is not the App name ${app.name}`);
-    if (manifest.version !== app.version)
+    }
+    if (manifest.version !== app.version) {
       manifestErrors.push(`version ${manifest.version} is not the App version ${app.version}`);
+    }
     const without = manifest.platforms.filter((name) => !platforms.has(name));
-    if (without.length > 0)
+    if (without.length > 0) {
       manifestErrors.push(`platforms without a sub package: ${without.join(", ")}`);
+    }
     const unlisted = [...platforms.keys()].filter((name) => !manifest.platforms.includes(name));
-    if (unlisted.length > 0)
+    if (unlisted.length > 0) {
       manifestErrors.push(`sub packages of platforms it does not list: ${unlisted.join(", ")}`);
+    }
   }
   checks.push({
     name: "ext_tools_manifest",
@@ -6835,10 +6890,11 @@ async function extToolsChecks(app, pikg, metaDir, catalogDir) {
       const { tree, errors: walkErrors } = await readExtToolsPayloadTree(dir);
       errors.push(...walkErrors);
       const copy = await readExtToolsManifestFile(join(dir, EXT_TOOLS_MANIFEST_FILE));
-      if (copy.errors.length > 0)
+      if (copy.errors.length > 0) {
         errors.push(`${EXT_TOOLS_MANIFEST_FILE}: ${copy.errors.join("; ")}`);
-      else if (copy.text !== master.text)
+      } else if (copy.text !== master.text) {
         errors.push(`${EXT_TOOLS_MANIFEST_FILE}: differs from the package's manifest`);
+      }
       errors.push(...extToolsPayloadErrors(manifest, platform, tree, [source, metaDir]));
     } catch (error) {
       if (!isHostError(error, "NotFound"))
@@ -6866,13 +6922,16 @@ async function extToolsChecks(app, pikg, metaDir, catalogDir) {
   for (const entry of await getHost().readDir(catalogDir)) {
     if (entry.isFile)
       continue;
-    const candidate = await readExtToolsManifestFile(join(catalogDir, entry.name, EXT_TOOLS_MANIFEST_FILE));
+    const candidate = await readExtToolsManifestFile(
+      join(catalogDir, entry.name, EXT_TOOLS_MANIFEST_FILE)
+    );
     if (candidate.errors.includes("not found"))
       continue;
     if (!candidate.manifest)
       catalogErrors.push(`${entry.name}: ${candidate.errors.join("; ")}`);
-    else if (candidate.manifest.id !== manifest.id)
+    else if (candidate.manifest.id !== manifest.id) {
       others.set(candidate.manifest.id, candidate.manifest);
+    }
   }
   for (const required of manifest.requires) {
     if (!others.has(required.id))
@@ -6882,9 +6941,14 @@ async function extToolsChecks(app, pikg, metaDir, catalogDir) {
   for (const other of others.values()) {
     if (manifest.conflicts.includes(other.id) || other.conflicts.includes(manifest.id))
       continue;
-    const shared = other.provides.map((provided) => provided.command).filter((command2) => commands.has(command2));
-    if (shared.length > 0)
-      catalogErrors.push(`${other.id} also provides ${shared.join(", ")}: one of the two must list the other in conflicts`);
+    const shared = other.provides.map((provided) => provided.command).filter(
+      (command2) => commands.has(command2)
+    );
+    if (shared.length > 0) {
+      catalogErrors.push(
+        `${other.id} also provides ${shared.join(", ")}: one of the two must list the other in conflicts`
+      );
+    }
   }
   checks.push({
     name: "ext_tools_catalog",
@@ -7257,7 +7321,11 @@ function parseAppMeta(value) {
     },
     categories,
     permissions,
-    ...value.content_handlers === void 0 ? {} : { content_handlers: developmentValidation(() => validateContentHandlers(value.content_handlers, permissions)) },
+    ...value.content_handlers === void 0 ? {} : {
+      content_handlers: developmentValidation(
+        () => validateContentHandlers(value.content_handlers, permissions)
+      )
+    },
     selector_type: developmentString(value.selector_type, "app.json.selector_type"),
     service_config_tips: serviceConfig
   };
@@ -7483,18 +7551,26 @@ function assertSafeCleanTarget(ctx, metaDir, distDir, sourcePaths) {
     throw new ToolError("UNSAFE_CLEAN_TARGET", "refusing to clean an unsafe output directory");
   }
 }
-async function replaceDirectory(temporary, destination) {
-  let exists = false;
+async function pathExists(path) {
   try {
-    await getHost().lstat(destination);
-    exists = true;
+    await getHost().lstat(path);
+    return true;
   } catch (error) {
-    if (!isHostError(error, "NotFound"))
-      throw error;
+    if (isHostError(error, "NotFound"))
+      return false;
+    throw error;
   }
-  if (!exists) {
-    await getHost().rename(temporary, destination);
-    return;
+}
+async function replaceDirectory(temporary, destination) {
+  if (!await pathExists(destination)) {
+    try {
+      await getHost().rename(temporary, destination);
+      return;
+    } catch (error) {
+      if (getHost().platform !== "windows" || !isHostError(error, "PermissionDenied") || !await pathExists(destination)) {
+        throw error;
+      }
+    }
   }
   const backup = `${destination}.previous-${crypto.randomUUID()}`;
   await getHost().rename(destination, backup);
@@ -14819,6 +14895,24 @@ async function runCli(host2, argv) {
   installHost(host2);
   return await new BuckyOSToolApplication().run(argv);
 }
+async function retryWindowsLock(windows, operation2, retryable, wait = defaultWait) {
+  let attempt = 0;
+  while (true) {
+    try {
+      return await operation2();
+    } catch (error) {
+      const delay = windows && retryable(error) ? wait(attempt) : 0;
+      if (delay <= 0)
+        throw error;
+      attempt++;
+      await new Promise((resolve2) => setTimeout(resolve2, delay));
+    }
+  }
+}
+function defaultWait(attempt) {
+  const waits = [50, 100, 150, 250, 400, 600, 800];
+  return waits[attempt] ?? 0;
+}
 async function assertPathAccess(policy2, path, realPath, candidate, operation2, resolveLinks = true) {
   const roots = operation2 === "read" ? policy2.readPaths : policy2.writePaths;
   const absolute = path.resolve(candidate);
@@ -14985,7 +15079,11 @@ class NodeHost {
     await this.assertPath(from, "write");
     await this.assertPath(to, "write");
     try {
-      await rename(from, to);
+      await retryWindowsLock(
+        this.platform === "windows",
+        () => rename(from, to),
+        nodeSharingViolation
+      );
     } catch (error) {
       throw translateNodeError(error, `${from} -> ${to}`);
     }
@@ -14993,7 +15091,11 @@ class NodeHost {
   async remove(path, options = {}) {
     await this.assertPath(path, "write", false);
     try {
-      await rm(path, { recursive: options.recursive ?? false });
+      await retryWindowsLock(
+        this.platform === "windows",
+        () => rm(path, { recursive: options.recursive ?? false }),
+        nodeSharingViolation
+      );
     } catch (error) {
       throw translateNodeError(error, path);
     }
@@ -15310,6 +15412,10 @@ async function readInputChunk() {
     process.stdin.once("end", onEnd);
     process.stdin.once("error", onError);
   });
+}
+function nodeSharingViolation(error) {
+  const code = error.code;
+  return code === "EPERM" || code === "EACCES" || code === "EBUSY";
 }
 function translateNodeError(error, path) {
   if (error instanceof HostError)

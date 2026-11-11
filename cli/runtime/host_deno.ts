@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url'
 import { Readable, Writable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { constants as zlibConstants, createGzip } from 'node:zlib'
+import { retryWindowsLock } from './fs_retry.ts'
 import { assertPathAccess } from './path_policy.ts'
 import {
   type DistributionPolicy,
@@ -173,7 +174,11 @@ export class DenoHost implements ToolHost {
     await this.assertPath(from, 'write')
     await this.assertPath(to, 'write', false)
     try {
-      await Deno.rename(from, to)
+      await retryWindowsLock(
+        this.platform === 'windows',
+        () => Deno.rename(from, to),
+        denoSharingViolation,
+      )
     } catch (error) {
       throw translateDenoError(error, `${from} -> ${to}`)
     }
@@ -182,7 +187,11 @@ export class DenoHost implements ToolHost {
   async remove(path: string, options: { recursive?: boolean } = {}): Promise<void> {
     await this.assertPath(path, 'write', false)
     try {
-      await Deno.remove(path, options)
+      await retryWindowsLock(
+        this.platform === 'windows',
+        () => Deno.remove(path, options),
+        denoSharingViolation,
+      )
     } catch (error) {
       throw translateDenoError(error, path)
     }
@@ -477,6 +486,12 @@ function fileInfo(value: Deno.FileInfo): HostFileInfo {
     dev: value.dev,
     ino: value.ino,
   }
+}
+
+function denoSharingViolation(error: unknown): boolean {
+  if (error instanceof Deno.errors.PermissionDenied) return true
+  const busy = (Deno.errors as { Busy?: new (...args: never[]) => Error }).Busy
+  return typeof busy === 'function' && error instanceof busy
 }
 
 function translateDenoError(error: unknown, path?: string): HostError {
