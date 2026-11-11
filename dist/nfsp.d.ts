@@ -259,7 +259,8 @@ export interface ReprArgs {
 }
 export interface ReprResult {
     media_type: string;
-    result_type: 'image' | 'video' | 'audio';
+    /** `document`: a PDF; `sheet`: an xlsx workbook; `html`: a self-contained HTML page. */
+    result_type: 'image' | 'video' | 'audio' | 'document' | 'sheet' | 'html';
     /** Bucket data-plane URL with a short-lived read token (Range supported). */
     read_url: string;
     result_obj_id: string;
