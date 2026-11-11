@@ -97,7 +97,7 @@ export type ComputerRequest =
   | ({ command: 'keypress'; keys: string[] } & ComputerActionOptions)
   | ({ command: 'scroll'; delta_x: number; delta_y: number; unit: 'pixel' | 'line' } & ComputerActionOptions)
   | ({ command: 'wait_for'; condition: { kind: 'delay'; duration_ms: number } } & ComputerActionOptions)
-  | ({ command: 'invoke' } & ComputerActionOptions)
+  | ({ command: 'invoke' | 'toggle' | 'select' | 'expand' | 'collapse' } & ComputerActionOptions)
   | ({ command: 'set_value'; value: string } & ComputerActionOptions)
 export interface ComputerBounds { x: number; y: number; width: number; height: number }
 export interface ComputerWindow {

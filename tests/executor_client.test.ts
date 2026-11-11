@@ -68,6 +68,9 @@ test('computer requests carry element targets and the operation locator', async 
   await stream.computer(locator, request)
   expect(Socket.instances[0].sent[1]).toEqual({ type: 'computer', request_id: 'q2', store_id: 'ledger-1', op_id: 'op-1', run_id: 'run-1', call_id: 'call-1', request })
   expect(() => stream.computer({ ...locator, generation: 1 }, request)).toThrow('old operation')
+  const toggle: ComputerRequest = { command: 'toggle', binding_id: 'user:display:1', target: { kind: 'element', observation_id: 'obs_1', ref: 'e3' } }
+  await stream.computer(locator, toggle)
+  expect(Socket.instances[0].sent[2]).toMatchObject({ type: 'computer', request: toggle })
   expect(COMPUTER_ROLES).toContain('tablist')
   expect(COMPUTER_ELEMENT_ACTIONS).toEqual(['focus', 'invoke', 'set_value', 'toggle', 'select', 'expand', 'collapse', 'scroll_into_view'])
   expect(COMPUTER_ELEMENT_STATES).toHaveLength(8)
