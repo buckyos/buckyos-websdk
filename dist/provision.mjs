@@ -14209,7 +14209,7 @@ function readJsonObjectOrThrow(filePath) {
 function jsonPretty(value) {
   return JSON.stringify(value, null, 2);
 }
-function commitFile(filePath, content, mode, dirMode) {
+function commitFile(filePath, content, mode, dirMode, placeholder) {
   const fs = requireNode$1("node:fs");
   const path = requireNode$1("node:path");
   const directory = path.dirname(filePath);
@@ -14217,15 +14217,23 @@ function commitFile(filePath, content, mode, dirMode) {
   if (!isWindows()) {
     fs.chmodSync(directory, dirMode);
   }
-  if (lstatOrNull(filePath)) {
-    throw new Error(`refusing to overwrite existing file: ${filePath}`);
-  }
+  const assertDestination = () => {
+    if (placeholder !== void 0) {
+      if (readGatewayPlaceholder(filePath) !== placeholder) {
+        throw new Error(`gateway placeholder changed during activation: ${filePath}`);
+      }
+    } else if (lstatOrNull(filePath)) {
+      throw new Error(`refusing to overwrite existing file: ${filePath}`);
+    }
+  };
+  assertDestination();
   const temporary = path.join(directory, `.${path.basename(filePath)}.provision-${randomSuffix()}`);
   try {
     fs.writeFileSync(temporary, content, { mode, flag: "wx" });
     if (!isWindows()) {
       fs.chmodSync(temporary, mode);
     }
+    assertDestination();
     fs.renameSync(temporary, filePath);
   } finally {
     if (lstatOrNull(temporary)) {
@@ -14474,13 +14482,23 @@ function observeIdentity(nodeIdentityPath, problems) {
     return { nodeIdentity: null, zoneDid: null, deviceDid: null };
   }
 }
-function gatewayParamsIsPlaceholder(gatewayParamsPath) {
+function readGatewayPlaceholder(gatewayParamsPath) {
+  var _a3;
   try {
-    const value = readJsonObjectOrThrow(gatewayParamsPath);
+    if (!((_a3 = lstatOrNull(gatewayParamsPath)) == null ? void 0 : _a3.isFile()))
+      return void 0;
+    const content = requireNode$1("node:fs").readFileSync(gatewayParamsPath, "utf8");
+    const value = JSON.parse(content);
+    if (!value || typeof value !== "object" || Array.isArray(value) || Object.keys(value).some((key) => key !== "params"))
+      return void 0;
     const params = value.params;
-    return !!params && typeof params === "object" && params.device_did === UNACTIVATED_GATEWAY_DEVICE_DID;
+    if (!params || typeof params !== "object" || Array.isArray(params) || params.device_did !== UNACTIVATED_GATEWAY_DEVICE_DID || Object.keys(params).some((key) => key !== "device_did" && key !== "rtcp_port"))
+      return void 0;
+    if (params.rtcp_port !== void 0 && (typeof params.rtcp_port !== "string" || !/^\d+$/.test(params.rtcp_port) || Number(params.rtcp_port) < 1 || Number(params.rtcp_port) > 65535))
+      return void 0;
+    return content;
   } catch {
-    return false;
+    return void 0;
   }
 }
 async function validateActivationMaterials(rootDir, layout, identity, problems) {
@@ -14675,6 +14693,9 @@ function getXFromJwkSafe(jwk) {
   }
 }
 async function inspectActivationRoot(rootDir) {
+  return inspectRoot(rootDir);
+}
+async function inspectRoot(rootDir, ignoreOwnLock = false) {
   const path = requireNode$1("node:path");
   const root = path.resolve(String(rootDir ?? ""));
   const observedAt = buckyosGetUnixTimestamp();
@@ -14707,7 +14728,7 @@ async function inspectActivationRoot(rootDir) {
     return base("not_installed");
   }
   const etcDir = path.join(root, "etc");
-  const lock = readLock(path.join(etcDir, ACTIVATION_LOCK_FILE_NAME));
+  const lock = ignoreOwnLock ? null : readLock(path.join(etcDir, ACTIVATION_LOCK_FILE_NAME));
   const identity = observeIdentity(path.join(etcDir, "node_identity.json"), problems);
   let zoneDid = identity.zoneDid;
   let deviceDid = identity.deviceDid;
@@ -14752,7 +14773,7 @@ async function inspectActivationRoot(rootDir) {
     }
   }
   const gatewayEntry = files.find((file) => file.role === "gateway_params");
-  const gatewayPlaceholder = (gatewayEntry == null ? void 0 : gatewayEntry.present) === true && gatewayParamsIsPlaceholder(path.join(etcDir, "node_gateway_params.json"));
+  const gatewayPlaceholder = (gatewayEntry == null ? void 0 : gatewayEntry.present) === true && readGatewayPlaceholder(path.join(etcDir, "node_gateway_params.json")) !== void 0;
   if (gatewayEntry && gatewayPlaceholder)
     gatewayEntry.present = false;
   const markers = files.filter((file) => file.present && file.role !== "dns_records");
@@ -14839,8 +14860,11 @@ function targetStateProblem(status) {
   }
 }
 async function checkOfflineActivation(options) {
+  return checkActivation(options);
+}
+async function checkActivation(options, ignoreOwnLock = false) {
   const params = normalizeActivationParams(options);
-  const status = await inspectActivationRoot(params.rootDir);
+  const status = await inspectRoot(params.rootDir, ignoreOwnLock);
   const problems = [];
   const stateProblem = targetStateProblem(status);
   if (stateProblem)
@@ -15068,18 +15092,20 @@ async function activateOfflineZone(options) {
   };
   let recheck;
   try {
-    recheck = await checkOfflineActivation(options);
+    recheck = await checkActivation(options, true);
   } catch (error) {
     releaseLock();
     throw error;
   }
-  const recheckProblems = recheck.problems.filter((problem) => problem.code !== "ACTIVATION_IN_PROGRESS");
-  if (recheckProblems.length > 0) {
+  if (!recheck.ready) {
     releaseLock();
-    throw precheckError({ ...recheck, problems: recheckProblems });
+    throw precheckError(recheck);
   }
+  const gatewayPlaceholder = readGatewayPlaceholder(layout.gatewayParamsPath);
   for (const file of files) {
     if (lstatOrNull(file.absolutePath)) {
+      if (file.role === "gateway_params" && gatewayPlaceholder !== void 0)
+        continue;
       releaseLock();
       throw new ActivationError(
         "TARGET_PARTIALLY_ACTIVATED",
@@ -15123,7 +15149,13 @@ async function activateOfflineZone(options) {
   for (const file of files) {
     const content = fileContent(file, material, deviceKeyPair, params.domain);
     try {
-      commitFile(file.absolutePath, content, file.mode, file.dirMode);
+      commitFile(
+        file.absolutePath,
+        content,
+        file.mode,
+        file.dirMode,
+        file.role === "gateway_params" ? gatewayPlaceholder : void 0
+      );
     } catch (error) {
       failCommit(error, file.path);
     }

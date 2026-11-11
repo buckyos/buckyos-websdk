@@ -6114,7 +6114,7 @@ async function readSkillDirectory(root, limit) {
   await walk(realRoot, "");
   return { files, ignored };
 }
-const PACKAGE_VERSION = "0.7.179";
+const PACKAGE_VERSION = "0.7.180";
 const TOOL_VERSION = PACKAGE_VERSION;
 const SDK_VERSION = PACKAGE_VERSION;
 const PROTOCOL_VERSION = "1";

@@ -149,6 +149,11 @@ Deno.test('provision status/check/activate run without a Zone and never print se
   const sandbox = await Deno.makeTempDir()
   try {
     const root = await installedRoot(sandbox)
+    const gatewayPath = join(root, 'etc', 'node_gateway_params.json')
+    const placeholder = JSON.stringify({
+      params: { device_did: 'did:bns:unactivated.local', rtcp_port: '2980' },
+    })
+    await Deno.writeTextFile(gatewayPath, placeholder)
     const backupDir = join(sandbox, 'backup')
     await Deno.mkdir(backupDir)
     const backup = join(backupDir, 'owner.pem')
@@ -209,7 +214,10 @@ Deno.test('provision status/check/activate run without a Zone and never print se
     assertEquals(check.envelope.data.rtcp_port, 2981)
     assertEquals(check.envelope.data.owner_key_backup.exists, false)
     // check writes nothing
-    assertEquals([...Deno.readDirSync(join(root, 'etc'))].length, 0)
+    assertEquals([...Deno.readDirSync(join(root, 'etc'))].map((entry) => entry.name), [
+      'node_gateway_params.json',
+    ])
+    assertEquals(await Deno.readTextFile(gatewayPath), placeholder)
     assertEquals([...Deno.readDirSync(backupDir)].length, 0)
 
     // online-only session options conflict with the local command
@@ -238,7 +246,7 @@ Deno.test('provision status/check/activate run without a Zone and never print se
     ])
     assertEquals(unconfirmed.code, 4)
     assertEquals(unconfirmed.envelope.error.code, 'CONFIRMATION_REQUIRED')
-    assertEquals([...Deno.readDirSync(join(root, 'etc'))].length, 0)
+    assertEquals(await Deno.readTextFile(gatewayPath), placeholder)
 
     // non-interactive activation needs the secret from --input
     const noSecret = await run([
@@ -292,6 +300,9 @@ Deno.test('provision status/check/activate run without a Zone and never print se
     )
     assert(await Deno.stat(backup).then((info) => info.isFile))
     assert(await Deno.stat(join(root, 'etc', 'node_identity.json')).then((info) => info.isFile))
+    assertEquals(JSON.parse(await Deno.readTextFile(gatewayPath)), {
+      params: { device_did: 'did:web:ood1.corp.example.com', rtcp_port: '2980' },
+    })
     assert(!await Deno.stat(join(root, 'etc', 'provision_activation.lock')).catch(() => null))
 
     const configured = await run(['provision', 'status', '--root', root])

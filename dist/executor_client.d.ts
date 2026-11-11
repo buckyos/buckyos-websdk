@@ -143,7 +143,7 @@ export type ComputerRequest = {
         duration_ms: number;
     };
 } & ComputerActionOptions) | ({
-    command: 'invoke';
+    command: 'invoke' | 'toggle' | 'select' | 'expand' | 'collapse';
 } & ComputerActionOptions) | ({
     command: 'set_value';
     value: string;

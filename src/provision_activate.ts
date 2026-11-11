@@ -14,7 +14,8 @@
 //   2. build every document/JWT/key in memory with random keys and the current time
 //   3. create <root>/etc/provision_activation.lock (O_EXCL) and re-check the target
 //   4. save the owner private-key backup (O_EXCL, 0600)
-//   5. commit files one by one (temp + rename, never overwrite), recording each
+//   5. commit files one by one (temp + rename, only replace the verified installer
+//      gateway placeholder), recording each
 //      committed file in the lock; etc/node_identity.json is written LAST because
 //      node_daemon treats its presence as "activated"
 //   6. remove the lock
@@ -334,9 +335,10 @@ function jsonPretty(value: unknown): string {
   return JSON.stringify(value, null, 2)
 }
 
-// Write a file atomically next to its destination; the destination must not
-// exist. Used for every committed file except the O_EXCL owner backup.
-function commitFile(filePath: string, content: string, mode: number, dirMode: number): void {
+// Write a file atomically next to its destination. Only the unchanged installer
+// gateway placeholder may be replaced, under the activation lock. Preparing the
+// temporary file must not remove or truncate that placeholder on failure.
+function commitFile(filePath: string, content: string, mode: number, dirMode: number, placeholder?: string): void {
   const fs = requireNode('node:fs')
   const path = requireNode('node:path')
   const directory = path.dirname(filePath)
@@ -344,15 +346,23 @@ function commitFile(filePath: string, content: string, mode: number, dirMode: nu
   if (!isWindows()) {
     fs.chmodSync(directory, dirMode)
   }
-  if (lstatOrNull(filePath)) {
-    throw new Error(`refusing to overwrite existing file: ${filePath}`)
+  const assertDestination = () => {
+    if (placeholder !== undefined) {
+      if (readGatewayPlaceholder(filePath) !== placeholder) {
+        throw new Error(`gateway placeholder changed during activation: ${filePath}`)
+      }
+    } else if (lstatOrNull(filePath)) {
+      throw new Error(`refusing to overwrite existing file: ${filePath}`)
+    }
   }
+  assertDestination()
   const temporary = path.join(directory, `.${path.basename(filePath)}.provision-${randomSuffix()}`)
   try {
     fs.writeFileSync(temporary, content, { mode, flag: 'wx' })
     if (!isWindows()) {
       fs.chmodSync(temporary, mode)
     }
+    assertDestination()
     fs.renameSync(temporary, filePath)
   } finally {
     if (lstatOrNull(temporary)) {
@@ -713,14 +723,25 @@ function observeIdentity(nodeIdentityPath: string, problems: ActivationProblem[]
   }
 }
 
-function gatewayParamsIsPlaceholder(gatewayParamsPath: string): boolean {
+// Accept only the installer's ordinary JSON file, not a link, an identity or
+// custom gateway configuration that happens to retain the sentinel DID.
+function readGatewayPlaceholder(gatewayParamsPath: string): string | undefined {
   try {
-    const value = readJsonObjectOrThrow(gatewayParamsPath)
+    if (!lstatOrNull(gatewayParamsPath)?.isFile()) return undefined
+    const content = requireNode('node:fs').readFileSync(gatewayParamsPath, 'utf8')
+    const value = JSON.parse(content)
+    if (!value || typeof value !== 'object' || Array.isArray(value) ||
+      Object.keys(value).some(key => key !== 'params')) return undefined
     const params = value.params
-    return !!params && typeof params === 'object' &&
-      (params as Record<string, unknown>).device_did === UNACTIVATED_GATEWAY_DEVICE_DID
+    if (!params || typeof params !== 'object' || Array.isArray(params) ||
+      params.device_did !== UNACTIVATED_GATEWAY_DEVICE_DID ||
+      Object.keys(params).some(key => key !== 'device_did' && key !== 'rtcp_port')) return undefined
+    if (params.rtcp_port !== undefined &&
+      (typeof params.rtcp_port !== 'string' || !/^\d+$/.test(params.rtcp_port) ||
+        Number(params.rtcp_port) < 1 || Number(params.rtcp_port) > 65535)) return undefined
+    return content
   } catch {
-    return false
+    return undefined
   }
 }
 
@@ -916,6 +937,10 @@ function getXFromJwkSafe(jwk: unknown): string | null {
 }
 
 export async function inspectActivationRoot(rootDir: string): Promise<ActivationStatus> {
+  return inspectRoot(rootDir)
+}
+
+async function inspectRoot(rootDir: string, ignoreOwnLock = false): Promise<ActivationStatus> {
   const path = requireNode('node:path')
   const root = path.resolve(String(rootDir ?? ''))
   const observedAt = buckyosGetUnixTimestamp()
@@ -950,7 +975,7 @@ export async function inspectActivationRoot(rootDir: string): Promise<Activation
   }
 
   const etcDir = path.join(root, 'etc')
-  const lock = readLock(path.join(etcDir, ACTIVATION_LOCK_FILE_NAME))
+  const lock = ignoreOwnLock ? null : readLock(path.join(etcDir, ACTIVATION_LOCK_FILE_NAME))
   const identity = observeIdentity(path.join(etcDir, 'node_identity.json'), problems)
 
   // Resolve the device identity directories: from node_identity when it is
@@ -998,7 +1023,7 @@ export async function inspectActivationRoot(rootDir: string): Promise<Activation
   }
   const gatewayEntry = files.find(file => file.role === 'gateway_params')
   const gatewayPlaceholder = gatewayEntry?.present === true &&
-    gatewayParamsIsPlaceholder(path.join(etcDir, 'node_gateway_params.json'))
+    readGatewayPlaceholder(path.join(etcDir, 'node_gateway_params.json')) !== undefined
   if (gatewayEntry && gatewayPlaceholder) gatewayEntry.present = false
 
   const markers = files.filter(file => file.present && file.role !== 'dns_records')
@@ -1098,8 +1123,15 @@ function targetStateProblem(status: ActivationStatus): ActivationProblem | null 
 export async function checkOfflineActivation(
   options: OfflineActivationCheckOptions,
 ): Promise<OfflineActivationPrecheck> {
+  return checkActivation(options)
+}
+
+async function checkActivation(
+  options: OfflineActivationCheckOptions,
+  ignoreOwnLock = false,
+): Promise<OfflineActivationPrecheck> {
   const params = normalizeActivationParams(options)
-  const status = await inspectActivationRoot(params.rootDir)
+  const status = await inspectRoot(params.rootDir, ignoreOwnLock)
   const problems: ActivationProblem[] = []
   const stateProblem = targetStateProblem(status)
   if (stateProblem) problems.push(stateProblem)
@@ -1386,18 +1418,19 @@ export async function activateOfflineZone(options: OfflineActivationOptions): Pr
   }
   let recheck: OfflineActivationPrecheck
   try {
-    recheck = await checkOfflineActivation(options)
+    recheck = await checkActivation(options, true)
   } catch (error) {
     releaseLock()
     throw error
   }
-  const recheckProblems = recheck.problems.filter(problem => problem.code !== 'ACTIVATION_IN_PROGRESS')
-  if (recheckProblems.length > 0) {
+  if (!recheck.ready) {
     releaseLock()
-    throw precheckError({ ...recheck, problems: recheckProblems })
+    throw precheckError(recheck)
   }
+  const gatewayPlaceholder = readGatewayPlaceholder(layout.gatewayParamsPath)
   for (const file of files) {
     if (lstatOrNull(file.absolutePath)) {
+      if (file.role === 'gateway_params' && gatewayPlaceholder !== undefined) continue
       releaseLock()
       throw new ActivationError(
         'TARGET_PARTIALLY_ACTIVATED',
@@ -1444,7 +1477,8 @@ export async function activateOfflineZone(options: OfflineActivationOptions): Pr
   for (const file of files) {
     const content = fileContent(file, material, deviceKeyPair, params.domain)
     try {
-      commitFile(file.absolutePath, content, file.mode, file.dirMode)
+      commitFile(file.absolutePath, content, file.mode, file.dirMode,
+        file.role === 'gateway_params' ? gatewayPlaceholder : undefined)
     } catch (error) {
       failCommit(error, file.path)
     }

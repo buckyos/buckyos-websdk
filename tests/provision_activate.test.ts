@@ -53,6 +53,13 @@ function makeInstalledRoot(sandbox: string): string {
   return rootDir
 }
 
+function writeGatewayPlaceholder(rootDir: string): string {
+  // Same contents as the Windows/macOS installer, including its default port.
+  const content = '{\r\n  "params": {\r\n    "device_did": "did:bns:unactivated.local",\r\n    "rtcp_port": "2980"\r\n  }\r\n}\r\n'
+  fs.writeFileSync(path.join(rootDir, 'etc', 'node_gateway_params.json'), content)
+  return content
+}
+
 async function expectActivationError(run: () => Promise<unknown>, code: string): Promise<ActivationError> {
   try {
     await run()
@@ -70,6 +77,7 @@ describe('offline activation API', () => {
     sandbox = fs.mkdtempSync(path.join(os.tmpdir(), 'provision-activate-'))
   })
   afterEach(() => {
+    jest.restoreAllMocks()
     fs.rmSync(sandbox, { recursive: true, force: true })
   })
 
@@ -207,8 +215,9 @@ describe('offline activation API', () => {
     expect(listFiles(sandbox)).toEqual([])
   })
 
-  test('activation writes a self-contained did:web identity and refuses to repeat', async () => {
+  test.each([false, true])('activation writes a self-contained identity and refuses to repeat (installer placeholder: %s)', async (placeholder) => {
     const rootDir = makeInstalledRoot(sandbox)
+    if (placeholder) writeGatewayPlaceholder(rootDir)
     const backupDir = path.join(sandbox, 'backup')
     fs.mkdirSync(backupDir)
     const ownerKeyBackupPath = path.join(backupDir, 'owner.pem')
@@ -381,6 +390,7 @@ describe('offline activation API', () => {
 
   test('a BuckyOS Desktop Lite root is activated without containers', async () => {
     const rootDir = makeInstalledRoot(sandbox)
+    const placeholder = writeGatewayPlaceholder(rootDir)
     fs.writeFileSync(path.join(rootDir, 'etc', 'product.json'), JSON.stringify({
       schema_version: 1,
       edition: 'lite',
@@ -388,6 +398,13 @@ describe('offline activation API', () => {
     }))
     const backupDir = path.join(sandbox, 'backup-lite')
     fs.mkdirSync(backupDir)
+    const precheck = await checkOfflineActivation({
+      rootDir, domain: 'lite.example.com', ownerName: 'alice',
+      ownerKeyBackupPath: path.join(backupDir, 'owner.pem'),
+    })
+    expect(precheck.ready).toBe(true)
+    expect(precheck.state).toBe('unactivated')
+    expect(fs.readFileSync(path.join(rootDir, 'etc', 'node_gateway_params.json'), 'utf8')).toBe(placeholder)
     await activateOfflineZone({
       rootDir,
       domain: 'lite.example.com',
@@ -450,6 +467,8 @@ describe('offline activation API', () => {
 
   test('a held lock blocks concurrent activation and shows up in status', async () => {
     const rootDir = makeInstalledRoot(sandbox)
+    const placeholder = writeGatewayPlaceholder(rootDir)
+    const gatewayPath = path.join(rootDir, 'etc', 'node_gateway_params.json')
     const lockPath = path.join(rootDir, 'etc', ACTIVATION_LOCK_FILE_NAME)
     fs.writeFileSync(lockPath, JSON.stringify({ schema_version: 1, stage: 'locked', committed: [], trace_id: 'other' }))
     const status = await inspectActivationRoot(rootDir)
@@ -468,11 +487,13 @@ describe('offline activation API', () => {
     )
     expect(error.details.state).toBe('partial')
     expect(fs.existsSync(path.join(sandbox, 'owner.pem'))).toBe(false)
-    expect(listFiles(rootDir)).toEqual([lockPath])
+    expect(listFiles(rootDir).sort()).toEqual([gatewayPath, lockPath].sort())
+    expect(fs.readFileSync(gatewayPath, 'utf8')).toBe(placeholder)
   })
 
   test('a commit failure keeps the backup, the committed files and the lock', async () => {
     const rootDir = makeInstalledRoot(sandbox)
+    const placeholder = writeGatewayPlaceholder(rootDir)
     // A regular file where the public identity root must be created passes the
     // precheck (nothing looks like activation material) and fails the commit
     // right after the device private key was written.
@@ -498,6 +519,7 @@ describe('offline activation API', () => {
     expect(JSON.stringify(error.details)).not.toContain('PRIVATE KEY')
     expect(fs.existsSync(ownerKeyBackupPath)).toBe(true)
     expect(fs.existsSync(path.join(rootDir, 'etc', 'node_identity.json'))).toBe(false)
+    expect(fs.readFileSync(path.join(rootDir, 'etc', 'node_gateway_params.json'), 'utf8')).toBe(placeholder)
     const lock = readJson(path.join(rootDir, 'etc', ACTIVATION_LOCK_FILE_NAME))
     expect(lock.stage).toBe('committing')
     expect(lock.committed).toEqual(committed)
@@ -512,5 +534,143 @@ describe('offline activation API', () => {
       ownerKeyBackupPath: path.join(sandbox, 'second.pem'),
     })
     expect(precheck.problems.map(problem => problem.code)).toEqual(['ACTIVATION_IN_PROGRESS'])
+  })
+
+  test.each([
+    '{invalid JSON',
+    JSON.stringify({ params: { device_did: 'did:web:ood1.existing.example.com', rtcp_port: '2980' } }),
+    JSON.stringify({ params: { device_did: 'did:bns:unactivated.local', owner_did: 'did:web:existing.example.com' } }),
+    JSON.stringify({ params: { device_did: 'did:bns:unactivated.local', rtcp_port: 'invalid' } }),
+    JSON.stringify({ params: { device_did: 'did:bns:unactivated.local' }, custom_gateway: true }),
+  ])('activation preserves existing or unrecognized gateway configuration: %s', async (content) => {
+    const rootDir = makeInstalledRoot(sandbox)
+    const gatewayPath = path.join(rootDir, 'etc', 'node_gateway_params.json')
+    fs.writeFileSync(gatewayPath, content)
+    await expectActivationError(() => activateOfflineZone({
+      rootDir, domain: 'corp.example.com', ownerName: 'admin', adminPassword: 'test-password',
+      ownerKeyBackupPath: path.join(sandbox, 'owner.pem'),
+    }), 'TARGET_PARTIALLY_ACTIVATED')
+    expect(fs.readFileSync(gatewayPath, 'utf8')).toBe(content)
+    expect(listFiles(sandbox)).toEqual([gatewayPath])
+  })
+
+  // Creating file symlinks on Windows needs privileges that an installed user's
+  // test environment need not have. Exercise the rejection on POSIX hosts.
+  const symlinkTest = process.platform === 'win32' ? test.skip : test
+  symlinkTest('a symlink to a placeholder is not replaceable', async () => {
+    const rootDir = makeInstalledRoot(sandbox)
+    const gatewayPath = path.join(rootDir, 'etc', 'node_gateway_params.json')
+    const placeholder = writeGatewayPlaceholder(rootDir)
+    const outside = path.join(sandbox, 'outside.json')
+    fs.renameSync(gatewayPath, outside)
+    fs.symlinkSync(outside, gatewayPath)
+    await expectActivationError(() => activateOfflineZone({
+      rootDir, domain: 'corp.example.com', ownerName: 'admin', adminPassword: 'test-password',
+      ownerKeyBackupPath: path.join(sandbox, 'owner.pem'),
+    }), 'TARGET_PARTIALLY_ACTIVATED')
+    expect(fs.lstatSync(gatewayPath).isSymbolicLink()).toBe(true)
+    expect(fs.readFileSync(outside, 'utf8')).toBe(placeholder)
+    expect(fs.existsSync(path.join(sandbox, 'owner.pem'))).toBe(false)
+  })
+
+  test('concurrent first activations replace the installer placeholder only once', async () => {
+    const rootDir = makeInstalledRoot(sandbox)
+    writeGatewayPlaceholder(rootDir)
+    const results = await Promise.allSettled([0, 1].map(index => activateOfflineZone({
+      rootDir, domain: 'corp.example.com', ownerName: 'admin', adminPassword: 'test-password',
+      ownerKeyBackupPath: path.join(sandbox, `owner-${index}.pem`),
+    })))
+    expect(results.filter(result => result.status === 'fulfilled')).toHaveLength(1)
+    const rejected = results.find(result => result.status === 'rejected') as PromiseRejectedResult
+    expect(rejected.reason).toBeInstanceOf(ActivationError)
+    expect(['ACTIVATION_IN_PROGRESS', 'TARGET_ALREADY_ACTIVATED']).toContain(rejected.reason.code)
+    expect([0, 1].filter(index => fs.existsSync(path.join(sandbox, `owner-${index}.pem`)))).toHaveLength(1)
+    expect((await inspectActivationRoot(rootDir)).state).toBe('configured')
+    expect(readJson(path.join(rootDir, 'etc', 'node_gateway_params.json')).params.device_did).toBe('did:web:ood1.corp.example.com')
+  })
+
+  test('a failed atomic gateway replacement preserves the placeholder and records partial progress', async () => {
+    const rootDir = makeInstalledRoot(sandbox)
+    const placeholder = writeGatewayPlaceholder(rootDir)
+    const gatewayPath = path.join(rootDir, 'etc', 'node_gateway_params.json')
+    const nativeFs = require('node:fs') as typeof fs
+    const rename = nativeFs.renameSync
+    jest.spyOn(nativeFs, 'renameSync').mockImplementation((from, to) => {
+      if (String(to) === gatewayPath) throw new Error('injected gateway rename failure')
+      return rename(from, to)
+    })
+    const error = await expectActivationError(() => activateOfflineZone({
+      rootDir, domain: 'corp.example.com', ownerName: 'admin', adminPassword: 'test-password',
+      ownerKeyBackupPath: path.join(sandbox, 'owner.pem'),
+    }), 'ACTIVATION_COMMIT_FAILED')
+    expect(error.details.stage).toBe('etc/node_gateway_params.json')
+    expect(fs.readFileSync(gatewayPath, 'utf8')).toBe(placeholder)
+    expect(fs.existsSync(path.join(rootDir, 'etc', 'node_identity.json'))).toBe(false)
+    const lock = readJson(path.join(rootDir, 'etc', ACTIVATION_LOCK_FILE_NAME))
+    expect(lock.committed).toContain('security/start_config.json')
+    expect(lock.committed).not.toContain('etc/node_gateway_params.json')
+    expect(listFiles(rootDir).some(file => file.includes('.provision-'))).toBe(false)
+  })
+
+  test('the locked recheck rejects partial identity material that appeared after precheck', async () => {
+    const rootDir = makeInstalledRoot(sandbox)
+    const placeholder = writeGatewayPlaceholder(rootDir)
+    const nativeFs = require('node:fs') as typeof fs
+    const write = nativeFs.writeFileSync
+    jest.spyOn(nativeFs, 'writeFileSync').mockImplementation((file, data, options) => {
+      write(file, data, options)
+      if (String(file) === path.join(rootDir, 'etc', ACTIVATION_LOCK_FILE_NAME)) {
+        // An identity from another domain is not among this call's planned files.
+        fs.mkdirSync(path.join(rootDir, 'security', 'ood1.other.example.com'), { recursive: true })
+      }
+    })
+    await expectActivationError(() => activateOfflineZone({
+      rootDir, domain: 'corp.example.com', ownerName: 'admin', adminPassword: 'test-password',
+      ownerKeyBackupPath: path.join(sandbox, 'owner.pem'),
+    }), 'TARGET_PARTIALLY_ACTIVATED')
+    expect(fs.readFileSync(path.join(rootDir, 'etc', 'node_gateway_params.json'), 'utf8')).toBe(placeholder)
+    expect(fs.existsSync(path.join(sandbox, 'owner.pem'))).toBe(false)
+    expect(fs.existsSync(path.join(rootDir, 'etc', ACTIVATION_LOCK_FILE_NAME))).toBe(false)
+  })
+
+  test('a backup write failure leaves the installer placeholder untouched and releases the lock', async () => {
+    const rootDir = makeInstalledRoot(sandbox)
+    const placeholder = writeGatewayPlaceholder(rootDir)
+    const gatewayPath = path.join(rootDir, 'etc', 'node_gateway_params.json')
+    const backup = path.join(sandbox, 'owner.pem')
+    const nativeFs = require('node:fs') as typeof fs
+    const write = nativeFs.writeFileSync
+    jest.spyOn(nativeFs, 'writeFileSync').mockImplementation((file, data, options) => {
+      if (String(file) === backup) throw new Error('injected backup write failure')
+      write(file, data, options)
+    })
+    await expectActivationError(() => activateOfflineZone({
+      rootDir, domain: 'corp.example.com', ownerName: 'admin', adminPassword: 'test-password',
+      ownerKeyBackupPath: backup,
+    }), 'OWNER_KEY_BACKUP_FAILED')
+    expect(fs.readFileSync(gatewayPath, 'utf8')).toBe(placeholder)
+    expect(listFiles(sandbox)).toEqual([gatewayPath])
+  })
+
+  test('a gateway changed during commit is preserved instead of replacing it as a placeholder', async () => {
+    const rootDir = makeInstalledRoot(sandbox)
+    writeGatewayPlaceholder(rootDir)
+    const gatewayPath = path.join(rootDir, 'etc', 'node_gateway_params.json')
+    const changed = JSON.stringify({ params: { device_did: 'did:web:ood1.other.example.com' } })
+    const nativeFs = require('node:fs') as typeof fs
+    const rename = nativeFs.renameSync
+    jest.spyOn(nativeFs, 'renameSync').mockImplementation((from, to) => {
+      rename(from, to)
+      if (String(to) === path.join(rootDir, 'security', 'start_config.json')) {
+        fs.writeFileSync(gatewayPath, changed)
+      }
+    })
+    const error = await expectActivationError(() => activateOfflineZone({
+      rootDir, domain: 'corp.example.com', ownerName: 'admin', adminPassword: 'test-password',
+      ownerKeyBackupPath: path.join(sandbox, 'owner.pem'),
+    }), 'ACTIVATION_COMMIT_FAILED')
+    expect(error.details.stage).toBe('etc/node_gateway_params.json')
+    expect(fs.readFileSync(gatewayPath, 'utf8')).toBe(changed)
+    expect(fs.existsSync(path.join(rootDir, 'etc', 'node_identity.json'))).toBe(false)
   })
 })
