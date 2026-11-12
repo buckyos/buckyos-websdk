@@ -292,6 +292,16 @@ export class AiWorkspaceClient {
   }
 
   // ---- workspace
+  /** A new Workspace; `name` (unique among the caller's, fixed) answers `NAME_CONFLICT` when the caller already uses it. */
+  create(title: string, opts: { workspace_id?: string; name?: string } = {}) {
+    return this.call<{ workspace_id: string; epoch: string; head_seq: number; title: string; name?: string }>('ws.create', { title, ...opts })
+  }
+  /** The caller's Workspace named `name`, created (titled `title`, else the name) when it has none. */
+  ensure(name: string, title?: string) {
+    return this.call<{ workspace_id: string; epoch: string; head_seq: number; title: string; name: string; created: boolean }>('ws.ensure', { name, ...(title === undefined ? {} : { title }) })
+  }
+  /** The service clock (unix ms): calibrate against half the round trip. */
+  time() { return this.call<{ server_ms: number }>('ws.time', {}) }
   list() { return this.call('ws.list', {}) }
   info(workspace_id: string) { return this.call('ws.get_info', { workspace_id }) }
   getUserState(workspace_id: string) { return this.call('ws.get_user_state', { workspace_id }) }
@@ -323,7 +333,7 @@ export class AiWorkspaceClient {
   }
   /** Long poll until the head passes `after_seq` (or `timeout_ms`). */
   waitChanges(workspace_id: string, after_seq: number, opts: { epoch?: string; timeout_ms?: number } = {}) {
-    return this.call<{ epoch: string; head_seq: number; timed_out: boolean }>('doc.wait_changes', { workspace_id, after_seq, ...opts })
+    return this.call<{ epoch: string; head_seq: number; timed_out: boolean; server_ms: number }>('doc.wait_changes', { workspace_id, after_seq, ...opts })
   }
   /** A whole-Workspace package (`.bcanvas`): `download` names it in the owner's exports bucket. */
   exportDoc(workspace_id: string, mode: 'share' | 'personal_backup', self_contained: boolean, include_notes?: boolean) {

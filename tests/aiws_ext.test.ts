@@ -16,7 +16,7 @@ describe('aiws extension controls (shared drivers)', () => {
     expect(checkComponent(files['component.json'], Object.keys(files)).filter((d) => d.severity === 'error')).toEqual([])
     const html = controlSkeleton({ authorDid: 'did:bns:alice', name: 'clock', kind: 'html' })
     expect(checkComponent(html['component.json'], Object.keys(html)).filter((d) => d.severity === 'error')).toEqual([])
-    const broken = JSON.stringify({ manifest_version: 4, ident: { author_did: 'alice', name: 'KPI' }, kind: 'chart', title: '', entry: 'x.json', deps: ['y'], config_schema: { pattern: 'a' }, events: [] })
+    const broken = JSON.stringify({ manifest_version: 5, ident: { author_did: 'alice', name: 'KPI' }, kind: 'chart', title: '', entry: 'x.json', deps: ['y'], config_schema: { pattern: 'a' }, events: [] })
     const messages = checkComponent(broken, ['component.json']).map((d) => d.message).join('\n')
     for (const needle of ['newer than this client', 'author_did', 'ident.name', 'kind must be', 'title', 'is not an identity', 'outside the supported subset', 'events must be an object']) expect(messages).toContain(needle)
     // version 1 knows neither composites nor dependencies
@@ -125,7 +125,7 @@ describe('aiws extension controls (shared drivers)', () => {
   it('v3: render controls declare events, HTML speaks host API 2 or 3, older versions get a hint', () => {
     const html = controlSkeleton({ authorDid: 'did:bns:alice', name: 'clock', kind: 'html' })
     const component = JSON.parse(html['component.json'])
-    expect([component.manifest_version, component.host_api, Object.keys(component.events)]).toEqual([3, 3, ['clicked']])
+    expect([component.manifest_version, component.host_api, Object.keys(component.events)]).toEqual([4, 4, ['clicked']])
     expect(html['behavior.js']).toContain("aiws.emit('clicked'")
     expect(checkComponent(html['component.json'], Object.keys(html))).toEqual([])
     const errors = (c: unknown) => checkComponent(JSON.stringify(c), Object.keys(html)).filter((d) => d.severity === 'error').map((d) => d.message).join('\n')
@@ -133,11 +133,11 @@ describe('aiws extension controls (shared drivers)', () => {
       .toMatch(/events.Done: an event name[\s\S]*unknown key color[\s\S]*params.x.type: string, number, boolean, object, entity[\s\S]*params.Y: a param name[\s\S]*params.Y.type required[\s\S]*params.z.required must be a boolean[\s\S]*unknown key label/)
     const many = Object.fromEntries(Array.from({ length: 17 }, (_, i) => [`e${i}`, {}]))
     expect(errors({ ...component, events: many })).toContain('events: at most 16')
-    expect(errors({ ...component, manifest_version: 2 })).toMatch(/events needs manifest_version 3[\s\S]*host_api 3 needs manifest_version 3/)
+    expect(errors({ ...component, manifest_version: 2 })).toMatch(/events needs manifest_version 3[\s\S]*host_api 4 needs manifest_version 4/)
     expect(errors({ ...component, manifest_version: 2, host_api: 2, events: undefined })).toBe('')
-    expect(errors({ ...component, host_api: 1 })).toContain('API 2 and 3')
+    expect(errors({ ...component, host_api: 1 })).toContain('API 2, 3 and 4')
     // events with host API 2 cannot be raised: a warning, not an error
-    expect(checkComponent(JSON.stringify({ ...component, host_api: 2 }), Object.keys(html)).map((d) => `${d.severity}: ${d.message}`)).toEqual(['warning: events: an HTML control raises them with aiws.emit, which is host API 3 (set host_api to 3)'])
+    expect(checkComponent(JSON.stringify({ ...component, host_api: 2 }), Object.keys(html)).map((d) => `${d.severity}: ${d.message}`)).toEqual(['warning: events: an HTML control raises them with aiws.emit, which is host API 3 (set host_api to 3 or later)'])
     // a composite's events live in composition.json
     const board = controlSkeleton({ authorDid: 'did:bns:alice', name: 'board', kind: 'composite' })
     const own = { ...JSON.parse(board['component.json']), events: { done: {} } }
@@ -181,7 +181,7 @@ describe('aiws extension controls (shared drivers)', () => {
     expect(check({ layout: { algorithm: 'stack' }, slots, events: { Bad: { from: { slot: 'nope', event: 'x' }, extra: 1 }, c: {} } }, known, 2).map((d) => d.message)).toEqual([
       'events needs manifest_version 3 (raise it in component.json)',
       'events.Bad: an event name is [a-z][a-z0-9_]{0,31}',
-      'events.Bad: unknown key extra (from, title, description)',
+      'events.Bad: unknown key extra (from, title, description, on)',
       'events.Bad.from.slot "nope": a slot of this composition',
       'events.c.from { slot, event } required: the child event it re-raises',
     ])
@@ -197,6 +197,25 @@ describe('aiws extension controls (shared drivers)', () => {
     ])
     expect(check({ layout: { algorithm: 'grid' }, slots: {} }).map((d) => d.message)).toEqual(['layout.columns (1…12) required: the cells of a grid row'])
     expect(check({ layout: { algorithm: 'stack', columns: 2, gap: 4 }, slots: {} }).map((d) => d.message)).toEqual(['layout.columns belongs to the grid layout', 'layout.gap belongs to the grid layout'])
+  })
+
+  it('v4: projections, a media slot, per-viewer visibility, events from a projection with a default handler', () => {
+    const schema = { type: 'object', properties: { limit_ms: { type: 'integer' }, broadcast: { type: 'object' }, picks: { type: 'integer' } } }
+    const check = (c: unknown, manifestVersion?: number) => checkComposition(JSON.stringify(c), schema, 'composition.json', { manifestVersion }).map((d) => d.message)
+    const v4 = {
+      layout: { algorithm: 'stack' },
+      slots: { screen: { accepts: ['asset'], max: 1 }, later: { visible: { from: 'first_open', for_ms: '{{config.limit_ms}}' } } },
+      media: { slot: 'screen', anchor: 'broadcast' },
+      projections: { photos: { source: { kind: 'members', binding: 'photos', accept: 'image' }, layout: { algorithm: 'grid', columns: 3, item: { h: 90 } },
+        template: { nodes: [{ id: 'img', view: 'asset', role: 'pick', config: { object_id: '{{item.object_id}}' } }] } } },
+      events: { pick: { from: { projection: 'photos', role: 'pick' }, on: { kind: 'write', target: 'votes', what: 'toggle', args: { field: 'picks', value: '{{event.item}}', max: '{{config.picks}}' } } } },
+    }
+    expect(check(v4, 4)).toEqual([])
+    // an older manifest is told to raise it
+    expect(check(v4, 3).every((m) => m.includes('manifest_version 4'))).toBe(true)
+    expect(check(v4, 3).length).toBeGreaterThan(0)
+    // a default handler is one of the event handlers (not an action's `config` / `forward`)
+    expect(check({ ...v4, events: { pick: { from: { projection: 'photos', role: 'pick' }, on: { kind: 'forward' } } } }, 4)).toEqual(['events.pick.on: a handler (write, wish, open, notify) or 1…4 of them'])
   })
 
   const HELLO = process.env.AIWS_HELLO_CONTROLS ?? '/home/lzc/project/buckyos/doc/workspace/hello-controls'
@@ -225,6 +244,23 @@ describe('aiws extension controls (shared drivers)', () => {
     expect(composition).toEqual([])
     // hello-card is what makes card_done valid: without its completed event the bubbling is undeclared
     expect(checkComposition(board['composition.json'], JSON.parse(board['component.json']).config_schema, 'composition.json', { cellEvents: () => [] }).map((d) => d.code)).toEqual(['EVENT_UNDECLARED'])
+  })
+
+  // the 控件机制 examples (TV screen, time-limited, photo vote, listen together): a manifest-4 bundle whose digests,
+  // components and compositions check clean as a whole
+  const EXAMPLES = process.env.AIWS_CONTROL_EXAMPLES ?? join(process.cwd(), '../buckyos/doc/workspace/control-examples')
+  ;(existsSync(EXAMPLES) ? it : it.skip)('the control examples are a clean bundle (buckyos doc/workspace/control-examples)', async () => {
+    const files = new Map<string, Uint8Array>()
+    const walk = (at: string, prefix: string) => {
+      for (const name of readdirSync(at)) {
+        if (statSync(join(at, name)).isDirectory()) walk(join(at, name), `${prefix}${name}/`)
+        else if (prefix || name === 'aiws-manifest.json') files.set(`${prefix}${name}`, new Uint8Array(readFileSync(join(at, name))))
+      }
+    }
+    walk(EXAMPLES, '')
+    const { manifest, diagnostics } = await verifyBundle(files)
+    expect(diagnostics).toEqual([])
+    expect(manifest.controls.map((c) => c.ident)).toEqual(['did:bns:buckyos#tv-screen', 'did:bns:buckyos#time-limited', 'did:bns:buckyos#photo-vote', 'did:bns:buckyos#listen-together'])
   })
 
   it('verifies the Workspace templates of a bundle: shape, snapshot, digest, required controls, no stray files', async () => {

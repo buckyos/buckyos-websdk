@@ -2,8 +2,8 @@ const AIWS_COMPONENT_FILE = "component.json";
 const AIWS_COMPOSITION_FILE = "composition.json";
 const AIWS_MANIFEST_FILE = "aiws-manifest.json";
 const AIWS_BUILD_STATE_FILE = ".aiws-build.json";
-const AIWS_MANIFEST_VERSION = 3;
-const AIWS_HTML_API_VERSION = 3;
+const AIWS_MANIFEST_VERSION = 4;
+const AIWS_HTML_API_VERSION = 4;
 const AIWS_DECLARATIVE_API_VERSION = 1;
 const AIWS_TEMPLATE_FORMAT = "aiws-template/1";
 const AIWS_MAX_SOURCE_FILES = 64;
@@ -88,7 +88,7 @@ async function buildFiles(nfsp, files, upload) {
   }
   return packBuildFiles(inline, upload, byRef);
 }
-const COMPONENT_KEYS = ["manifest_version", "ident", "kind", "title", "description", "host_api", "accepts", "allow_no_source", "default_size", "config_schema", "bindings", "entry", "assets", "catalog", "agent", "deps", "events"];
+const COMPONENT_KEYS = ["manifest_version", "ident", "kind", "title", "description", "host_api", "accepts", "allow_no_source", "default_size", "config_schema", "bindings", "entry", "assets", "catalog", "agent", "deps", "events", "actions"];
 const SCHEMA_KEYWORDS = ["type", "enum", "default", "required", "title", "description", "minimum", "maximum", "minLength", "maxLength", "properties", "items"];
 const NAME = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 const DID = /^did:[a-z0-9]+:[^/#\s]+$/;
@@ -96,6 +96,7 @@ const BINDING = /^[a-z][a-z0-9_]{0,31}$/;
 const IDENT = /^did:[a-z0-9]+:[^/#\s]+#[a-z0-9][a-z0-9._-]{0,63}$/;
 const V2_HINT = "needs manifest_version 2 (raise it in component.json)";
 const V3_HINT = "needs manifest_version 3 (raise it in component.json)";
+const V4_HINT = "needs manifest_version 4 (raise it in component.json)";
 const EVENT_PARAM_TYPES = ["string", "number", "boolean", "object", "entity"];
 const ITEM_KINDS = ["text", "value", "metric", "bar", "list", "badge"];
 const ITEM_KEYS = ["kind", "text", "label", "bind", "by", "format", "limit"];
@@ -333,9 +334,12 @@ function checkComposition(text, configSchema, file = AIWS_COMPOSITION_FILE, cont
     }
     error(`${at}: a number in [0, ${max}] or {{config.<key>}}`);
   };
+  const before4 = context.manifestVersion !== void 0 && context.manifestVersion < 4;
   for (const k of Object.keys(o)) {
-    if (!["layout", "slots", "chrome", "events"].includes(k))
-      error(`unknown key ${k} (a composition says layout, slots, chrome and events)`);
+    if (!["layout", "slots", "chrome", "events", "projections", "media"].includes(k))
+      error(`unknown key ${k} (a composition says layout, slots, chrome, events, projections and media)`);
+    else if ((k === "projections" || k === "media") && before4)
+      error(`${k} ${V4_HINT}`);
   }
   const layout = o.layout;
   let algorithm = "stack";
@@ -426,6 +430,18 @@ function checkComposition(text, configSchema, file = AIWS_COMPOSITION_FILE, cont
         } else if (k === "title") {
           if (typeof v !== "string" || v.length > 256)
             error(`${at}.title: at most 256 characters`);
+        } else if (k === "visible") {
+          if (before4) {
+            error(`${at}.visible ${V4_HINT}`);
+            continue;
+          }
+          const vis = v;
+          if (!isRecord(vis) || vis.from !== "first_open" || Object.keys(vis).some((x) => x !== "from" && x !== "for_ms"))
+            error(`${at}.visible: { from: "first_open", for_ms }`);
+          else if (typeof vis.for_ms === "string")
+            placeholders(vis.for_ms, `${at}.visible.for_ms`);
+          else if (!Number.isInteger(vis.for_ms) || vis.for_ms < 1 || vis.for_ms > 366 * 864e5)
+            error(`${at}.visible.for_ms: milliseconds (≤ a year) or {{config.<key>}}`);
         } else
           error(`${at}: unknown key ${k}`);
       }
@@ -499,12 +515,33 @@ function checkComposition(text, configSchema, file = AIWS_COMPOSITION_FILE, cont
           } else if (k === "description") {
             if (typeof v !== "string" || v.length > 4e3)
               error(`${at}.description: at most 4000 characters`);
+          } else if (k === "on") {
+            const list = Array.isArray(v) ? v : [v];
+            if (before4)
+              error(`${at}.on ${V4_HINT}`);
+            else if (list.length === 0 || list.length > 4 || list.some((h) => !isRecord(h) || !["write", "wish", "open", "notify"].includes(String(h.kind))))
+              error(`${at}.on: a handler (write, wish, open, notify) or 1…4 of them`);
           } else if (k !== "from")
-            error(`${at}: unknown key ${k} (from, title, description)`);
+            error(`${at}: unknown key ${k} (from, title, description, on)`);
         }
         const from = raw.from;
         if (!isRecord(from)) {
           error(`${at}.from { slot, event } required: the child event it re-raises`);
+          continue;
+        }
+        if (from.projection !== void 0) {
+          if (before4) {
+            error(`${at}.from.projection ${V4_HINT}`);
+            continue;
+          }
+          const projections = isRecord(o.projections) ? o.projections : {};
+          if (typeof from.projection !== "string" || !(from.projection in projections))
+            error(`${at}.from.projection ${JSON.stringify(from.projection)}: a projection of this composition`);
+          if (from.role !== void 0 && !(typeof from.role === "string" && BINDING.test(from.role)))
+            error(`${at}.from.role: a role name of its template`);
+          for (const k of Object.keys(from))
+            if (k !== "projection" && k !== "role")
+              error(`${at}.from: unknown key ${k} (projection, role)`);
           continue;
         }
         for (const k of Object.keys(from))
@@ -534,6 +571,51 @@ function checkComposition(text, configSchema, file = AIWS_COMPOSITION_FILE, cont
       }
     }
   }
+  if (o.projections !== void 0 && !before4) {
+    if (!isRecord(o.projections) || Object.keys(o.projections).length > 8)
+      error("projections: at most 8 of name → { source, template, layout }");
+    else
+      for (const [name, raw] of Object.entries(o.projections)) {
+        const at = `projections.${name}`;
+        if (!BINDING.test(name))
+          error(`${at}: a projection name is [a-z][a-z0-9_]{0,31}`);
+        if (!isRecord(raw)) {
+          error(`${at} must be an object`);
+          continue;
+        }
+        for (const k of Object.keys(raw))
+          if (!["source", "mark", "template", "layout", "placement", "max_items"].includes(k))
+            error(`${at}: unknown key ${k} (source, mark, template, layout, placement, max_items)`);
+        const src = raw.source;
+        const kind = isRecord(src) ? src.kind : void 0;
+        if (!isRecord(src) || !["records", "members", "counts", "viewer"].includes(String(kind)) || kind !== "viewer" && typeof src.binding !== "string" || kind === "counts" && typeof src.field !== "string") {
+          error(`${at}.source: { kind: records | members | counts | viewer, binding (a binding name), field? (counts) }`);
+        }
+        const nodes = isRecord(raw.template) && Array.isArray(raw.template.nodes) ? raw.template.nodes : null;
+        if (!nodes || nodes.length === 0 || nodes.length > 32)
+          error(`${at}.template: { nodes: [1…32 of { id, view: label | shape | asset, box?, config?, when?, role? }] }`);
+        else
+          nodes.forEach((n, i) => {
+            if (!isRecord(n) || typeof n.id !== "string" || !BINDING.test(n.id))
+              error(`${at}.template.nodes[${i}].id: a name [a-z][a-z0-9_]{0,31}`);
+            else if (!["label", "shape", "asset"].includes(String(n.view)))
+              error(`${at}.template.nodes[${i}].view: label, shape or asset`);
+          });
+        const lay = raw.layout;
+        if (!isRecord(lay) || lay.algorithm !== "list" && lay.algorithm !== "grid" || !isRecord(lay.item) || lay.item.h === void 0)
+          error(`${at}.layout: { algorithm: list | grid, columns? (grid), gap?, item: { w?, h } }`);
+        else if (lay.algorithm === "grid" && lay.columns === void 0)
+          error(`${at}.layout.columns required (grid)`);
+        if (raw.placement !== void 0 && !["top", "stack", "bottom"].includes(String(raw.placement)))
+          error(`${at}.placement: top, stack or bottom`);
+      }
+  }
+  if (o.media !== void 0 && !before4) {
+    const m = o.media;
+    if (!isRecord(m) || typeof m.slot !== "string" || !slots || !(m.slot in slots) || typeof m.anchor !== "string" || Object.keys(props).length > 0 && !(m.anchor in props)) {
+      error("media: { slot (a slot of this composition), anchor (a config property), loop? (a config property) }");
+    }
+  }
   return out;
 }
 function checkComponent(text, fileNames, readText, cellEvents) {
@@ -557,6 +639,22 @@ function checkComponent(text, fileNames, readText, cellEvents) {
       error(`unknown key ${k}`);
   const mv = c.manifest_version;
   const version = typeof mv === "number" && Number.isInteger(mv) && mv >= 1 ? mv : 0;
+  if (c.actions !== void 0) {
+    if (version > 0 && version < 4)
+      error(`actions ${V4_HINT}`);
+    else if (!Array.isArray(c.actions) || c.actions.length > 16)
+      error("actions: at most 16 of { id, title, icon?, modes?, needs?, run }");
+    else
+      c.actions.forEach((a, i) => {
+        if (!isRecord(a) || typeof a.id !== "string" || !BINDING.test(a.id) || typeof a.title !== "string" || !a.title)
+          error(`actions[${i}]: { id, title, run } (id a name [a-z][a-z0-9_]{0,31})`);
+        else {
+          const run = Array.isArray(a.run) ? a.run : [a.run];
+          if (run.length === 0 || run.length > 4 || run.some((h) => !isRecord(h) || !["write", "wish", "open", "notify", "config", "forward"].includes(String(h.kind))))
+            error(`actions[${i}].run: a handler (write, wish, open, notify, config, forward) or 1…4 of them`);
+        }
+      });
+  }
   if (!version)
     error(`manifest_version (1…${AIWS_MANIFEST_VERSION}) required`);
   else if (version > AIWS_MANIFEST_VERSION)
@@ -647,12 +745,14 @@ function checkComponent(text, fileNames, readText, cellEvents) {
         else
           named.add(String(n));
       }
-    if (c.host_api !== void 0 && c.host_api !== 2 && c.host_api !== 3)
-      error("host_api: the HTML Block host speaks API 2 and 3");
+    if (c.host_api !== void 0 && c.host_api !== 2 && c.host_api !== 3 && c.host_api !== 4)
+      error("host_api: the HTML Block host speaks API 2, 3 and 4");
+    else if (c.host_api === 4 && version < 4)
+      error(`host_api 4 ${V4_HINT}`);
     else if (c.host_api === 3 && before3)
       error(`host_api 3 ${V3_HINT}`);
-    if (events.length > 0 && c.host_api !== 3)
-      out.push({ file: f, severity: "warning", message: "events: an HTML control raises them with aiws.emit, which is host API 3 (set host_api to 3)" });
+    if (events.length > 0 && !(typeof c.host_api === "number" && c.host_api >= 3))
+      out.push({ file: f, severity: "warning", message: "events: an HTML control raises them with aiws.emit, which is host API 3 (set host_api to 3 or later)" });
   } else if (c.kind === "declarative" || composite) {
     if (!has(c.entry))
       error(`entry ${JSON.stringify(c.entry)} is not in the directory`);

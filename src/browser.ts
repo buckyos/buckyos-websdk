@@ -56,5 +56,7 @@ export * as objectUrl from './object_url'
 
 export * from './executor_client'
 export * from './aiworkspace_client'
+export * from './aiws_rrule'
+export * from './aiws_schedule'
 export { DIDObjectClient, DIDObjectError } from './did_object_client'
 export type { DIDObjectCard, DIDObjectClientOptions } from './did_object_client'

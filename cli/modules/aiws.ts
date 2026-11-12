@@ -17,6 +17,7 @@ import { EXIT_AUTH, ToolError, UsageError } from '../core/errors.ts'
 import { callService, expectObject, inputString, requiredInputString } from '../core/service.ts'
 import { getHost } from '../runtime/host.ts'
 import { createPikgModule } from './pikg.ts'
+import { calCommand, todoCommand } from './aiws_schedule.ts'
 import { gatewayOrigin } from './share.ts'
 
 // AI Workspace (`/kapi/aiworkspace`): reading a workspace, and the executor protocol of a wish run
@@ -1005,7 +1006,7 @@ const templateCommand: CommandDefinition = {
 export function createAiwsModule(): CommandModule {
   return {
     name: 'aiws',
-    summary: 'AI Workspace: read a workspace, Block-controls (catalogue, import, export), extension controls (build, pull, export, library, import, upgrade), Workspace templates (list, create, export), and execute wish runs as their executor (claim, heartbeat, report)',
-    commands: [infoCommand, readCommand, queryCommand, controlsCommand, importCommand, exportCommand, buildCommand, pullCommand, extExportCommand, libraryCommand, extImportCommand, extUpgradeCommand, templateCommand, runGetCommand, runClaimCommand, runHeartbeatCommand, runFilesCommand, runToolCommand, runProgramCommand, runReportCommand],
+    summary: 'AI Workspace: read a workspace, your to-do list and calendar (todo, cal), Block-controls (catalogue, import, export), extension controls (build, pull, export, library, import, upgrade), Workspace templates (list, create, export), and execute wish runs as their executor (claim, heartbeat, report)',
+    commands: [infoCommand, readCommand, queryCommand, todoCommand, calCommand, controlsCommand, importCommand, exportCommand, buildCommand, pullCommand, extExportCommand, libraryCommand, extImportCommand, extUpgradeCommand, templateCommand, runGetCommand, runClaimCommand, runHeartbeatCommand, runFilesCommand, runToolCommand, runProgramCommand, runReportCommand],
   }
 }

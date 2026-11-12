@@ -55,4 +55,7 @@ export * as objectUrl from './object_url'
 
 export * from './executor_client'
 export * from './aiws_ext'
+export * from './aiws_rrule'
+export * from './aiws_schedule'
+export { AiwsFailure, commitWithParts } from './aiworkspace_client'
 export { NfspClient } from './nfsp'

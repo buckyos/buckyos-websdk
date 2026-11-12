@@ -291,6 +291,30 @@ export declare class AiWorkspaceClient {
     private rpcClient;
     constructor(rpcClient: kRPCClient);
     call<T = Record<string, unknown>>(method: string, params: Record<string, unknown>): Promise<T>;
+    /** A new Workspace; `name` (unique among the caller's, fixed) answers `NAME_CONFLICT` when the caller already uses it. */
+    create(title: string, opts?: {
+        workspace_id?: string;
+        name?: string;
+    }): Promise<{
+        workspace_id: string;
+        epoch: string;
+        head_seq: number;
+        title: string;
+        name?: string | undefined;
+    }>;
+    /** The caller's Workspace named `name`, created (titled `title`, else the name) when it has none. */
+    ensure(name: string, title?: string): Promise<{
+        workspace_id: string;
+        epoch: string;
+        head_seq: number;
+        title: string;
+        name: string;
+        created: boolean;
+    }>;
+    /** The service clock (unix ms): calibrate against half the round trip. */
+    time(): Promise<{
+        server_ms: number;
+    }>;
     list(): Promise<Record<string, unknown>>;
     info(workspace_id: string): Promise<Record<string, unknown>>;
     getUserState(workspace_id: string): Promise<Record<string, unknown>>;
@@ -319,6 +343,7 @@ export declare class AiWorkspaceClient {
         epoch: string;
         head_seq: number;
         timed_out: boolean;
+        server_ms: number;
     }>;
     /** A whole-Workspace package (`.bcanvas`): `download` names it in the owner's exports bucket. */
     exportDoc(workspace_id: string, mode: 'share' | 'personal_backup', self_contained: boolean, include_notes?: boolean): Promise<Record<string, unknown>>;
