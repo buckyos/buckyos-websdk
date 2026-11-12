@@ -2,7 +2,7 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 import * as nodePath from "node:path";
 import { resolve as resolve$5, dirname as dirname$3 } from "node:path";
-import { BuckyOSSDK, RuntimeType, buckyos, namelib, VerifyHubClient, createAppInstanceId, parseSessionTokenClaims, ndn, verifyBundle, controlSkeleton, aiwsContentDigest, AIWS_MANIFEST_VERSION, AIWS_MANIFEST_FILE, taskMgrTaskEventPath, ndm_proxy, objectUrl as objectUrl$1, ExecutorCommandStream, AiwsFailure, viewerTimeZone, localDate, calendarOccurrences, ScheduleClient, resolveBindings, noUiDialogs, createOps, orderKeyBetween, bindingsPayload, watchControl, buildControl, pullControl, exportBundle, NfspClient, AiwsSourceError, packBuildFiles, templateDir, isSourcePath } from "buckyos/node";
+import { BuckyOSSDK, RuntimeType, buckyos, namelib, VerifyHubClient, createAppInstanceId, parseSessionTokenClaims, ndn, verifyBundle, controlSkeleton, aiwsContentDigest, AIWS_MANIFEST_VERSION, AIWS_MANIFEST_FILE, taskMgrTaskEventPath, ndm_proxy, objectUrl as objectUrl$1, ExecutorCommandStream, AiwsFailure, viewerTimeZone, localDate, calendarOccurrences, ScheduleClient, resolveBindings, noUiDialogs, createOps, orderKeyBetween, bindingsPayload, BindFailure, watchControl, buildControl, pullControl, exportBundle, NfspClient, AiwsSourceError, packBuildFiles, templateDir, isSourcePath } from "buckyos/node";
 import * as provisionSdk from "buckyos/provision";
 import { createHash } from "node:crypto";
 import { readFile, writeFile, readdir, stat, lstat, realpath, mkdtemp, rename, rm, mkdir, chmod, symlink, copyFile, open } from "node:fs/promises";
@@ -13692,6 +13692,22 @@ const BUILTIN_SIZE = {
   todo: { w: 420, h: 520 },
   calendar: { w: 860, h: 620 }
 };
+function givenOnly(title) {
+  return (ctx) => {
+    const missing = Object.entries(ctx.decls).filter(
+      ([name, d]) => d.required && ctx.given[name] === void 0
+    ).map(([name]) => name);
+    if (missing.length > 0) {
+      throw new BindFailure(
+        `${title} decides its data in its own script, which runs in a person's browser only: give ${missing.join(", ")} with --bind`,
+        "NEEDS_UI",
+        ctx.node,
+        missing[0]
+      );
+    }
+    return Promise.resolve({ bindings: ctx.given, create: [] });
+  };
+}
 async function call(ctx, method, params) {
   const result = expectObject$4(await callService(ctx, SERVICE$1, method, params), method);
   if (result.ok === false) {
@@ -13725,7 +13741,7 @@ function freeName(taken, base) {
 const placeCommand = {
   verb: "place",
   summary: "Place a control on a canvas the way a person inserts it: its on_bind settles its data (none → created, one → bound); give a binding where it would ask",
-  description: "CONTROL is `todo`, `calendar` or a definition of the workspace (its entity id, or its identity <author_did>#<name>). Bindings you give (--bind \"photos=d1;votes=t1,t2\", a list for a `many` binding) are taken; the rest follow the control's on_bind with no dialogs: a choice a person would make fails with NEEDS_UI naming the binding to give. Data it creates (a standard table, a composite's declared table or folder) goes into the canvas's content folder, owned by the control. A composite's on_init_control actions (e.g. preparing a ballot) are listed in `then`: run them yourself (the Desktop runs them for a person).",
+  description: "CONTROL is `todo`, `calendar` or a definition of the workspace (its entity id, or its identity <author_did>#<name>). Bindings you give (--bind \"photos=d1;votes=t1,t2\", a list for a `many` binding) are taken; the rest follow the control's on_bind with no dialogs: a choice a person would make fails with NEEDS_UI naming the binding to give. Data it creates (a standard table, a composite's declared table or folder) goes into the canvas's content folder, owned by the control. A composite's on_init_control actions (e.g. preparing a ballot) are listed in `then`: run them yourself (the Desktop runs them for a person). An HTML control whose own script decides its data (on_bind \"script\", see its AGENT.md) is not run here: give its bindings with --bind; a required one missing fails with NEEDS_UI.",
   positionals: [{
     name: "control",
     description: "todo | calendar | a definition id | <author_did>#<name>",
@@ -13844,8 +13860,8 @@ const placeCommand = {
       }
       const payload = (await call(ctx, "doc.read", { workspace_id: ws, entity_id: def.entity_id })).content.payload;
       decls = payload.bindings ?? {};
-      node = { onBind: payload.on_bind, onInit: payload.on_init_control };
       title ??= String(payload.title ?? def.entity_id);
+      node = payload.on_bind === "script" ? { onBind: givenOnly(title) } : payload.kind === "composite" ? { onBind: payload.on_bind, onInit: payload.on_init_control } : {};
       const size = payload.default_size ?? { w: 320, h: 240 };
       op = payload.kind === "composite" ? {
         op: "entity.create",
@@ -13891,7 +13907,7 @@ const placeCommand = {
         no_ui: true,
         dialogs: noUiDialogs(),
         find: (q) => data.filter(
-          (d) => (!q.accepts?.length || q.accepts.includes(d.type_id)) && (!q.schema_id || d.schema_id === q.schema_id)
+          (d) => (!q.accepts?.length || q.accepts.includes(d.type_id)) && (!q.schema_id || d.schema_id === q.schema_id) && (!q.ids || q.ids.includes(d.entity_id))
         )
       }
     );

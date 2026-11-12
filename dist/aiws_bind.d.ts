@@ -30,9 +30,11 @@ export interface DataInfo {
     name?: string | null;
     place?: string | null;
 }
+/** `ids`: only these (a control's own on_bind narrowing what a dialog offers). */
 export interface DataQuery {
     accepts?: string[];
     schema_id?: string;
+    ids?: string[];
 }
 /** Data the binding creates, in the canvas's content folder, owned by the control (`ref` names it in `bindings`). */
 export type CreateSpec = {
@@ -197,6 +199,10 @@ export declare const STANDARD_SCHEMAS: string[];
 export declare function bindingAccepts(decl: BindingDecl, data: Pick<DataInfo, 'type_id' | 'schema_id'>): boolean;
 /** The dialogs of a host without a person: every one fails, naming the binding a caller has to give. */
 export declare function noUiDialogs(): BindDialogs;
+/** An on_bind's result as the host takes it — also what an HTML control's script returned (TODO §2.9): every binding a
+ * declared one, a single binding one id, a `many` one at most 32; what it creates well-formed, its refs used and renamed
+ * apart from other controls' refs of the same placement. */
+export declare function checkBindResult(value: unknown, decls: Record<string, BindingDecl>, node: string): BindResult;
 /** The default rule of a declaration (TODO §2.4): given → the parent's matching data → the Workspace's data. */
 export declare const defaultOnBind: OnBind;
 /** A composite's declared steps; bindings no step settles follow the default rule. */

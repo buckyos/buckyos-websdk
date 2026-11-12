@@ -1,10 +1,10 @@
-import { c as createSDKModule } from "./executor_client-f1d6585d.mjs";
-import { a9, aL, bG, aQ, bH, bM, bL, bI, bK, bN, bJ, bE, bF, bD, ac, aR, am, al, an, ao, aT, aS, aV, aU, bU, cc, cd, c8, c9, ca, cb, ce, f, B, cg, cf, ck, ci, k, co, cn, cm, cl, a1, a0, $, _, bh, ag, a8, aB, E, cp, cs, cq, Y, aA, aM, ah, c2, c1, q, M, A, C, y, w, v, N, D, x, z, aN, aO, az, l, R, aC, bl, S, b1, b0, a$, b4, b2, a_, aW, aX, b3, aY, b5, aZ, aw, ax, av, b6, ay, aP, bi, bf, bk, bm, ba, bj, bn, be, bb, bd, a4, a3, V, W, a2, aJ, aF, aK, aD, aH, aI, bo, aE, aG, bC, bv, bp, by, bt, bx, bs, bq, bu, bw, bB, bA, bz, br, Z, ab, bS, bR, bO, bQ, U, c5, c3, bg, b, e, ak, T, au, a5, a6, c6, bV, ch, cr, h, j, i, g, af, ae, I, bP, o, F, bc, a7, aq, ap, at, t, u, P, a, d, n, ai, K, H, G, Q, O, aa, c4, c7, ar, ad, p, bY, m, J, as, r, s, b9, b7, b8, bT, bX, bW, L, b$, b_, bZ, c0, X, cj, aj } from "./executor_client-f1d6585d.mjs";
+import { c as createSDKModule } from "./executor_client-f224d6ba.mjs";
+import { a9, aL, bG, aQ, bH, bM, bL, bI, bK, bN, bJ, bE, bF, bD, ac, aR, am, al, an, ao, aT, aS, aV, aU, bU, cc, cd, c8, c9, ca, cb, ce, f, B, cg, cf, ck, ci, k, co, cn, cm, cl, a1, a0, $, _, bh, ag, a8, aB, E, cp, cs, cq, Y, aA, aM, ah, c2, c1, q, M, A, C, y, w, v, N, D, x, z, aN, aO, az, l, R, aC, bl, S, b1, b0, a$, b4, b2, a_, aW, aX, b3, aY, b5, aZ, aw, ax, av, b6, ay, aP, bi, bf, bk, bm, ba, bj, bn, be, bb, bd, a4, a3, V, W, a2, aJ, aF, aK, aD, aH, aI, bo, aE, aG, bC, bv, bp, by, bt, bx, bs, bq, bu, bw, bB, bA, bz, br, Z, ab, bS, bR, bO, bQ, U, c5, c3, bg, b, e, ak, T, au, a5, a6, c6, bV, ch, cr, h, j, i, g, af, ae, I, bP, o, F, bc, a7, aq, ap, at, t, u, P, a, d, n, ai, K, H, G, Q, O, aa, c4, c7, ar, ad, p, bY, m, J, as, r, s, b9, b7, b8, bT, bX, bW, L, b$, b_, bZ, c0, X, cj, aj } from "./executor_client-f224d6ba.mjs";
 import { h as h2 } from "./account-7a7bde6f.mjs";
 import { a as a10, D as D2, N as N2, r as r2, q as q2, g as g2, j as j2, f as f2, c, e as e2, b as b10, d as d2, k as k2, h as h3, i as i2, n as n2, o as o2, m as m2, l as l2, p as p2 } from "./ndn_types-0fac2499.mjs";
 import { o as o3 } from "./object_url-376c5222.mjs";
 import { AIWS_BUILD_STATE_FILE, AIWS_COMPONENT_FILE, AIWS_COMPOSITION_FILE, AIWS_DECLARATIVE_API_VERSION, AIWS_HTML_API_VERSION, AIWS_MANIFEST_FILE, AIWS_MANIFEST_VERSION, AIWS_MAX_INLINE_BYTES, AIWS_MAX_SOURCE_FILES, AIWS_TEMPLATE_FORMAT, AiwsSourceError, aiwsContentDigest, aiwsTemplateDigest, buildControl, buildFiles, checkComponent, checkComposition, checkDeclarative, collectSources, compatManifest, controlSkeleton, createControlSource, ensureFolder, exportBundle, findFolder, folderName, hasControlSource, homeControlDir, homeExportDir, isSourcePath, joinPath, packBuildFiles, pullControl, readBuildState, slotCells, sourceStateKey, sourcesDigest, sourcesKey, templateDir, unbuiltChanges, verifyBundle, watchControl, writeBuildState, writeHomeFile, writeSourceFile } from "./aiws_ext.mjs";
-import { L as L2, a as a11, ai as ai2, G as G2, R as R2, I as I2, J as J2, H as H2, S as S2, aj as aj2, af as af2, K as K2, T as T2, W as W2, ak as ak2, ar as ar2, as as as2, O as O2, a9 as a92, $ as $2, at as at2, g as g3, aq as aq2, q as q3, n as n3, o as o4, m as m3, am as am2, ao as ao2, _ as _2, E as E2, aa as aa2, ac as ac2, ab as ab2, ae as ae2, ad as ad2, v as v2, ag as ag2, j as j3, Z as Z2, k as k3, l as l3, Q as Q2, r as r3, a7 as a72, u as u2, X as X2, al as al2, C as C2, a6 as a62, U as U2, V as V2, B as B2, D as D3, i as i3, F as F2, ap as ap2, ah as ah2, M as M2, x as x2, Y as Y2, a1 as a12, P as P2, an as an2, a2 as a22, a3 as a32, N as N3, a0 as a02, a4 as a42, a5 as a52, a8 as a82, w as w2, y as y2, z as z2, t as t2 } from "./aiws_bind-dfeda027.mjs";
+import { L as L2, a as a11, ai as ai2, G as G2, R as R2, I as I2, J as J2, H as H2, S as S2, aj as aj2, af as af2, K as K2, T as T2, W as W2, ak as ak2, as as as2, at as at2, O as O2, a9 as a92, $ as $2, am as am2, au as au2, g as g3, ar as ar2, q as q3, n as n3, o as o4, m as m3, an as an2, ap as ap2, _ as _2, E as E2, aa as aa2, ac as ac2, ab as ab2, ae as ae2, ad as ad2, v as v2, ag as ag2, j as j3, Z as Z2, k as k3, l as l3, Q as Q2, r as r3, a7 as a72, u as u2, X as X2, al as al2, C as C2, a6 as a62, U as U2, V as V2, B as B2, D as D3, i as i3, F as F2, aq as aq2, ah as ah2, M as M2, x as x2, Y as Y2, a1 as a12, P as P2, ao as ao2, a2 as a22, a3 as a32, N as N3, a0 as a02, a4 as a42, a5 as a52, a8 as a82, w as w2, y as y2, z as z2, t as t2 } from "./aiws_bind-79905d80.mjs";
 import { NfspClient } from "./nfsp.mjs";
 import { R as R3 } from "./krpc_client-673448e5.mjs";
 import "./content_mime-e42d5f8d.mjs";
@@ -224,9 +224,9 @@ export {
   attachEvent,
   bg as baselineTaskControlProfile,
   ak2 as bindingAccepts,
-  ar2 as bindingsPayload,
+  as2 as bindingsPayload,
   b as bns,
-  as2 as boundIds,
+  at2 as boundIds,
   e as bucket,
   buckyos,
   buildControl,
@@ -235,7 +235,8 @@ export {
   O2 as calendarFields,
   a92 as calendarOccurrences,
   $2 as canonicalOriginal,
-  at2 as checkBindSteps,
+  am2 as checkBindResult,
+  au2 as checkBindSteps,
   checkComponent,
   checkComposition,
   checkDeclarative,
@@ -250,7 +251,7 @@ export {
   c6 as createAppInstanceId,
   createControlSource,
   createEventReader,
-  aq2 as createOps,
+  ar2 as createOps,
   createSDKModule,
   create_event_reader,
   q3 as dateOf,
@@ -259,8 +260,8 @@ export {
   m3 as daysInMonth,
   bV as decisionRequirements,
   ch as decodeBnsPublishDocumentCalldata,
-  am2 as defaultOnBind,
-  ao2 as defaultOnInit,
+  an2 as defaultOnBind,
+  ap2 as defaultOnInit,
   _2 as deleteRecordsOp,
   E2 as describeRRule,
   cr as encodeExecutorControl,
@@ -383,7 +384,7 @@ export {
   readBuildState,
   F2 as recurrencePresets,
   removeEvent,
-  ap2 as resolveBindings,
+  aq2 as resolveBindings,
   r as resolveDidFromHost,
   resolve_did,
   ah2 as scheduleBoardOps,
@@ -398,7 +399,7 @@ export {
   sourcesDigest,
   sourcesKey,
   P2 as standardTableOp,
-  an2 as stepsOnBind,
+  ao2 as stepsOnBind,
   subscribeKEvent,
   b9 as taskMgrErrorCode,
   b7 as taskMgrTaskEventPath,

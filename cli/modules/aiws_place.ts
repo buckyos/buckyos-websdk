@@ -1,4 +1,5 @@
 import {
+  BindFailure,
   bindingsPayload,
   createOps,
   noUiDialogs,
@@ -13,7 +14,9 @@ import { callService, expectObject, inputString, requiredInputString } from '../
 // Placing a control on a canvas as an Agent (buckyos notepads/aiworkspace-control-on-bind-todo.md §2.8, Q6): the same
 // on_bind / on_init_control a person's insertion runs (buckyos-websdk aiws_bind.ts), without dialogs (`no_ui`). What the
 // Agent gives (--bind) is taken; what the default rule settles without a choice (none → created, one → bound) is done;
-// where a person would have to choose, the command fails naming the binding to give. One Commit.
+// where a person would have to choose, the command fails naming the binding to give. One Commit. An HTML control that
+// decides its bindings in its own script (on_bind "script", TODO §2.9) is not run here: what the Agent gives is its ctx,
+// taken as it is (owner 11-12).
 
 const OBJECT_OUTPUT: JsonSchema = { type: 'object', additionalProperties: true }
 const SERVICE = 'aiworkspace'
@@ -51,7 +54,34 @@ type DataInfo = {
   schema_id: string | null
   title: string | null
 }
-type DataQuery = { accepts?: string[]; schema_id?: string }
+type DataQuery = { accepts?: string[]; schema_id?: string; ids?: string[] }
+type GivenCtx = {
+  node: string
+  given: Record<string, string | string[]>
+  decls: Record<string, BindingDecl>
+}
+
+/** An HTML control's on_bind for an Agent: its script runs in a person's browser only, so the bindings given are taken as
+ * they are; a required one not given fails naming it. */
+function givenOnly(title: string) {
+  return (ctx: GivenCtx) => {
+    const missing = Object.entries(ctx.decls).filter(([name, d]) =>
+      d.required && ctx.given[name] === undefined
+    )
+      .map(([name]) => name)
+    if (missing.length > 0) {
+      throw new BindFailure(
+        `${title} decides its data in its own script, which runs in a person's browser only: give ${
+          missing.join(', ')
+        } with --bind`,
+        'NEEDS_UI',
+        ctx.node,
+        missing[0],
+      )
+    }
+    return Promise.resolve({ bindings: ctx.given, create: [] })
+  }
+}
 type Outcome =
   | {
     ok: true
@@ -101,7 +131,7 @@ export const placeCommand: CommandDefinition = {
   summary:
     'Place a control on a canvas the way a person inserts it: its on_bind settles its data (none → created, one → bound); give a binding where it would ask',
   description:
-    "CONTROL is `todo`, `calendar` or a definition of the workspace (its entity id, or its identity <author_did>#<name>). Bindings you give (--bind \"photos=d1;votes=t1,t2\", a list for a `many` binding) are taken; the rest follow the control's on_bind with no dialogs: a choice a person would make fails with NEEDS_UI naming the binding to give. Data it creates (a standard table, a composite's declared table or folder) goes into the canvas's content folder, owned by the control. A composite's on_init_control actions (e.g. preparing a ballot) are listed in `then`: run them yourself (the Desktop runs them for a person).",
+    'CONTROL is `todo`, `calendar` or a definition of the workspace (its entity id, or its identity <author_did>#<name>). Bindings you give (--bind "photos=d1;votes=t1,t2", a list for a `many` binding) are taken; the rest follow the control\'s on_bind with no dialogs: a choice a person would make fails with NEEDS_UI naming the binding to give. Data it creates (a standard table, a composite\'s declared table or folder) goes into the canvas\'s content folder, owned by the control. A composite\'s on_init_control actions (e.g. preparing a ballot) are listed in `then`: run them yourself (the Desktop runs them for a person). An HTML control whose own script decides its data (on_bind "script", see its AGENT.md) is not run here: give its bindings with --bind; a required one missing fails with NEEDS_UI.',
   positionals: [{
     name: 'control',
     description: 'todo | calendar | a definition id | <author_did>#<name>',
@@ -233,8 +263,13 @@ export const placeCommand: CommandDefinition = {
           payload: Record<string, unknown>
         }).payload
       decls = (payload.bindings ?? {}) as Record<string, BindingDecl>
-      node = { onBind: payload.on_bind, onInit: payload.on_init_control }
       title ??= String(payload.title ?? def.entity_id)
+      // a composite's declared steps; an HTML control's script is not run (its init check is the default one)
+      node = payload.on_bind === 'script'
+        ? { onBind: givenOnly(title) }
+        : payload.kind === 'composite'
+        ? { onBind: payload.on_bind, onInit: payload.on_init_control }
+        : {}
       const size = (payload.default_size as { w: number; h: number } | undefined) ??
         { w: 320, h: 240 }
       op = payload.kind === 'composite'
@@ -287,7 +322,7 @@ export const placeCommand: CommandDefinition = {
         find: (q: DataQuery) =>
           data.filter((d) =>
             (!q.accepts?.length || q.accepts.includes(d.type_id)) &&
-            (!q.schema_id || d.schema_id === q.schema_id)
+            (!q.schema_id || d.schema_id === q.schema_id) && (!q.ids || q.ids.includes(d.entity_id))
           ),
       },
     ) as Outcome

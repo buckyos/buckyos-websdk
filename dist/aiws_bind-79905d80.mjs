@@ -1717,6 +1717,75 @@ function noUiDialogs() {
 }
 let refSeq = 0;
 const newRef = () => `ref:${++refSeq}`;
+const MAX_ITEMS = 32;
+const MAX_CREATE = 16;
+function checkBindResult(value, decls, node) {
+  const bad = (message) => {
+    throw new BindFailure(`on_bind result: ${message}`, "INVALID", node);
+  };
+  const isObject = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+  if (!isObject(value) || !isObject(value.bindings))
+    return bad("{ bindings, create? } (or null to cancel)");
+  const created = value.create === void 0 ? [] : value.create;
+  if (!Array.isArray(created) || created.length > MAX_CREATE)
+    return bad(`create: a list of at most ${MAX_CREATE}`);
+  const refs = /* @__PURE__ */ new Map();
+  const create = created.map((c, i) => {
+    const at = `create[${i}]`;
+    if (!isObject(c) || typeof c.ref !== "string" || !c.ref)
+      return bad(`${at}: { ref, kind, … }`);
+    if (refs.has(c.ref))
+      return bad(`${at}: ref ${c.ref} twice`);
+    const ref = newRef();
+    refs.set(c.ref, ref);
+    const name = typeof c.name === "string" && c.name.trim() && c.name.length <= 128 ? c.name.trim() : null;
+    if (c.kind === "standard") {
+      if (typeof c.schema_id !== "string")
+        return bad(`${at}: a standard table names its schema_id`);
+      return { ref, kind: "standard", schema_id: c.schema_id, name: name ?? c.schema_id };
+    }
+    if (!name)
+      return bad(`${at}: a name (at most 128 characters)`);
+    if (c.kind === "table") {
+      if (!Array.isArray(c.fields) || c.fields.length === 0)
+        return bad(`${at}: a table lists its fields`);
+      if (c.title_field_id !== void 0 && typeof c.title_field_id !== "string")
+        return bad(`${at}: title_field_id is a field id`);
+      return { ref, kind: "table", name, fields: c.fields, ...c.title_field_id ? { title_field_id: c.title_field_id } : {} };
+    }
+    if (c.kind === "dir")
+      return { ref, kind: "dir", name };
+    return bad(`${at}: kind standard, table or dir`);
+  });
+  const bindings = {};
+  const used = /* @__PURE__ */ new Set();
+  for (const [name, v] of Object.entries(value.bindings)) {
+    const decl = decls[name];
+    if (!decl)
+      return bad(`${name} is not a declared binding`);
+    if (v === null || v === void 0)
+      continue;
+    const list2 = typeof v === "string" ? [v] : Array.isArray(v) && v.every((x) => typeof x === "string" && x) ? v : bad(`${name}: an id, or a list of ids`);
+    if (!decl.many && (Array.isArray(v) || list2.length !== 1))
+      return bad(`${name} takes one`);
+    if (list2.length > MAX_ITEMS || new Set(list2).size !== list2.length)
+      return bad(`${name}: at most ${MAX_ITEMS}, each once`);
+    const ids = list2.map((id) => {
+      if (refs.has(id))
+        used.add(id);
+      return refs.get(id) ?? id;
+    });
+    if (decl.many) {
+      if (ids.length > 0)
+        bindings[name] = ids;
+    } else
+      bindings[name] = ids[0];
+  }
+  const unused = [...refs.keys()].filter((r) => !used.has(r));
+  if (unused.length > 0)
+    return bad(`created but not bound: ${unused.join(", ")}`);
+  return { bindings, create };
+}
 const defaultOnBind = async (ctx) => {
   const bindings = {};
   const create = [];
@@ -1914,6 +1983,7 @@ async function resolveBindings(root, host) {
     }
     if (result === null)
       throw new BindFailure(`${node.title}: cancelled`, "CANCELLED", node.id);
+    result = checkBindResult(result, node.decls, node.id);
     results.set(node.id, result);
     const children = [];
     for (const child of node.children)
@@ -2091,14 +2161,15 @@ export {
   STANDARD_SCHEMAS as aj,
   bindingAccepts as ak,
   noUiDialogs as al,
-  defaultOnBind as am,
-  stepsOnBind as an,
-  defaultOnInit as ao,
-  resolveBindings as ap,
-  createOps as aq,
-  bindingsPayload as ar,
-  boundIds as as,
-  checkBindSteps as at,
+  checkBindResult as am,
+  defaultOnBind as an,
+  stepsOnBind as ao,
+  defaultOnInit as ap,
+  resolveBindings as aq,
+  createOps as ar,
+  bindingsPayload as as,
+  boundIds as at,
+  checkBindSteps as au,
   aiwsReferenceUrl as b,
   AIWS_COMMIT_PART_BYTES as c,
   AIWS_COMMIT_MAX_BYTES as d,
@@ -2125,4 +2196,4 @@ export {
   ymdOf as y,
   zonedParts as z
 };
-//# sourceMappingURL=aiws_bind-dfeda027.mjs.map
+//# sourceMappingURL=aiws_bind-79905d80.mjs.map

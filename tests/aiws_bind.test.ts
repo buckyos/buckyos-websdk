@@ -75,7 +75,7 @@ describe('the default rule', () => {
     const out = await resolveBindings({ ...calendarControl, given: { events: ['c1'], todo: ['t1'] } }, h)
     const r = out.ok ? out.results.get('cal')! : null
     expect(r?.bindings.events).toEqual(['c2', expect.stringMatching(/^ref:/)])
-    expect(r?.bindings.todo).toEqual([])
+    expect(r?.bindings.todo).toBeUndefined() // none chosen: not bound
     expect(r?.create).toMatchObject([{ kind: 'standard', schema_id: CAL, name: 'Calendar' }])
     expect(h.asked).toEqual(['many:Calendars', 'many:To-do lists'])
   })
@@ -146,4 +146,44 @@ it('a list binding is written as a list, a single one as an object', () => {
   expect(bindingsPayload({ events: ['a', 'ref:1'], items: 'b' }, decls, { 'ref:1': 'n' })).toEqual({ events: [{ entity_id: 'a' }, { entity_id: 'n' }], items: { entity_id: 'b' } })
   expect(bindingsPayload({ events: [] }, decls, {})).toEqual({})
   expect(new BindFailure('x', 'INVALID')).toBeInstanceOf(Error)
+})
+
+describe("a control's own on_bind (an HTML control's script, TODO §2.9)", () => {
+  const folderControl = (id: string, onBind: BindNode['onBind'], children: BindNode[] = []): BindNode =>
+    ({ id, title: id, decls: { list: { accepts: ['buckyos.dir'], required: true } }, onBind, children })
+
+  it('its refs are its own: two controls both creating `new` get two folders', async () => {
+    const own = async () => ({ bindings: { list: 'new' }, create: [{ ref: 'new', kind: 'dir', name: 'Playlist' }] }) as never
+    const outcome = await resolveBindings(folderControl('p', own, [folderControl('c', own)]), host([]))
+    expect(outcome.ok).toBe(true)
+    if (!outcome.ok) return
+    let n = 0
+    const made = createOps(outcome.results, { folderId: 'f', newId: () => `d${++n}`, orderKey: () => `k${n}`, freeName: (name) => name })
+    expect(made.ops).toHaveLength(2)
+    expect(bindingsPayload(outcome.results.get('p')!.bindings, {}, made.ids)).toEqual({ list: { entity_id: 'd1' } })
+    expect(bindingsPayload(outcome.results.get('c')!.bindings, {}, made.ids)).toEqual({ list: { entity_id: 'd2' } })
+  })
+
+  it('a result the host cannot take fails as INVALID, naming what is wrong', async () => {
+    const tryResult = async (value: unknown) => {
+      const outcome = await resolveBindings(folderControl('p', async () => value as never), host([dir('a'), dir('b')]))
+      return outcome.ok ? 'ok' : `${outcome.error.code} ${outcome.error.message}`
+    }
+    expect(await tryResult({ bindings: { list: 'a' } })).toBe('ok')
+    expect(await tryResult({ bindings: { nope: 'a' } })).toMatch(/INVALID .*nope is not a declared binding/)
+    expect(await tryResult({ bindings: { list: ['a', 'b'] } })).toMatch(/INVALID .*list takes one/)
+    expect(await tryResult({ bindings: { list: 'a' }, create: [{ ref: 'x', kind: 'dir', name: 'X' }] })).toMatch(/created but not bound: x/)
+    expect(await tryResult({ bindings: { list: 'x' }, create: [{ ref: 'x', kind: 'file', name: 'X' }] })).toMatch(/kind standard, table or dir/)
+    expect(await tryResult({ bindings: { list: 'x' }, create: [{ ref: 'x', kind: 'table', name: 'X', fields: [] }] })).toMatch(/lists its fields/)
+    expect(await tryResult('a')).toMatch(/INVALID .*\{ bindings, create\? \}/)
+  })
+
+  it('a dialog it opens with no_ui fails as NEEDS_UI', async () => {
+    const asks = async (ctx: Parameters<Extract<BindNode['onBind'], (...a: never[]) => unknown>>[0]) => {
+      const picked = await ctx.dialogs.pickOne({ title: 'Which folder?', query: { accepts: ['buckyos.dir'], ids: ['a'] } })
+      return picked === null ? null : { bindings: { list: picked as string }, create: [] }
+    }
+    const outcome = await resolveBindings(folderControl('p', asks), host([dir('a'), dir('b')], {}, true))
+    expect(!outcome.ok && outcome.error.code).toBe('NEEDS_UI')
+  })
 })

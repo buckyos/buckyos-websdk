@@ -28,11 +28,12 @@ export const AIWS_BUILD_STATE_FILE = '.aiws-build.json'
 /** The newest component.json / AIWS manifest version this module reads (older ones stay readable, Q19). Version 2
  * adds `kind: composite` and non-empty `deps`; version 3 `events`, the declarative `button`, composite `events` and
  * Workspace templates; version 4 `actions` and the composite projections; version 5 a composite's declared
- * `on_bind` / `on_init_control` (控件 on_bind TODO). */
+ * `on_bind` / `on_init_control` (控件 on_bind TODO), and an HTML control's `"script"` for them. */
 export const AIWS_MANIFEST_VERSION = 5
-/** The newest HTML Block host API (`window.aiws` v3: `emit`, `createBlock { parent, slot }`, `context.interactive`;
- * hosts run 2 and 3) and the declarative interpreter version. */
-export const AIWS_HTML_API_VERSION = 4
+/** The newest HTML Block host API (`window.aiws` v3: `emit`, `createBlock { parent, slot }`, `context.interactive`; v4:
+ * `onConfig`, `serverNow`, `userState`, `mediaUrl`; v5: `aiws.on('bind')` / `aiws.on('init_control')` run without a page
+ * before placing; hosts run every version from 2 on) and the declarative interpreter version. */
+export const AIWS_HTML_API_VERSION = 5
 export const AIWS_DECLARATIVE_API_VERSION = 1
 /** The `format` of a Workspace template's `snapshot.json` (Q32). */
 export const AIWS_TEMPLATE_FORMAT = 'aiws-template/1'
@@ -587,7 +588,13 @@ export function checkComponent(text: string, fileNames: string[], readText?: (na
   // (manifest 5) what the composite binds when placed: its steps, against its bindings and actions
   if (c.on_bind !== undefined || c.on_init_control !== undefined) {
     if (version > 0 && version < 5) error(`on_bind / on_init_control ${V5_HINT}`)
-    else if (c.kind !== 'composite') error('on_bind / on_init_control: declared steps are for a composite (an HTML control binds in behavior.js)')
+    else if (c.kind === 'html') {
+      // (host API 5) the control's behavior.js decides: aiws.on('bind') / aiws.on('init_control')
+      for (const [k, ev] of [['on_bind', 'bind'], ['on_init_control', 'init_control']] as const) {
+        if (c[k] !== undefined && c[k] !== 'script') error(`${k}: an HTML control writes "script" (its behavior.js handles aiws.on('${ev}'))`)
+      }
+      if (!(typeof c.host_api === 'number' && c.host_api >= 5)) error('on_bind / on_init_control "script": aiws.on(\'bind\') / aiws.on(\'init_control\') need host_api 5')
+    } else if (c.kind !== 'composite') error('on_bind / on_init_control: declared steps are for a composite, "script" for an HTML control')
     else {
       const actionIds = Array.isArray(c.actions) ? c.actions.filter(isRecord).map((a) => String(a.id)) : []
       checkBindSteps(c.on_bind, c.on_init_control, isRecord(c.bindings) ? c.bindings as Record<string, BindingDecl> : {}, actionIds).forEach(error)
@@ -619,7 +626,8 @@ export function checkComponent(text: string, fileNames: string[], readText?: (na
     const e = c.entry as Record<string, unknown> | undefined
     if (!e || typeof e !== 'object' || typeof e.html !== 'string') error('entry must be { html, css?, js? }')
     else for (const [k, n] of Object.entries(e)) { if (!has(n)) error(`entry.${k} ${JSON.stringify(n)} is not in the directory`); else named.add(String(n)) }
-    if (c.host_api !== undefined && c.host_api !== 2 && c.host_api !== 3 && c.host_api !== 4) error('host_api: the HTML Block host speaks API 2, 3 and 4')
+    if (c.host_api !== undefined && c.host_api !== 2 && c.host_api !== 3 && c.host_api !== 4 && c.host_api !== 5) error('host_api: the HTML Block host speaks API 2, 3, 4 and 5')
+    else if (c.host_api === 5 && version < 5) error(`host_api 5 ${V5_HINT}`)
     else if (c.host_api === 4 && version < 4) error(`host_api 4 ${V4_HINT}`)
     else if (c.host_api === 3 && before3) error(`host_api 3 ${V3_HINT}`)
     if (events.length > 0 && !(typeof c.host_api === 'number' && c.host_api >= 3)) out.push({ file: f, severity: 'warning', message: 'events: an HTML control raises them with aiws.emit, which is host API 3 (set host_api to 3 or later)' })

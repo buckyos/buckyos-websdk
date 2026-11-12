@@ -26,7 +26,8 @@ export type Bound = Record<string, string | string[]>
 
 /** Data of the Workspace a query answers. */
 export interface DataInfo { entity_id: string; type_id: string; schema_id?: string | null; title?: string | null; name?: string | null; place?: string | null }
-export interface DataQuery { accepts?: string[]; schema_id?: string }
+/** `ids`: only these (a control's own on_bind narrowing what a dialog offers). */
+export interface DataQuery { accepts?: string[]; schema_id?: string; ids?: string[] }
 
 /** Data the binding creates, in the canvas's content folder, owned by the control (`ref` names it in `bindings`). */
 export type CreateSpec =
@@ -137,6 +138,56 @@ export function noUiDialogs(): BindDialogs {
 
 let refSeq = 0
 const newRef = () => `ref:${++refSeq}`
+
+const MAX_ITEMS = 32
+const MAX_CREATE = 16
+
+/** An on_bind's result as the host takes it — also what an HTML control's script returned (TODO §2.9): every binding a
+ * declared one, a single binding one id, a `many` one at most 32; what it creates well-formed, its refs used and renamed
+ * apart from other controls' refs of the same placement. */
+export function checkBindResult(value: unknown, decls: Record<string, BindingDecl>, node: string): BindResult {
+  const bad = (message: string): never => { throw new BindFailure(`on_bind result: ${message}`, 'INVALID', node) }
+  const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
+  if (!isObject(value) || !isObject(value.bindings)) return bad('{ bindings, create? } (or null to cancel)')
+  const created = value.create === undefined ? [] : value.create
+  if (!Array.isArray(created) || created.length > MAX_CREATE) return bad(`create: a list of at most ${MAX_CREATE}`)
+  const refs = new Map<string, string>()
+  const create: CreateSpec[] = created.map((c, i) => {
+    const at = `create[${i}]`
+    if (!isObject(c) || typeof c.ref !== 'string' || !c.ref) return bad(`${at}: { ref, kind, … }`)
+    if (refs.has(c.ref)) return bad(`${at}: ref ${c.ref} twice`)
+    const ref = newRef()
+    refs.set(c.ref, ref)
+    const name = typeof c.name === 'string' && c.name.trim() && c.name.length <= 128 ? c.name.trim() : null
+    if (c.kind === 'standard') {
+      if (typeof c.schema_id !== 'string') return bad(`${at}: a standard table names its schema_id`)
+      return { ref, kind: 'standard', schema_id: c.schema_id, name: name ?? c.schema_id }
+    }
+    if (!name) return bad(`${at}: a name (at most 128 characters)`)
+    if (c.kind === 'table') {
+      if (!Array.isArray(c.fields) || c.fields.length === 0) return bad(`${at}: a table lists its fields`)
+      if (c.title_field_id !== undefined && typeof c.title_field_id !== 'string') return bad(`${at}: title_field_id is a field id`)
+      return { ref, kind: 'table', name, fields: c.fields as Json[], ...(c.title_field_id ? { title_field_id: c.title_field_id as string } : {}) }
+    }
+    if (c.kind === 'dir') return { ref, kind: 'dir', name }
+    return bad(`${at}: kind standard, table or dir`)
+  })
+  const bindings: Bound = {}
+  const used = new Set<string>()
+  for (const [name, v] of Object.entries(value.bindings)) {
+    const decl = decls[name]
+    if (!decl) return bad(`${name} is not a declared binding`)
+    if (v === null || v === undefined) continue
+    const list = typeof v === 'string' ? [v] : Array.isArray(v) && v.every((x) => typeof x === 'string' && x) ? v as string[] : bad(`${name}: an id, or a list of ids`)
+    if (!decl.many && (Array.isArray(v) || list.length !== 1)) return bad(`${name} takes one`)
+    if (list.length > MAX_ITEMS || new Set(list).size !== list.length) return bad(`${name}: at most ${MAX_ITEMS}, each once`)
+    const ids = list.map((id) => { if (refs.has(id)) used.add(id); return refs.get(id) ?? id })
+    if (decl.many) { if (ids.length > 0) bindings[name] = ids } else bindings[name] = ids[0]
+  }
+  const unused = [...refs.keys()].filter((r) => !used.has(r))
+  if (unused.length > 0) return bad(`created but not bound: ${unused.join(', ')}`)
+  return { bindings, create }
+}
 
 /** The default rule of a declaration (TODO §2.4): given → the parent's matching data → the Workspace's data. */
 export const defaultOnBind: OnBind = async (ctx) => {
@@ -278,6 +329,7 @@ export async function resolveBindings(root: BindNode, host: BindHost): Promise<B
       throw error
     }
     if (result === null) throw new BindFailure(`${node.title}: cancelled`, 'CANCELLED', node.id)
+    result = checkBindResult(result, node.decls, node.id)
     results.set(node.id, result)
     const children: ChildState[] = []
     for (const child of node.children) children.push(await visit(child, { decls: node.decls, bound: result.bindings }))

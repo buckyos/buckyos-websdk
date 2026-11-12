@@ -1,4 +1,4 @@
-import { at as checkBindSteps } from "./aiws_bind-dfeda027.mjs";
+import { au as checkBindSteps } from "./aiws_bind-79905d80.mjs";
 import "./object_url-376c5222.mjs";
 import "./ndn_types-0fac2499.mjs";
 const AIWS_COMPONENT_FILE = "component.json";
@@ -6,7 +6,7 @@ const AIWS_COMPOSITION_FILE = "composition.json";
 const AIWS_MANIFEST_FILE = "aiws-manifest.json";
 const AIWS_BUILD_STATE_FILE = ".aiws-build.json";
 const AIWS_MANIFEST_VERSION = 5;
-const AIWS_HTML_API_VERSION = 4;
+const AIWS_HTML_API_VERSION = 5;
 const AIWS_DECLARATIVE_API_VERSION = 1;
 const AIWS_TEMPLATE_FORMAT = "aiws-template/1";
 const AIWS_MAX_SOURCE_FILES = 64;
@@ -719,8 +719,15 @@ function checkComponent(text, fileNames, readText, cellEvents) {
   if (c.on_bind !== void 0 || c.on_init_control !== void 0) {
     if (version > 0 && version < 5)
       error(`on_bind / on_init_control ${V5_HINT}`);
-    else if (c.kind !== "composite")
-      error("on_bind / on_init_control: declared steps are for a composite (an HTML control binds in behavior.js)");
+    else if (c.kind === "html") {
+      for (const [k, ev] of [["on_bind", "bind"], ["on_init_control", "init_control"]]) {
+        if (c[k] !== void 0 && c[k] !== "script")
+          error(`${k}: an HTML control writes "script" (its behavior.js handles aiws.on('${ev}'))`);
+      }
+      if (!(typeof c.host_api === "number" && c.host_api >= 5))
+        error(`on_bind / on_init_control "script": aiws.on('bind') / aiws.on('init_control') need host_api 5`);
+    } else if (c.kind !== "composite")
+      error('on_bind / on_init_control: declared steps are for a composite, "script" for an HTML control');
     else {
       const actionIds = Array.isArray(c.actions) ? c.actions.filter(isRecord).map((a) => String(a.id)) : [];
       checkBindSteps(c.on_bind, c.on_init_control, isRecord(c.bindings) ? c.bindings : {}, actionIds).forEach(error);
@@ -771,8 +778,10 @@ function checkComponent(text, fileNames, readText, cellEvents) {
         else
           named.add(String(n));
       }
-    if (c.host_api !== void 0 && c.host_api !== 2 && c.host_api !== 3 && c.host_api !== 4)
-      error("host_api: the HTML Block host speaks API 2, 3 and 4");
+    if (c.host_api !== void 0 && c.host_api !== 2 && c.host_api !== 3 && c.host_api !== 4 && c.host_api !== 5)
+      error("host_api: the HTML Block host speaks API 2, 3, 4 and 5");
+    else if (c.host_api === 5 && version < 5)
+      error(`host_api 5 ${V5_HINT}`);
     else if (c.host_api === 4 && version < 4)
       error(`host_api 4 ${V4_HINT}`);
     else if (c.host_api === 3 && before3)

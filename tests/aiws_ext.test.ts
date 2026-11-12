@@ -125,7 +125,7 @@ describe('aiws extension controls (shared drivers)', () => {
   it('v3: render controls declare events, HTML speaks host API 2 or 3, older versions get a hint', () => {
     const html = controlSkeleton({ authorDid: 'did:bns:alice', name: 'clock', kind: 'html' })
     const component = JSON.parse(html['component.json'])
-    expect([component.manifest_version, component.host_api, Object.keys(component.events)]).toEqual([5, 4, ['clicked']])
+    expect([component.manifest_version, component.host_api, Object.keys(component.events)]).toEqual([5, 5, ['clicked']])
     expect(html['behavior.js']).toContain("aiws.emit('clicked'")
     expect(checkComponent(html['component.json'], Object.keys(html))).toEqual([])
     const errors = (c: unknown) => checkComponent(JSON.stringify(c), Object.keys(html)).filter((d) => d.severity === 'error').map((d) => d.message).join('\n')
@@ -133,9 +133,9 @@ describe('aiws extension controls (shared drivers)', () => {
       .toMatch(/events.Done: an event name[\s\S]*unknown key color[\s\S]*params.x.type: string, number, boolean, object, entity[\s\S]*params.Y: a param name[\s\S]*params.Y.type required[\s\S]*params.z.required must be a boolean[\s\S]*unknown key label/)
     const many = Object.fromEntries(Array.from({ length: 17 }, (_, i) => [`e${i}`, {}]))
     expect(errors({ ...component, events: many })).toContain('events: at most 16')
-    expect(errors({ ...component, manifest_version: 2 })).toMatch(/events needs manifest_version 3[\s\S]*host_api 4 needs manifest_version 4/)
+    expect(errors({ ...component, manifest_version: 2 })).toMatch(/events needs manifest_version 3[\s\S]*host_api 5 needs manifest_version 5/)
     expect(errors({ ...component, manifest_version: 2, host_api: 2, events: undefined })).toBe('')
-    expect(errors({ ...component, host_api: 1 })).toContain('API 2, 3 and 4')
+    expect(errors({ ...component, host_api: 1 })).toContain('API 2, 3, 4 and 5')
     // events with host API 2 cannot be raised: a warning, not an error
     expect(checkComponent(JSON.stringify({ ...component, host_api: 2 }), Object.keys(html)).map((d) => `${d.severity}: ${d.message}`)).toEqual(['warning: events: an HTML control raises them with aiws.emit, which is host API 3 (set host_api to 3 or later)'])
     // a composite's events live in composition.json
@@ -261,6 +261,17 @@ describe('aiws extension controls (shared drivers)', () => {
     const { manifest, diagnostics } = await verifyBundle(files)
     expect(diagnostics).toEqual([])
     expect(manifest.controls.map((c) => c.ident)).toEqual(['did:bns:buckyos#tv-screen', 'did:bns:buckyos#time-limited', 'did:bns:buckyos#photo-vote', 'did:bns:buckyos#listen-together'])
+  })
+
+  it('v5: an HTML control decides its bindings in its script (on_bind / on_init_control "script", host API 5)', () => {
+    const html = controlSkeleton({ authorDid: 'did:bns:alice', name: 'player', kind: 'html' })
+    const component = JSON.parse(html['component.json'])
+    const errors = (c: unknown) => checkComponent(JSON.stringify(c), Object.keys(html)).filter((d) => d.severity === 'error').map((d) => d.message)
+    expect(errors({ ...component, on_bind: 'script', on_init_control: 'script' })).toEqual([])
+    expect(errors({ ...component, on_bind: [{ binding: 'data', pick: 'one' }] })).toEqual(['on_bind: an HTML control writes "script" (its behavior.js handles aiws.on(\'bind\'))'])
+    expect(errors({ ...component, host_api: 4, on_bind: 'script' })).toEqual(['on_bind / on_init_control "script": aiws.on(\'bind\') / aiws.on(\'init_control\') need host_api 5'])
+    const board = controlSkeleton({ authorDid: 'did:bns:alice', name: 'board', kind: 'composite' })
+    expect(checkComponent(JSON.stringify({ ...JSON.parse(board['component.json']), on_bind: 'script' }), Object.keys(board), (n) => board[n]).map((d) => d.message).join('\n')).toContain('on_bind: at most 16 steps')
   })
 
   it('v5: a composite declares what it binds when placed (on_bind, on_init_control) and its bindings\' schema_id / many', () => {
