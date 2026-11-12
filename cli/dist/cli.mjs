@@ -2,7 +2,7 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 import * as nodePath from "node:path";
 import { resolve as resolve$5, dirname as dirname$3 } from "node:path";
-import { BuckyOSSDK, RuntimeType, buckyos, namelib, VerifyHubClient, createAppInstanceId, parseSessionTokenClaims, ndn, verifyBundle, controlSkeleton, aiwsContentDigest, AIWS_MANIFEST_VERSION, AIWS_MANIFEST_FILE, taskMgrTaskEventPath, ndm_proxy, objectUrl as objectUrl$1, ExecutorCommandStream, AiwsFailure, viewerTimeZone, localDate, calendarOccurrences, ScheduleClient, watchControl, buildControl, pullControl, exportBundle, NfspClient, AiwsSourceError, packBuildFiles, templateDir, isSourcePath } from "buckyos/node";
+import { BuckyOSSDK, RuntimeType, buckyos, namelib, VerifyHubClient, createAppInstanceId, parseSessionTokenClaims, ndn, verifyBundle, controlSkeleton, aiwsContentDigest, AIWS_MANIFEST_VERSION, AIWS_MANIFEST_FILE, taskMgrTaskEventPath, ndm_proxy, objectUrl as objectUrl$1, ExecutorCommandStream, AiwsFailure, viewerTimeZone, localDate, calendarOccurrences, ScheduleClient, resolveBindings, noUiDialogs, createOps, orderKeyBetween, bindingsPayload, watchControl, buildControl, pullControl, exportBundle, NfspClient, AiwsSourceError, packBuildFiles, templateDir, isSourcePath } from "buckyos/node";
 import * as provisionSdk from "buckyos/provision";
 import { createHash } from "node:crypto";
 import { readFile, writeFile, readdir, stat, lstat, realpath, mkdtemp, rename, rm, mkdir, chmod, symlink, copyFile, open } from "node:fs/promises";
@@ -2520,7 +2520,7 @@ function replPrompt(config) {
   return `buckyos[${profile}|${zone}|${identity}]> `;
 }
 const EMPTY_INPUT$3 = { type: "object", properties: {}, additionalProperties: false };
-const OBJECT_OUTPUT$i = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$j = { type: "object", additionalProperties: true };
 function createAuthModule() {
   return {
     name: "auth",
@@ -2530,7 +2530,7 @@ function createAuthModule() {
         verb: "whoami",
         summary: "Show the effective principal and application identity",
         inputSchema: EMPTY_INPUT$3,
-        outputSchema: OBJECT_OUTPUT$i,
+        outputSchema: OBJECT_OUTPUT$j,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -2548,7 +2548,7 @@ function createAuthModule() {
         verb: "session-status",
         summary: "Show the in-memory session state without exposing credentials",
         inputSchema: EMPTY_INPUT$3,
-        outputSchema: OBJECT_OUTPUT$i,
+        outputSchema: OBJECT_OUTPUT$j,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -2569,7 +2569,7 @@ const EMPTY_INPUT$2 = {
   properties: {},
   additionalProperties: false
 };
-const OBJECT_OUTPUT$h = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$i = { type: "object", additionalProperties: true };
 function createCoreModules(registry) {
   return [createCommandModule(registry), createConfigModule(), createCompletionModule(registry)];
 }
@@ -2582,7 +2582,7 @@ function createCommandModule(registry) {
         verb: "list",
         summary: "List registered modules and commands",
         inputSchema: EMPTY_INPUT$2,
-        outputSchema: OBJECT_OUTPUT$h,
+        outputSchema: OBJECT_OUTPUT$i,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -2615,7 +2615,7 @@ function createCommandModule(registry) {
           required: ["target_module", "target_verb"],
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$h,
+        outputSchema: OBJECT_OUTPUT$i,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -2637,7 +2637,7 @@ function createConfigModule() {
         verb: "list",
         summary: "List the global configuration and available profiles",
         inputSchema: EMPTY_INPUT$2,
-        outputSchema: OBJECT_OUTPUT$h,
+        outputSchema: OBJECT_OUTPUT$i,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -2668,7 +2668,7 @@ function createConfigModule() {
           },
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$h,
+        outputSchema: OBJECT_OUTPUT$i,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -2714,7 +2714,7 @@ function createConfigModule() {
           required: ["key", "value"],
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$h,
+        outputSchema: OBJECT_OUTPUT$i,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "write" },
         asyncMode: "sync",
@@ -2754,7 +2754,7 @@ function createConfigModule() {
           required: ["profile_name"],
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$h,
+        outputSchema: OBJECT_OUTPUT$i,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "write" },
         asyncMode: "sync",
@@ -2786,7 +2786,7 @@ function createConfigModule() {
           properties: { effective: { type: "boolean" } },
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$h,
+        outputSchema: OBJECT_OUTPUT$i,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -3028,7 +3028,7 @@ async function buckyosInfo(ctx) {
   );
 }
 const SERVICE_NAME = "system_config";
-const OBJECT_OUTPUT$g = { type: "object", additionalProperties: false };
+const OBJECT_OUTPUT$h = { type: "object", additionalProperties: false };
 const KEY_INPUT = {
   type: "object",
   properties: { key: { type: "string", minLength: 1 } },
@@ -3046,7 +3046,7 @@ function createSystemConfigModule() {
         positionals: [{ name: "key", description: "System-config key" }],
         inputSchema: KEY_INPUT,
         outputSchema: {
-          ...OBJECT_OUTPUT$g,
+          ...OBJECT_OUTPUT$h,
           properties: {
             key: { type: "string" },
             value: { type: "string" },
@@ -3089,7 +3089,7 @@ function createSystemConfigModule() {
           additionalProperties: false
         },
         outputSchema: {
-          ...OBJECT_OUTPUT$g,
+          ...OBJECT_OUTPUT$h,
           properties: {
             key: { type: "string" },
             items: { type: "array", items: { type: "string" } }
@@ -3143,7 +3143,7 @@ function setCommand() {
       additionalProperties: false
     },
     outputSchema: {
-      ...OBJECT_OUTPUT$g,
+      ...OBJECT_OUTPUT$h,
       properties: { key: { type: "string" }, updated: { type: "boolean" } },
       required: ["key", "updated"]
     },
@@ -3182,7 +3182,7 @@ function setFileCommand() {
       additionalProperties: false
     },
     outputSchema: {
-      ...OBJECT_OUTPUT$g,
+      ...OBJECT_OUTPUT$h,
       properties: { key: { type: "string" }, updated: { type: "boolean" } },
       required: ["key", "updated"]
     },
@@ -3219,7 +3219,7 @@ function mutationCommand(options) {
       additionalProperties: false
     },
     outputSchema: {
-      ...OBJECT_OUTPUT$g,
+      ...OBJECT_OUTPUT$h,
       properties: {
         key: { type: "string" },
         [options.resultProperty]: { type: "boolean" }
@@ -6114,7 +6114,7 @@ async function readSkillDirectory(root, limit) {
   await walk(realRoot, "");
   return { files, ignored };
 }
-const PACKAGE_VERSION = "0.7.182";
+const PACKAGE_VERSION = "0.7.183";
 const TOOL_VERSION = PACKAGE_VERSION;
 const SDK_VERSION = PACKAGE_VERSION;
 const PROTOCOL_VERSION = "1";
@@ -6131,7 +6131,7 @@ const VERSION$1 = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 const SHA256_ID = /^sha256:[0-9a-f]{64}$/;
 const OBJECT_ID = /^(?:appdoc|pkg):[0-9a-f]{64}$/;
 const SAFE_GENERATED_FILE = /^[A-Za-z0-9._-]+$/;
-const OBJECT_OUTPUT$f = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$g = { type: "object", additionalProperties: true };
 const APP_KINDS = ["static-web", "script", "docker", "agent-skills", "aiws-controls", "ext-tools"];
 const PATH_KINDS = {
   "static-web": { key: "web", category: "web", selectorType: "static" },
@@ -6189,7 +6189,7 @@ function createPikgModule(dependencies = {}) {
           },
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$f,
+        outputSchema: OBJECT_OUTPUT$g,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -6246,7 +6246,7 @@ function createPikgModule(dependencies = {}) {
           },
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$f,
+        outputSchema: OBJECT_OUTPUT$g,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "write" },
         asyncMode: "sync",
@@ -6274,7 +6274,7 @@ function createPikgModule(dependencies = {}) {
           properties: { meta_dir: { type: "string", minLength: 1 } },
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$f,
+        outputSchema: OBJECT_OUTPUT$g,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "write" },
         asyncMode: "sync",
@@ -6295,7 +6295,7 @@ function createPikgModule(dependencies = {}) {
           properties: { dist_dir: { type: "string", minLength: 1 } },
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$f,
+        outputSchema: OBJECT_OUTPUT$g,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "write" },
         asyncMode: "sync",
@@ -6315,7 +6315,7 @@ function createPikgModule(dependencies = {}) {
           required: ["pikg_path"],
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$f,
+        outputSchema: OBJECT_OUTPUT$g,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -6336,7 +6336,7 @@ function createPikgModule(dependencies = {}) {
           properties: { meta_dir: { type: "string", minLength: 1 } },
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$f,
+        outputSchema: OBJECT_OUTPUT$g,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "destructive" },
         asyncMode: "sync",
@@ -8014,7 +8014,7 @@ const CONTROL_PANEL_SERVICE = "control-panel";
 const PLAN_SCHEMA_VERSION = 4;
 const STAGING_RELEASE_TIMEOUT_MS = 5e3;
 const ZIP_LOCAL_MAGIC = [80, 75, 3, 4];
-const OBJECT_OUTPUT$e = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$f = { type: "object", additionalProperties: true };
 const INSTALL_POLICIES = [
   "strict-public",
   "normal",
@@ -8065,7 +8065,7 @@ function cancelCommand$1() {
       required: ["task_id"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$e,
+    outputSchema: OBJECT_OUTPUT$f,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "sync",
@@ -8100,7 +8100,7 @@ function fetchCommand(dependencies) {
       target: { type: "object", additionalProperties: true },
       install_params: { type: "object", additionalProperties: true }
     }),
-    outputSchema: OBJECT_OUTPUT$e,
+    outputSchema: OBJECT_OUTPUT$f,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -8117,7 +8117,7 @@ function listCommand$3() {
     verb: "list",
     summary: "List visible installed Apps",
     inputSchema: emptyInputSchema(),
-    outputSchema: OBJECT_OUTPUT$e,
+    outputSchema: OBJECT_OUTPUT$f,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -8175,7 +8175,7 @@ function installCommand$1(dependencies) {
       no_wait: { type: "boolean" },
       policy: { type: "string", enum: [...INSTALL_POLICIES] }
     }),
-    outputSchema: OBJECT_OUTPUT$e,
+    outputSchema: OBJECT_OUTPUT$f,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "either",
@@ -8219,7 +8219,7 @@ function upgradeCommand(dependencies) {
       },
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$e,
+    outputSchema: OBJECT_OUTPUT$f,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "either",
@@ -8348,7 +8348,7 @@ function statusCommand$1() {
       properties: { app_name: { type: "string", minLength: 1 } },
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$e,
+    outputSchema: OBJECT_OUTPUT$f,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -8419,7 +8419,7 @@ function publishCommand() {
       required: ["local_dir", "app_doc"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$e,
+    outputSchema: OBJECT_OUTPUT$f,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "sync",
@@ -9565,7 +9565,7 @@ function selectorCommand(options) {
       required: ["app_name"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$e,
+    outputSchema: OBJECT_OUTPUT$f,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: options.access },
     asyncMode: options.asyncMode,
@@ -9729,7 +9729,7 @@ function toHex(bytes) {
   return [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 const CONTROL_PANEL$4 = "control-panel";
-const OBJECT_OUTPUT$d = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$e = { type: "object", additionalProperties: true };
 function createDiagnosticModule(dependencies = {}) {
   return {
     name: "diagnostic",
@@ -9768,7 +9768,7 @@ function collectCommand() {
       required: ["services"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$d,
+    outputSchema: OBJECT_OUTPUT$e,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "privileged" },
     asyncMode: "task",
@@ -9822,7 +9822,7 @@ function exportCommand$2(dependencies) {
       required: ["bundle_id", "path"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$d,
+    outputSchema: OBJECT_OUTPUT$e,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "privileged" },
     asyncMode: "sync",
@@ -9864,7 +9864,7 @@ function compact$2(value) {
   return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== void 0));
 }
 const CONTROL_PANEL$3 = "control-panel";
-const OBJECT_OUTPUT$c = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$d = { type: "object", additionalProperties: true };
 const LOG_LEVELS = ["error", "warning", "info", "debug", "trace"];
 function createLogModule(dependencies = {}) {
   return {
@@ -9885,7 +9885,7 @@ function servicesCommand() {
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
     outputSchema: {
       type: "object",
-      properties: { services: { type: "array", items: OBJECT_OUTPUT$c } },
+      properties: { services: { type: "array", items: OBJECT_OUTPUT$d } },
       required: ["services"],
       additionalProperties: false
     },
@@ -9958,7 +9958,7 @@ function tailCommand(dependencies) {
       }
     ],
     inputSchema: filterSchema({ from: { type: "string", enum: ["start", "end"] } }),
-    outputSchema: OBJECT_OUTPUT$c,
+    outputSchema: OBJECT_OUTPUT$d,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "stream",
@@ -10014,7 +10014,7 @@ function exportCommand$1(dependencies) {
       ...filterSchema({ path: { type: "string", minLength: 1 } }),
       required: ["path"]
     },
-    outputSchema: OBJECT_OUTPUT$c,
+    outputSchema: OBJECT_OUTPUT$d,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -10166,7 +10166,7 @@ function abortableSleep(milliseconds, signal) {
 }
 const TASK_MANAGER = "task-manager";
 const CONTROL_PANEL$2 = "control-panel";
-const OBJECT_OUTPUT$b = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$c = { type: "object", additionalProperties: true };
 function createTaskModule() {
   return {
     name: "task",
@@ -10269,7 +10269,7 @@ function getCommand$2() {
       required: ["task_id"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$b,
+    outputSchema: OBJECT_OUTPUT$c,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -10310,7 +10310,7 @@ function waitCommand() {
     summary: "Stream changes until a Task becomes terminal",
     positionals: [{ name: "task_id", description: "Opaque Task ID", required: true }],
     inputSchema: taskIdSchema(),
-    outputSchema: OBJECT_OUTPUT$b,
+    outputSchema: OBJECT_OUTPUT$c,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "stream",
@@ -10361,7 +10361,7 @@ function cancelCommand() {
       required: ["task_id"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$b,
+    outputSchema: OBJECT_OUTPUT$c,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "sync",
@@ -10404,7 +10404,7 @@ function retryCommand() {
       required: ["task_id"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$b,
+    outputSchema: OBJECT_OUTPUT$c,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "either",
@@ -10478,7 +10478,7 @@ function invalidResponse$1(label) {
   throw new ToolError("INVALID_SERVICE_RESPONSE", `${label} is invalid`, EXIT_INTERNAL);
 }
 const sdk = provisionSdk;
-const OBJECT_OUTPUT$a = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$b = { type: "object", additionalProperties: true };
 const ROOT_OPTION = {
   name: "root",
   description: "Installed BuckyOS root on this machine (BUCKYOS_ROOT); read by status/check, written by activate",
@@ -10562,7 +10562,7 @@ function statusCommand(deps) {
       additionalProperties: false
     },
     outputSchema: {
-      ...OBJECT_OUTPUT$a,
+      ...OBJECT_OUTPUT$b,
       properties: {
         root: { type: "string" },
         state: {
@@ -10600,7 +10600,7 @@ function checkCommand(deps) {
       additionalProperties: false
     },
     outputSchema: {
-      ...OBJECT_OUTPUT$a,
+      ...OBJECT_OUTPUT$b,
       properties: {
         ready: { type: "boolean" },
         root: { type: "string" },
@@ -10648,7 +10648,7 @@ function activateCommand(deps) {
       additionalProperties: false
     },
     outputSchema: {
-      ...OBJECT_OUTPUT$a,
+      ...OBJECT_OUTPUT$b,
       properties: {
         root: { type: "string" },
         state: { type: "string", enum: ["configured"] },
@@ -10930,7 +10930,7 @@ function inputFingerprint(input) {
   hash.update(new TextEncoder().encode(JSON.stringify(material)));
   return hash.digestHex();
 }
-const OBJECT_OUTPUT$9 = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$a = { type: "object", additionalProperties: true };
 const SKILLS_SUB_PKG = "agent_skills";
 const SKILL_SCOPES = ["ui", "work"];
 const IMPORT_SCOPES = ["work", "ui", "plan"];
@@ -10970,7 +10970,7 @@ function command$1(definition) {
       required: ["agent_id", ...required ?? []],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$9,
+    outputSchema: OBJECT_OUTPUT$a,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level },
     asyncMode: "sync",
@@ -11583,7 +11583,7 @@ function base64(bytes) {
   return btoa(binary);
 }
 const CONTROL_PANEL$1 = "control-panel";
-const OBJECT_OUTPUT$8 = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$9 = { type: "object", additionalProperties: true };
 const ID$2 = { type: "string", minLength: 1 };
 const DEVICE_PREFIX = "exec-";
 const AGENT_RUNTIME_ACTIONS = ["list", "enable", "disable", "default"];
@@ -11758,7 +11758,7 @@ function command(definition) {
   const { level, properties, required, ...rest } = definition;
   return {
     inputSchema: { type: "object", properties, required: required ?? [], additionalProperties: false },
-    outputSchema: OBJECT_OUTPUT$8,
+    outputSchema: OBJECT_OUTPUT$9,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level },
     asyncMode: "sync",
@@ -11840,7 +11840,7 @@ function agentRuntimeCommand() {
       required: ["action", "agent_id"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$8,
+    outputSchema: OBJECT_OUTPUT$9,
     resultSchemaVersion: 1,
     access: { mode: "operation", operationIdField: "action", possibleLevels: ["read", "write"] },
     asyncMode: "sync",
@@ -12029,7 +12029,7 @@ async function revoke(ctx, input) {
   return { runtime_id: device.runtime_id, executor_id: device.executor_id, revoked: true, assigned_to: assigned, impacts, ...revoked };
 }
 const CONTROL_PANEL = "control-panel";
-const OBJECT_OUTPUT$7 = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$8 = { type: "object", additionalProperties: true };
 const AGENT_POSITIONAL = {
   name: "agent_id",
   description: "Agent ID as `agent list` prints it (raw host name, e.g. jarvis.example.zone)"
@@ -12053,7 +12053,7 @@ function createAgentModule() {
         inputSchema: { type: "object", properties: {}, additionalProperties: false },
         outputSchema: {
           type: "object",
-          properties: { agents: { type: "array", items: OBJECT_OUTPUT$7 } },
+          properties: { agents: { type: "array", items: OBJECT_OUTPUT$8 } },
           required: ["agents"],
           additionalProperties: false
         },
@@ -12079,7 +12079,7 @@ function createAgentModule() {
         summary: "Get one Agent: profile, settings, install state, template, and runtime",
         positionals: [AGENT_POSITIONAL],
         inputSchema: AGENT_INPUT,
-        outputSchema: OBJECT_OUTPUT$7,
+        outputSchema: OBJECT_OUTPUT$8,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -12092,7 +12092,7 @@ function createAgentModule() {
         summary: "Get the public profile (display name, bio, avatar) of an Agent",
         positionals: [AGENT_POSITIONAL],
         inputSchema: AGENT_INPUT,
-        outputSchema: OBJECT_OUTPUT$7,
+        outputSchema: OBJECT_OUTPUT$8,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -12133,8 +12133,8 @@ function createAgentModule() {
           type: "object",
           properties: {
             agent_id: { type: "string" },
-            before: OBJECT_OUTPUT$7,
-            profile: OBJECT_OUTPUT$7
+            before: OBJECT_OUTPUT$8,
+            profile: OBJECT_OUTPUT$8
           },
           required: ["agent_id", "before", "profile"],
           additionalProperties: false
@@ -12180,7 +12180,7 @@ async function callAgent(ctx, method, params) {
   }
 }
 const AICC = "aicc";
-const OBJECT_OUTPUT$6 = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$7 = { type: "object", additionalProperties: true };
 const EMPTY_INPUT = { type: "object", properties: {}, additionalProperties: false };
 const RANGES = ["last1d", "last7d", "last30d"];
 const GROUPS = [
@@ -12228,7 +12228,7 @@ function quotaCommand() {
       properties: { app: { type: "string", minLength: 1 } },
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$6,
+    outputSchema: OBJECT_OUTPUT$7,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -12246,7 +12246,7 @@ function readCommand$2(options) {
     summary: options.summary,
     description: options.description,
     inputSchema: EMPTY_INPUT,
-    outputSchema: OBJECT_OUTPUT$6,
+    outputSchema: OBJECT_OUTPUT$7,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -12298,7 +12298,7 @@ function usageCommand() {
       },
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$6,
+    outputSchema: OBJECT_OUTPUT$7,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -12343,7 +12343,7 @@ function timeRange(input) {
   }
   return { kind: "explicit", start_time_ms: since, end_time_ms: until ?? Date.now() };
 }
-const OBJECT_OUTPUT$5 = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$6 = { type: "object", additionalProperties: true };
 const DAY_MS$1 = 864e5;
 const EXPIRES_HELP = "1d, 7d (default), 30d, none, or an RFC 3339 time";
 function createShareModule() {
@@ -12454,7 +12454,7 @@ function createCommand() {
       required: ["path"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$5,
+    outputSchema: OBJECT_OUTPUT$6,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "either",
@@ -12523,7 +12523,7 @@ function listCommand() {
       },
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$5,
+    outputSchema: OBJECT_OUTPUT$6,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -12555,7 +12555,7 @@ function getCommand$1() {
       required: ["share_id"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$5,
+    outputSchema: OBJECT_OUTPUT$6,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -12592,7 +12592,7 @@ function updateCommand() {
       required: ["share_id"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$5,
+    outputSchema: OBJECT_OUTPUT$6,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "sync",
@@ -12636,7 +12636,7 @@ function stopCommand() {
       required: ["share_id"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$5,
+    outputSchema: OBJECT_OUTPUT$6,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "destructive" },
     asyncMode: "sync",
@@ -12668,7 +12668,7 @@ function statsCommand() {
       },
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$5,
+    outputSchema: OBJECT_OUTPUT$6,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -12687,8 +12687,8 @@ function statsCommand() {
     }
   };
 }
-const OBJECT_OUTPUT$4 = { type: "object", additionalProperties: true };
-const SERVICE$1 = "nfs-server";
+const OBJECT_OUTPUT$5 = { type: "object", additionalProperties: true };
+const SERVICE$2 = "nfs-server";
 const MAX_PUT_BYTES = 32 * 1024 * 1024;
 const DAY_MS = 864e5;
 const BUCKET_ERROR_CODES = [
@@ -12731,9 +12731,9 @@ function parseBucketTarget(value, keyRequired) {
     throw new UsageError("INVALID_ARGUMENT", `'${value}' names no key`);
   return { bucketId: parts.slice(0, 4).join("/"), key };
 }
-async function call$2(ctx, method, params) {
+async function call$3(ctx, method, params) {
   try {
-    return await callService(ctx, SERVICE$1, method, params);
+    return await callService(ctx, SERVICE$2, method, params);
   } catch (error) {
     const message2 = error instanceof Error ? error.message : String(error);
     const code = BUCKET_ERROR_CODES.find((c) => message2.includes(`${c}: `));
@@ -12792,7 +12792,7 @@ function lsCommand() {
       },
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$4,
+    outputSchema: OBJECT_OUTPUT$5,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -12801,9 +12801,9 @@ function lsCommand() {
     handler: async (ctx, input) => {
       const raw = inputString(input, "target");
       if (!raw)
-        return { buckets: await call$2(ctx, "bucket.list", { appid: inputString(input, "appid") }) };
+        return { buckets: await call$3(ctx, "bucket.list", { appid: inputString(input, "appid") }) };
       const target = parseBucketTarget(raw, false);
-      return await call$2(ctx, "bucket.list_objects", {
+      return await call$3(ctx, "bucket.list_objects", {
         bucket_id: target.bucketId,
         prefix: target.key,
         delimiter: inputString(input, "delimiter"),
@@ -12825,7 +12825,7 @@ function statCommand() {
       required: ["target"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$4,
+    outputSchema: OBJECT_OUTPUT$5,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -12835,12 +12835,12 @@ function statCommand() {
       const target = parseBucketTarget(requiredInputString(input, "target"), false);
       if (!target.key) {
         const [bucket, quota] = await Promise.all([
-          call$2(ctx, "bucket.stat", { bucket_id: target.bucketId }),
-          call$2(ctx, "bucket.get_quota", { bucket_id: target.bucketId })
+          call$3(ctx, "bucket.stat", { bucket_id: target.bucketId }),
+          call$3(ctx, "bucket.get_quota", { bucket_id: target.bucketId })
         ]);
         return { bucket, quota };
       }
-      return await call$2(ctx, "bucket.head", { bucket_id: target.bucketId, key: target.key, version: input.version });
+      return await call$3(ctx, "bucket.head", { bucket_id: target.bucketId, key: target.key, version: input.version });
     }
   };
 }
@@ -12866,7 +12866,7 @@ function putCommand() {
       required: ["target", "file"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$4,
+    outputSchema: OBJECT_OUTPUT$5,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "sync",
@@ -12915,7 +12915,7 @@ function getCommand() {
       required: ["target", "output"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$4,
+    outputSchema: OBJECT_OUTPUT$5,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -12953,7 +12953,7 @@ function rmCommand() {
       required: ["target"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$4,
+    outputSchema: OBJECT_OUTPUT$5,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "sync",
@@ -12961,7 +12961,7 @@ function rmCommand() {
     examples: ["buckyos bucket rm obj://bucket/user/photos/alice/library/2026/a.jpg"],
     handler: async (ctx, input) => {
       const target = parseBucketTarget(requiredInputString(input, "target"), true);
-      return await call$2(ctx, "bucket.delete", { bucket_id: target.bucketId, key: target.key, version: input.version });
+      return await call$3(ctx, "bucket.delete", { bucket_id: target.bucketId, key: target.key, version: input.version });
     }
   };
 }
@@ -12984,7 +12984,7 @@ function linkCommand() {
       required: ["target"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$4,
+    outputSchema: OBJECT_OUTPUT$5,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "sync",
@@ -12997,7 +12997,7 @@ function linkCommand() {
       const expiresAt = days ? Date.now() + Number(days[1]) * DAY_MS : parseTimestamp(text2, "expires");
       if (expiresAt === void 0)
         throw new UsageError("INVALID_ARGUMENT", "expires is required");
-      const issued = await call$2(ctx, "bucket.create_access_token", {
+      const issued = await call$3(ctx, "bucket.create_access_token", {
         bucket_id: target.bucketId,
         key: target.key,
         actions: ["read"],
@@ -13013,13 +13013,13 @@ function s3KeysCommand() {
     verb: "s3-keys",
     summary: "List your S3 access keys (secrets are shown only when created)",
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
-    outputSchema: OBJECT_OUTPUT$4,
+    outputSchema: OBJECT_OUTPUT$5,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
     requiresSession: true,
     examples: ["buckyos bucket s3-keys"],
-    handler: async (ctx) => ({ keys: await call$2(ctx, "bucket.list_s3_keys", {}) })
+    handler: async (ctx) => ({ keys: await call$3(ctx, "bucket.list_s3_keys", {}) })
   };
 }
 function s3KeyCreateCommand() {
@@ -13037,7 +13037,7 @@ function s3KeyCreateCommand() {
       required: ["app"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$4,
+    outputSchema: OBJECT_OUTPUT$5,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "sync",
@@ -13048,7 +13048,7 @@ function s3KeyCreateCommand() {
       const days = text2?.match(/^(\d+)d$/);
       const expiresAt = !text2 ? void 0 : days ? Date.now() + Number(days[1]) * DAY_MS : parseTimestamp(text2, "expires");
       const prefix = inputString(input, "prefix");
-      const key = await call$2(ctx, "bucket.create_s3_key", {
+      const key = await call$3(ctx, "bucket.create_s3_key", {
         appid: requiredInputString(input, "app"),
         scope: prefix ? { prefix } : void 0,
         expires_at: expiresAt
@@ -13068,16 +13068,16 @@ function s3KeyRevokeCommand() {
       required: ["access_key_id"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$4,
+    outputSchema: OBJECT_OUTPUT$5,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "sync",
     requiresSession: true,
     examples: ["buckyos bucket s3-key-revoke BKABCDEFGHIJKLMNOPQR"],
-    handler: async (ctx, input) => await call$2(ctx, "bucket.revoke_s3_key", { access_key_id: requiredInputString(input, "access_key_id") })
+    handler: async (ctx, input) => await call$3(ctx, "bucket.revoke_s3_key", { access_key_id: requiredInputString(input, "access_key_id") })
   };
 }
-const OBJECT_OUTPUT$3 = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$4 = { type: "object", additionalProperties: true };
 const URL_ARG = { name: "url", description: "obj:// cyfs:// file:// https:// url, or //<service>/... /abs/path shorthand", required: true };
 function createObjModule() {
   return {
@@ -13128,7 +13128,7 @@ function resolveCommand() {
     summary: "Normalize a URL and show its identity, RBAC key, events and endpoint (no access check)",
     positionals: [URL_ARG],
     inputSchema: { type: "object", properties: { url: { type: "string", minLength: 1 } }, required: ["url"], additionalProperties: false },
-    outputSchema: OBJECT_OUTPUT$3,
+    outputSchema: OBJECT_OUTPUT$4,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -13165,7 +13165,7 @@ function readCommand$1() {
       required: ["url"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$3,
+    outputSchema: OBJECT_OUTPUT$4,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -13217,7 +13217,7 @@ const targetProperties = {
   store_id: text,
   locator: text
 };
-function call$1(ctx, method, params) {
+function call$2(ctx, method, params) {
   return ctx.clients.call("control-panel", method, params, {
     traceId: ctx.traceId,
     signal: ctx.signal,
@@ -13241,7 +13241,7 @@ function management(verb, method, properties, required, write = false) {
       type: schema.type === "integer" ? "integer" : "string",
       required: required.includes(name)
     })),
-    handler: (ctx, input) => call$1(ctx, method, input)
+    handler: (ctx, input) => call$2(ctx, method, input)
   };
 }
 function createExecutorModule() {
@@ -13297,7 +13297,7 @@ function operation(verb, extra, required) {
       if (!ctx.session)
         throw new ToolError("AUTH_REQUIRED", "An authenticated App session is required");
       const { token } = await ctx.session.ensureValid();
-      const route = await call$1(ctx, "executor.stream.open", { executor_id: target.executor_id, generation: target.generation, profile_id: target.profile_id });
+      const route = await call$2(ctx, "executor.stream.open", { executor_id: target.executor_id, generation: target.generation, profile_id: target.profile_id });
       const stream = await ExecutorCommandStream.connect(route, target, token, "buckyos-cli", locator.run_id);
       if (!stream)
         throw new ToolError("INVALID_SERVICE_RESPONSE", "Executor stream did not initialize");
@@ -13325,9 +13325,9 @@ function operation(verb, extra, required) {
     }
   };
 }
-const OBJECT_OUTPUT$2 = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$3 = { type: "object", additionalProperties: true };
 const ID$1 = { type: "string", minLength: 1 };
-function call(ctx, method, params) {
+function call$1(ctx, method, params) {
   return ctx.clients.call("control-panel", method, params, {
     traceId: ctx.traceId,
     signal: ctx.signal,
@@ -13345,12 +13345,12 @@ function read(verb, summary2, method) {
     verb,
     summary: summary2,
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
-    outputSchema: OBJECT_OUTPUT$2,
+    outputSchema: OBJECT_OUTPUT$3,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
     requiresSession: true,
-    handler: (ctx) => call(ctx, method, {})
+    handler: (ctx) => call$1(ctx, method, {})
   };
 }
 function desired(verb, summary2, enabled) {
@@ -13364,12 +13364,12 @@ function desired(verb, summary2, enabled) {
       { name: "dry-run", property: "dry_run", description: "Only show what would change", type: "boolean" }
     ],
     inputSchema: { type: "object", properties, required: ["id"], additionalProperties: false },
-    outputSchema: OBJECT_OUTPUT$2,
+    outputSchema: OBJECT_OUTPUT$3,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "sync",
     requiresSession: true,
-    handler: (ctx, input) => call(ctx, input.dry_run === true ? "ext_tools.plan" : "ext_tools.set_desired", requestOf(input, enabled))
+    handler: (ctx, input) => call$1(ctx, input.dry_run === true ? "ext_tools.plan" : "ext_tools.set_desired", requestOf(input, enabled))
   };
 }
 function createExtToolsModule() {
@@ -13386,20 +13386,20 @@ function createExtToolsModule() {
         summary: "Put an already built .pikg (an official release asset) into the Repo unchanged",
         positionals: [{ name: "pikg", description: "Local .pikg file" }],
         inputSchema: { type: "object", properties: { pikg: { type: "string", minLength: 1 } }, required: ["pikg"], additionalProperties: false },
-        outputSchema: OBJECT_OUTPUT$2,
+        outputSchema: OBJECT_OUTPUT$3,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "write" },
         asyncMode: "sync",
         requiresSession: true,
         handler: async (ctx, input) => {
           const staging = await stageLocalPikg(ctx, String(input.pikg));
-          return await call(ctx, "ext_tools.import", { handle: staging.handle });
+          return await call$1(ctx, "ext_tools.import", { handle: staging.handle });
         }
       }
     ]
   };
 }
-const OBJECT_OUTPUT$1 = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$2 = { type: "object", additionalProperties: true };
 function schedule(ctx) {
   return new ScheduleClient({
     call: async (method, params) => {
@@ -13467,7 +13467,7 @@ const todoCommand = {
     required: ["action"],
     additionalProperties: false
   },
-  outputSchema: OBJECT_OUTPUT$1,
+  outputSchema: OBJECT_OUTPUT$2,
   resultSchemaVersion: 1,
   access: { mode: "fixed", level: "write" },
   asyncMode: "sync",
@@ -13566,7 +13566,7 @@ const calCommand = {
     required: ["action"],
     additionalProperties: false
   },
-  outputSchema: OBJECT_OUTPUT$1,
+  outputSchema: OBJECT_OUTPUT$2,
   resultSchemaVersion: 1,
   access: { mode: "fixed", level: "write" },
   asyncMode: "sync",
@@ -13678,6 +13678,275 @@ const calCommand = {
 function shiftDate(date, days) {
   return new Date(Date.parse(`${date}T00:00:00Z`) + days * 864e5).toISOString().slice(0, 10);
 }
+const OBJECT_OUTPUT$1 = { type: "object", additionalProperties: true };
+const SERVICE$1 = "aiworkspace";
+const PROTOCOL = "1.1";
+const NOT_DATA = /* @__PURE__ */ new Set([
+  "buckyos.cell",
+  "buckyos.container",
+  "buckyos.block-def",
+  "buckyos.viewport",
+  "buckyos.show-path"
+]);
+const BUILTIN_SIZE = {
+  todo: { w: 420, h: 520 },
+  calendar: { w: 860, h: 620 }
+};
+async function call(ctx, method, params) {
+  const result = expectObject$4(await callService(ctx, SERVICE$1, method, params), method);
+  if (result.ok === false) {
+    const error = expectObject$4(result.error, `${method}.error`);
+    const code = typeof error.code === "string" ? error.code : "AIWS_ERROR";
+    throw new ToolError(code, `${code}: ${String(error.detail ?? code)}`, void 0, false, {
+      ...error.sub_code ? { sub_code: error.sub_code } : {},
+      ...error.data !== void 0 ? { data: error.data } : {}
+    });
+  }
+  return result;
+}
+function parseBind(text2) {
+  const out = {};
+  for (const part of (text2 ?? "").split(";").map((s) => s.trim()).filter(Boolean)) {
+    const at = part.indexOf("=");
+    if (at <= 0)
+      throw new UsageError("AIWS_USAGE", `--bind ${part}: name=id[,id]`);
+    const ids = part.slice(at + 1).split(",").map((s) => s.trim()).filter(Boolean);
+    out[part.slice(0, at).trim()] = ids.length === 1 ? ids[0] : ids;
+  }
+  return out;
+}
+function freeName(taken, base) {
+  let name = base;
+  for (let n = 2; taken.has(name); n++)
+    name = `${base} (${n})`;
+  taken.add(name);
+  return name;
+}
+const placeCommand = {
+  verb: "place",
+  summary: "Place a control on a canvas the way a person inserts it: its on_bind settles its data (none → created, one → bound); give a binding where it would ask",
+  description: "CONTROL is `todo`, `calendar` or a definition of the workspace (its entity id, or its identity <author_did>#<name>). Bindings you give (--bind \"photos=d1;votes=t1,t2\", a list for a `many` binding) are taken; the rest follow the control's on_bind with no dialogs: a choice a person would make fails with NEEDS_UI naming the binding to give. Data it creates (a standard table, a composite's declared table or folder) goes into the canvas's content folder, owned by the control. A composite's on_init_control actions (e.g. preparing a ballot) are listed in `then`: run them yourself (the Desktop runs them for a person).",
+  positionals: [{
+    name: "control",
+    description: "todo | calendar | a definition id | <author_did>#<name>",
+    required: true
+  }],
+  options: [
+    {
+      name: "workspace",
+      property: "workspace_id",
+      description: "Workspace id (ws_…)",
+      type: "string",
+      required: true
+    },
+    {
+      name: "surface",
+      property: "surface",
+      description: "Canvas (Surface) id",
+      type: "string",
+      required: true
+    },
+    {
+      name: "bind",
+      property: "bind",
+      description: 'Bindings you give: "name=id[,id];name=id"',
+      type: "string"
+    },
+    { name: "title", property: "title", description: "Title of the control", type: "string" },
+    {
+      name: "at",
+      property: "at",
+      description: "Position x,y on a free canvas (default: right of what is on it)",
+      type: "string"
+    },
+    {
+      name: "config",
+      property: "config",
+      description: "Instance properties, a JSON object",
+      type: "string"
+    }
+  ],
+  inputSchema: {
+    type: "object",
+    properties: {
+      control: { type: "string", minLength: 1 },
+      workspace_id: { type: "string", minLength: 1 },
+      surface: { type: "string", minLength: 1 },
+      bind: { type: "string" },
+      title: { type: "string" },
+      at: { type: "string" },
+      config: { type: "string" }
+    },
+    required: ["control", "workspace_id", "surface"],
+    additionalProperties: false
+  },
+  outputSchema: OBJECT_OUTPUT$1,
+  resultSchemaVersion: 1,
+  access: { mode: "fixed", level: "write" },
+  asyncMode: "sync",
+  requiresSession: true,
+  examples: [
+    "buckyos aiws place todo --workspace ws_… --surface sf_…",
+    'buckyos aiws place calendar --workspace ws_… --surface sf_… --bind "events=t_cal"',
+    'buckyos aiws place did:bns:buckyos#photo-vote --workspace ws_… --surface sf_… --bind "photos=d_trip"'
+  ],
+  handler: async (ctx, input) => {
+    const ws = requiredInputString(input, "workspace_id");
+    const surfaceId = requiredInputString(input, "surface");
+    const control = requiredInputString(input, "control");
+    const info = await call(ctx, "ws.get_info", { workspace_id: ws });
+    const entities = (await call(ctx, "doc.outline", { workspace_id: ws })).entities;
+    const byId = new Map(entities.map((e) => [e.entity_id, e]));
+    const surface = byId.get(surfaceId);
+    if (!surface || surface.kind !== "surface") {
+      throw new UsageError("AIWS_USAGE", `${surfaceId} is not a canvas of this workspace`);
+    }
+    const folderId = String(surface.content_folder_id ?? "");
+    const config = inputString(input, "config") ? JSON.parse(inputString(input, "config")) : void 0;
+    const right = entities.filter((e) => e.parent_id === surfaceId && !e.deleted).reduce(
+      (max, e) => {
+        const p = e.placement;
+        return typeof p?.x === "number" ? Math.max(max, p.x + (typeof p.w === "number" ? p.w : 320)) : max;
+      },
+      0
+    );
+    const at = inputString(input, "at") ? inputString(input, "at").split(",").map(Number) : [right > 0 ? right + 40 : 40, 40];
+    let decls;
+    let node = {};
+    let op;
+    let title = inputString(input, "title") ?? void 0;
+    const id = `c${Math.random().toString(36).slice(2, 14)}`;
+    if (control === "todo" || control === "calendar") {
+      const contract = expectObject$4(
+        (await call(ctx, "control.describe", { kind: control })).control,
+        "control"
+      ).contract;
+      decls = contract.bindings ?? {};
+      title ??= String(contract.title ?? control);
+      const size = BUILTIN_SIZE[control];
+      op = {
+        op: "entity.create",
+        entity_id: id,
+        type_id: "buckyos.container",
+        parent_id: surfaceId,
+        placement: { x: at[0] || 40, y: at[1] || 40, ...size },
+        payload: { kind: control, layout: { mode: "data" }, title }
+      };
+    } else {
+      const def = entities.find(
+        (e) => e.type_id === "buckyos.block-def" && !e.deleted && (e.entity_id === control || e.ident === control)
+      );
+      if (!def) {
+        throw new UsageError(
+          "AIWS_USAGE",
+          `no control ${control} in this workspace (build or import it first)`
+        );
+      }
+      const payload = (await call(ctx, "doc.read", { workspace_id: ws, entity_id: def.entity_id })).content.payload;
+      decls = payload.bindings ?? {};
+      node = { onBind: payload.on_bind, onInit: payload.on_init_control };
+      title ??= String(payload.title ?? def.entity_id);
+      const size = payload.default_size ?? { w: 320, h: 240 };
+      op = payload.kind === "composite" ? {
+        op: "entity.create",
+        entity_id: id,
+        type_id: "buckyos.container",
+        parent_id: surfaceId,
+        placement: { x: at[0] || 40, y: at[1] || 40, w: "auto", h: "auto" },
+        payload: {
+          kind: "composite",
+          def_ref: { entity_id: def.entity_id },
+          ...config ? { config } : {}
+        }
+      } : {
+        op: "entity.create",
+        entity_id: id,
+        type_id: "buckyos.cell",
+        parent_id: surfaceId,
+        placement: { x: at[0] || 40, y: at[1] || 40, ...size },
+        payload: {
+          view: { type: String(payload.kind) },
+          def_ref: { entity_id: def.entity_id },
+          ...config ? { config } : {}
+        }
+      };
+    }
+    const data = entities.filter((e) => !e.deleted && !NOT_DATA.has(e.type_id)).map((e) => ({
+      entity_id: e.entity_id,
+      type_id: e.type_id,
+      schema_id: e.schema_id ?? null,
+      title: e.title ?? e.name ?? null
+    }));
+    const outcome = await resolveBindings(
+      {
+        id,
+        title,
+        decls,
+        given: parseBind(inputString(input, "bind") ?? void 0),
+        children: [],
+        ...node
+      },
+      {
+        reason: "insert",
+        no_ui: true,
+        dialogs: noUiDialogs(),
+        find: (q) => data.filter(
+          (d) => (!q.accepts?.length || q.accepts.includes(d.type_id)) && (!q.schema_id || d.schema_id === q.schema_id)
+        )
+      }
+    );
+    if (!outcome.ok) {
+      throw new ToolError(
+        outcome.error.code,
+        `${outcome.error.code}: ${outcome.error.message}`,
+        void 0,
+        false,
+        { ...outcome.error.binding ? { binding: outcome.error.binding } : {} }
+      );
+    }
+    const children = entities.filter((e) => e.parent_id === folderId && !e.deleted);
+    const taken = new Set(children.map((e) => String(e.name ?? "")).filter(Boolean));
+    let last = children.map((e) => e.order_key ?? "").filter(Boolean).sort().at(-1) ?? null;
+    const made = createOps(outcome.results, {
+      folderId,
+      newId: () => `d${Math.random().toString(36).slice(2, 14)}`,
+      orderKey: () => {
+        last = orderKeyBetween(last, null);
+        return last;
+      },
+      freeName: (name) => freeName(taken, name),
+      locale: /^zh/i.test(Intl.DateTimeFormat().resolvedOptions().locale) ? "zh" : "en"
+    });
+    const bindings = bindingsPayload(outcome.results.get(id).bindings, decls, made.ids);
+    const lastOnCanvas = entities.filter((e) => e.parent_id === surfaceId && !e.deleted).map((e) => e.order_key ?? "").filter(Boolean).sort().at(-1) ?? null;
+    op.order_key = orderKeyBetween(lastOnCanvas, null);
+    if (Object.keys(bindings).length > 0) {
+      op.payload.bindings = bindings;
+    }
+    const commit = await call(ctx, "doc.commit", {
+      protocol_version: PROTOCOL,
+      workspace_id: ws,
+      epoch: info.epoch,
+      idempotency_key: `place-${id}`,
+      origin: "agent",
+      message: `place ${title}`,
+      operations: [...made.ops, op]
+    });
+    if (commit.status !== "accepted") {
+      throw new ToolError(
+        "AIWS_COMMIT_REFUSED",
+        `the placement was not accepted: ${JSON.stringify(commit).slice(0, 500)}`
+      );
+    }
+    return {
+      entity_id: id,
+      bindings,
+      created: Object.values(made.ids),
+      then: outcome.then.map((t) => t.action),
+      commit_seq: commit.seq ?? null
+    };
+  }
+};
 const SERVICE = "aiworkspace";
 const OBJECT_OUTPUT = { type: "object", additionalProperties: true };
 const WORKSPACE_OPTION = { name: "workspace", property: "workspace_id", description: "Workspace id (ws_…)", type: "string", required: true };
@@ -14693,7 +14962,7 @@ function createAiwsModule() {
   return {
     name: "aiws",
     summary: "AI Workspace: read a workspace, your to-do list and calendar (todo, cal), Block-controls (catalogue, import, export), extension controls (build, pull, export, library, import, upgrade), Workspace templates (list, create, export), and execute wish runs as their executor (claim, heartbeat, report)",
-    commands: [infoCommand, readCommand, queryCommand, todoCommand, calCommand, controlsCommand, importCommand, exportCommand, buildCommand, pullCommand, extExportCommand, libraryCommand, extImportCommand, extUpgradeCommand, templateCommand, runGetCommand, runClaimCommand, runHeartbeatCommand, runFilesCommand, runToolCommand, runProgramCommand, runReportCommand]
+    commands: [infoCommand, readCommand, queryCommand, todoCommand, calCommand, placeCommand, controlsCommand, importCommand, exportCommand, buildCommand, pullCommand, extExportCommand, libraryCommand, extImportCommand, extUpgradeCommand, templateCommand, runGetCommand, runClaimCommand, runHeartbeatCommand, runFilesCommand, runToolCommand, runProgramCommand, runReportCommand]
   };
 }
 const VERSION = TOOL_VERSION;

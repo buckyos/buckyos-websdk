@@ -1674,7 +1674,7 @@ function scheduleBoardOps(locale = "zh") {
       parent_id: SCHEDULE_SURFACE_ID,
       order_key: "a",
       placement: { x: 40, y: 40, w: 880, h: 640 },
-      payload: { kind: "calendar", layout: { mode: "data" }, title: scheduleLabel(locale, "calendar_table"), bindings: { events: { entity_id: SCHEDULE_CALENDAR_ID }, todo: { entity_id: SCHEDULE_TODO_ID } }, config: { view: "week" } }
+      payload: { kind: "calendar", layout: { mode: "data" }, title: scheduleLabel(locale, "calendar_table"), bindings: { events: [{ entity_id: SCHEDULE_CALENDAR_ID }], todo: [{ entity_id: SCHEDULE_TODO_ID }] }, config: { view: "week" } }
     },
     {
       op: "entity.create",
@@ -1734,7 +1734,13 @@ const defaultOnBind = async (ctx) => {
         const picked = await withName(name, () => ctx.dialogs.pickMany({ title: label(name, decl), query: queryOf(decl), preselect: current, allow_new: ctx.canCreate(decl) }));
         if (picked === null)
           return null;
-        bindings[name] = picked;
+        bindings[name] = picked.map((p) => {
+          if (typeof p === "string")
+            return p;
+          const ref = newRef();
+          create.push(standardSpec(ref, decl, ctx.title));
+          return ref;
+        });
       } else {
         const picked = await withName(name, () => ctx.dialogs.pickOne({ title: label(name, decl), query: queryOf(decl), allow_new: ctx.canCreate(decl), current: current[0] ?? null }));
         if (picked === null)
@@ -1831,7 +1837,13 @@ function stepsOnBind(steps) {
           const picked = await withName(step.binding, () => ctx.dialogs.pickMany({ title, query, preselect: current.length ? current : "none", allow_new: allowNew }));
           if (picked === null)
             return null;
-          bindings[step.binding] = picked;
+          bindings[step.binding] = picked.map((p) => {
+            if (typeof p === "string")
+              return p;
+            const ref = newRef();
+            create.push(standardSpec(ref, decl, ctx.title));
+            return ref;
+          });
         } else {
           const picked = await withName(step.binding, () => ctx.dialogs.pickOne({ title, query, allow_new: allowNew, current: current[0] ?? null }));
           if (picked === null)
@@ -2113,4 +2125,4 @@ export {
   ymdOf as y,
   zonedParts as z
 };
-//# sourceMappingURL=aiws_bind-739b0d11.mjs.map
+//# sourceMappingURL=aiws_bind-dfeda027.mjs.map

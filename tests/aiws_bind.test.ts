@@ -11,7 +11,7 @@ const CAL = 'buckyos.calendar@1'
 const table = (id: string, schema_id: string | null = null): DataInfo => ({ entity_id: id, type_id: 'buckyos.table-source', schema_id, title: id })
 const dir = (id: string): DataInfo => ({ entity_id: id, type_id: 'buckyos.dir', title: id })
 
-function host(data: DataInfo[], answers: { one?: (string | { new: true } | null)[]; many?: (string[] | null)[] } = {}, no_ui = false): BindHost & { asked: string[] } {
+function host(data: DataInfo[], answers: { one?: (string | { new: true } | null)[]; many?: ((string | { new: true })[] | null)[] } = {}, no_ui = false): BindHost & { asked: string[] } {
   const asked: string[] = []
   const dialogs: BindDialogs = {
     pickOne: async (o) => { asked.push(`one:${o.title}`); return answers.one?.shift() ?? null },
@@ -68,6 +68,16 @@ describe('the default rule', () => {
     expect(!asked.ok && asked.error).toMatchObject({ code: 'NEEDS_UI', binding: 'items' })
     const made = await resolveBindings(todoControl(), host([], {}, true))
     expect(made.ok && made.results.get('tl')?.create).toHaveLength(1)
+  })
+
+  it('re-bind of a list: the chosen ones and a new one', async () => {
+    const h = { ...host([table('c1', CAL), table('c2', CAL), table('t1', TODO)], { many: [['c2', { new: true }], []] }), reason: 'rebind' as const }
+    const out = await resolveBindings({ ...calendarControl, given: { events: ['c1'], todo: ['t1'] } }, h)
+    const r = out.ok ? out.results.get('cal')! : null
+    expect(r?.bindings.events).toEqual(['c2', expect.stringMatching(/^ref:/)])
+    expect(r?.bindings.todo).toEqual([])
+    expect(r?.create).toMatchObject([{ kind: 'standard', schema_id: CAL, name: 'Calendar' }])
+    expect(h.asked).toEqual(['many:Calendars', 'many:To-do lists'])
   })
 
   it('re-bind: each binding asked, the current one shown', async () => {

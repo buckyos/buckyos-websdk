@@ -37,7 +37,8 @@ export type CreateSpec =
 /** The host's dialogs (`no_ui`: each fails with `needsUi`). */
 export interface BindDialogs {
   pickOne(o: { title: string; note?: string; query: DataQuery; allow_new?: boolean; current?: string | null }): Promise<string | { new: true } | null>
-  pickMany(o: { title: string; note?: string; query: DataQuery; preselect?: 'all' | 'none' | string[]; allow_new?: boolean }): Promise<string[] | null>
+  /** Each chosen id, and `{ new: true }` for a new one (when `allow_new`). */
+  pickMany(o: { title: string; note?: string; query: DataQuery; preselect?: 'all' | 'none' | string[]; allow_new?: boolean }): Promise<(string | { new: true })[] | null>
   confirm(o: { title: string; text: string }): Promise<boolean>
 }
 
@@ -151,7 +152,7 @@ export const defaultOnBind: OnBind = async (ctx) => {
       if (decl.many) {
         const picked = await withName(name, () => ctx.dialogs.pickMany({ title: label(name, decl), query: queryOf(decl), preselect: current, allow_new: ctx.canCreate(decl) }))
         if (picked === null) return null
-        bindings[name] = picked
+        bindings[name] = picked.map((p) => { if (typeof p === 'string') return p; const ref = newRef(); create.push(standardSpec(ref, decl, ctx.title)); return ref })
       } else {
         const picked = await withName(name, () => ctx.dialogs.pickOne({ title: label(name, decl), query: queryOf(decl), allow_new: ctx.canCreate(decl), current: current[0] ?? null }))
         if (picked === null) return null
@@ -218,7 +219,7 @@ export function stepsOnBind(steps: OnBindStep[]): OnBind {
         else if (step.pick === 'many') {
           const picked = await withName(step.binding, () => ctx.dialogs.pickMany({ title, query, preselect: current.length ? current : 'none', allow_new: allowNew }))
           if (picked === null) return null
-          bindings[step.binding] = picked
+          bindings[step.binding] = picked.map((p) => { if (typeof p === 'string') return p; const ref = newRef(); create.push(standardSpec(ref, decl, ctx.title)); return ref })
         } else {
           const picked = await withName(step.binding, () => ctx.dialogs.pickOne({ title, query, allow_new: allowNew, current: current[0] ?? null }))
           if (picked === null) return null

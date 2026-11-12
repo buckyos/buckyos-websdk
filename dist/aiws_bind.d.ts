@@ -62,13 +62,16 @@ export interface BindDialogs {
     }): Promise<string | {
         new: true;
     } | null>;
+    /** Each chosen id, and `{ new: true }` for a new one (when `allow_new`). */
     pickMany(o: {
         title: string;
         note?: string;
         query: DataQuery;
         preselect?: 'all' | 'none' | string[];
         allow_new?: boolean;
-    }): Promise<string[] | null>;
+    }): Promise<(string | {
+        new: true;
+    })[] | null>;
     confirm(o: {
         title: string;
         text: string;

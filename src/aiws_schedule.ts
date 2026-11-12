@@ -957,7 +957,7 @@ export function scheduleBoardOps(locale: ScheduleLocale = 'zh'): Op[] {
     { op: 'entity.create', entity_id: folder, type_id: 'buckyos.container', parent_id: 'canvas-content', order_key: 'u', name: title, payload: { kind: 'folder', title, system: 'surface_content', surface_id: SCHEDULE_SURFACE_ID } },
     { op: 'entity.create', entity_id: SCHEDULE_SURFACE_ID, type_id: 'buckyos.container', parent_id: 'surfaces', order_key: 'a', name: title, payload: { kind: 'surface', layout: { mode: 'free' }, title, content_folder_id: folder } },
     { op: 'entity.create', entity_id: `${SCHEDULE_SURFACE_ID}-calendar`, type_id: 'buckyos.container', parent_id: SCHEDULE_SURFACE_ID, order_key: 'a', placement: { x: 40, y: 40, w: 880, h: 640 },
-      payload: { kind: 'calendar', layout: { mode: 'data' }, title: scheduleLabel(locale, 'calendar_table'), bindings: { events: { entity_id: SCHEDULE_CALENDAR_ID }, todo: { entity_id: SCHEDULE_TODO_ID } }, config: { view: 'week' } } },
+      payload: { kind: 'calendar', layout: { mode: 'data' }, title: scheduleLabel(locale, 'calendar_table'), bindings: { events: [{ entity_id: SCHEDULE_CALENDAR_ID }], todo: [{ entity_id: SCHEDULE_TODO_ID }] }, config: { view: 'week' } } },
     { op: 'entity.create', entity_id: `${SCHEDULE_SURFACE_ID}-todo`, type_id: 'buckyos.container', parent_id: SCHEDULE_SURFACE_ID, order_key: 'b', placement: { x: 960, y: 40, w: 420, h: 640 },
       payload: { kind: 'todo', layout: { mode: 'data' }, title: scheduleLabel(locale, 'todo_table'), bindings: { items: { entity_id: SCHEDULE_TODO_ID } }, config: { mode: 'list' } } },
   ]
