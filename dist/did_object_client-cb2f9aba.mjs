@@ -1,4 +1,4 @@
-import { p as parseObjectUrl, O as ObjectUrlError, f as objectEndpoint } from "./object_url-f72c1704.mjs";
+import { p as parseObjectUrl, O as ObjectUrlError, f as objectEndpoint } from "./object_url-376c5222.mjs";
 class DIDObjectError extends Error {
   constructor(code, message, status, details) {
     super(message);
@@ -84,4 +84,4 @@ export {
   DIDObjectClient as D,
   DIDObjectError as a
 };
-//# sourceMappingURL=did_object_client-7fa36f90.mjs.map
+//# sourceMappingURL=did_object_client-cb2f9aba.mjs.map

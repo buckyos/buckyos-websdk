@@ -23,8 +23,9 @@ export declare const AIWS_MANIFEST_FILE = "aiws-manifest.json";
 export declare const AIWS_BUILD_STATE_FILE = ".aiws-build.json";
 /** The newest component.json / AIWS manifest version this module reads (older ones stay readable, Q19). Version 2
  * adds `kind: composite` and non-empty `deps`; version 3 `events`, the declarative `button`, composite `events` and
- * Workspace templates. */
-export declare const AIWS_MANIFEST_VERSION = 4;
+ * Workspace templates; version 4 `actions` and the composite projections; version 5 a composite's declared
+ * `on_bind` / `on_init_control` (控件 on_bind TODO). */
+export declare const AIWS_MANIFEST_VERSION = 5;
 /** The newest HTML Block host API (`window.aiws` v3: `emit`, `createBlock { parent, slot }`, `context.interactive`;
  * hosts run 2 and 3) and the declarative interpreter version. */
 export declare const AIWS_HTML_API_VERSION = 4;

@@ -16,7 +16,7 @@ describe('aiws extension controls (shared drivers)', () => {
     expect(checkComponent(files['component.json'], Object.keys(files)).filter((d) => d.severity === 'error')).toEqual([])
     const html = controlSkeleton({ authorDid: 'did:bns:alice', name: 'clock', kind: 'html' })
     expect(checkComponent(html['component.json'], Object.keys(html)).filter((d) => d.severity === 'error')).toEqual([])
-    const broken = JSON.stringify({ manifest_version: 5, ident: { author_did: 'alice', name: 'KPI' }, kind: 'chart', title: '', entry: 'x.json', deps: ['y'], config_schema: { pattern: 'a' }, events: [] })
+    const broken = JSON.stringify({ manifest_version: 6, ident: { author_did: 'alice', name: 'KPI' }, kind: 'chart', title: '', entry: 'x.json', deps: ['y'], config_schema: { pattern: 'a' }, events: [] })
     const messages = checkComponent(broken, ['component.json']).map((d) => d.message).join('\n')
     for (const needle of ['newer than this client', 'author_did', 'ident.name', 'kind must be', 'title', 'is not an identity', 'outside the supported subset', 'events must be an object']) expect(messages).toContain(needle)
     // version 1 knows neither composites nor dependencies
@@ -125,7 +125,7 @@ describe('aiws extension controls (shared drivers)', () => {
   it('v3: render controls declare events, HTML speaks host API 2 or 3, older versions get a hint', () => {
     const html = controlSkeleton({ authorDid: 'did:bns:alice', name: 'clock', kind: 'html' })
     const component = JSON.parse(html['component.json'])
-    expect([component.manifest_version, component.host_api, Object.keys(component.events)]).toEqual([4, 4, ['clicked']])
+    expect([component.manifest_version, component.host_api, Object.keys(component.events)]).toEqual([5, 4, ['clicked']])
     expect(html['behavior.js']).toContain("aiws.emit('clicked'")
     expect(checkComponent(html['component.json'], Object.keys(html))).toEqual([])
     const errors = (c: unknown) => checkComponent(JSON.stringify(c), Object.keys(html)).filter((d) => d.severity === 'error').map((d) => d.message).join('\n')
@@ -261,6 +261,25 @@ describe('aiws extension controls (shared drivers)', () => {
     const { manifest, diagnostics } = await verifyBundle(files)
     expect(diagnostics).toEqual([])
     expect(manifest.controls.map((c) => c.ident)).toEqual(['did:bns:buckyos#tv-screen', 'did:bns:buckyos#time-limited', 'did:bns:buckyos#photo-vote', 'did:bns:buckyos#listen-together'])
+  })
+
+  it('v5: a composite declares what it binds when placed (on_bind, on_init_control) and its bindings\' schema_id / many', () => {
+    const vote = {
+      manifest_version: 5, ident: { author_did: 'did:bns:alice', name: 'vote' }, kind: 'composite', title: 'Vote', entry: 'composition.json',
+      bindings: { photos: { accepts: ['buckyos.dir'], required: true }, votes: { accepts: ['buckyos.table-source'], required: true }, lists: { schema_id: 'buckyos.todo@1', many: true } },
+      actions: [{ id: 'prepare', title: 'Prepare', run: { kind: 'write', target: 'votes', what: 'addOptions', args: {} } }],
+      on_bind: [{ binding: 'photos', pick: 'one' }, { binding: 'votes', create: { table: { name: 'Votes', fields: [] } }, when: 'always' }, { binding: 'lists', pick: 'all' }],
+      on_init_control: [{ require: 'children' }, { then: { action: 'prepare' } }],
+    }
+    const errors = (c: unknown) => checkComponent(JSON.stringify(c), ['component.json', 'composition.json']).filter((d) => d.severity === 'error').map((d) => d.message)
+    expect(errors(vote)).toEqual([])
+    expect(errors({ ...vote, manifest_version: 4 }).some((m) => m.includes('manifest_version 5'))).toBe(true)
+    expect(errors({ ...vote, on_bind: [{ binding: 'photos', pick: 'many' }], on_init_control: [{ then: { action: 'nope' } }] })).toEqual([
+      'on_bind[0]: photos takes one', 'on_init_control[0]: nope is not a declared action',
+    ])
+    expect(errors({ ...vote, bindings: { photos: { many: 'yes', multiple: true } }, on_bind: undefined, on_init_control: undefined })).toEqual([
+      'binding photos: unknown key multiple', 'binding photos.many: true or false',
+    ])
   })
 
   it('verifies the Workspace templates of a bundle: shape, snapshot, digest, required controls, no stray files', async () => {

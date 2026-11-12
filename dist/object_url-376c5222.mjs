@@ -399,14 +399,14 @@ const object_url = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.definePr
 }, Symbol.toStringTag, { value: "Module" }));
 export {
   ObjectUrlError as O,
-  objServiceUrl as a,
-  objectSegments as b,
+  objEventKey as a,
+  objServiceUrl as b,
   canonicalJson as c,
-  objEventKey as d,
+  objectSegments as d,
   encodeObjQueryComponent as e,
   objectEndpoint as f,
   normalizeObjectUrl as n,
   object_url as o,
   parseObjectUrl as p
 };
-//# sourceMappingURL=object_url-f72c1704.mjs.map
+//# sourceMappingURL=object_url-376c5222.mjs.map

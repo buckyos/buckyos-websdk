@@ -95,6 +95,7 @@ export * from './executor_client';
 export * from './aiworkspace_client';
 export * from './aiws_rrule';
 export * from './aiws_schedule';
+export * from './aiws_bind';
 export { DIDObjectClient, DIDObjectError } from './did_object_client';
 export type { DIDObjectCard, DIDObjectClientOptions } from './did_object_client';
 //# sourceMappingURL=browser.d.ts.map

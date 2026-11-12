@@ -9,6 +9,7 @@
  */
 import type { AiWorkspaceClient, AiwsMigration, AiwsTemplateItem } from './aiworkspace_client'
 import type { NfspClient, WireRef } from './nfsp'
+import { checkBindSteps, type BindingDecl } from './aiws_bind'
 
 /** The two service calls these drivers make (an `AiWorkspaceClient`, or a host's own session with the same shape). */
 export type AiwsExtRpc = Pick<AiWorkspaceClient, 'extBuild' | 'extExport'>
@@ -26,8 +27,9 @@ export const AIWS_MANIFEST_FILE = 'aiws-manifest.json'
 export const AIWS_BUILD_STATE_FILE = '.aiws-build.json'
 /** The newest component.json / AIWS manifest version this module reads (older ones stay readable, Q19). Version 2
  * adds `kind: composite` and non-empty `deps`; version 3 `events`, the declarative `button`, composite `events` and
- * Workspace templates. */
-export const AIWS_MANIFEST_VERSION = 4
+ * Workspace templates; version 4 `actions` and the composite projections; version 5 a composite's declared
+ * `on_bind` / `on_init_control` (控件 on_bind TODO). */
+export const AIWS_MANIFEST_VERSION = 5
 /** The newest HTML Block host API (`window.aiws` v3: `emit`, `createBlock { parent, slot }`, `context.interactive`;
  * hosts run 2 and 3) and the declarative interpreter version. */
 export const AIWS_HTML_API_VERSION = 4
@@ -169,7 +171,7 @@ export async function buildFiles(nfsp: NfspClient, files: AiwsSourceFile[], uplo
 
 // ---- component.json pre-check (the service's composer is authoritative; this catches the usual mistakes early)
 
-const COMPONENT_KEYS = ['manifest_version', 'ident', 'kind', 'title', 'description', 'host_api', 'accepts', 'allow_no_source', 'default_size', 'config_schema', 'bindings', 'entry', 'assets', 'catalog', 'agent', 'deps', 'events', 'actions']
+const COMPONENT_KEYS = ['manifest_version', 'ident', 'kind', 'title', 'description', 'host_api', 'accepts', 'allow_no_source', 'default_size', 'config_schema', 'bindings', 'entry', 'assets', 'catalog', 'agent', 'deps', 'events', 'actions', 'on_bind', 'on_init_control']
 const SCHEMA_KEYWORDS = ['type', 'enum', 'default', 'required', 'title', 'description', 'minimum', 'maximum', 'minLength', 'maxLength', 'properties', 'items']
 const NAME = /^[a-z0-9][a-z0-9._-]{0,63}$/
 const DID = /^did:[a-z0-9]+:[^/#\s]+$/
@@ -178,6 +180,7 @@ const IDENT = /^did:[a-z0-9]+:[^/#\s]+#[a-z0-9][a-z0-9._-]{0,63}$/
 const V2_HINT = 'needs manifest_version 2 (raise it in component.json)'
 const V3_HINT = 'needs manifest_version 3 (raise it in component.json)'
 const V4_HINT = 'needs manifest_version 4 (raise it in component.json)'
+const V5_HINT = 'needs manifest_version 5 (raise it in component.json)'
 const EVENT_PARAM_TYPES = ['string', 'number', 'boolean', 'object', 'entity']
 const ITEM_KINDS = ['text', 'value', 'metric', 'bar', 'list', 'badge']
 const ITEM_KEYS = ['kind', 'text', 'label', 'bind', 'by', 'format', 'limit']
@@ -573,7 +576,22 @@ export function checkComponent(text: string, fileNames: string[], readText?: (na
   if (c.config_schema !== undefined) { const p: string[] = []; schemaProblems(c.config_schema, 'config_schema', p); p.forEach(error) }
   if (c.bindings !== undefined) {
     if (!c.bindings || typeof c.bindings !== 'object') error('bindings must be an object')
-    else for (const n of Object.keys(c.bindings as object)) if (!BINDING.test(n) || n === 'props') error(`binding name ${n}: [a-z][a-z0-9_]{0,31}, not props`)
+    else for (const [n, d] of Object.entries(c.bindings as Record<string, unknown>)) {
+      if (!BINDING.test(n) || n === 'props') error(`binding name ${n}: [a-z][a-z0-9_]{0,31}, not props`)
+      if (!isRecord(d)) { error(`binding ${n} must be an object`); continue }
+      for (const k of Object.keys(d)) if (!['accepts', 'required', 'many', 'schema_id', 'title', 'description'].includes(k)) error(`binding ${n}: unknown key ${k}`)
+      if (d.many !== undefined && typeof d.many !== 'boolean') error(`binding ${n}.many: true or false`)
+      if (d.schema_id !== undefined && (typeof d.schema_id !== 'string' || !d.schema_id || d.schema_id.length > 128)) error(`binding ${n}.schema_id: a schema id such as buckyos.todo@1`)
+    }
+  }
+  // (manifest 5) what the composite binds when placed: its steps, against its bindings and actions
+  if (c.on_bind !== undefined || c.on_init_control !== undefined) {
+    if (version > 0 && version < 5) error(`on_bind / on_init_control ${V5_HINT}`)
+    else if (c.kind !== 'composite') error('on_bind / on_init_control: declared steps are for a composite (an HTML control binds in behavior.js)')
+    else {
+      const actionIds = Array.isArray(c.actions) ? c.actions.filter(isRecord).map((a) => String(a.id)) : []
+      checkBindSteps(c.on_bind, c.on_init_control, isRecord(c.bindings) ? c.bindings as Record<string, BindingDecl> : {}, actionIds).forEach(error)
+    }
   }
   if (c.deps !== undefined) {
     if (!Array.isArray(c.deps) || c.deps.length > 32) error('deps: at most 32 identities <author_did>#<name>')
