@@ -4,9 +4,10 @@ import * as nodePath from "node:path";
 import { resolve as resolve$5, dirname as dirname$3 } from "node:path";
 import { BuckyOSSDK, RuntimeType, buckyos, namelib, VerifyHubClient, createAppInstanceId, parseSessionTokenClaims, ndn, verifyBundle, controlSkeleton, aiwsContentDigest, AIWS_MANIFEST_VERSION, AIWS_MANIFEST_FILE, taskMgrTaskEventPath, ndm_proxy, objectUrl as objectUrl$1, ExecutorCommandStream, AiwsFailure, viewerTimeZone, localDate, calendarOccurrences, ScheduleClient, resolveBindings, noUiDialogs, createOps, orderKeyBetween, bindingsPayload, AIWS_PROTOCOL_VERSION, BindFailure, aiwsTarget, watchControl, buildControl, pullControl, exportBundle, tableDelete, optionAdd, fieldAdd, tableSet, tableInsert, textAppend, textDeleteBlocks, textReplaceBlock, move, rename, setProps, NfspClient, AiwsSourceError, packBuildFiles, commitOps, templateDir, isSourcePath } from "buckyos/node";
 import * as provisionSdk from "buckyos/provision";
+import { AiccLlmClient, LLMComputeException, providerErrorFromRpc } from "buckyos/xllm";
 import { createHash } from "node:crypto";
 import { readFile, writeFile, readdir, stat, lstat, realpath, mkdtemp, rename as rename$1, rm, mkdir, chmod, symlink, copyFile, open } from "node:fs/promises";
-import { createReadStream, createWriteStream } from "node:fs";
+import { createReadStream, createWriteStream, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline/promises";
@@ -541,7 +542,7 @@ function buildDistributionPolicy(options) {
   for (const candidate of parsed.writeParents) {
     writePaths.add(path.dirname(resolveInputPath(candidate, cwd, path)));
   }
-  const subprocesses = parsed.module === "pikg" && ["init", "build"].includes(parsed.verb ?? "") ? ["docker"] : [];
+  const subprocesses = parsed.module === "pikg" && ["init", "build"].includes(parsed.verb ?? "") ? ["docker"] : parsed.module === "aiws" && ["run-exec", "run-program"].includes(parsed.verb ?? "") && options.runtimeExecutable ? [options.runtimeExecutable] : [];
   const network = parsed.module !== void 0 && !["pikg", "command", "completion", "config", "provision"].includes(parsed.module);
   const allowedEnvironment = options.distribution === "developer" ? TOOL_ENVIRONMENT_NAMES.filter((name) => name !== "BUCKYOS_ROOT") : TOOL_ENVIRONMENT_NAMES;
   return Object.freeze({
@@ -14516,8 +14517,8 @@ const runHeartbeatCommand = {
 };
 const runFilesCommand = {
   verb: "run-files",
-  summary: "Write the stage of a claimed run into a directory: the snapshot (context/), request.json, the Renderer catalog and the program host (lib/)",
-  description: "Run the program there the way the service does: `deno run -A lib/run.js` reads program/main.js and writes output/.aiws/results.json.",
+  summary: "Write the stage of a claimed run into a directory: the snapshot (context/), request.json, the Renderer catalog, the program host (lib/, with the stage budget and manifest in lib/stage.json) and, when there is one, program/main.js",
+  description: "Run the macro there with `run-exec` (or `run-program`, which also hands it in): it reads program/main.js and writes output/.aiws/results.json, exactly as every executor runs it.",
   options: [WORKSPACE_OPTION, RUN_OPTION, ATTEMPT_OPTION, { name: "dir", property: "dir", description: "Directory to write into (created)", type: "string", required: true }],
   inputSchema: workspaceInput({ run_id: { type: "string", minLength: 1 }, attempt: { type: "integer", minimum: 1 }, dir: { type: "string", minLength: 1 } }, ["run_id", "attempt", "dir"]),
   outputSchema: { type: "object", properties: { dir: { type: "string" }, files: { type: "array", items: { type: "string" } } }, required: ["dir", "files"], additionalProperties: true },
@@ -14545,12 +14546,14 @@ const runFilesCommand = {
     }
     await host2.mkdir(`${dir}/output`, { recursive: true });
     await host2.mkdir(`${dir}/program`, { recursive: true });
+    await host2.mkdir(`${dir}/lib`, { recursive: true });
+    await host2.writeTextFile(`${dir}/lib/stage.json`, JSON.stringify(result.stage ?? {}));
     return { dir, files: written };
   }
 };
 const runToolCommand = {
   verb: "run-tool",
-  summary: "Call one stage tool of a claimed run (ws_profile, ws_read, ws_query, submit_analysis, put_result, check_results, finish, …): the service answers as it answers the model",
+  summary: "Call one stage tool of a claimed run (ws_profile, ws_read, ws_query, submit_analysis, check_results, finish, …): the service answers as it answers the model",
   options: [WORKSPACE_OPTION, RUN_OPTION, ATTEMPT_OPTION, { name: "name", property: "name", description: "Tool name (the claim answered the list, with their argument schemas)", type: "string", required: true }, { name: "args", property: "args", description: "Arguments JSON", type: "string" }, { name: "args-file", property: "args_file", description: "Path of a JSON file holding the arguments", type: "string" }],
   inputSchema: workspaceInput({ run_id: { type: "string", minLength: 1 }, attempt: { type: "integer", minimum: 1 }, name: { type: "string", minLength: 1 }, args: { type: "string" }, args_file: { type: "string" } }, ["run_id", "attempt", "name"]),
   outputSchema: OBJECT_OUTPUT,
@@ -14564,35 +14567,179 @@ const runToolCommand = {
     return aiws(ctx, "proc.tool", { workspace_id: requiredInputString(input, "workspace_id"), run_id: requiredInputString(input, "run_id"), attempt: input.attempt, name: requiredInputString(input, "name"), args });
   }
 };
-const runProgramCommand = {
-  verb: "run-program",
-  summary: "Hand in a program run: the program source, what lib/run.js wrote to output/.aiws/results.json, the files under output/ and the log; the service validates it like its own run_program",
-  options: [
-    WORKSPACE_OPTION,
-    RUN_OPTION,
-    ATTEMPT_OPTION,
-    { name: "dir", property: "dir", description: "The stage directory written by run-files (program/main.js, output/)", type: "string", required: true },
-    { name: "log-file", property: "log_file", description: "Path of the program log to attach (stdout/stderr of deno run)", type: "string" }
-  ],
-  inputSchema: workspaceInput({ run_id: { type: "string", minLength: 1 }, attempt: { type: "integer", minimum: 1 }, dir: { type: "string", minLength: 1 }, log_file: { type: "string" } }, ["run_id", "attempt", "dir"]),
+const BRIDGE_PREFIX = "aiws ";
+const REFUSALS = {
+  quota_exhausted: "AI_QUOTA_EXHAUSTED",
+  quota_budget_exceeded: "AI_QUOTA_BUDGET_EXCEEDED",
+  resource_not_permitted: "AI_RESOURCE_NOT_PERMITTED",
+  attribution_unavailable: "AI_ATTRIBUTION_UNAVAILABLE",
+  credentials: "AI_UNAVAILABLE"
+};
+function sessionInfer(ctx) {
+  const call2 = async (method, params) => {
+    try {
+      return await ctx.clients.call("aicc", method, params, rpcOptions$2(ctx));
+    } catch (error) {
+      throw providerErrorFromRpc(`aicc ${method} failed`, error);
+    }
+  };
+  const client = new AiccLlmClient({ chatCompletionsCreate: (r) => call2("chat.completions.create", r), helperLlmChat: (r) => call2("helper.llm_chat", r) });
+  return async (req) => {
+    try {
+      const r = await client.infer({
+        messages: req.messages.map((m) => ({ role: m.role, content: [{ type: "text", text: m.text }] })),
+        model_alias: req.model,
+        fallbacks: [],
+        temperature: 0,
+        max_completion_tokens: req.max_tokens,
+        force_json: req.schema !== null,
+        ...req.schema !== null ? { json_schema: req.schema } : {},
+        disable_capabilities: [],
+        tool_specs: [],
+        allow_tool_calls: false,
+        signal: ctx.signal
+      });
+      return { text: r.message.content.map((c) => c.type === "text" ? c.text ?? "" : "").join(""), tokens: r.usage?.output_tokens };
+    } catch (error) {
+      if (error instanceof LLMComputeException && error.error.kind === "provider" && typeof error.error.failure === "object" && "refused" in error.error.failure) {
+        const e = new Error(error.message);
+        e.code = REFUSALS[error.error.failure.refused.code] ?? "AI_QUOTA_EXHAUSTED";
+        throw e;
+      }
+      throw error;
+    }
+  };
+}
+async function execMacro(ctx, input) {
+  const host2 = getHost();
+  const dir = host2.path.resolve(ctx.cwd, requiredInputString(input, "dir"));
+  const ids2 = { workspace_id: requiredInputString(input, "workspace_id"), run_id: requiredInputString(input, "run_id"), attempt: input.attempt };
+  const source = await host2.readTextFile(`${dir}/program/main.js`);
+  let stage = {};
+  try {
+    stage = JSON.parse(await host2.readTextFile(`${dir}/lib/stage.json`));
+  } catch {
+    stage = {};
+  }
+  const budget = stage.budget ?? {};
+  const manifest = stage.manifest && typeof stage.manifest === "object" ? stage.manifest : null;
+  const { createBridgeHost } = await import(new URL(`file://${dir}/lib/host.js`).href);
+  const origin = gatewayOrigin$2(ctx.connection.endpoint);
+  const zoneHost = new URL(origin).hostname;
+  const bridge = createBridgeHost({
+    tool: async (name, args) => {
+      try {
+        return await aiws(ctx, "proc.tool", { ...ids2, name, args });
+      } catch (error) {
+        return { status: "error", text: error instanceof Error ? error.message : String(error) };
+      }
+    },
+    infer: sessionInfer(ctx),
+    zoneFetch: async (url, init) => {
+      const res = await fetch(url, { method: init.method, headers: { ...init.headers, Authorization: `Bearer ${await sessionToken(ctx)}` }, body: init.body ?? void 0, signal: ctx.signal });
+      const bytes = new Uint8Array(await res.arrayBuffer());
+      const headers = {};
+      res.headers.forEach((v, k) => {
+        headers[k] = v;
+      });
+      try {
+        return { status: res.status, headers, text: new TextDecoder("utf-8", { fatal: true }).decode(bytes) };
+      } catch {
+        return { status: res.status, headers, base64: btoa(Array.from(bytes, (b) => String.fromCharCode(b)).join("")) };
+      }
+    },
+    zoneHosts: [zoneHost],
+    zoneOrigin: origin,
+    budget,
+    manifest
+  });
+  await host2.remove(`${dir}/output/.aiws/results.json`).catch(() => void 0);
+  await host2.mkdir(`${dir}/output`, { recursive: true });
+  const child = host2.spawn(host2.kind === "deno" ? host2.runtimeExecutable : "deno", [
+    "run",
+    "--no-prompt",
+    "--quiet",
+    "--no-remote",
+    `--allow-read=${dir}`,
+    `--allow-write=${dir}/output`,
+    `--allow-net=${zoneHost}`,
+    "lib/run.js",
+    "--bridge"
+  ], { cwd: dir, env: { NO_COLOR: "1", DENO_NO_UPDATE_CHECK: "1", DENO_DIR: `${dir}/.deno` } });
+  const cap = Number(budget.program_timeout_secs) || 120;
+  const limit = Math.min(cap, Number(manifest?.resources?.timeout_secs) || cap);
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    child.kill();
+  }, limit * 1e3);
+  const out = [];
+  try {
+    for await (const line of child.lines()) {
+      if (!line.startsWith(BRIDGE_PREFIX)) {
+        out.push(line);
+        continue;
+      }
+      const msg = JSON.parse(line.slice(BRIDGE_PREFIX.length));
+      await child.writeLine(JSON.stringify({ id: msg.id, body: await bridge.handle(msg.op, msg.req) }));
+    }
+  } finally {
+    clearTimeout(timer);
+    await child.closeInput();
+  }
+  const code = await child.status;
+  const log = [...out, await child.stderr, ...timedOut ? [`The macro timed out (${limit} s)`] : []].filter(Boolean).join("\n");
+  let results = null;
+  try {
+    results = JSON.parse(await host2.readTextFile(`${dir}/output/.aiws/results.json`));
+  } catch {
+    results = null;
+  }
+  if (timedOut)
+    results = { error: `The macro timed out (${limit} s)` };
+  return { source, results, log, code };
+}
+const RUN_EXEC_OPTIONS = [
+  WORKSPACE_OPTION,
+  RUN_OPTION,
+  ATTEMPT_OPTION,
+  { name: "dir", property: "dir", description: "The stage directory written by run-files (program/main.js, lib/, output/), under the current directory", type: "string", required: true }
+];
+const RUN_EXEC_INPUT = workspaceInput({ run_id: { type: "string", minLength: 1 }, attempt: { type: "integer", minimum: 1 }, dir: { type: "string", minLength: 1 } }, ["run_id", "attempt", "dir"]);
+const runExecCommand = {
+  verb: "run-exec",
+  summary: "Run program/main.js of a stage directory as every executor runs a wish macro: reads only the directory, writes only output/, reaches only the Zone, its AI calls with your session; prints its outcome",
+  description: "The macro gets no token and no environment. Use it to debug a macro; `run-program` runs it the same way and hands it in. API: the wish macro guide (src/frame/aiworkspace/aiws/README.md in buckyos).",
+  options: RUN_EXEC_OPTIONS,
+  inputSchema: RUN_EXEC_INPUT,
   outputSchema: OBJECT_OUTPUT,
   resultSchemaVersion: 1,
   access: { mode: "fixed", level: "write" },
   asyncMode: "sync",
   requiresSession: true,
-  examples: ["buckyos aiws run-program --workspace ws_abc --run run_xyz --attempt 1 --dir work --log-file work/run.log"],
+  examples: ["buckyos aiws run-exec --workspace ws_abc --run run_xyz --attempt 1 --dir work"],
   handler: async (ctx, input) => {
-    const dir = requiredInputString(input, "dir");
+    const run2 = await execMacro(ctx, input);
+    const r = run2.results ?? {};
+    return { exit_code: run2.code, error: r.error ?? null, error_code: r.error_code ?? null, ai: r.ai ?? null, declare: r.declare ?? null, log: run2.log };
+  }
+};
+const runProgramCommand = {
+  verb: "run-program",
+  summary: "Run the macro of a stage directory (as run-exec) and hand the run in: the source, its results, the files under output/ and its log; the service judges it against the contract",
+  description: "While coding, the answer is what the model would read (previews, checks, manifest, problems); running a stored macro, a failure ends the run. Then `run-report --finished`.",
+  options: RUN_EXEC_OPTIONS,
+  inputSchema: RUN_EXEC_INPUT,
+  outputSchema: OBJECT_OUTPUT,
+  resultSchemaVersion: 1,
+  access: { mode: "fixed", level: "write" },
+  asyncMode: "sync",
+  requiresSession: true,
+  examples: ["buckyos aiws run-program --workspace ws_abc --run run_xyz --attempt 1 --dir work"],
+  handler: async (ctx, input) => {
     const host2 = getHost();
-    const source = await host2.readTextFile(`${dir}/program/main.js`);
-    let results = null;
-    try {
-      results = JSON.parse(await host2.readTextFile(`${dir}/output/.aiws/results.json`));
-    } catch {
-      results = null;
-    }
-    const logFile = inputString(input, "log_file");
-    const log = logFile ? await host2.readTextFile(logFile).catch(() => "") : "";
+    const dir = host2.path.resolve(ctx.cwd, requiredInputString(input, "dir"));
+    const run2 = await execMacro(ctx, input);
     const files = {};
     const walk = async (rel) => {
       for (const entry of await host2.readDir(`${dir}/output${rel ? `/${rel}` : ""}`)) {
@@ -14614,27 +14761,48 @@ const runProgramCommand = {
       }
     };
     await walk("");
-    return aiws(ctx, "proc.program", { workspace_id: requiredInputString(input, "workspace_id"), run_id: requiredInputString(input, "run_id"), attempt: input.attempt, source, results, log, files });
+    return aiws(ctx, "proc.program", { workspace_id: requiredInputString(input, "workspace_id"), run_id: requiredInputString(input, "run_id"), attempt: input.attempt, source: run2.source, results: run2.results, log: run2.log, files });
   }
+};
+const runStartCommand = {
+  verb: "run-start",
+  summary: "Start a wish run that you execute yourself (an analysis you work out in a conversation, coding, running): answers the run and its claim token; your AI resources pay",
+  description: "Then `run-claim` with that token and work it like any run. An analysis is handed in with `run-tool --name submit_analysis` then `run-report --finished`, or `run-report --analysis-file`. Needs update on the wish.",
+  options: [
+    WORKSPACE_OPTION,
+    { name: "wish", property: "wish_id", description: "The wish (its entity id)", type: "string", required: true },
+    { name: "stage", property: "stage", description: "analyze | code | run (default analyze)", type: "string" }
+  ],
+  inputSchema: workspaceInput({ wish_id: { type: "string", minLength: 1 }, stage: { type: "string", enum: ["analyze", "code", "run"] } }, ["wish_id"]),
+  outputSchema: OBJECT_OUTPUT,
+  resultSchemaVersion: 1,
+  access: { mode: "fixed", level: "write" },
+  asyncMode: "sync",
+  requiresSession: true,
+  examples: ["buckyos aiws run-start --workspace ws_abc --wish wish_q3 --stage analyze"],
+  handler: (ctx, input) => aiws(ctx, "proc.start", {
+    workspace_id: requiredInputString(input, "workspace_id"),
+    program: "wish.xllm@1",
+    idempotency_key: ctx.idempotencyKey ?? `cli-${ctx.traceId}`,
+    params: { wish_id: requiredInputString(input, "wish_id"), stage: inputString(input, "stage") || "analyze", execution: { mode: "local" } }
+  })
 };
 const runReportCommand = {
   verb: "run-report",
-  summary: "End a claimed run: --finished after the stage tools accepted the work (submit_analysis / finish), or the candidate itself (results / analysis), or a failure",
-  description: "The service validates and plans what is reported; the user confirms it in the workspace. A superseded attempt or a cancelled run gets RUN_REVOKED.",
+  summary: "End a claimed run: --finished after the stage is done (submit_analysis or finish accepted, or the stored macro handed in), an analysis made elsewhere, or a failure",
+  description: "The service validates and plans what the stage collected; the user confirms it in the workspace. Results always come from the macro (run-program). A superseded attempt or a cancelled run gets RUN_REVOKED.",
   options: [
     WORKSPACE_OPTION,
     RUN_OPTION,
     ATTEMPT_OPTION,
-    { name: "finished", property: "finished", description: "The stage is done: what the tools collected becomes the candidate", type: "boolean" },
-    { name: "results", property: "results", description: "Results JSON array (execute runs): [{ name, type, title?, content, config? }]", type: "string" },
-    { name: "results-file", property: "results_file", description: "Path of a JSON file holding the results array", type: "string" },
-    { name: "analysis", property: "analysis", description: "Analysis JSON (analyze runs, wish.analysis.v2)", type: "string" },
+    { name: "finished", property: "finished", description: "The stage is done: what it collected becomes the candidate", type: "boolean" },
+    { name: "analysis", property: "analysis", description: "Analysis JSON (analyze runs, wish.analysis.v3)", type: "string" },
     { name: "analysis-file", property: "analysis_file", description: "Path of a JSON file holding the analysis", type: "string" },
     { name: "summary", property: "summary", description: "One paragraph on what was done", type: "string" },
     { name: "warning", property: "warnings", description: "A warning for the user (repeatable)", type: "string" },
     { name: "error", property: "error", description: "Report a failure instead: its reason", type: "string" }
   ],
-  inputSchema: workspaceInput({ run_id: { type: "string", minLength: 1 }, attempt: { type: "integer", minimum: 1 }, finished: { type: "boolean" }, results: { type: "string" }, results_file: { type: "string" }, analysis: { type: "string" }, analysis_file: { type: "string" }, summary: { type: "string" }, warnings: { type: "string" }, error: { type: "string" } }, ["run_id", "attempt"]),
+  inputSchema: workspaceInput({ run_id: { type: "string", minLength: 1 }, attempt: { type: "integer", minimum: 1 }, finished: { type: "boolean" }, analysis: { type: "string" }, analysis_file: { type: "string" }, summary: { type: "string" }, warnings: { type: "string" }, error: { type: "string" } }, ["run_id", "attempt"]),
   outputSchema: OBJECT_OUTPUT,
   resultSchemaVersion: 1,
   access: { mode: "fixed", level: "write" },
@@ -14642,7 +14810,6 @@ const runReportCommand = {
   requiresSession: true,
   examples: [
     "buckyos aiws run-report --workspace ws_abc --run run_xyz --attempt 1 --finished",
-    'buckyos aiws run-report --workspace ws_abc --run run_xyz --attempt 1 --results-file out/results.json --summary "monthly totals and a commentary"',
     "buckyos aiws run-report --workspace ws_abc --run run_xyz --attempt 1 --analysis-file out/analysis.json",
     'buckyos aiws run-report --workspace ws_abc --run run_xyz --attempt 1 --error "the input table is empty"'
   ],
@@ -14653,11 +14820,8 @@ const runReportCommand = {
       params.error = { code: "EXECUTOR_FAILED", detail: error };
     } else if (input.finished === true) {
       params.finished = true;
-    } else if (inputString(input, "analysis") || inputString(input, "analysis_file")) {
-      params.analysis = await jsonInput(input, "analysis", "analysis_file", "an analysis");
     } else {
-      params.results = await jsonInput(input, "results", "results_file", "results");
-      params.read_set = [];
+      params.analysis = await jsonInput(input, "analysis", "analysis_file", "an analysis");
     }
     const summary2 = inputString(input, "summary");
     if (summary2)
@@ -15383,7 +15547,7 @@ function createAiwsModule() {
   return {
     name: "aiws",
     summary: "AI Workspace: find and read a workspace by path (ls, find, grep, stat, cat, resolve, read), query its tables in SQL (sql), write tables, rich text and common properties (table, text, mv, rename, set-prop), your to-do list and calendar (todo, cal), Block-controls (catalogue, import, export), extension controls (build, pull, export, library, import, upgrade), Workspace templates (list, create, export), and execute wish runs as their executor (claim, heartbeat, report)",
-    commands: [infoCommand, lsCommand, findCommand, grepCommand, statCommand, catCommand, resolveCommand, readCommand, sqlCommand, tableCommand, textCommand, mvCommand, renameCommand, setPropCommand, todoCommand, calCommand, placeCommand, controlsCommand, importCommand, exportCommand, buildCommand, pullCommand, extExportCommand, libraryCommand, extImportCommand, extUpgradeCommand, templateCommand, runGetCommand, runClaimCommand, runHeartbeatCommand, runFilesCommand, runToolCommand, runProgramCommand, runReportCommand]
+    commands: [infoCommand, lsCommand, findCommand, grepCommand, statCommand, catCommand, resolveCommand, readCommand, sqlCommand, tableCommand, textCommand, mvCommand, renameCommand, setPropCommand, todoCommand, calCommand, placeCommand, controlsCommand, importCommand, exportCommand, buildCommand, pullCommand, extExportCommand, libraryCommand, extImportCommand, extUpgradeCommand, templateCommand, runGetCommand, runClaimCommand, runHeartbeatCommand, runFilesCommand, runToolCommand, runExecCommand, runProgramCommand, runReportCommand, runStartCommand]
   };
 }
 const VERSION = TOOL_VERSION;
@@ -16143,6 +16307,40 @@ class NodeHost {
     this.assertCommand(command2);
     return await capture(command2, args);
   }
+  spawn(command2, args, options) {
+    this.assertCommand(command2);
+    const resolved = command2.includes(nodePath.sep) ? command2 : (process.env.PATH ?? "").split(nodePath.delimiter).map((dir) => nodePath.join(dir, command2)).find((p) => existsSync(p)) ?? command2;
+    const child = spawn(resolved, args, { cwd: options.cwd, env: options.env, stdio: ["pipe", "pipe", "pipe"], shell: false });
+    const errChunks = [];
+    child.stderr.on("data", (chunk) => errChunks.push(new Uint8Array(chunk)));
+    const status = childStatus(child);
+    return {
+      async *lines() {
+        let buf = "";
+        for await (const chunk of child.stdout) {
+          buf += new TextDecoder().decode(chunk, { stream: true });
+          let i;
+          while ((i = buf.indexOf("\n")) >= 0) {
+            yield buf.slice(0, i);
+            buf = buf.slice(i + 1);
+          }
+        }
+        if (buf)
+          yield buf;
+      },
+      writeLine: (line) => new Promise((resolve2) => {
+        child.stdin.write(line + "\n", () => resolve2());
+      }),
+      closeInput: () => new Promise((resolve2) => {
+        child.stdin.end(() => resolve2());
+      }),
+      stderr: status.then(() => new TextDecoder().decode(concat(errChunks))),
+      status,
+      kill: () => {
+        child.kill("SIGKILL");
+      }
+    };
+  }
   async runGzip(command2, args, destination) {
     this.assertCommand(command2);
     await this.assertPath(destination, "write", false);
@@ -16404,6 +16602,7 @@ const environment = Object.fromEntries(
   TOOL_ENVIRONMENT_NAMES.map((name) => [name, process.env[name]])
 );
 const policy = buildDistributionPolicy({
+  runtimeExecutable: "deno",
   distribution: "developer",
   argv: process.argv.slice(2),
   cwd: process.cwd(),

@@ -62,6 +62,18 @@ export interface HostCommandOutput {
   stderr: Uint8Array
 }
 
+/** A child process the tool talks to line by line (a wish macro's stdio bridge). */
+export interface HostChild {
+  /** Lines the child writes to stdout, without the newline. */
+  lines(): AsyncIterable<string>
+  writeLine(line: string): Promise<void>
+  closeInput(): Promise<void>
+  /** Everything the child wrote to stderr, once it exits. */
+  readonly stderr: Promise<string>
+  readonly status: Promise<number>
+  kill(): void
+}
+
 export interface HostPath {
   readonly sep: string
   basename(path: string): string
@@ -140,6 +152,8 @@ export interface ToolHost {
   gzipFile(source: string, destination: string): Promise<void>
   run(command: string, args: string[]): Promise<HostCommandOutput>
   runGzip(command: string, args: string[], destination: string): Promise<HostCommandOutput>
+  /** Start `command` in `cwd` with exactly `env` (nothing inherited), stdin and stdout piped line by line. */
+  spawn(command: string, args: string[], options: { cwd: string; env: Record<string, string> }): HostChild
 
   stdout(value: string | Uint8Array): Promise<void>
   stderr(value: string | Uint8Array): Promise<void>
@@ -194,6 +208,8 @@ export const TOOL_ENVIRONMENT_NAMES = [
 ] as const
 
 interface PolicyOptions {
+  /** The runtime running the tool (Deno): `aiws run-exec` / `run-program` run a wish macro with it. */
+  runtimeExecutable?: string
   distribution: DistributionKind
   argv: string[]
   cwd: string
@@ -239,6 +255,8 @@ export function buildDistributionPolicy(options: PolicyOptions): DistributionPol
   }
   const subprocesses = parsed.module === 'pikg' && ['init', 'build'].includes(parsed.verb ?? '')
     ? ['docker']
+    : parsed.module === 'aiws' && ['run-exec', 'run-program'].includes(parsed.verb ?? '') && options.runtimeExecutable
+    ? [options.runtimeExecutable]
     : []
   const network = parsed.module !== undefined &&
     !['pikg', 'command', 'completion', 'config', 'provision'].includes(parsed.module)

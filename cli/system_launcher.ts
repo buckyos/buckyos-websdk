@@ -11,6 +11,7 @@ const environment = Object.fromEntries(
   TOOL_ENVIRONMENT_NAMES.map((name) => [name, Deno.env.get(name)]),
 )
 const policy = buildDistributionPolicy({
+  runtimeExecutable: Deno.execPath(),
   distribution: 'system',
   argv: Deno.args,
   cwd: Deno.cwd(),

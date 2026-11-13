@@ -39,8 +39,10 @@ Deno.test('aiws verbs are registered with their access levels', () => {
       ['run-claim', 'write'],
       ['run-heartbeat', 'write'],
       ['run-tool', 'write'],
+      ['run-exec', 'write'],
       ['run-program', 'write'],
       ['run-report', 'write'],
+      ['run-start', 'write'],
     ]
   ) {
     const described = registry.describe('aiws', verb)
@@ -461,3 +463,4 @@ Deno.test('template export writes one bundle: the template files, the controls i
     await assertRejects(() => run('template', { action: 'export', workspace_id: 'ws_a', surfaces: 's', id: 'team', title: 'T', out, ...bad }, clients))
   }
 })
+

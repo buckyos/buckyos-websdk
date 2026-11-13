@@ -66,6 +66,11 @@ Deno.test('distribution policy grants Docker only to pikg and excludes the syste
   const topLevel = buildDistributionPolicy({ ...common, argv: ['--version'] })
   const online = buildDistributionPolicy({ ...common, argv: ['system', 'status'] })
   assertEquals(pikg.subprocesses, ['docker'])
+  // a wish macro runs with the tool's own Deno, and only for the verbs that run one
+  const runExec = buildDistributionPolicy({ ...common, runtimeExecutable: '/opt/buckyos/deno', argv: ['aiws', 'run-exec', '--dir', 'work'] })
+  const runGet = buildDistributionPolicy({ ...common, runtimeExecutable: '/opt/buckyos/deno', argv: ['aiws', 'run-get'] })
+  assertEquals(runExec.subprocesses, ['/opt/buckyos/deno'])
+  assertEquals(runGet.subprocesses, [])
   assertEquals(doctor.subprocesses, [])
   assertEquals(online.subprocesses, [])
   assertEquals(pikg.network, false)

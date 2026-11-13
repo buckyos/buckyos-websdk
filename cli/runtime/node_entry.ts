@@ -10,6 +10,7 @@ const environment = Object.fromEntries(
   TOOL_ENVIRONMENT_NAMES.map((name) => [name, process.env[name]]),
 )
 const policy = buildDistributionPolicy({
+  runtimeExecutable: 'deno',
   distribution: 'developer',
   argv: process.argv.slice(2),
   cwd: process.cwd(),

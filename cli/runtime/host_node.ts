@@ -15,7 +15,7 @@ import {
   symlink,
   writeFile,
 } from 'node:fs/promises'
-import { createReadStream, createWriteStream } from 'node:fs'
+import { createReadStream, createWriteStream, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import * as nodePath from 'node:path'
 import { spawn } from 'node:child_process'
@@ -29,6 +29,7 @@ import { assertPathAccess } from './path_policy.ts'
 import {
   type DistributionPolicy,
   HostError,
+  type HostChild,
   type HostFile,
   type HostFileInfo,
   type HostLineReader,
@@ -297,6 +298,36 @@ export class NodeHost implements ToolHost {
   async run(command: string, args: string[]) {
     this.assertCommand(command)
     return await capture(command, args)
+  }
+
+  spawn(command: string, args: string[], options: { cwd: string; env: Record<string, string> }): HostChild {
+    this.assertCommand(command)
+    // the child's environment is exactly `env`: the command is found on this process's PATH first
+    const resolved = command.includes(nodePath.sep) ? command
+      : (process.env.PATH ?? '').split(nodePath.delimiter).map((dir) => nodePath.join(dir, command)).find((p) => existsSync(p)) ?? command
+    const child = spawn(resolved, args, { cwd: options.cwd, env: options.env, stdio: ['pipe', 'pipe', 'pipe'], shell: false })
+    const errChunks: Uint8Array[] = []
+    child.stderr.on('data', (chunk) => errChunks.push(new Uint8Array(chunk)))
+    const status = childStatus(child)
+    return {
+      async *lines() {
+        let buf = ''
+        for await (const chunk of child.stdout) {
+          buf += new TextDecoder().decode(chunk as Uint8Array, { stream: true })
+          let i
+          while ((i = buf.indexOf('\n')) >= 0) {
+            yield buf.slice(0, i)
+            buf = buf.slice(i + 1)
+          }
+        }
+        if (buf) yield buf
+      },
+      writeLine: (line: string) => new Promise<void>((resolve) => { child.stdin.write(line + '\n', () => resolve()) }),
+      closeInput: () => new Promise<void>((resolve) => { child.stdin.end(() => resolve()) }),
+      stderr: status.then(() => new TextDecoder().decode(concat(errChunks))),
+      status,
+      kill: () => { child.kill('SIGKILL') },
+    }
   }
 
   async runGzip(command: string, args: string[], destination: string) {

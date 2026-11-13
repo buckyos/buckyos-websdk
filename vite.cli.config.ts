@@ -18,7 +18,7 @@ export default defineConfig({
     },
     rollupOptions: {
       external: (id) =>
-        id === 'buckyos/node' || id === 'buckyos/provision' || builtins.has(id) ||
+        id === 'buckyos/node' || id === 'buckyos/provision' || id === 'buckyos/xllm' || builtins.has(id) ||
         id.startsWith('node:'),
     },
   },

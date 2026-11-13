@@ -2,7 +2,8 @@
   "imports": {
     "buckyos": "../dist/node.mjs",
     "buckyos/node": "../dist/node.mjs",
-    "buckyos/provision": "../dist/provision.mjs"
+    "buckyos/provision": "../dist/provision.mjs",
+    "buckyos/xllm": "../dist/xllm.mjs"
   },
   "tasks": {
     "run": "deno run --allow-net --allow-read --allow-write --allow-run=docker --allow-env system_launcher.ts",

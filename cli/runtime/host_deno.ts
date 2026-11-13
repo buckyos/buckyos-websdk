@@ -12,6 +12,7 @@ import { assertPathAccess } from './path_policy.ts'
 import {
   type DistributionPolicy,
   HostError,
+  type HostChild,
   type HostFile,
   type HostFileInfo,
   type HostLineReader,
@@ -286,6 +287,39 @@ export class DenoHost implements ToolHost {
       return await new Deno.Command(command, { args, stdout: 'piped', stderr: 'piped' }).output()
     } catch (error) {
       throw translateDenoError(error, command)
+    }
+  }
+
+  spawn(command: string, args: string[], options: { cwd: string; env: Record<string, string> }): HostChild {
+    this.assertCommand(command)
+    let child: Deno.ChildProcess
+    try {
+      child = new Deno.Command(command, { args, cwd: options.cwd, env: options.env, clearEnv: true, stdin: 'piped', stdout: 'piped', stderr: 'piped' }).spawn()
+    } catch (error) {
+      throw translateDenoError(error, command)
+    }
+    const writer = child.stdin.getWriter()
+    const enc = new TextEncoder()
+    const stdout = child.stdout
+    return {
+      async *lines() {
+        const dec = new TextDecoder()
+        let buf = ''
+        for await (const chunk of stdout) {
+          buf += dec.decode(chunk, { stream: true })
+          let i
+          while ((i = buf.indexOf('\n')) >= 0) {
+            yield buf.slice(0, i)
+            buf = buf.slice(i + 1)
+          }
+        }
+        if (buf) yield buf
+      },
+      writeLine: async (line: string) => { await writer.write(enc.encode(line + '\n')).catch(() => {}) },
+      closeInput: async () => { await writer.close().catch(() => {}) },
+      stderr: new Response(child.stderr).text(),
+      status: child.status.then((s) => s.code),
+      kill: () => { try { child.kill('SIGKILL') } catch { /* already gone */ } },
     }
   }
 

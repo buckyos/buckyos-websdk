@@ -10,6 +10,7 @@ const environment = Object.fromEntries(
 )
 const runtime = Deno.execPath()
 const policy = buildDistributionPolicy({
+  runtimeExecutable: Deno.execPath(),
   distribution: 'system',
   argv: Deno.args,
   cwd: Deno.cwd(),
