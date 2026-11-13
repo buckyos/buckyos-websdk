@@ -168,6 +168,128 @@ const grepCommand: CommandDefinition = {
   handler: (ctx, input) => aiws(ctx, 'doc.query', { workspace_id: requiredInputString(input, 'workspace_id'), text: requiredInputString(input, 'text'), ...given(input, { at: 'at', depth: 'depth', case: 'case', type: 'type', not_type: 'not_type', limit: 'limit', cursor: 'cursor' }) }),
 }
 
+// ---- permissions (buckyos notepads/aiws-permission-system-prd.md §4; README “Permissions”): entries `subject × resource
+// → allow, deny` addressed by path, logical groups, anonymous access, inner-path publications, the operation record.
+const SUBJECT_HELP = 'A principal (user id, DID), @<group>, @all, @guest or @creator'
+const caps = (text: string | undefined): string[] => (text ? ids(text) : [])
+
+const aclCommand: CommandDefinition = {
+  verb: 'acl',
+  summary: 'Read permissions: `ls` (every entry, or your own), `show <path>` (who holds what on it and from where), `who [subject]` (a subject\'s entries; a principal\'s groups), `explain <path> [--principal]` (why each capability is allowed or refused), `groups`, `entries` (share links), `audit` (the operation record)',
+  description: 'Entries are decided by the nearest layer (the entity, its ancestors, then /) that mentions a capability, then by the most specific tier (a single caller, then groups and @creator, then @guest and @all); a deny wins within a tier. Anyone may ask about themselves (who, explain); the rest needs manage.',
+  positionals: [
+    { name: 'action', description: 'ls | show | who | explain | groups | entries | audit', required: true },
+    { name: 'target', description: `show / explain: ${PATH_HELP} (default /); who: ${SUBJECT_HELP}`, required: false },
+  ],
+  options: [
+    WORKSPACE_OPTION,
+    { name: 'principal', property: 'principal', description: 'explain: whose permissions (default: yours; another\'s needs manage)', type: 'string' },
+    { name: 'expand', property: 'expand', description: 'show: list the members of each group', type: 'boolean' },
+    { name: 'after', property: 'after', description: 'audit: records after this sequence number', type: 'integer' },
+    { name: 'limit', property: 'limit', description: 'audit: at most this many records (≤ 1000)', type: 'integer' },
+  ],
+  inputSchema: workspaceInput({
+    action: { type: 'string', enum: ['ls', 'show', 'who', 'explain', 'groups', 'entries', 'audit'] }, target: { type: 'string' }, principal: { type: 'string' },
+    expand: { type: 'boolean' }, after: { type: 'integer' }, limit: { type: 'integer', minimum: 1 },
+  }, ['action']),
+  outputSchema: OBJECT_OUTPUT,
+  resultSchemaVersion: 1,
+  access: READ_ACCESS,
+  asyncMode: 'sync',
+  requiresSession: true,
+  examples: [
+    'buckyos aiws acl show /data/成绩 --workspace ws_abc',
+    'buckyos aiws acl explain /data/成绩 --principal bob --workspace ws_abc',
+    'buckyos aiws acl who @teachers --workspace ws_abc',
+    'buckyos aiws acl groups --workspace ws_abc',
+  ],
+  handler: (ctx, input) => {
+    const workspace_id = requiredInputString(input, 'workspace_id')
+    const target = inputString(input, 'target')
+    switch (requiredInputString(input, 'action')) {
+      case 'ls': return aiws(ctx, 'acl.query', { workspace_id, by: 'all' })
+      case 'show': return aiws(ctx, 'acl.query', { workspace_id, by: 'entity', resource: target ?? '/', ...given(input, { expand: 'expand' }) })
+      case 'who': return aiws(ctx, 'acl.query', { workspace_id, by: 'subject', ...(target ? { subject: target } : {}) })
+      case 'explain': return aiws(ctx, 'acl.query', { workspace_id, by: 'explain', resource: target ?? '/', ...given(input, { principal: 'principal' }) })
+      case 'groups': return aiws(ctx, 'acl.groups', { workspace_id })
+      case 'entries': return aiws(ctx, 'ws.list_entries', { workspace_id })
+      case 'audit': return aiws(ctx, 'acl.audit', { workspace_id, ...given(input, { after: 'after', limit: 'limit' }) })
+      default: throw new UsageError('AIWS_USAGE', 'acl: ls, show, who, explain, groups, entries or audit')
+    }
+  },
+}
+
+const aclEditCommand: CommandDefinition = {
+  verb: 'acl-edit',
+  summary: 'Change permissions: `set <subject> <path> --allow … --deny …` (replaces that entry; both empty removes it), `rm <subject> <path>`, `group-add <id> [--title]`, `group-rm <id>`, `member-add <group> <members>`, `member-rm <group> <members>`, `anonymous on|off`, `bind <wish> <group|none> [--mode]`, `entry-add <group> --methods …`, `entry-close <entry_id> [--remove-members]`, `publish <path> [--name]`, `unpublish <path>`',
+  description: 'Needs manage (giving or taking manage, or changing the members of a group holding it, is the owner\'s). Members: a principal, group:<system group>, contact:<your did>#<tag>, * (every unrestricted account of the Zone); a group is never a member of a group. @all and @guest never get manage or run; @guest exists only while anonymous access is on. A share entry leads into a group holding neither manage nor run.',
+  positionals: [
+    { name: 'action', description: 'set | rm | group-add | group-rm | member-add | member-rm | anonymous | bind | entry-add | entry-close | publish | unpublish', required: true },
+    { name: 'target', description: `set / rm: ${SUBJECT_HELP}; group-*, member-*, entry-add: group id; anonymous: on | off; bind, publish, unpublish: ${PATH_HELP}; entry-close: entry id`, required: false },
+    { name: 'arg', description: `set / rm: ${PATH_HELP} (default /); member-*: members, comma-separated; bind: group id or none`, required: false },
+  ],
+  options: [
+    WORKSPACE_OPTION,
+    { name: 'allow', property: 'allow', description: 'set: capabilities, comma-separated (read, append, update, delete, structure, comment, export, manage, run)', type: 'string' },
+    { name: 'deny', property: 'deny', description: 'set: capabilities refused, comma-separated', type: 'string' },
+    { name: 'title', property: 'title', description: 'group-add: the group\'s title', type: 'string' },
+    { name: 'description', property: 'description', description: 'group-add: what the group is for', type: 'string' },
+    { name: 'mode', property: 'mode', description: 'bind: union (default) or intersection with the triggerer\'s permissions', type: 'string', enum: ['union', 'intersection'] },
+    { name: 'methods', property: 'methods', description: 'entry-add: ways in, comma-separated: guest, password, self_register, did_login', type: 'string' },
+    { name: 'expires-at', property: 'expires_at', description: 'entry-add: unix seconds', type: 'integer' },
+    { name: 'max-joins', property: 'max_joins', description: 'entry-add: how many may join at most', type: 'integer' },
+    { name: 'remove-members', property: 'remove_members', description: 'entry-close: those who joined through it leave the group too', type: 'boolean' },
+    { name: 'name', property: 'name', description: 'publish: the last segment of the link', type: 'string' },
+  ],
+  inputSchema: workspaceInput({
+    action: { type: 'string', enum: ['set', 'rm', 'group-add', 'group-rm', 'member-add', 'member-rm', 'anonymous', 'bind', 'entry-add', 'entry-close', 'publish', 'unpublish'] },
+    target: { type: 'string' }, arg: { type: 'string' }, allow: { type: 'string' }, deny: { type: 'string' }, title: { type: 'string' }, description: { type: 'string' },
+    mode: { type: 'string', enum: ['union', 'intersection'] }, methods: { type: 'string' }, expires_at: { type: 'integer' }, max_joins: { type: 'integer', minimum: 1 },
+    remove_members: { type: 'boolean' }, name: { type: 'string' },
+  }, ['action']),
+  outputSchema: OBJECT_OUTPUT,
+  resultSchemaVersion: 1,
+  access: WRITE_ACCESS,
+  asyncMode: 'sync',
+  requiresSession: true,
+  examples: [
+    'buckyos aiws acl-edit group-add teachers --title 老师 --workspace ws_abc',
+    'buckyos aiws acl-edit member-add teachers group:staff,bob --workspace ws_abc',
+    'buckyos aiws acl-edit set @teachers /data/成绩 --allow read,update --workspace ws_abc',
+    'buckyos aiws acl-edit set @all /data/工资 --deny read --workspace ws_abc',
+    'buckyos aiws acl-edit anonymous on --workspace ws_abc',
+    'buckyos aiws acl-edit entry-add visitors --methods guest,password --workspace ws_abc',
+  ],
+  handler: async (ctx, input) => {
+    const workspace_id = requiredInputString(input, 'workspace_id')
+    const target = () => requiredInputString(input, 'target')
+    const arg = inputString(input, 'arg')
+    const entityId = async (path: string) => String((await aiws(ctx, 'doc.resolve', { workspace_id, ...( path.startsWith('/') || path.startsWith('~') ? { path } : { reference: { entity_id: path, mode: 'live' } }) })).entity_id)
+    switch (requiredInputString(input, 'action')) {
+      case 'set': return aiws(ctx, 'acl.set', { workspace_id, changes: [{ subject: target(), resource: arg ?? '/', allow: caps(inputString(input, 'allow')), deny: caps(inputString(input, 'deny')) }] })
+      case 'rm': return aiws(ctx, 'acl.set', { workspace_id, changes: [{ subject: target(), resource: arg ?? '/' }] })
+      case 'group-add': return aiws(ctx, 'acl.set_group', { workspace_id, group_id: target(), ...given(input, { title: 'title', description: 'description' }) })
+      case 'group-rm': return aiws(ctx, 'acl.delete_group', { workspace_id, group_id: target() })
+      case 'member-add': return aiws(ctx, 'acl.members', { workspace_id, group_id: target(), add: ids(arg ?? '') })
+      case 'member-rm': return aiws(ctx, 'acl.members', { workspace_id, group_id: target(), remove: ids(arg ?? '') })
+      case 'anonymous': {
+        const on = target()
+        if (on !== 'on' && on !== 'off') throw new UsageError('AIWS_USAGE', 'anonymous on | off')
+        return aiws(ctx, 'acl.set_anonymous', { workspace_id, enabled: on === 'on' })
+      }
+      case 'bind': return aiws(ctx, 'acl.bind_macro', { workspace_id, wish: target(), group_id: !arg || arg === 'none' ? null : arg, ...given(input, { mode: 'mode' }) })
+      case 'entry-add': {
+        const methods = Object.fromEntries(ids(requiredInputString(input, 'methods')).map((m) => [m, true]))
+        return aiws(ctx, 'ws.create_entry', { workspace_id, group_id: target(), methods, ...given(input, { expires_at: 'expires_at', max_joins: 'max_joins' }) })
+      }
+      case 'entry-close': return aiws(ctx, 'ws.close_entry', { workspace_id, entry_id: target(), ...given(input, { remove_members: 'remove_members' }) })
+      case 'publish': return aiws(ctx, 'ws.publish', { workspace_id, entity_id: await entityId(target()), ...given(input, { name: 'name' }) })
+      case 'unpublish': return aiws(ctx, 'ws.unpublish', { workspace_id, entity_id: await entityId(target()) })
+      default: throw new UsageError('AIWS_USAGE', 'acl-edit: set, rm, group-add, group-rm, member-add, member-rm, anonymous, bind, entry-add, entry-close, publish or unpublish')
+    }
+  },
+}
+
 const statCommand: CommandDefinition = {
   verb: 'stat',
   summary: 'What an entity is: path, name, title, type, schema, parent, versions, body state and size, children, your capabilities and the Commit operations its type takes',
@@ -1584,7 +1706,7 @@ const templateCommand: CommandDefinition = {
 export function createAiwsModule(): CommandModule {
   return {
     name: 'aiws',
-    summary: 'AI Workspace: find and read a workspace by path (ls, find, grep, stat, cat, resolve, read), query its tables in SQL (sql), write tables, rich text and common properties (table, text, mv, rename, set-prop), your to-do list and calendar (todo, cal), Block-controls (catalogue, import, export), extension controls (build, pull, export, library, import, upgrade), Workspace templates (list, create, export), and execute wish runs as their executor (claim, heartbeat, report)',
-    commands: [infoCommand, lsCommand, findCommand, grepCommand, statCommand, catCommand, resolveCommand, readCommand, sqlCommand, tableCommand, textCommand, mvCommand, renameCommand, setPropCommand, todoCommand, calCommand, placeCommand, controlsCommand, importCommand, exportCommand, buildCommand, pullCommand, extExportCommand, libraryCommand, extImportCommand, extUpgradeCommand, templateCommand, runGetCommand, runClaimCommand, runHeartbeatCommand, runFilesCommand, runToolCommand, runExecCommand, runProgramCommand, runReportCommand, runStartCommand],
+    summary: 'AI Workspace: find and read a workspace by path (ls, find, grep, stat, cat, resolve, read), its permissions (acl, acl-edit), query its tables in SQL (sql), write tables, rich text and common properties (table, text, mv, rename, set-prop), your to-do list and calendar (todo, cal), Block-controls (catalogue, import, export), extension controls (build, pull, export, library, import, upgrade), Workspace templates (list, create, export), and execute wish runs as their executor (claim, heartbeat, report)',
+    commands: [infoCommand, lsCommand, findCommand, grepCommand, statCommand, aclCommand, aclEditCommand, catCommand, resolveCommand, readCommand, sqlCommand, tableCommand, textCommand, mvCommand, renameCommand, setPropCommand, todoCommand, calCommand, placeCommand, controlsCommand, importCommand, exportCommand, buildCommand, pullCommand, extExportCommand, libraryCommand, extImportCommand, extUpgradeCommand, templateCommand, runGetCommand, runClaimCommand, runHeartbeatCommand, runFilesCommand, runToolCommand, runExecCommand, runProgramCommand, runReportCommand, runStartCommand],
   }
 }

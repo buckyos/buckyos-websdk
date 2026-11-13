@@ -26,6 +26,8 @@ Deno.test('aiws verbs are registered with their access levels', () => {
       ['cat', 'read'],
       ['resolve', 'read'],
       ['sql', 'read'],
+      ['acl', 'read'],
+      ['acl-edit', 'write'],
       ['table', 'write'],
       ['text', 'write'],
       ['mv', 'write'],
@@ -87,6 +89,36 @@ Deno.test('finding and reading map onto doc.list / doc.find / doc.query / doc.re
   assertEquals([whole.text, whole.complete, calls.at(-1)?.params], ['a\nb\n', true, { workspace_id: 'ws_a', path: '/docs/notes', as: 'body', cursor: 'c2' }])
   const one = await run('cat', { workspace_id: 'ws_a', path: '/docs/notes', max_bytes: 4096 }, clients)
   assertEquals([one.text, one.next_cursor, calls.at(-1)?.params], ['a\n', 'c2', { workspace_id: 'ws_a', path: '/docs/notes', as: 'body', max_bytes: 4096 }])
+})
+
+Deno.test('acl and acl-edit map onto acl.* by path (permission model: entries, groups, anonymous access, entries, publications)', async () => {
+  const calls: RecordedCall[] = []
+  const clients = clientsFor(calls, (method) => (method === 'doc.resolve' ? { ok: true, entity_id: 'grades' } : { ok: true, method }))
+  const registry = createRegistry()
+  assertEquals(parseCommandArgs(registry.get('aiws', 'acl-edit'), ['set', '@teachers', '/data/成绩', '--allow', 'read,update', '--deny', 'delete', '--workspace', 'ws_a'], undefined).input,
+    { action: 'set', target: '@teachers', arg: '/data/成绩', allow: 'read,update', deny: 'delete', workspace_id: 'ws_a' })
+  await run('acl', { workspace_id: 'ws_a', action: 'show', target: '/data/成绩', expand: true }, clients)
+  assertEquals([calls.at(-1)?.method, calls.at(-1)?.params], ['acl.query', { workspace_id: 'ws_a', by: 'entity', resource: '/data/成绩', expand: true }])
+  await run('acl', { workspace_id: 'ws_a', action: 'explain', target: '/data/成绩', principal: 'bob' }, clients)
+  assertEquals(calls.at(-1)?.params, { workspace_id: 'ws_a', by: 'explain', resource: '/data/成绩', principal: 'bob' })
+  await run('acl', { workspace_id: 'ws_a', action: 'who' }, clients)
+  assertEquals(calls.at(-1)?.params, { workspace_id: 'ws_a', by: 'subject' })
+  await run('acl', { workspace_id: 'ws_a', action: 'ls' }, clients)
+  assertEquals(calls.at(-1)?.params, { workspace_id: 'ws_a', by: 'all' })
+  await run('acl-edit', { workspace_id: 'ws_a', action: 'set', target: '@teachers', arg: '/data/成绩', allow: 'read,update', deny: 'delete' }, clients)
+  assertEquals([calls.at(-1)?.method, calls.at(-1)?.params], ['acl.set', { workspace_id: 'ws_a', changes: [{ subject: '@teachers', resource: '/data/成绩', allow: ['read', 'update'], deny: ['delete'] }] }])
+  await run('acl-edit', { workspace_id: 'ws_a', action: 'rm', target: 'bob' }, clients)
+  assertEquals(calls.at(-1)?.params, { workspace_id: 'ws_a', changes: [{ subject: 'bob', resource: '/' }] })
+  await run('acl-edit', { workspace_id: 'ws_a', action: 'member-add', target: 'teachers', arg: 'group:staff,bob' }, clients)
+  assertEquals([calls.at(-1)?.method, calls.at(-1)?.params], ['acl.members', { workspace_id: 'ws_a', group_id: 'teachers', add: ['group:staff', 'bob'] }])
+  await run('acl-edit', { workspace_id: 'ws_a', action: 'anonymous', target: 'on' }, clients)
+  assertEquals(calls.at(-1)?.params, { workspace_id: 'ws_a', enabled: true })
+  await run('acl-edit', { workspace_id: 'ws_a', action: 'bind', target: '/data/报名', arg: 'writers', mode: 'intersection' }, clients)
+  assertEquals([calls.at(-1)?.method, calls.at(-1)?.params], ['acl.bind_macro', { workspace_id: 'ws_a', wish: '/data/报名', group_id: 'writers', mode: 'intersection' }])
+  await run('acl-edit', { workspace_id: 'ws_a', action: 'entry-add', target: 'visitors', methods: 'guest,password', max_joins: 20 }, clients)
+  assertEquals([calls.at(-1)?.method, calls.at(-1)?.params], ['ws.create_entry', { workspace_id: 'ws_a', group_id: 'visitors', methods: { guest: true, password: true }, max_joins: 20 }])
+  await run('acl-edit', { workspace_id: 'ws_a', action: 'publish', target: '/data/成绩', name: 'grades' }, clients)
+  assertEquals([calls.at(-1)?.method, calls.at(-1)?.params], ['ws.publish', { workspace_id: 'ws_a', entity_id: 'grades', name: 'grades' }])
 })
 
 Deno.test('sql sends one SELECT with its aliases and parameters', async () => {
