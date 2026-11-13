@@ -1491,7 +1491,7 @@ export interface QueryUsageRequest {
     time_range: UsageQueryTimeRange;
     filters?: UsageQueryFilters;
     group_by?: UsageQueryGroup[];
-    time_bucket?: 'hour' | 'day';
+    time_bucket?: 'five_minutes' | 'hour' | 'day';
     output_mode?: 'summary' | 'events' | 'summary_and_events';
     limit?: number;
     cursor?: string;
