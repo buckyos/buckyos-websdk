@@ -328,3 +328,7 @@ RBAC policy keys. Resource encoding additionally escapes dots, percent signs,
 and pattern characters so `keyMatch3` cannot expand an exact session grant.
 For example, `did:web:agent.zone/approval.1` maps to
 `obj://msg-center/inbox/did:web:agent%2Ezone/approval%2E1`.
+
+## License
+
+Project-authored code is licensed under [Apache-2.0](LICENSE). See [NOTICE](NOTICE) for retained notices. Third-party dependencies and bundled assets keep their own licenses. The separately installed BuckyOS runtime is [AGPL-3.0-only](https://github.com/buckyos/buckyos/blob/main/LICENSE); this repository's Apache license does not replace its terms or those of other bundled programs.

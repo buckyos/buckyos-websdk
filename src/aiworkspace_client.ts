@@ -198,7 +198,9 @@ export interface AiwsMeta {
   parent: { entity_id: string; path: string } | null
   version: { content_rev: number; meta_rev: number; life_rev: number; struct_rev: number; epoch: string; head_seq: number }
   body: { state: string; format: string | null; format_version: number; etag: string; records: number | null; bytes: number | null; reason?: string }
-  data?: Record<string, unknown>
+  /** Data entities: where the content comes from and who writes it — `edit` (Commits under `capabilities`),
+   * `refresh` (only the Source's refresh; edits are `SOURCE_READ_ONLY`), `none` (a URL table: rows are remote). */
+  data?: { mode: 'local' | 'synced' | 'url_query'; write: 'edit' | 'refresh' | 'none'; source?: Record<string, unknown>; derived?: Record<string, unknown> }
   children: number
   capabilities: string[]
   ops: string[]

@@ -2,7 +2,7 @@
   "name": "buckyos",
   "version": "0.7.183",
   "description": "BuckyOS WebSDK for browser and Node.js environments",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/buckyos/buckyos-websdk.git"
@@ -116,7 +116,8 @@
     "cli/dist",
     "src/internal/command_args.ts",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "NOTICE"
   ],
   "scripts": {
     "build": "node scripts/clean-build.mjs all && node scripts/generate-cli-version.mjs && vite build && tsc -p tsconfig.build.json && vite build --config vite.cli.config.ts",

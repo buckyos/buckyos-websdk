@@ -62,7 +62,7 @@ The staged layout is fixed:
 ```text
 $BUCKYOS_ROOT/bin/buckyos
 $BUCKYOS_ROOT/libexec/buckyos-tool/
-  cli/ dist/ package.json LICENSE distribution.json sbom.cdx.json
+  cli/ dist/ package.json LICENSE NOTICE distribution.json sbom.cdx.json
   runtime/deno[.exe]
 ```
 
