@@ -44,6 +44,212 @@ export interface AiwsReference {
 export declare function aiwsReferenceUrl(reference: AiwsReference, workspaceId?: string): string;
 /** The Reference an `obj://aiworkspace/<ws>/entities/<entity_id>[?...]` URL projects. */
 export declare function parseAiwsReferenceUrl(url: string): AiwsReference;
+/** An entity argument: a path (`/data/销售`, `~<entity_id>/…`, from the Workspace root or an entity) or an entity id. */
+export declare function aiwsTarget(target: string): {
+    path: string;
+} | {
+    entity_id: string;
+};
+/** Type filters of `doc.list` / `doc.find` / a text query: short types (`table`, `richtext`, `record`, `annotation`,
+ * `block`, `container`, `asset`, `dir`, `wish`, `def`, `viewport`, `path`, `task`, `response`, `result`) or
+ * `container:<kind>`, as a comma string or an array. */
+export type AiwsTypeFilter = string | string[];
+export interface AiwsListItem {
+    entity_id: string;
+    name: string;
+    path: string;
+    type: string;
+    type_id: string;
+    kind?: string | null;
+    title: string | null;
+    children: number;
+    content_rev: number;
+    body: {
+        state: string;
+        format: string | null;
+    };
+    schema_id?: string | null;
+    scope?: string;
+    /** A personal entity a shared one of the same name hides: reach it as `~<entity_id>`. */
+    shadowed?: boolean;
+}
+export interface AiwsListParams {
+    /** A path or an entity id (default `/`). */
+    at?: string;
+    type?: AiwsTypeFilter;
+    not_type?: AiwsTypeFilter;
+    schema?: string;
+    limit?: number;
+    cursor?: string;
+}
+export interface AiwsListResult {
+    at: {
+        entity_id: string;
+        path: string;
+    };
+    items: AiwsListItem[];
+    next_cursor?: string | null;
+    head_seq: number;
+}
+export interface AiwsFindParams extends AiwsListParams {
+    depth?: number;
+    /** A literal, case-insensitive, in the name or the title. */
+    name?: string;
+}
+export interface AiwsFindResult {
+    at: {
+        entity_id: string;
+        path: string;
+    };
+    items: (AiwsListItem & {
+        match?: 'name' | 'title';
+    })[];
+    complete: boolean;
+    visited: number;
+    next_cursor?: string | null;
+    head_seq: number;
+}
+export interface AiwsTextQueryParams {
+    case?: boolean;
+    at?: string;
+    depth?: number;
+    type?: AiwsTypeFilter;
+    not_type?: AiwsTypeFilter;
+    limit?: number;
+    cursor?: string;
+}
+export interface AiwsTextHit {
+    entity_id: string;
+    path: string;
+    type: string;
+    on: 'name' | 'title' | 'body';
+    selector?: Record<string, unknown>;
+    snippet: string;
+    more?: number;
+}
+export interface AiwsTextQueryResult {
+    hits: AiwsTextHit[];
+    /** An empty result means “none” only when `complete`. */
+    coverage: {
+        complete: boolean;
+        scanned: number;
+        bytes: number;
+        skipped: {
+            entity_id: string;
+            reason: string;
+        }[];
+    };
+    at: {
+        entity_id: string;
+        path: string;
+    };
+    next_cursor?: string | null;
+    head_seq: number;
+}
+export interface AiwsSqlParams {
+    /** Positional parameters (`?`). */
+    params?: unknown[];
+    /** `{ alias: path | entity_id }`: only these tables, named by their alias in the SQL. */
+    tables?: Record<string, string>;
+    /** ≤ 5000 (default 1000). */
+    max_rows?: number;
+    /** Run only on this head (`SNAPSHOT_EXPIRED` / `HEAD_MISMATCH` otherwise). */
+    expect_head?: {
+        epoch: string;
+        seq: number;
+    };
+}
+export interface AiwsSqlResult {
+    columns: string[];
+    rows: unknown[][];
+    truncated: boolean;
+    read: {
+        table: string;
+        entity_id: string;
+        path: string;
+        content_rev: number;
+    }[];
+    head_seq: number;
+}
+/** `doc.source_query`: rows of a URL table (`data_mode: url_query`) from its remote source. */
+export interface AiwsSourceQueryParams {
+    filter?: unknown;
+    sorts?: unknown[];
+    fields?: string[];
+    limit: number;
+    cursor?: string;
+    consistency?: string;
+    source_revision?: string;
+}
+/** `doc.read { as: "meta" }`: what an entity is, without scanning its content. */
+export interface AiwsMeta {
+    entity_id: string;
+    path: string;
+    name: string;
+    name_follows: boolean;
+    title: string | null;
+    type: string;
+    type_id: string;
+    kind: string | null;
+    schema_id: string | null;
+    schema_version: number;
+    scope: string;
+    parent: {
+        entity_id: string;
+        path: string;
+    } | null;
+    version: {
+        content_rev: number;
+        meta_rev: number;
+        life_rev: number;
+        struct_rev: number;
+        epoch: string;
+        head_seq: number;
+    };
+    body: {
+        state: string;
+        format: string | null;
+        format_version: number;
+        etag: string;
+        records: number | null;
+        bytes: number | null;
+        reason?: string;
+    };
+    data?: Record<string, unknown>;
+    children: number;
+    capabilities: string[];
+    ops: string[];
+    shows?: Record<string, unknown> | null;
+    definition?: Record<string, unknown>;
+    ref: AiwsReference;
+    head_seq: number;
+}
+export interface AiwsBodyParams {
+    selector?: Record<string, unknown>;
+    cursor?: string;
+    /** 64…262 144 (default 32 768). */
+    max_bytes?: number;
+    /** Each part's selector and its offsets in `text`. */
+    parts?: boolean;
+}
+/** `doc.read { as: "body" }`: one page of the entity's plain-text rendering. */
+export interface AiwsBody {
+    entity_id: string;
+    path: string;
+    text: string;
+    format: string;
+    format_version: number;
+    etag: string;
+    state: string;
+    complete: boolean;
+    next_cursor?: string | null;
+    parts?: {
+        selector: Record<string, unknown>;
+        start: number;
+        end: number;
+        partial?: boolean;
+    }[];
+}
 /** What `ext.upgrade` / `ext.build` rewrite on the instances of a definition whose new version narrows what they rely
  * on (schemas/migration.schema.json, Q30). */
 export interface AiwsMigration {
@@ -321,8 +527,21 @@ export declare class AiWorkspaceClient {
     setUserState(workspace_id: string, entries: Record<string, unknown>, expect?: Record<string, number>): Promise<Record<string, unknown>>;
     resolve(workspace_id: string, reference: AiwsReference | Record<string, unknown>): Promise<Record<string, unknown>>;
     resolvePath(workspace_id: string, path: string): Promise<Record<string, unknown>>;
-    read(workspace_id: string, entity_id: string, selector?: Record<string, unknown>): Promise<Record<string, unknown>>;
-    query(workspace_id: string, params: Record<string, unknown>): Promise<Record<string, unknown>>;
+    /** The native content (`target`: a path or an entity id, see `aiwsTarget`). */
+    read(workspace_id: string, target: string, selector?: Record<string, unknown>): Promise<Record<string, unknown>>;
+    readMeta(workspace_id: string, target: string): Promise<AiwsMeta>;
+    /** One page of the plain-text body; follow `next_cursor` (bound to `etag`) for the rest. */
+    readBody(workspace_id: string, target: string, params?: AiwsBodyParams): Promise<AiwsBody>;
+    /** `doc.list`: the readable direct children of `at` (default `/`), in tree order. */
+    listEntities(workspace_id: string, params?: AiwsListParams): Promise<AiwsListResult>;
+    /** `doc.find`: a pre-order walk under `at` by name / title, type and schema. */
+    findEntities(workspace_id: string, params?: AiwsFindParams): Promise<AiwsFindResult>;
+    /** `doc.query { text }`: a literal (1–256 characters) in names, titles and bodies. */
+    textQuery(workspace_id: string, text: string, params?: AiwsTextQueryParams): Promise<AiwsTextQueryResult>;
+    /** `doc.query { sql }`: one SELECT over the logical tables (`FROM "/data/销售"`, `"~<entity_id>"`, an alias of `tables`). */
+    sql(workspace_id: string, sql: string, params?: AiwsSqlParams): Promise<AiwsSqlResult>;
+    /** `doc.source_query`: rows of a URL table from its remote source. */
+    sourceQuery(workspace_id: string, source_id: string, params: AiwsSourceQueryParams): Promise<Record<string, unknown>>;
     outline(workspace_id: string): Promise<Record<string, unknown>>;
     private raw;
     prepare(workspace_id: string, request: Record<string, unknown>): Promise<Record<string, unknown>>;

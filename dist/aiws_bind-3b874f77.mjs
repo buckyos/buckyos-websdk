@@ -40,6 +40,9 @@ function parseAiwsReferenceUrl(url) {
     reference.version = JSON.parse(parsed.query.version);
   return reference;
 }
+function aiwsTarget(target) {
+  return target.startsWith("/") || target.startsWith("~") ? { path: target } : { entity_id: target };
+}
 const AIWS_COMMIT_PART_BYTES = 6 * 1024 * 1024;
 const AIWS_COMMIT_MAX_BYTES = 32 * 1024 * 1024;
 const AIWS_COMMIT_MAX_OPERATIONS = 5e4;
@@ -143,11 +146,36 @@ class AiWorkspaceClient {
   resolvePath(workspace_id, path) {
     return this.call("doc.resolve", { workspace_id, path });
   }
-  read(workspace_id, entity_id, selector) {
-    return this.call("doc.read", { workspace_id, entity_id, ...selector ? { selector } : {} });
+  /** The native content (`target`: a path or an entity id, see `aiwsTarget`). */
+  read(workspace_id, target, selector) {
+    return this.call("doc.read", { workspace_id, ...aiwsTarget(target), ...selector ? { selector } : {} });
   }
-  query(workspace_id, params) {
-    return this.call("doc.query", { workspace_id, ...params });
+  readMeta(workspace_id, target) {
+    return this.call("doc.read", { workspace_id, ...aiwsTarget(target), as: "meta" });
+  }
+  /** One page of the plain-text body; follow `next_cursor` (bound to `etag`) for the rest. */
+  readBody(workspace_id, target, params = {}) {
+    return this.call("doc.read", { workspace_id, ...aiwsTarget(target), as: "body", ...params });
+  }
+  /** `doc.list`: the readable direct children of `at` (default `/`), in tree order. */
+  listEntities(workspace_id, params = {}) {
+    return this.call("doc.list", { workspace_id, ...params });
+  }
+  /** `doc.find`: a pre-order walk under `at` by name / title, type and schema. */
+  findEntities(workspace_id, params = {}) {
+    return this.call("doc.find", { workspace_id, ...params });
+  }
+  /** `doc.query { text }`: a literal (1–256 characters) in names, titles and bodies. */
+  textQuery(workspace_id, text, params = {}) {
+    return this.call("doc.query", { workspace_id, text, ...params });
+  }
+  /** `doc.query { sql }`: one SELECT over the logical tables (`FROM "/data/销售"`, `"~<entity_id>"`, an alias of `tables`). */
+  sql(workspace_id, sql, params = {}) {
+    return this.call("doc.query", { workspace_id, sql, ...params });
+  }
+  /** `doc.source_query`: rows of a URL table from its remote source. */
+  sourceQuery(workspace_id, source_id, params) {
+    return this.call("doc.source_query", { workspace_id, source_id, ...params });
   }
   outline(workspace_id) {
     return this.call("doc.outline", { workspace_id });
@@ -787,7 +815,7 @@ const SCHEDULE_TODO_ID = "todo";
 const SCHEDULE_CALENDAR_ID = "calendar";
 const SCHEDULE_SURFACE_ID = "schedule-board";
 const TODO_DONE = "done";
-const AIWS_PROTOCOL_VERSION = "1.1";
+const AIWS_PROTOCOL_VERSION = "1.2";
 const LABELS = {
   zh: {
     title: "标题",
@@ -1455,6 +1483,7 @@ function eventPostponeOps(sourceId, occ, minutes, ctx) {
   const times = occ.allDay ? { allDay: true, startDate: addDays(occ.startDate, Math.max(1, Math.round(minutes / 1440))), endDate: addDays(occ.endDate, Math.max(1, Math.round(minutes / 1440))) } : { allDay: false, start: new Date(occ.startMs + minutes * 6e4).toISOString(), end: new Date(occ.endMs + minutes * 6e4).toISOString() };
   return eventEditOps(sourceId, occ, { times }, "one", ctx);
 }
+const ROWS_PAGE = 1e3;
 class ScheduleClient {
   constructor(aiws, opts = {}) {
     this.aiws = aiws;
@@ -1516,16 +1545,22 @@ class ScheduleClient {
       throw failureOf(result);
     return result;
   }
-  async rows(sourceId, filter) {
+  /** Every live record of a table, as `doc.read` answers one (the SQL `_record` column), by record id. */
+  async rows(sourceId) {
     const handle = await this.ensure();
     const rows = [];
-    let cursor;
     for (let i = 0; i < 100; i++) {
-      const page = await this.aiws.call("doc.query", { workspace_id: handle.workspace_id, source_id: sourceId, limit: 1e3, ...filter ? { filter } : {}, ...cursor ? { cursor } : {} });
-      rows.push(...page.rows);
-      if (!page.next_cursor || page.rows.length === 0)
+      const page = await this.aiws.call("doc.query", {
+        workspace_id: handle.workspace_id,
+        sql: 'SELECT "_record" FROM t ORDER BY "_id" LIMIT ? OFFSET ?',
+        params: [ROWS_PAGE, i * ROWS_PAGE],
+        tables: { t: sourceId },
+        max_rows: ROWS_PAGE
+      });
+      for (const [record] of page.rows)
+        rows.push(typeof record === "string" ? JSON.parse(record) : record);
+      if (page.rows.length < ROWS_PAGE)
         break;
-      cursor = page.next_cursor;
     }
     return rows;
   }
@@ -2110,90 +2145,91 @@ function checkBindSteps(onBind, onInit, decls, actions) {
   return out;
 }
 export {
-  canonicalOriginal as $,
+  deleteRecordsOp as $,
   AIWORKSPACE_SERVICE_NAME as A,
-  originalOf as B,
-  occurrenceId as C,
-  parseOccurrenceId as D,
-  describeRRule as E,
-  recurrencePresets as F,
-  CALENDAR_SCHEMA_ID as G,
-  SCHEDULE_TODO_ID as H,
-  SCHEDULE_CALENDAR_ID as I,
-  SCHEDULE_SURFACE_ID as J,
-  TODO_DONE as K,
-  AIWS_PROTOCOL_VERSION as L,
-  scheduleLabel as M,
-  todoFields as N,
-  calendarFields as O,
-  standardTableOp as P,
-  isOrderKey as Q,
+  seriesStartOf as B,
+  originalOf as C,
+  occurrenceId as D,
+  parseOccurrenceId as E,
+  describeRRule as F,
+  recurrencePresets as G,
+  CALENDAR_SCHEMA_ID as H,
+  SCHEDULE_TODO_ID as I,
+  SCHEDULE_CALENDAR_ID as J,
+  SCHEDULE_SURFACE_ID as K,
+  TODO_DONE as L,
+  AIWS_PROTOCOL_VERSION as M,
+  scheduleLabel as N,
+  todoFields as O,
+  calendarFields as P,
+  standardTableOp as Q,
   RRuleError as R,
   SCHEDULE_WORKSPACE_NAME as S,
   TODO_SCHEMA_ID as T,
-  orderKeyBetween as U,
-  orderKeysBetween as V,
+  isOrderKey as U,
+  orderKeyBetween as V,
   WEEKDAYS as W,
-  newRecordId as X,
-  setValuesOps as Y,
-  insertRecordOp as Z,
-  deleteRecordsOp as _,
+  orderKeysBetween as X,
+  newRecordId as Y,
+  setValuesOps as Z,
+  insertRecordOp as _,
   AiwsFailure as a,
-  todoItem as a0,
-  sortTodos as a1,
-  todoAddOps as a2,
-  todoCompleteOps as a3,
-  todoMoveOps as a4,
-  todoUpdateOps as a5,
-  orderAt as a6,
-  localDate as a7,
-  viewerTimeZone as a8,
-  calendarOccurrences as a9,
-  eventAddOps as aa,
-  eventEditOps as ab,
-  eventDeleteOps as ac,
-  eventSkipOps as ad,
-  eventPostponeOps as ae,
-  ScheduleClient as af,
-  findOccurrence as ag,
-  scheduleBoardOps as ah,
-  BindFailure as ai,
-  STANDARD_SCHEMAS as aj,
-  bindingAccepts as ak,
-  noUiDialogs as al,
-  checkBindResult as am,
-  defaultOnBind as an,
-  stepsOnBind as ao,
-  defaultOnInit as ap,
-  resolveBindings as aq,
-  createOps as ar,
-  bindingsPayload as as,
-  boundIds as at,
-  checkBindSteps as au,
+  canonicalOriginal as a0,
+  todoItem as a1,
+  sortTodos as a2,
+  todoAddOps as a3,
+  todoCompleteOps as a4,
+  todoMoveOps as a5,
+  todoUpdateOps as a6,
+  orderAt as a7,
+  localDate as a8,
+  viewerTimeZone as a9,
+  calendarOccurrences as aa,
+  eventAddOps as ab,
+  eventEditOps as ac,
+  eventDeleteOps as ad,
+  eventSkipOps as ae,
+  eventPostponeOps as af,
+  ScheduleClient as ag,
+  findOccurrence as ah,
+  scheduleBoardOps as ai,
+  BindFailure as aj,
+  STANDARD_SCHEMAS as ak,
+  bindingAccepts as al,
+  noUiDialogs as am,
+  checkBindResult as an,
+  defaultOnBind as ao,
+  stepsOnBind as ap,
+  defaultOnInit as aq,
+  resolveBindings as ar,
+  createOps as as,
+  bindingsPayload as at,
+  boundIds as au,
+  checkBindSteps as av,
   aiwsReferenceUrl as b,
-  AIWS_COMMIT_PART_BYTES as c,
-  AIWS_COMMIT_MAX_BYTES as d,
-  AIWS_COMMIT_MAX_OPERATIONS as e,
-  commitOverLimit as f,
-  commitWithParts as g,
-  AiWorkspaceClient as h,
-  parseRRule as i,
-  formatRRule as j,
-  isDate as k,
-  isLeap as l,
-  daysInMonth as m,
-  dayNumber as n,
-  dayOf as o,
+  aiwsTarget as c,
+  AIWS_COMMIT_PART_BYTES as d,
+  AIWS_COMMIT_MAX_BYTES as e,
+  AIWS_COMMIT_MAX_OPERATIONS as f,
+  commitOverLimit as g,
+  commitWithParts as h,
+  AiWorkspaceClient as i,
+  parseRRule as j,
+  formatRRule as k,
+  isDate as l,
+  isLeap as m,
+  daysInMonth as n,
+  dayNumber as o,
   parseAiwsReferenceUrl as p,
-  dateOf as q,
-  isTimeZone as r,
+  dayOf as q,
+  dateOf as r,
   splitCommitOperations as s,
-  zonedToUtc as t,
-  localDay as u,
-  expandSeries as v,
+  isTimeZone as t,
+  zonedToUtc as u,
+  localDay as v,
   weekdayOf as w,
-  seriesStartOf as x,
+  expandSeries as x,
   ymdOf as y,
   zonedParts as z
 };
-//# sourceMappingURL=aiws_bind-79905d80.mjs.map
+//# sourceMappingURL=aiws_bind-3b874f77.mjs.map

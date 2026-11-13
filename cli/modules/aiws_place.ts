@@ -1,4 +1,5 @@
 import {
+  AIWS_PROTOCOL_VERSION,
   BindFailure,
   bindingsPayload,
   createOps,
@@ -20,7 +21,6 @@ import { callService, expectObject, inputString, requiredInputString } from '../
 
 const OBJECT_OUTPUT: JsonSchema = { type: 'object', additionalProperties: true }
 const SERVICE = 'aiworkspace'
-const PROTOCOL = '1.1'
 const NOT_DATA = new Set([
   'buckyos.cell',
   'buckyos.container',
@@ -358,7 +358,7 @@ export const placeCommand: CommandDefinition = {
       ;(op.payload as Record<string, unknown>).bindings = bindings
     }
     const commit = await call(ctx, 'doc.commit', {
-      protocol_version: PROTOCOL,
+      protocol_version: AIWS_PROTOCOL_VERSION,
       workspace_id: ws,
       epoch: info.epoch,
       idempotency_key: `place-${id}`,

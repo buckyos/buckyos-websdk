@@ -1,6 +1,6 @@
 import {
   calendarOccurrences, eventAddOps, eventDeleteOps, eventEditOps, findOccurrence, orderAt, orderKeyBetween, orderKeysBetween, isOrderKey,
-  sortTodos, standardTableOp, todoAddOps, todoCompleteOps, todoItem, todoMoveOps, todoUpdateOps, type Op, type RowLike,
+  ScheduleClient, sortTodos, standardTableOp, todoAddOps, todoCompleteOps, todoItem, todoMoveOps, todoUpdateOps, type Op, type RowLike,
 } from '../src/aiws_schedule'
 
 const win = (from: string, to: string) => ({ fromMs: Date.parse(from), toMs: Date.parse(to) })
@@ -149,5 +149,29 @@ describe('calendar occurrences and edits', () => {
     const agent: RowLike = { record_id: 'ag', values: { title: 'Payroll', all_day: true, start_date: '2026-11-30', ext: { rule_text: '每月最后一个法定工作日', occurrences: ['2026-11-30', '2026-12-31'], covered_until: '2026-12-31' } } }
     const shown = calendarOccurrences([agent], win('2026-11-01T00:00:00Z', '2027-01-01T00:00:00Z'), { viewerTz: 'UTC' })
     expect(shown.map((o) => [o.startDate, o.agentWritten])).toEqual([['2026-11-30', true], ['2026-12-31', true]])
+  })
+})
+
+describe('the schedule client', () => {
+  it('reads every record of a table through SQL, a page at a time', async () => {
+    const calls: { method: string; params: Record<string, unknown> }[] = []
+    const record = (i: number) => ({ record_id: `t${String(i).padStart(4, '0')}`, rev: 1, revs: { title: 1 }, values: { title: `item ${i}`, status: 'todo' }, meta: {} })
+    const client = new ScheduleClient({
+      call: async <T,>(method: string, params: Record<string, unknown>): Promise<T> => {
+        calls.push({ method, params })
+        if (method === 'ws.ensure') return { workspace_id: 'ws_s', epoch: 'ep', created: false } as T
+        if (method === 'doc.read') return { entity_id: params.entity_id } as T
+        const [limit, offset] = params.params as number[]
+        const total = 1001
+        return { columns: ['_record'], rows: Array.from({ length: Math.max(0, Math.min(limit, total - offset)) }, (_, k) => [JSON.stringify(record(offset + k))]), truncated: false, read: [], head_seq: 3 } as T
+      },
+    })
+    const todos = await client.todos()
+    expect(todos).toHaveLength(1001)
+    expect(todos[1000]).toMatchObject({ record_id: 't1000', title: 'item 1000', status: 'todo', done: false })
+    const queries = calls.filter((c) => c.method === 'doc.query')
+    expect(queries.map((c) => c.params)).toEqual([0, 1000].map((offset) => ({
+      workspace_id: 'ws_s', sql: 'SELECT "_record" FROM t ORDER BY "_id" LIMIT ? OFFSET ?', params: [1000, offset], tables: { t: 'todo' }, max_rows: 1000,
+    })))
   })
 })

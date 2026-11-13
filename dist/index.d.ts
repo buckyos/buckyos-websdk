@@ -99,6 +99,7 @@ export * from './executor_client';
 export * from './aiworkspace_client';
 export * from './aiws_rrule';
 export * from './aiws_schedule';
+export * from './aiws_write';
 export * from './aiws_bind';
 export * from './aiws_ext';
 export * as bucket from './bucket_client';

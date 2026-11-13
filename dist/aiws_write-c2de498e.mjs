@@ -39,7 +39,7 @@ import { R as RPCError, k as kRPCClient } from "./krpc_client-673448e5.mjs";
 import { s as DID, N as NODE_IDENTITY_SCHEMA_V2, e as isBuckyOSLocalNodeIdentityConfig, l as parseBuckyOSOwnerDocument, t as canonicalize, u as signJwtEdDSA, F as FileObject, A as ACTION_TYPE_DOWNLOAD, v as ACTION_TYPE_INSTALLED, w as ACTION_TYPE_LIKED, x as ACTION_TYPE_PURCHASED, y as ACTION_TYPE_SHARED, z as ACTION_TYPE_UNLIKED, B as ACTION_TYPE_VIEWED, C as BaseContentObject, E as CYFS_CONTENT_TYPE_NAMED_OBJECT_JSON, G as CYFS_CONTENT_TYPE_NAMED_OBJECT_JWT, H as ChunkId, I as ChunkType, J as DEFAULT_HASH_METHOD, K as DirObject, L as HashMethod, M as InclusionProof, O as KnownStandardObject, P as MSG_OBJECT_RESERVED_KEYS, Q as MSG_REACTION_KEY_MAX_BYTES, R as MSG_SESSION_ID_MAX_CHARS, S as NamedObjectBase, T as NdnError, U as OBJ_TYPE_ACTION, V as OBJ_TYPE_CHUNK_LIST, W as OBJ_TYPE_DIR, X as OBJ_TYPE_FILE, Y as OBJ_TYPE_INCLUSION_PROOF, Z as OBJ_TYPE_LIST, _ as OBJ_TYPE_MSG, $ as OBJ_TYPE_OBJMAP, a0 as OBJ_TYPE_PACK, a1 as OBJ_TYPE_PATH, a2 as OBJ_TYPE_PKG, a3 as OBJ_TYPE_RECEIPT, a4 as OBJ_TYPE_RELATION, a5 as ObjId, a6 as PathObject, a7 as RELATION_TYPE_PART_OF, a8 as RELATION_TYPE_SAME, a9 as RelationObject, aa as SimpleChunkList, ab as SimpleMapItem, ac as SimpleObjectMap, ad as actionObjectFromJson, ae as base32Decode, af as base32Encode, ag as buildNamedObjectByJson, ah as buildNamedObjectByJwt, ai as buildObjId, aj as bytesToHex$2, ak as calcPkgMetaObjId, al as canonicalizeJson, am as decodeMsgObjectJwt, an as extractObjIdByPath, ao as hexToBytes$1, ap as isCyfsNamedObjectContentType, aq as isValidMsgSessionId, ar as loadNamedObj, as as loadNamedObjAndVerify, at as loadNamedObjectFromObjStr, au as msgJwtKidDid, av as msgObjectFromJsonChecked, aw as namedObjectEncodingFromContentType, ax as normalizePackageMetaForObjId, ay as randomMsgNonce, az as receiptObjFromJson, aA as sha256Bytes, aB as sha256Utf8, aC as toCanonicalJsonString, aD as validateMsgObject, aE as varintDecode, aF as varintEncode, aG as verifyMsgObjectJwt, aH as verifyNamedObject, aI as verifyNamedObjectFromJwt, aJ as verifyNamedObjectFromStr } from "./ndn_types-0fac2499.mjs";
 import { s as sniffMagic, m as mediaTypeFromExtension, e as extensionOf, a as stripMediaTypeParams, h as heifImageSize, i as isoBoxes } from "./content_mime-e42d5f8d.mjs";
 import { g as getBrowserIdentityRaw, c as clearBrowserUserInfo, s as saveBrowserIdentity, a as saveBrowserUserInfo, b as getBrowserUserInfo, d as clearBrowserIdentity, h as hashPassword, e as saveLocalAccountInfo, f as cleanLocalAccountInfo } from "./account-7a7bde6f.mjs";
-import { h as AiWorkspaceClient, A as AIWORKSPACE_SERVICE_NAME } from "./aiws_bind-79905d80.mjs";
+import { i as AiWorkspaceClient, A as AIWORKSPACE_SERVICE_NAME, Y as newRecordId, _ as insertRecordOp, Z as setValuesOps, $ as deleteRecordsOp, V as orderKeyBetween, g as commitOverLimit, M as AIWS_PROTOCOL_VERSION, a as AiwsFailure, h as commitWithParts } from "./aiws_bind-3b874f77.mjs";
 import { a as objEventKey } from "./object_url-376c5222.mjs";
 function ensureSSOEnvironment() {
   if (typeof window === "undefined" || typeof window.location === "undefined") {
@@ -77,15 +77,15 @@ const DENY_REASONS = [
   "authorization_unavailable"
 ];
 const ACCESS_DENIED_ERROR_CODE = "access_denied";
-function isRecord$1(value) {
+function isRecord$2(value) {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
 function parseAccessDenial(value) {
-  if (!isRecord$1(value) || typeof value.reason !== "string")
+  if (!isRecord$2(value) || typeof value.reason !== "string")
     return null;
   if (!DENY_REASONS.includes(value.reason))
     return null;
-  const adjust = isRecord$1(value.adjust) && typeof value.adjust.party === "string" ? value.adjust : null;
+  const adjust = isRecord$2(value.adjust) && typeof value.adjust.party === "string" ? value.adjust : null;
   if (!adjust)
     return null;
   return value;
@@ -97,7 +97,7 @@ function accessDenialOf(error) {
 }
 const ANONYMOUS_IDENTITY = { kind: "anonymous" };
 function parseCurrentIdentity(value) {
-  if (!isRecord$1(value))
+  if (!isRecord$2(value))
     return null;
   if (value.kind === "anonymous")
     return ANONYMOUS_IDENTITY;
@@ -4968,12 +4968,12 @@ const APP_LOGIN_ISSUE_METHOD = "user.app_login.issue";
 const APP_LOGIN_EXCHANGE_METHOD = "auth.app_login.exchange";
 const APP_LOGIN_SETTINGS_GET_METHOD = "apps.app_login.get";
 const APP_LOGIN_SETTINGS_SET_METHOD = "apps.app_login.set";
-function isRecord(value) {
+function isRecord$1(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 async function issue(client, params, kind) {
   const result = await client.call(APP_LOGIN_ISSUE_METHOD, { ...params, kind });
-  if (!isRecord(result) || typeof result[kind] !== "string" || typeof result.user_id !== "string") {
+  if (!isRecord$1(result) || typeof result[kind] !== "string" || typeof result.user_id !== "string") {
     throw new Error(`invalid ${APP_LOGIN_ISSUE_METHOD} response`);
   }
   return result;
@@ -4985,7 +4985,7 @@ async function issueAppLoginCode(client, params) {
     code: result.code,
     expires_at: Number(result.expires_at ?? 0),
     new_account: result.new_account === true,
-    invite: isRecord(result.invite) ? result.invite : {}
+    invite: isRecord$1(result.invite) ? result.invite : {}
   };
 }
 async function issueAppCustomerLink(client, params) {
@@ -4995,11 +4995,11 @@ async function issueAppCustomerLink(client, params) {
     link: result.link,
     expires_at: Number(result.expires_at ?? 0),
     new_account: result.new_account === true,
-    invite: isRecord(result.invite) ? result.invite : {}
+    invite: isRecord$1(result.invite) ? result.invite : {}
   };
 }
 function parseAppLoginExchangeResult(value) {
-  if (!isRecord(value))
+  if (!isRecord$1(value))
     return null;
   if (value.status === "ready") {
     if (typeof value.callback_url !== "string" || typeof value.user_id !== "string")
@@ -30327,10 +30327,10 @@ async function doUpload(session, concurrency) {
   const states = [...session.objectStates.values()];
   const chunkTasks = /* @__PURE__ */ new Map();
   let index = 0;
-  let failure;
+  let failure2;
   const workers = Array.from({ length: Math.min(concurrency, states.length) }, async () => {
     var _a3, _b2;
-    while (index < states.length && !failure) {
+    while (index < states.length && !failure2) {
       const state = states[index++];
       try {
         throwIfCancelled((_a3 = session.abortController) == null ? void 0 : _a3.signal);
@@ -30355,13 +30355,13 @@ async function doUpload(session, concurrency) {
         state.state = "completed";
       } catch (error) {
         state.state = "failed";
-        failure = error;
+        failure2 = error;
       }
     }
   });
   await Promise.all(workers);
-  if (failure)
-    throw failure;
+  if (failure2)
+    throw failure2;
   throwIfCancelled((_a2 = session.abortController) == null ? void 0 : _a2.signal);
   session.objectStatus = "finalizing";
   emitProgress(session);
@@ -31346,6 +31346,695 @@ class ExecutorCommandStream {
     return this.request("cancel", { store_id: locator.store_id, op_id: locator.op_id });
   }
 }
+const isRecord = (v) => !!v && typeof v === "object" && !Array.isArray(v);
+function failure(detail, code = "INVALID_SCHEMA") {
+  return new AiwsFailure({ code, retryable: false, detail });
+}
+const idOf = (x) => typeof x === "string" ? x : x.entity_id;
+function fieldsOf(table) {
+  var _a2;
+  const fields = ((_a2 = table.content) == null ? void 0 : _a2.fields) ?? table.fields;
+  if (!Array.isArray(fields))
+    throw failure(`table ${table.entity_id}: pass it as doc.read answers it (content.fields)`, "INVALID_OPERATION");
+  return fields;
+}
+function fieldNamed(table, key) {
+  const fields = fieldsOf(table);
+  const f2 = fields.find((x) => x.name === key) ?? fields.find((x) => x.field_id === key);
+  if (!f2)
+    throw failure(`table ${table.entity_id} has no field "${key}" (fields: ${fields.map((x) => x.name).join(", ")})`);
+  return f2;
+}
+function optionOf(field, value) {
+  const options = field.options ?? [];
+  const o = options.find((x) => x.label === value) ?? options.find((x) => x.option_id === value);
+  if (!o)
+    throw failure(`field "${field.name}" has no option "${value}" (options: ${options.map((x) => x.label).join(", ")})`);
+  return o.option_id;
+}
+function cellValue(field, value) {
+  if (value === null || value === void 0)
+    return null;
+  if (isRecord(value) && "$formula" in value)
+    return value;
+  const bad = (what) => failure(`field "${field.name}" (${field.type}) takes ${what}, not ${JSON.stringify(value)}`);
+  switch (field.type) {
+    case "text":
+      if (typeof value === "string")
+        return value;
+      if (typeof value === "number" || typeof value === "boolean")
+        return String(value);
+      throw bad("a text");
+    case "number": {
+      const n2 = typeof value === "number" ? value : typeof value === "string" && value.trim() ? Number(value) : NaN;
+      if (Number.isFinite(n2))
+        return n2;
+      throw bad("a number");
+    }
+    case "decimal":
+      if (typeof value === "string" && value.trim())
+        return value.trim();
+      if (typeof value === "number" && Number.isFinite(value))
+        return String(value);
+      throw bad("a decimal string");
+    case "boolean":
+      if (typeof value === "boolean")
+        return value;
+      if (value === 1 || value === 0)
+        return value === 1;
+      if (typeof value === "string" && /^(true|false|1|0)$/i.test(value.trim()))
+        return /^(true|1)$/i.test(value.trim());
+      throw bad("true or false");
+    case "date":
+    case "datetime":
+      if (typeof value === "string")
+        return value.trim();
+      throw bad(field.type === "date" ? "YYYY-MM-DD" : "an RFC 3339 datetime");
+    case "select":
+      if (typeof value === "string")
+        return optionOf(field, value);
+      throw bad("an option label");
+    case "multi_select": {
+      let items = value;
+      if (typeof value === "string")
+        items = value.trim().startsWith("[") ? JSON.parse(value) : value.split(";").map((s) => s.trim()).filter(Boolean);
+      if (!Array.isArray(items))
+        throw bad("option labels");
+      return [...new Set(items.map((x) => {
+        if (typeof x !== "string")
+          throw bad("option labels");
+        return optionOf(field, x);
+      }))];
+    }
+    case "object_ref": {
+      if (isRecord(value))
+        return value;
+      const id2 = typeof value === "string" && value.startsWith("~") ? value.slice(1) : value;
+      if (typeof id2 === "string" && id2 && !id2.includes("/"))
+        return { entity_id: id2 };
+      throw bad("a reference { entity_id } or an entity id (resolve a path with doc.resolve first)");
+    }
+    case "currency": {
+      if (isRecord(value))
+        return value;
+      if (typeof value === "number")
+        return value;
+      if (typeof value !== "string" || !value.trim())
+        throw bad('{ amount, currency }, an amount or "USD 12.50"');
+      const before = /^\s*([A-Z]{3})\s+(\S+)\s*$/.exec(value);
+      if (before)
+        return { amount: before[2], currency: before[1] };
+      const after = /^\s*(\S+)\s+([A-Z]{3})\s*$/.exec(value);
+      if (after)
+        return { amount: after[1], currency: after[2] };
+      return value.trim();
+    }
+    case "json": {
+      let v = value;
+      if (typeof value === "string") {
+        try {
+          v = JSON.parse(value);
+        } catch {
+          throw bad("a JSON object");
+        }
+      }
+      if (isRecord(v))
+        return v;
+      throw bad("a JSON object");
+    }
+    default:
+      return value;
+  }
+}
+function recordOf(read) {
+  const r = typeof read === "string" ? JSON.parse(read) : read;
+  const row = isRecord(r) && isRecord(r.content) && typeof r.content.record_id === "string" ? r.content : r;
+  if (!isRecord(row) || typeof row.record_id !== "string")
+    throw failure("a record as doc.read (table_record) or the SQL _record column answers it", "INVALID_OPERATION");
+  return row;
+}
+function valuesById(table, values) {
+  const out = {};
+  for (const [key, v] of Object.entries(values)) {
+    const f2 = fieldNamed(table, key);
+    out[f2.field_id] = cellValue(f2, v);
+  }
+  return out;
+}
+function tableInsert(table, rows, opts = {}) {
+  if (rows.length === 0)
+    return [];
+  const fields = fieldsOf(table);
+  const idKey = fields.some((f2) => f2.name === "_id") ? null : "_id";
+  const records = rows.map((row) => {
+    const values = { ...row };
+    let record_id;
+    if (idKey && values._id !== void 0) {
+      record_id = String(values._id);
+      delete values._id;
+    }
+    return { record_id: record_id || (opts.newRecordId ?? (() => newRecordId()))(), values: valuesById(table, values) };
+  });
+  return [insertRecordOp(table.entity_id, records)];
+}
+function tableSet(table, recordId, values, read) {
+  const row = recordOf(read);
+  if (row.record_id !== recordId)
+    throw failure(`the read is of record ${row.record_id}, not ${recordId}`, "INVALID_OPERATION");
+  return setValuesOps(table.entity_id, row, valuesById(table, values));
+}
+function tableDelete(table, recordIds, reads) {
+  if (recordIds.length === 0)
+    return [];
+  const byId = new Map(reads.map(recordOf).map((r) => [r.record_id, r]));
+  return [deleteRecordsOp(idOf(table), recordIds.map((id2) => {
+    const row = byId.get(id2);
+    if (!row)
+      throw failure(`record ${id2} was not read`, "NOT_FOUND");
+    return row;
+  }))];
+}
+function newId(label, prefix) {
+  const slug = label.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 24);
+  const tail = Math.floor(Math.random() * 36 ** 6).toString(36).padStart(6, "0");
+  return /^[a-z0-9]/.test(slug) ? `${slug}_${tail}` : `${prefix}${tail}`;
+}
+function fieldAdd(table, def, opts = {}) {
+  const fields = fieldsOf(table);
+  const { options, field_id, ...rest } = def;
+  const field = { field_id: field_id ?? newId(def.name, "f"), ...rest };
+  if (options) {
+    const used = /* @__PURE__ */ new Set();
+    field.options = options.map((o) => {
+      const label = typeof o === "string" ? o : o.label;
+      let option_id = typeof o === "string" ? void 0 : o.option_id;
+      while (!option_id || used.has(option_id))
+        option_id = newId(label, "o");
+      used.add(option_id);
+      return { option_id, label };
+    });
+  }
+  const last = fields.map((f2) => f2.order_key).filter((k) => typeof k === "string" && k.length > 0).sort().pop();
+  const op = { op: "table.add_field", source_id: table.entity_id, field, ...last ? { order_key: orderKeyBetween(last, null) } : {} };
+  if (opts.backfill !== void 0)
+    op.backfill = cellValue(field, opts.backfill);
+  return op;
+}
+function optionAdd(table, field, label, opts = {}) {
+  var _a2;
+  const f2 = fieldNamed(table, field);
+  if (f2.type !== "select" && f2.type !== "multi_select")
+    throw failure(`field "${f2.name}" is ${f2.type}, not a select`, "INVALID_OPERATION");
+  if ((_a2 = f2.options) == null ? void 0 : _a2.some((o) => o.label === label))
+    throw failure(`field "${f2.name}" already has the option "${label}"`, "INVALID_OPERATION");
+  if (typeof f2.def_rev !== "number")
+    throw failure(`field "${f2.name}": pass the table as doc.read answers it (fields carry def_rev)`, "INVALID_OPERATION");
+  const used = new Set((f2.options ?? []).map((o) => o.option_id));
+  let option_id = opts.option_id;
+  while (!option_id || used.has(option_id))
+    option_id = newId(label, "o");
+  return { op: "table.add_option", source_id: table.entity_id, field_id: f2.field_id, option: { option_id, label }, ...opts.index !== void 0 ? { index: opts.index } : {}, expect: { rev: f2.def_rev } };
+}
+function blockState(doc, blockId, reads) {
+  var _a2, _b2;
+  for (const r of reads === void 0 ? [] : Array.isArray(reads) ? reads : [reads]) {
+    const b2 = "content" in r ? r.content : r;
+    if (b2.block_id === blockId)
+      return b2;
+  }
+  const known = typeof doc === "string" ? void 0 : (_b2 = (_a2 = doc.content) == null ? void 0 : _a2.blocks) == null ? void 0 : _b2[blockId];
+  if (!known)
+    throw failure(`block ${blockId} is not in the rich text as read`, "NOT_FOUND");
+  return { block_id: blockId, ...known };
+}
+function textAppend(doc, markdown, opts = {}) {
+  return [{ op: "richtext.insert_blocks", entity_id: idOf(doc), position: { end: true }, blocks: markdownToBlocks(markdown, opts.prefix) }];
+}
+function textReplaceBlock(doc, blockId, markdown, read, opts = {}) {
+  const { hash: hash2 } = blockState(doc, blockId, read);
+  const [first, ...rest] = markdownToBlocks(markdown, opts.prefix);
+  const node = { ...first, attrs: { ...first.attrs ?? {}, block_id: blockId } };
+  const ops = [{ op: "richtext.replace_block", entity_id: doc.entity_id, block_id: blockId, expect: { hash: hash2 }, node }];
+  if (rest.length > 0)
+    ops.push({ op: "richtext.insert_blocks", entity_id: doc.entity_id, position: { after: blockId }, blocks: rest });
+  return ops;
+}
+function textDeleteBlocks(doc, blockIds, reads) {
+  if (blockIds.length === 0)
+    return [];
+  return [{
+    op: "richtext.delete_blocks",
+    entity_id: doc.entity_id,
+    blocks: blockIds.map((b2) => {
+      const s = blockState(doc, b2, reads);
+      return { block_id: b2, expect: { hash: s.hash, struct_rev: s.struct_rev } };
+    })
+  }];
+}
+function rename(entity, name) {
+  var _a2;
+  const rev = entity.meta_rev ?? ((_a2 = entity.version) == null ? void 0 : _a2.meta_rev);
+  if (typeof rev !== "number")
+    throw failure(`entity ${entity.entity_id}: pass it as doc.read answers it (meta_rev)`, "INVALID_OPERATION");
+  return { op: "entity.rename", entity_id: entity.entity_id, name, expect: { rev } };
+}
+function move(entity, parentId, after, before) {
+  var _a2;
+  const rev = typeof entity === "string" ? void 0 : entity.struct_rev ?? ((_a2 = entity.version) == null ? void 0 : _a2.struct_rev);
+  return { op: "tree.move", entity_id: idOf(entity), new_parent_id: parentId, order_key: orderKeyBetween(after ?? null, before ?? null), ...typeof rev === "number" ? { expect: { rev } } : {} };
+}
+function setProps(entity, key, props, read) {
+  var _a2, _b2;
+  const revs = (_b2 = (_a2 = read ?? (typeof entity === "string" ? void 0 : entity)) == null ? void 0 : _a2.content) == null ? void 0 : _b2.key_revs;
+  return {
+    op: "entity.set_props",
+    entity_id: idOf(entity),
+    key,
+    props,
+    ...revs ? { expect: Object.fromEntries(Object.keys(props).map((n2) => [n2, revs[`p:${key}.${n2}`] ?? 0])) } : {}
+  };
+}
+function settle(result) {
+  var _a2;
+  if ((result == null ? void 0 : result.status) === "accepted")
+    return result;
+  if ((result == null ? void 0 : result.status) === "conflict") {
+    throw new AiwsFailure({ code: result.code ?? "REVISION_CONFLICT", retryable: true, detail: "changed meanwhile: read it again", data: { conflicts: result.conflicts ?? [] } });
+  }
+  const first = ((_a2 = result == null ? void 0 : result.errors) == null ? void 0 : _a2[0]) ?? (result == null ? void 0 : result.error);
+  throw new AiwsFailure({
+    code: (result == null ? void 0 : result.code) ?? (first == null ? void 0 : first.code) ?? "REJECTED",
+    sub_code: (result == null ? void 0 : result.sub_code) ?? (first == null ? void 0 : first.sub_code),
+    retryable: (result == null ? void 0 : result.retryable) === true,
+    detail: (first == null ? void 0 : first.detail) ?? (result == null ? void 0 : result.detail) ?? `commit ${(result == null ? void 0 : result.status) ?? "failed"}`,
+    data: { errors: (result == null ? void 0 : result.errors) ?? [] }
+  });
+}
+async function commitOps(client, workspace_id, ops, opts = {}) {
+  if (ops.length === 0)
+    throw failure("nothing to commit", "INVALID_OPERATION");
+  const over = commitOverLimit(ops);
+  if (over)
+    throw failure(`a Commit holds at most ${over.max} ${over.limit} (this one: ${over.value})`, "LIMIT_EXCEEDED");
+  const epoch = opts.epoch ?? (await client.call("ws.get_info", { workspace_id })).epoch;
+  const idempotency_key = opts.idempotencyKey ?? `aiws-${newRecordId("k")}`;
+  const request = { protocol_version: AIWS_PROTOCOL_VERSION, workspace_id, epoch, idempotency_key, ...opts.message ? { message: opts.message } : {}, operations: ops };
+  const call = (method, params) => client.call(method, params);
+  const unknown = opts.isUnknown ?? ((error) => !(error instanceof AiwsFailure));
+  const attempts = Math.max(1, opts.attempts ?? 3);
+  for (let attempt2 = 1; ; attempt2++) {
+    try {
+      return settle(await commitWithParts(call, request, opts.partBytes ? { partBytes: opts.partBytes } : {}));
+    } catch (error) {
+      if (!unknown(error) || attempt2 >= attempts)
+        throw error;
+    }
+    await new Promise((resolve) => setTimeout(resolve, (opts.retryDelayMs ?? 500) * attempt2));
+    const found = await client.call("doc.get_submission", { workspace_id, epoch, idempotency_key }).catch(() => null);
+    if ((found == null ? void 0 : found.status) === "accepted")
+      return settle(found.result ?? { status: "accepted" });
+  }
+}
+const FENCE_OPEN = /^( {0,3})(`{3,}|~{3,})[ \t]*([^\s`]*)[^`]*$/;
+const ATX = /^ {0,3}(#{1,6})(?:[ \t]+(.*?))?(?:[ \t]+#+)?[ \t]*$/;
+const HR = /^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$/;
+const QUOTE = /^ {0,3}> ?(.*)$/;
+const BULLET = /^( {0,3})([-*+])([ \t]+|$)(.*)$/;
+const ORDERED = /^( {0,3})(\d{1,9})([.)])([ \t]+|$)(.*)$/;
+const TABLE_DELIM = /^ {0,3}\|?[ \t]*:?-+:?[ \t]*(\|[ \t]*:?-+:?[ \t]*)*\|?[ \t]*$/;
+const SETEXT = /^ {0,3}(=+|-+)[ \t]*$/;
+const ESCAPABLE = /[!-/:-@[-`{-~]/;
+const ALLOWED_HREF = /^(https?:|mailto:|#)/;
+const ENTITY_ID = /^[a-z0-9][a-z0-9_-]{0,63}$/;
+function listMarker(line) {
+  if (HR.test(line))
+    return null;
+  const b2 = BULLET.exec(line);
+  if (b2)
+    return { ordered: false, start: 1, indent: b2[1].length + 1 + (b2[4] ? Math.min(Math.max(b2[3].length, 1), 4) : 1), text: b2[4] };
+  const o = ORDERED.exec(line);
+  if (o)
+    return { ordered: true, start: Number(o[2]), indent: o[1].length + o[2].length + 1 + (o[5] ? Math.min(Math.max(o[4].length, 1), 4) : 1), text: o[5] };
+  return null;
+}
+function interrupts(line) {
+  if (FENCE_OPEN.test(line) || ATX.test(line) || HR.test(line) || QUOTE.test(line))
+    return true;
+  const m = listMarker(line);
+  return !!m && m.text.trim() !== "" && (!m.ordered || m.start === 1);
+}
+const indentOf = (line) => /^ */.exec(line)[0].length;
+function tableCells(line) {
+  let s = line.trim();
+  if (s.startsWith("|"))
+    s = s.slice(1);
+  if (s.endsWith("|") && !s.endsWith("\\|"))
+    s = s.slice(0, -1);
+  const cells = [];
+  let cur = "";
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] === "\\" && s[i + 1] === "|") {
+      cur += "|";
+      i++;
+    } else if (s[i] === "|") {
+      cells.push(cur.trim());
+      cur = "";
+    } else
+      cur += s[i];
+  }
+  cells.push(cur.trim());
+  return cells;
+}
+function textNode(text, marks) {
+  return marks.length ? { type: "text", text, marks } : { type: "text", text };
+}
+function closingRun(src, from, run) {
+  for (let j = src.indexOf(run, from); j >= 0; j = src.indexOf(run, j + 1)) {
+    if (src[j - 1] !== "`" && src[j + run.length] !== "`")
+      return j;
+    while (src[j + 1] === "`")
+      j++;
+  }
+  return -1;
+}
+function linkAt(src, i) {
+  let depth = 0;
+  let j = i;
+  for (; j < src.length; j++) {
+    if (src[j] === "\\") {
+      j++;
+      continue;
+    }
+    if (src[j] === "[")
+      depth++;
+    else if (src[j] === "]" && --depth === 0)
+      break;
+  }
+  if (j >= src.length || src[j + 1] !== "(")
+    return null;
+  const m = /^\(\s*(?:<([^<>\n]*)>|((?:[^\s()]|\([^\s()]*\))*))(?:\s+(?:"[^"]*"|'[^']*'))?\s*\)/.exec(src.slice(j + 1));
+  if (!m)
+    return null;
+  return { label: src.slice(i + 1, j), href: m[1] ?? m[2] ?? "", end: j + 1 + m[0].length };
+}
+function inline(src, marks, out) {
+  let buf = "";
+  const flush = () => {
+    if (buf) {
+      out.push(textNode(buf, marks));
+      buf = "";
+    }
+  };
+  const alnum = (c) => !!c && /[\p{L}\p{N}]/u.test(c);
+  for (let i = 0; i < src.length; ) {
+    const c = src[i];
+    if (c === "\\" && i + 1 < src.length && ESCAPABLE.test(src[i + 1])) {
+      buf += src[i + 1];
+      i += 2;
+      continue;
+    }
+    if (c === "\n") {
+      flush();
+      out.push({ type: "hard_break" });
+      i++;
+      continue;
+    }
+    if (c === "`") {
+      const run = /^`+/.exec(src.slice(i))[0];
+      const close = closingRun(src, i + run.length, run);
+      if (close < 0) {
+        buf += run;
+        i += run.length;
+        continue;
+      }
+      let code = src.slice(i + run.length, close).replace(/\n/g, " ");
+      if (code.length > 2 && code.startsWith(" ") && code.endsWith(" ") && code.trim())
+        code = code.slice(1, -1);
+      flush();
+      if (code)
+        out.push(textNode(code, [{ type: "code" }]));
+      i = close + run.length;
+      continue;
+    }
+    if (c === "[" || c === "!" && src[i + 1] === "[") {
+      const link = linkAt(src, c === "!" ? i + 1 : i);
+      if (link) {
+        flush();
+        const entity = /^entity:(.+)$/.exec(link.href);
+        if (entity && ENTITY_ID.test(entity[1])) {
+          const label = [];
+          inline(link.label, [], label);
+          out.push({ type: "object_link", attrs: { ref: { entity_id: entity[1] }, label: label.map((n2) => n2.text ?? "").join("") } });
+        } else {
+          const href = ALLOWED_HREF.test(link.href) && !/[\u0000-\u001f\u007f]/.test(link.href) ? link.href : null;
+          inline(link.label, href ? [...marks.filter((m) => m.type !== "link"), { type: "link", attrs: { href } }] : marks, out);
+        }
+        i = link.end;
+        continue;
+      }
+    }
+    if (c === "<") {
+      const auto = /^<((?:https?|mailto):[^\s<>]+)>/.exec(src.slice(i));
+      if (auto) {
+        flush();
+        out.push(textNode(auto[1], [...marks.filter((m) => m.type !== "link"), { type: "link", attrs: { href: auto[1] } }]));
+        i += auto[0].length;
+        continue;
+      }
+    }
+    if (c === "*" || c === "_" || c === "~") {
+      const double = src[i + 1] === c;
+      const delim = double ? c + c : c;
+      const opens = (c !== "~" || double) && src[i + delim.length] !== void 0 && !/\s/.test(src[i + delim.length]) && !(c === "_" && alnum(src[i - 1]));
+      if (opens) {
+        let close = -1;
+        for (let j = i + delim.length + 1; j < src.length; j++) {
+          if (src[j] === "\\") {
+            j++;
+            continue;
+          }
+          if (src[j] !== c)
+            continue;
+          let run = 1;
+          while (src[j + run] === c)
+            run++;
+          if (!/\s/.test(src[j - 1]) && !(c === "_" && alnum(src[j + run]))) {
+            if (double && run >= 2) {
+              close = j + run - 2;
+              break;
+            }
+            if (!double && run !== 2) {
+              close = j + run - 1;
+              break;
+            }
+          }
+          j += run - 1;
+        }
+        if (close > 0) {
+          flush();
+          const type = c === "~" ? "strike" : double ? "strong" : "em";
+          inline(src.slice(i + delim.length, close), marks.some((m) => m.type === type) ? marks : [...marks, { type }], out);
+          i = close + delim.length;
+          continue;
+        }
+      }
+      buf += delim;
+      i += delim.length;
+      continue;
+    }
+    buf += c;
+    i++;
+  }
+  flush();
+}
+function inlineNodes(text) {
+  const out = [];
+  inline(text, [], out);
+  const merged = [];
+  for (const n2 of out) {
+    const last = merged[merged.length - 1];
+    if (last && n2.type === "text" && last.type === "text" && JSON.stringify(last.marks ?? []) === JSON.stringify(n2.marks ?? []))
+      last.text += n2.text ?? "";
+    else
+      merged.push(n2);
+  }
+  return merged;
+}
+function paragraphText(lines) {
+  return lines.map((l, k) => {
+    const t = l.replace(/^[ \t]+/, "");
+    if (k === lines.length - 1)
+      return t.trimEnd();
+    if (/( {2,}|\\)$/.test(t))
+      return `${t.replace(/( {2,}|\\)$/, "")}
+`;
+    return `${t.trimEnd()} `;
+  }).join("");
+}
+class MarkdownBlocks {
+  constructor(prefix) {
+    this.prefix = prefix;
+    this.n = 0;
+  }
+  id() {
+    return `${this.prefix}-${++this.n}`;
+  }
+  textblock(type, text, attrs = {}) {
+    const node = { type, attrs: { block_id: this.id(), ...attrs } };
+    const content = inlineNodes(text);
+    if (content.length)
+      node.content = content;
+    return node;
+  }
+  empty() {
+    return { type: "paragraph", attrs: { block_id: this.id() } };
+  }
+  blocks(lines) {
+    const out = [];
+    let i = 0;
+    while (i < lines.length) {
+      const line = lines[i];
+      if (!line.trim()) {
+        i++;
+        continue;
+      }
+      let m;
+      if (m = FENCE_OPEN.exec(line)) {
+        const [, indent, fence, lang] = m;
+        const body = [];
+        i++;
+        while (i < lines.length) {
+          const close = /^ {0,3}(`{3,}|~{3,})[ \t]*$/.exec(lines[i]);
+          if (close && close[1][0] === fence[0] && close[1].length >= fence.length) {
+            i++;
+            break;
+          }
+          body.push(lines[i].slice(Math.min(indent.length, indentOf(lines[i]))));
+          i++;
+        }
+        const node = { type: "code_block", attrs: { block_id: this.id(), ...lang ? { language: lang.slice(0, 32) } : {} } };
+        const text = body.join("\n");
+        if (text)
+          node.content = [{ type: "text", text }];
+        out.push(node);
+      } else if (m = ATX.exec(line)) {
+        const level = Math.min(m[1].length, 3);
+        out.push(this.textblock("heading", m[2] ?? "", level === 1 ? {} : { level }));
+        i++;
+      } else if (HR.test(line)) {
+        out.push({ type: "horizontal_rule", attrs: { block_id: this.id() } });
+        i++;
+      } else if (QUOTE.test(line)) {
+        const id2 = this.id();
+        const inner = [];
+        while (i < lines.length) {
+          const q = QUOTE.exec(lines[i]);
+          if (q)
+            inner.push(q[1]);
+          else if (lines[i].trim() && inner.length && inner[inner.length - 1].trim() && !interrupts(lines[i]))
+            inner.push(lines[i]);
+          else
+            break;
+          i++;
+        }
+        const content = this.blocks(inner).flatMap((b2) => b2.type === "blockquote" ? b2.content ?? [] : [b2]).filter((b2) => ["paragraph", "heading", "bullet_list", "ordered_list", "code_block"].includes(b2.type));
+        out.push({ type: "blockquote", attrs: { block_id: id2 }, content: content.length ? content : [this.empty()] });
+      } else if (listMarker(line)) {
+        i = this.list(lines, i, out);
+      } else if (line.includes("|") && i + 1 < lines.length && lines[i + 1].includes("-") && TABLE_DELIM.test(lines[i + 1]) && tableCells(line).length === tableCells(lines[i + 1]).length) {
+        const header = tableCells(line);
+        const id2 = this.id();
+        const row = (cells, head) => ({
+          type: "table_row",
+          content: header.map((_, k) => {
+            const cell = { type: "table_cell", ...head ? { attrs: { header: 1 } } : {} };
+            const content = inlineNodes(cells[k] ?? "");
+            if (content.length)
+              cell.content = content;
+            return cell;
+          })
+        });
+        const rows = [row(header, true)];
+        i += 2;
+        while (i < lines.length && lines[i].trim() && !interrupts(lines[i]))
+          rows.push(row(tableCells(lines[i++]), false));
+        out.push({ type: "table", attrs: { block_id: id2 }, content: rows });
+      } else {
+        const para = [line];
+        i++;
+        let level = 0;
+        while (i < lines.length && lines[i].trim()) {
+          const setext = SETEXT.exec(lines[i]);
+          if (setext) {
+            level = setext[1][0] === "=" ? 1 : 2;
+            i++;
+            break;
+          }
+          if (interrupts(lines[i]))
+            break;
+          para.push(lines[i++]);
+        }
+        out.push(level ? this.textblock("heading", paragraphText(para).replace(/\n/g, " "), level === 1 ? {} : { level }) : this.textblock("paragraph", paragraphText(para)));
+      }
+    }
+    return out;
+  }
+  /** A list from `lines[i]`: its items while the marker kind stays; returns the index after it. */
+  list(lines, i, out) {
+    const first = listMarker(lines[i]);
+    const list = { type: first.ordered ? "ordered_list" : "bullet_list", attrs: { block_id: this.id(), ...first.ordered && first.start !== 1 ? { start: Math.max(1, first.start) } : {} }, content: [] };
+    while (i < lines.length) {
+      const mk = listMarker(lines[i]);
+      if (!mk || mk.ordered !== first.ordered)
+        break;
+      const item = [mk.text];
+      i++;
+      while (i < lines.length) {
+        const l = lines[i];
+        if (!l.trim())
+          item.push("");
+        else if (indentOf(l) >= mk.indent)
+          item.push(l.slice(mk.indent));
+        else if (item[item.length - 1].trim() && !interrupts(l) && !listMarker(l))
+          item.push(l.trim());
+        else
+          break;
+        i++;
+      }
+      while (item.length && !item[item.length - 1].trim())
+        item.pop();
+      list.content.push(this.item(item));
+    }
+    out.push(list);
+    return i;
+  }
+  /** A list item holds one paragraph, then paragraphs and lists only (as the core's converter makes it). */
+  item(lines) {
+    var _a2;
+    const id2 = this.id();
+    const task = /^\[([ xX])\][ \t]+/.exec(lines[0] ?? "");
+    if (task)
+      lines = [`${task[1] === " " ? "☐" : "☑"} ${lines[0].slice(task[0].length)}`, ...lines.slice(1)];
+    const content = [];
+    for (const b2 of this.blocks(lines)) {
+      if (b2.type === "paragraph" || b2.type === "bullet_list" || b2.type === "ordered_list")
+        content.push(b2);
+      else if (b2.type === "heading" || b2.type === "code_block")
+        content.push({ type: "paragraph", attrs: { block_id: b2.attrs.block_id }, ...b2.content ? { content: b2.content } : {} });
+      else if (b2.type === "blockquote")
+        content.push(...(b2.content ?? []).filter((c) => c.type === "paragraph"));
+    }
+    if (((_a2 = content[0]) == null ? void 0 : _a2.type) !== "paragraph")
+      content.unshift(this.empty());
+    return { type: "list_item", attrs: { block_id: id2 }, content };
+  }
+}
+function markdownToBlocks(markdown, prefix) {
+  const b2 = new MarkdownBlocks(prefix ?? `m${Math.floor(Math.random() * 36 ** 8).toString(36).padStart(8, "0")}`);
+  const lines = markdown.replace(/\r\n?/g, "\n").split("\n").map((l) => l.replace(/^[ \t]+/, (ws) => ws.replace(/\t/g, "    ")));
+  const blocks = b2.blocks(lines);
+  return blocks.length ? blocks : [b2.empty()];
+}
 export {
   CONTACT_TAG_ZONE_AGENT as $,
   NOTIFY_ACTION_ANSWER as A,
@@ -31516,6 +32205,17 @@ export {
   parseAppInstanceId as c7,
   BNS_EVM_DEFAULT_GAS_LIMIT as c8,
   BNS_EVM_DEFAULT_MAX_FEE_PER_GAS as c9,
+  textAppend as cA,
+  textReplaceBlock as cB,
+  textDeleteBlocks as cC,
+  rename as cD,
+  move as cE,
+  setProps as cF,
+  commitOps as cG,
+  markdownToBlocks as cH,
+  importFiles as cI,
+  ensureUploaded as cJ,
+  releaseImportSession as cK,
   BNS_EVM_DEFAULT_MAX_PRIORITY_FEE_PER_GAS as ca,
   BNS_MAX_INLINE_DOCUMENT_BYTES as cb,
   BNS_DNS_TXT_DEFAULT_TTL as cc,
@@ -31535,9 +32235,13 @@ export {
   ExecutorStreamError as cq,
   encodeExecutorControl as cr,
   ExecutorCommandStream as cs,
-  importFiles as ct,
-  ensureUploaded as cu,
-  releaseImportSession as cv,
+  fieldNamed as ct,
+  cellValue as cu,
+  tableInsert as cv,
+  tableSet as cw,
+  tableDelete as cx,
+  fieldAdd as cy,
+  optionAdd as cz,
   ndm_proxy as d,
   bucket_client as e,
   BS_SERVICE_TASK_MANAGER as f,
@@ -31562,4 +32266,4 @@ export {
   NOTIFY_CHOICE_CONTROL_ID as y,
   NOTIFY_TEXT_CONTROL_ID as z
 };
-//# sourceMappingURL=executor_client-f224d6ba.mjs.map
+//# sourceMappingURL=aiws_write-c2de498e.mjs.map

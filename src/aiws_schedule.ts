@@ -16,7 +16,7 @@ export const SCHEDULE_TODO_ID = 'todo'
 export const SCHEDULE_CALENDAR_ID = 'calendar'
 export const SCHEDULE_SURFACE_ID = 'schedule-board'
 export const TODO_DONE = 'done'
-export const AIWS_PROTOCOL_VERSION = '1.1'
+export const AIWS_PROTOCOL_VERSION = '1.2'
 
 export type Json = null | boolean | number | string | Json[] | { [key: string]: Json }
 export type Op = Record<string, Json>
@@ -151,7 +151,7 @@ export function orderKeysBetween(a: string | null, b: string | null, count: numb
 
 // ---- records
 
-/** A record as `doc.query` / `doc.read` answer it. */
+/** A record as `doc.read` (`table_record`) and the SQL `_record` column answer it. */
 export interface RowLike {
   record_id: string
   rev?: number
@@ -727,6 +727,8 @@ export interface ScheduleHandle {
   calendar: string
 }
 
+const ROWS_PAGE = 1000
+
 /** How the schedule talks to the service: one kRPC call whose business failure (`ok: false`) throws — an
  * `AiWorkspaceClient`, or the CLI's service call. */
 export interface ScheduleTransport {
@@ -794,15 +796,17 @@ export class ScheduleClient {
     return result
   }
 
-  async rows(sourceId: string, filter?: Json): Promise<RowLike[]> {
+  /** Every live record of a table, as `doc.read` answers one (the SQL `_record` column), by record id. */
+  async rows(sourceId: string): Promise<RowLike[]> {
     const handle = await this.ensure()
     const rows: RowLike[] = []
-    let cursor: string | undefined
     for (let i = 0; i < 100; i++) {
-      const page = await this.aiws.call<{ rows: RowLike[]; next_cursor?: string | null }>('doc.query', { workspace_id: handle.workspace_id, source_id: sourceId, limit: 1000, ...(filter ? { filter } : {}), ...(cursor ? { cursor } : {}) })
-      rows.push(...page.rows)
-      if (!page.next_cursor || page.rows.length === 0) break
-      cursor = page.next_cursor
+      const page = await this.aiws.call<{ rows: unknown[][] }>('doc.query', {
+        workspace_id: handle.workspace_id, sql: 'SELECT "_record" FROM t ORDER BY "_id" LIMIT ? OFFSET ?',
+        params: [ROWS_PAGE, i * ROWS_PAGE], tables: { t: sourceId }, max_rows: ROWS_PAGE,
+      })
+      for (const [record] of page.rows) rows.push((typeof record === 'string' ? JSON.parse(record) : record) as RowLike)
+      if (page.rows.length < ROWS_PAGE) break
     }
     return rows
   }

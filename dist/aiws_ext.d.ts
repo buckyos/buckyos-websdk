@@ -28,8 +28,10 @@ export declare const AIWS_BUILD_STATE_FILE = ".aiws-build.json";
 export declare const AIWS_MANIFEST_VERSION = 5;
 /** The newest HTML Block host API (`window.aiws` v3: `emit`, `createBlock { parent, slot }`, `context.interactive`; v4:
  * `onConfig`, `serverNow`, `userState`, `mediaUrl`; v5: `aiws.on('bind')` / `aiws.on('init_control')` run without a page
- * before placing; hosts run every version from 2 on) and the declarative interpreter version. */
-export declare const AIWS_HTML_API_VERSION = 5;
+ * before placing; v6: `aiws.query(sql, params?)` runs one SQL SELECT over the logical tables, answered as `doc.query
+ * { sql }` (`{ columns, rows, truncated, read, head_seq }`) — 5 and older have no `aiws.query`; hosts run every version
+ * from 2 on) and the declarative interpreter version. */
+export declare const AIWS_HTML_API_VERSION = 6;
 export declare const AIWS_DECLARATIVE_API_VERSION = 1;
 /** The `format` of a Workspace template's `snapshot.json` (Q32). */
 export declare const AIWS_TEMPLATE_FORMAT = "aiws-template/1";

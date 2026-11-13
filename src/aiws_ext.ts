@@ -32,8 +32,10 @@ export const AIWS_BUILD_STATE_FILE = '.aiws-build.json'
 export const AIWS_MANIFEST_VERSION = 5
 /** The newest HTML Block host API (`window.aiws` v3: `emit`, `createBlock { parent, slot }`, `context.interactive`; v4:
  * `onConfig`, `serverNow`, `userState`, `mediaUrl`; v5: `aiws.on('bind')` / `aiws.on('init_control')` run without a page
- * before placing; hosts run every version from 2 on) and the declarative interpreter version. */
-export const AIWS_HTML_API_VERSION = 5
+ * before placing; v6: `aiws.query(sql, params?)` runs one SQL SELECT over the logical tables, answered as `doc.query
+ * { sql }` (`{ columns, rows, truncated, read, head_seq }`) — 5 and older have no `aiws.query`; hosts run every version
+ * from 2 on) and the declarative interpreter version. */
+export const AIWS_HTML_API_VERSION = 6
 export const AIWS_DECLARATIVE_API_VERSION = 1
 /** The `format` of a Workspace template's `snapshot.json` (Q32). */
 export const AIWS_TEMPLATE_FORMAT = 'aiws-template/1'
@@ -626,8 +628,8 @@ export function checkComponent(text: string, fileNames: string[], readText?: (na
     const e = c.entry as Record<string, unknown> | undefined
     if (!e || typeof e !== 'object' || typeof e.html !== 'string') error('entry must be { html, css?, js? }')
     else for (const [k, n] of Object.entries(e)) { if (!has(n)) error(`entry.${k} ${JSON.stringify(n)} is not in the directory`); else named.add(String(n)) }
-    if (c.host_api !== undefined && c.host_api !== 2 && c.host_api !== 3 && c.host_api !== 4 && c.host_api !== 5) error('host_api: the HTML Block host speaks API 2, 3, 4 and 5')
-    else if (c.host_api === 5 && version < 5) error(`host_api 5 ${V5_HINT}`)
+    if (c.host_api !== undefined && ![2, 3, 4, 5, 6].includes(c.host_api as number)) error('host_api: the HTML Block host speaks API 2, 3, 4, 5 and 6')
+    else if ((c.host_api === 5 || c.host_api === 6) && version < 5) error(`host_api ${c.host_api} ${V5_HINT}`)
     else if (c.host_api === 4 && version < 4) error(`host_api 4 ${V4_HINT}`)
     else if (c.host_api === 3 && before3) error(`host_api 3 ${V3_HINT}`)
     if (events.length > 0 && !(typeof c.host_api === 'number' && c.host_api >= 3)) out.push({ file: f, severity: 'warning', message: 'events: an HTML control raises them with aiws.emit, which is host API 3 (set host_api to 3 or later)' })

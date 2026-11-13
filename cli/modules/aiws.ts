@@ -1,14 +1,28 @@
 import {
   AIWS_MANIFEST_FILE,
   AIWS_MANIFEST_VERSION,
+  AiwsFailure,
   AiwsSourceError,
+  aiwsTarget,
   buildControl,
+  commitOps,
   exportBundle,
+  fieldAdd,
   isSourcePath,
+  move,
   NfspClient,
+  optionAdd,
   packBuildFiles,
   pullControl,
+  rename,
+  setProps,
+  tableDelete,
+  tableInsert,
+  tableSet,
   templateDir,
+  textAppend,
+  textDeleteBlocks,
+  textReplaceBlock,
   watchControl,
 } from 'buckyos/node'
 import type { CommandDefinition, CommandModule, JsonSchema, OptionDefinition, PositionalDefinition } from '../core/command.ts'
@@ -21,8 +35,9 @@ import { calCommand, todoCommand } from './aiws_schedule.ts'
 import { placeCommand } from './aiws_place.ts'
 import { gatewayOrigin } from './share.ts'
 
-// AI Workspace (`/kapi/aiworkspace`): reading a workspace, and the executor protocol of a wish run
-// (内核架构改进 M3): claim → heartbeat → report. Source of truth for the methods:
+// AI Workspace (`/kapi/aiworkspace`): finding, reading, querying and writing a workspace (ls, find, grep, stat, cat,
+// resolve, sql; table, text, mv, rename, set-prop: buckyos notepads/aiws-core-api-design.md §9), and the executor
+// protocol of a wish run (内核架构改进 M3): claim → heartbeat → report. Source of truth for the methods:
 // buckyos/src/frame/aiworkspace/README.md (Protocol).
 const SERVICE = 'aiworkspace'
 const OBJECT_OUTPUT: JsonSchema = { type: 'object', additionalProperties: true }
@@ -58,51 +73,478 @@ async function jsonInput(input: Record<string, unknown>, textKey: string, fileKe
   throw new UsageError('AIWS_USAGE', `${label}: pass --${textKey.replace(/_/g, '-')} or --${fileKey.replace(/_/g, '-')}`)
 }
 
+// ---- finding and reading. An entity argument is a path (`/data/销售`, `~<entity_id>/…`) or an entity id.
+
+const PATH_HELP = 'Path (/data/销售, ~<entity_id>/…) or entity id'
+const TYPE_OPTIONS: OptionDefinition[] = [
+  { name: 'type', property: 'type', description: 'Only these types, comma-separated: table, richtext, record, annotation, block, container (container:<kind>), asset, dir, wish, def, …', type: 'string' },
+  { name: 'not-type', property: 'not_type', description: 'Leave these types out, comma-separated', type: 'string' },
+]
+const CURSOR_OPTION: OptionDefinition = { name: 'cursor', property: 'cursor', description: 'Continue from the next_cursor of a previous page', type: 'string' }
+const READ_ACCESS = { mode: 'fixed', level: 'read' } as const
+const WRITE_ACCESS = { mode: 'fixed', level: 'write' } as const
+
+/** The keys of `input` that are given, renamed by `names` ({ input key: param }). */
+function given(input: Record<string, unknown>, names: Record<string, string>): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  for (const [key, param] of Object.entries(names)) {
+    const v = input[key]
+    if (typeof v === 'string' ? v.trim() !== '' : v !== undefined && v !== false) out[param] = typeof v === 'string' ? v.trim() : v
+  }
+  return out
+}
+
+function jsonArg(text: string, label: string): unknown {
+  try {
+    return JSON.parse(text) as unknown
+  } catch (error) {
+    throw new UsageError('AIWS_USAGE', `${label}: ${error instanceof Error ? error.message : String(error)}`)
+  }
+}
+
 const readCommand: CommandDefinition = {
   verb: 'read',
-  summary: 'Read one entity of a workspace (envelope and content)',
-  positionals: [{ name: 'entity_id', description: 'Entity id', required: true } satisfies PositionalDefinition],
+  summary: 'Read one entity of a workspace: envelope and native content',
+  positionals: [{ name: 'entity_id', description: PATH_HELP, required: true } satisfies PositionalDefinition],
   options: [WORKSPACE_OPTION, { name: 'selector', property: 'selector', description: 'Selector JSON, e.g. {"kind":"table_record","record_id":"r1"}', type: 'string' }],
   inputSchema: workspaceInput({ entity_id: { type: 'string', minLength: 1 }, selector: { type: 'string' } }, ['entity_id']),
   outputSchema: OBJECT_OUTPUT,
   resultSchemaVersion: 1,
-  access: { mode: 'fixed', level: 'read' },
+  access: READ_ACCESS,
   asyncMode: 'sync',
   requiresSession: true,
-  examples: ['buckyos aiws read orders --workspace ws_abc'],
+  examples: ['buckyos aiws read orders --workspace ws_abc', 'buckyos aiws read /data/订单 --workspace ws_abc --selector \'{"kind":"table_record","record_id":"r1"}\''],
   handler: (ctx, input) => {
     const selector = inputString(input, 'selector')
-    return aiws(ctx, 'doc.read', { workspace_id: requiredInputString(input, 'workspace_id'), entity_id: requiredInputString(input, 'entity_id'), ...(selector ? { selector: JSON.parse(selector) } : {}) })
+    return aiws(ctx, 'doc.read', { workspace_id: requiredInputString(input, 'workspace_id'), ...aiwsTarget(requiredInputString(input, 'entity_id')), ...(selector ? { selector: jsonArg(selector, '--selector') } : {}) })
   },
 }
 
-const queryCommand: CommandDefinition = {
-  verb: 'query',
-  summary: 'Query the rows of a table (or through a saved view)',
-  options: [
-    WORKSPACE_OPTION,
-    { name: 'source', property: 'source_id', description: 'Table entity id', type: 'string' },
-    { name: 'view', property: 'view_id', description: 'Table view (Block) id', type: 'string' },
-    { name: 'filter', property: 'filter', description: 'Filter JSON (README: doc.query)', type: 'string' },
-    { name: 'limit', property: 'limit', description: 'Rows per page (≤ 1000)', type: 'integer' },
-    { name: 'cursor', property: 'cursor', description: 'Continue from a previous page', type: 'string' },
-  ],
-  inputSchema: workspaceInput({ source_id: { type: 'string' }, view_id: { type: 'string' }, filter: { type: 'string' }, limit: { type: 'integer' }, cursor: { type: 'string' } }),
+const lsCommand: CommandDefinition = {
+  verb: 'ls',
+  summary: 'The direct children of a path (default /), in tree order: name, path, type, title, children, body state',
+  positionals: [{ name: 'path', description: `${PATH_HELP} (default /)`, required: false }],
+  options: [WORKSPACE_OPTION, ...TYPE_OPTIONS, { name: 'schema', property: 'schema', description: 'Only entities of this schema id, e.g. buckyos.todo@1', type: 'string' }, { name: 'limit', property: 'limit', description: 'Items per page (≤ 1000, default 100)', type: 'integer' }, CURSOR_OPTION],
+  inputSchema: workspaceInput({ path: { type: 'string' }, type: { type: 'string' }, not_type: { type: 'string' }, schema: { type: 'string' }, limit: { type: 'integer', minimum: 1 }, cursor: { type: 'string' } }),
   outputSchema: OBJECT_OUTPUT,
   resultSchemaVersion: 1,
-  access: { mode: 'fixed', level: 'read' },
+  access: READ_ACCESS,
   asyncMode: 'sync',
   requiresSession: true,
-  examples: ['buckyos aiws query --workspace ws_abc --source orders --limit 100'],
-  handler: (ctx, input) => {
-    const params: Record<string, unknown> = { workspace_id: requiredInputString(input, 'workspace_id') }
-    for (const key of ['source_id', 'view_id', 'cursor']) { const value = inputString(input, key); if (value) params[key] = value }
-    const filter = inputString(input, 'filter')
-    if (filter) params.filter = JSON.parse(filter)
-    if (typeof input.limit === 'number') params.limit = input.limit
-    if (!params.source_id && !params.view_id) throw new UsageError('AIWS_USAGE', 'pass --source or --view')
-    return aiws(ctx, 'doc.query', params)
+  examples: ['buckyos aiws ls --workspace ws_abc', 'buckyos aiws ls /data --workspace ws_abc --type table'],
+  handler: (ctx, input) => aiws(ctx, 'doc.list', { workspace_id: requiredInputString(input, 'workspace_id'), ...given(input, { path: 'at', type: 'type', not_type: 'not_type', schema: 'schema', limit: 'limit', cursor: 'cursor' }) }),
+}
+
+const findCommand: CommandDefinition = {
+  verb: 'find',
+  summary: 'Entities whose name or title holds a literal (case-insensitive), by type and schema, walking down from a path',
+  description: 'A pre-order walk of at most 20 000 entities per call: when `complete` is false, continue with --cursor. Without text it finds by --type / --schema only.',
+  positionals: [{ name: 'text', description: 'Literal looked for in names and titles', required: false }],
+  options: [WORKSPACE_OPTION, { name: 'at', property: 'at', description: `Where to start: ${PATH_HELP} (default /)`, type: 'string' }, { name: 'depth', property: 'depth', description: 'Levels below --at (≤ 16)', type: 'integer' }, ...TYPE_OPTIONS, { name: 'schema', property: 'schema', description: 'Only entities of this schema id', type: 'string' }, { name: 'limit', property: 'limit', description: 'Items per page (≤ 200, default 50)', type: 'integer' }, CURSOR_OPTION],
+  inputSchema: workspaceInput({ text: { type: 'string' }, at: { type: 'string' }, depth: { type: 'integer', minimum: 1 }, type: { type: 'string' }, not_type: { type: 'string' }, schema: { type: 'string' }, limit: { type: 'integer', minimum: 1 }, cursor: { type: 'string' } }),
+  outputSchema: OBJECT_OUTPUT,
+  resultSchemaVersion: 1,
+  access: READ_ACCESS,
+  asyncMode: 'sync',
+  requiresSession: true,
+  examples: ['buckyos aiws find 销售 --workspace ws_abc', 'buckyos aiws find --workspace ws_abc --type table --at /data'],
+  handler: (ctx, input) => aiws(ctx, 'doc.find', { workspace_id: requiredInputString(input, 'workspace_id'), ...given(input, { text: 'name', at: 'at', depth: 'depth', type: 'type', not_type: 'not_type', schema: 'schema', limit: 'limit', cursor: 'cursor' }) }),
+}
+
+const grepCommand: CommandDefinition = {
+  verb: 'grep',
+  summary: 'A literal (1–256 characters) in names, titles and bodies (the plain-text rendering of each entity): hits with a snippet and the selector of the part',
+  description: 'Literal match, case-insensitive unless --case; no regex. An empty result means “none” only when coverage.complete is true; otherwise continue with --cursor. Annotations, viewports, paths, tasks, responses and results are searched only when named in --type.',
+  positionals: [{ name: 'text', description: 'Literal to look for', required: true }],
+  options: [WORKSPACE_OPTION, { name: 'at', property: 'at', description: `Where to search: ${PATH_HELP} (default /)`, type: 'string' }, { name: 'depth', property: 'depth', description: 'Levels below --at', type: 'integer' }, { name: 'case', property: 'case', description: 'Compare case-sensitively', type: 'boolean' }, ...TYPE_OPTIONS, { name: 'limit', property: 'limit', description: 'Hits per page (≤ 100, default 20)', type: 'integer' }, CURSOR_OPTION],
+  inputSchema: workspaceInput({ text: { type: 'string', minLength: 1 }, at: { type: 'string' }, depth: { type: 'integer', minimum: 1 }, case: { type: 'boolean' }, type: { type: 'string' }, not_type: { type: 'string' }, limit: { type: 'integer', minimum: 1 }, cursor: { type: 'string' } }, ['text']),
+  outputSchema: OBJECT_OUTPUT,
+  resultSchemaVersion: 1,
+  access: READ_ACCESS,
+  asyncMode: 'sync',
+  requiresSession: true,
+  examples: ['buckyos aiws grep 华东 --workspace ws_abc', 'buckyos aiws grep "Q4 plan" --workspace ws_abc --at /docs --type richtext'],
+  handler: (ctx, input) => aiws(ctx, 'doc.query', { workspace_id: requiredInputString(input, 'workspace_id'), text: requiredInputString(input, 'text'), ...given(input, { at: 'at', depth: 'depth', case: 'case', type: 'type', not_type: 'not_type', limit: 'limit', cursor: 'cursor' }) }),
+}
+
+const statCommand: CommandDefinition = {
+  verb: 'stat',
+  summary: 'What an entity is: path, name, title, type, schema, parent, versions, body state and size, children, your capabilities and the Commit operations its type takes',
+  positionals: [{ name: 'path', description: PATH_HELP, required: true }],
+  options: [WORKSPACE_OPTION],
+  inputSchema: workspaceInput({ path: { type: 'string', minLength: 1 } }, ['path']),
+  outputSchema: OBJECT_OUTPUT,
+  resultSchemaVersion: 1,
+  access: READ_ACCESS,
+  asyncMode: 'sync',
+  requiresSession: true,
+  examples: ['buckyos aiws stat /data/销售 --workspace ws_abc'],
+  handler: (ctx, input) => aiws(ctx, 'doc.read', { workspace_id: requiredInputString(input, 'workspace_id'), ...aiwsTarget(requiredInputString(input, 'path')), as: 'meta' }),
+}
+
+/** Pages of a body followed at most this far (32 KiB each by default). */
+const CAT_MAX_PAGES = 512
+
+const catCommand: CommandDefinition = {
+  verb: 'cat',
+  summary: 'The plain-text body of an entity (rich text as Markdown, a table as CSV, …), whole: the pages are followed unless --max-bytes or --cursor asks for one page',
+  description: 'With --output text only the text is printed. A table body is CSV of display values (select labels, reference paths); one part (a record, a block) is read with --selector.',
+  positionals: [{ name: 'path', description: PATH_HELP, required: true }],
+  options: [
+    WORKSPACE_OPTION,
+    { name: 'selector', property: 'selector', description: 'Only this part, selector JSON, e.g. {"kind":"richtext_block","block_id":"b3"}', type: 'string' },
+    { name: 'max-bytes', property: 'max_bytes', description: 'One page of at most this many bytes (64…262144)', type: 'integer' },
+    CURSOR_OPTION,
+  ],
+  inputSchema: workspaceInput({ path: { type: 'string', minLength: 1 }, selector: { type: 'string' }, max_bytes: { type: 'integer', minimum: 64 }, cursor: { type: 'string' } }, ['path']),
+  outputSchema: OBJECT_OUTPUT,
+  resultSchemaVersion: 1,
+  access: READ_ACCESS,
+  asyncMode: 'sync',
+  requiresSession: true,
+  examples: ['buckyos aiws cat /docs/周报 --workspace ws_abc --output text', 'buckyos aiws cat /data/销售 --workspace ws_abc --max-bytes 4096'],
+  handler: async (ctx, input) => {
+    const selector = inputString(input, 'selector')
+    const request = {
+      workspace_id: requiredInputString(input, 'workspace_id'), ...aiwsTarget(requiredInputString(input, 'path')), as: 'body',
+      ...(selector ? { selector: jsonArg(selector, '--selector') } : {}), ...given(input, { max_bytes: 'max_bytes' }),
+    }
+    let page = await aiws(ctx, 'doc.read', { ...request, ...given(input, { cursor: 'cursor' }) })
+    if (input.max_bytes !== undefined || inputString(input, 'cursor')) return page
+    let text = String(page.text ?? '')
+    for (let n = 1; page.complete === false && typeof page.next_cursor === 'string' && n < CAT_MAX_PAGES; n++) {
+      page = await aiws(ctx, 'doc.read', { ...request, cursor: page.next_cursor })
+      text += String(page.text ?? '')
+    }
+    const { parts: _parts, ...last } = page
+    return { ...last, text }
   },
+}
+
+const resolveCommand: CommandDefinition = {
+  verb: 'resolve',
+  summary: 'A path (or entity id) as a reference: entity id, canonical reference, path and name',
+  positionals: [{ name: 'path', description: PATH_HELP, required: true }],
+  options: [WORKSPACE_OPTION],
+  inputSchema: workspaceInput({ path: { type: 'string', minLength: 1 } }, ['path']),
+  outputSchema: OBJECT_OUTPUT,
+  resultSchemaVersion: 1,
+  access: READ_ACCESS,
+  asyncMode: 'sync',
+  requiresSession: true,
+  examples: ['buckyos aiws resolve /data/销售 --workspace ws_abc'],
+  handler: (ctx, input) => {
+    const target = aiwsTarget(requiredInputString(input, 'path'))
+    return aiws(ctx, 'doc.resolve', { workspace_id: requiredInputString(input, 'workspace_id'), ...('path' in target ? target : { reference: { entity_id: target.entity_id, mode: 'live' } }) })
+  },
+}
+
+/** `--table a=/data/销售,b=orders`: aliases of the tables a query reads (a path may hold commas; a pair starts at
+ * `<alias>=`). */
+function tableAliases(text: string): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const pair of text.split(/,(?=\s*[A-Za-z_][A-Za-z0-9_]*=)/)) {
+    const m = /^\s*([A-Za-z_][A-Za-z0-9_]*)=(.+?)\s*$/.exec(pair)
+    if (!m) throw new UsageError('AIWS_USAGE', `--table ${pair}: <alias>=<path or entity id>`)
+    out[m[1]] = m[2]
+  }
+  return out
+}
+
+const sqlCommand: CommandDefinition = {
+  verb: 'sql',
+  summary: 'One SQL SELECT over the tables of a workspace: a table is named by its path in double quotes (FROM "/data/销售"), "~<entity_id>", or an alias of --table',
+  description: 'Columns: _id (record id), _rev, _body (path of the record body), _record (the record as doc.read gives it, JSON), and per field "<name>" (display value: select label, multi-select JSON array of labels, reference path, decimal / currency amount as a number, boolean 1/0) and "<name>#raw" (stored value: option ids, exact decimal, reference / currency JSON); currency also "<name>#currency". SELECT only (WITH, subqueries and window functions included); at most --max-rows rows (truncated tells), 4 MiB and 2 s. URL tables have no local rows (NOT_MATERIALIZED).',
+  positionals: [{ name: 'sql', description: 'The SELECT statement', required: true }],
+  options: [
+    WORKSPACE_OPTION,
+    { name: 'table', property: 'table', description: 'Aliases: alias=<path or entity id>[,alias=…]; only these tables are visible then', type: 'string' },
+    { name: 'params', property: 'params', description: 'Positional parameters (?) as a JSON array', type: 'string' },
+    { name: 'max-rows', property: 'max_rows', description: 'Rows at most (≤ 5000, default 1000)', type: 'integer' },
+  ],
+  inputSchema: workspaceInput({ sql: { type: 'string', minLength: 1 }, table: { type: 'string' }, params: { type: 'string' }, max_rows: { type: 'integer', minimum: 1 } }, ['sql']),
+  outputSchema: OBJECT_OUTPUT,
+  resultSchemaVersion: 1,
+  access: READ_ACCESS,
+  asyncMode: 'sync',
+  requiresSession: true,
+  examples: [
+    'buckyos aiws sql \'SELECT "客户", SUM("金额") AS total FROM "/data/销售" GROUP BY "客户" ORDER BY total DESC LIMIT 10\' --workspace ws_abc',
+    'buckyos aiws sql \'SELECT "_id", "客户", "金额" FROM t WHERE "状态" = ? LIMIT 20\' --table t=/data/销售 --params \'["已完成"]\' --workspace ws_abc',
+  ],
+  handler: (ctx, input) => {
+    const table = inputString(input, 'table')
+    const params = inputString(input, 'params')
+    const values = params ? jsonArg(params, '--params') : undefined
+    if (values !== undefined && !Array.isArray(values)) throw new UsageError('AIWS_USAGE', '--params is a JSON array')
+    return aiws(ctx, 'doc.query', {
+      workspace_id: requiredInputString(input, 'workspace_id'), sql: requiredInputString(input, 'sql'),
+      ...(table ? { tables: tableAliases(table) } : {}), ...(values ? { params: values } : {}), ...given(input, { max_rows: 'max_rows' }),
+    })
+  },
+}
+
+// ---- writing: the operations of buckyos-websdk src/aiws_write.ts, committed as one Commit each (an idempotency key, and
+// on an unknown result doc.get_submission, then the same key again). Field names, option labels and `expect` come from
+// what is read just before.
+
+type TableRead = Parameters<typeof tableInsert>[0]
+type RichTextRead = Parameters<typeof textReplaceBlock>[0]
+type EntityRead = Parameters<typeof rename>[0]
+
+/** The service as the SDK's write helpers take it: a business failure is an `AiwsFailure`, never an unknown result. */
+function writeTransport(ctx: CommandContext) {
+  return {
+    call: async <T,>(method: string, params: Record<string, unknown>): Promise<T> => {
+      const result = expectObject(await callService<unknown>(ctx, SERVICE, method, params), method)
+      if (result.ok === false) {
+        const error = expectObject(result.error, `${method}.error`)
+        throw new AiwsFailure({ code: String(error.code ?? 'AIWS_ERROR'), retryable: Boolean(error.retryable), detail: String(error.detail ?? error.code ?? ''), sub_code: typeof error.sub_code === 'string' ? error.sub_code : undefined, data: error.data })
+      }
+      return result as T
+    },
+  }
+}
+
+/** A refusal (of the service, or of a helper: an unknown field, a block not read) as the CLI's error, its code first. */
+async function writing<T>(work: () => Promise<T>): Promise<T> {
+  try {
+    return await work()
+  } catch (error) {
+    if (error instanceof AiwsFailure) throw new ToolError(error.code, error.message, undefined, false, { ...(error.subCode ? { sub_code: error.subCode } : {}), ...(error.data !== undefined ? { data: error.data } : {}) })
+    throw error
+  }
+}
+
+async function commit(ctx: CommandContext, ws: string, ops: Record<string, unknown>[], message: string): Promise<Record<string, unknown>> {
+  const result = await commitOps(writeTransport(ctx), ws, ops as never, { message, ...(ctx.idempotencyKey ? { idempotencyKey: ctx.idempotencyKey } : {}) })
+  return { ok: true, status: result.status, commit_id: result.commit_id, seq: result.seq }
+}
+
+/** The envelope of an entity (ids and revs) without its content. */
+function envelopeOf(ctx: CommandContext, ws: string, target: string): Promise<Record<string, unknown>> {
+  return aiws(ctx, 'doc.read', { workspace_id: ws, ...aiwsTarget(target), selector: { kind: 'doc_key', key: 'title' } })
+}
+
+const ids = (text: string) => text.split(',').map((s) => s.trim()).filter(Boolean)
+
+async function markdownInput(input: Record<string, unknown>): Promise<string> {
+  const text = typeof input.text === 'string' ? input.text : undefined
+  const file = inputString(input, 'file')
+  if ((text !== undefined) === (file !== undefined)) throw new UsageError('AIWS_USAGE', 'pass --file <md> or --text <markdown>')
+  return file ? await getHost().readTextFile(file) : text!
+}
+
+const tableCommand: CommandDefinition = {
+  verb: 'table',
+  summary: 'Write a table: `add <table> --values` (records), `set <table> <record_id> --values` (cells), `rm <table> <record_id>[,…]`, `field-add <table> --name --type`, `option-add <table> <field> <label>`',
+  description: '--values is JSON keyed by field name with display values (a select takes its label, a multi-select labels, a reference an entity id; null clears a cell on set); add takes an object or an array of them, "_id" naming a record id. Each change is expected at the version just read: a concurrent change of the same cell is a REVISION_CONFLICT (read again). field-add --type: text, number, decimal, boolean, date, datetime, select, multi_select, object_ref, currency, json; --options gives a select its labels.',
+  positionals: [
+    { name: 'action', description: 'add | set | rm | field-add | option-add', required: true },
+    { name: 'table', description: `The table: ${PATH_HELP}`, required: true },
+    { name: 'target', description: 'set: record id; rm: record ids, comma-separated; option-add: field name', required: false },
+    { name: 'label', description: 'option-add: the new option label', required: false },
+  ],
+  options: [
+    WORKSPACE_OPTION,
+    { name: 'values', property: 'values', description: 'add / set: JSON keyed by field name', type: 'string' },
+    { name: 'name', property: 'name', description: 'field-add: the field name', type: 'string' },
+    { name: 'type', property: 'type', description: 'field-add: the field type', type: 'string', enum: ['text', 'number', 'decimal', 'boolean', 'date', 'datetime', 'select', 'multi_select', 'object_ref', 'currency', 'json'] },
+    { name: 'options', property: 'options', description: 'field-add: option labels of a select, a JSON array or comma-separated', type: 'string' },
+  ],
+  inputSchema: workspaceInput({
+    action: { type: 'string', enum: ['add', 'set', 'rm', 'field-add', 'option-add'] }, table: { type: 'string', minLength: 1 }, target: { type: 'string' }, label: { type: 'string' },
+    values: { type: 'string' }, name: { type: 'string' }, type: { type: 'string' }, options: { type: 'string' },
+  }, ['action', 'table']),
+  outputSchema: OBJECT_OUTPUT,
+  resultSchemaVersion: 1,
+  access: WRITE_ACCESS,
+  asyncMode: 'sync',
+  requiresSession: true,
+  examples: [
+    'buckyos aiws table add /data/销售 --values \'{"客户":"ACME","金额":"1200.50","状态":"进行中"}\' --workspace ws_abc',
+    'buckyos aiws table set /data/销售 r123 --values \'{"状态":"已完成"}\' --workspace ws_abc',
+    'buckyos aiws table rm /data/销售 r123,r124 --workspace ws_abc',
+    'buckyos aiws table field-add /data/销售 --name 负责人 --type text --workspace ws_abc',
+    'buckyos aiws table option-add /data/销售 状态 已取消 --workspace ws_abc',
+  ],
+  handler: (ctx, input) => writing(async () => {
+    const ws = requiredInputString(input, 'workspace_id')
+    const action = requiredInputString(input, 'action')
+    const tablePath = requiredInputString(input, 'table')
+    const values = () => {
+      const v = jsonArg(requiredInputString(input, 'values'), '--values')
+      if (!v || typeof v !== 'object') throw new UsageError('AIWS_USAGE', '--values is a JSON object keyed by field name')
+      return v as Record<string, unknown> | Record<string, unknown>[]
+    }
+    if (action === 'rm') {
+      const records = ids(requiredInputString(input, 'target'))
+      const reads = await Promise.all(records.map((record_id) => aiws(ctx, 'doc.read', { workspace_id: ws, ...aiwsTarget(tablePath), selector: { kind: 'table_record', record_id } })))
+      const table = String(reads[0].entity_id)
+      return { ...await commit(ctx, ws, tableDelete(table, records, reads as never), `delete ${records.length} record(s)`), table, removed: records }
+    }
+    const table = await aiws(ctx, 'doc.read', { workspace_id: ws, ...aiwsTarget(tablePath) }) as unknown as TableRead
+    switch (action) {
+      case 'add': {
+        const rows = values()
+        const ops = tableInsert(table, Array.isArray(rows) ? rows : [rows])
+        const record_ids = ((ops[0]?.records ?? []) as { record_id: string }[]).map((r) => r.record_id)
+        return { ...await commit(ctx, ws, ops, `add ${record_ids.length} record(s)`), table: table.entity_id, record_ids }
+      }
+      case 'set': {
+        const record_id = requiredInputString(input, 'target')
+        const v = values()
+        if (Array.isArray(v)) throw new UsageError('AIWS_USAGE', 'set takes one --values object')
+        const read = await aiws(ctx, 'doc.read', { workspace_id: ws, entity_id: table.entity_id, selector: { kind: 'table_record', record_id } })
+        const ops = tableSet(table, record_id, v, read as never)
+        if (ops.length === 0) return { ok: true, status: 'unchanged', table: table.entity_id, record_id }
+        return { ...await commit(ctx, ws, ops, `update record ${record_id}`), table: table.entity_id, record_id }
+      }
+      case 'field-add': {
+        const options = inputString(input, 'options')
+        const labels = options === undefined ? undefined : options.startsWith('[') ? jsonArg(options, '--options') as string[] : ids(options)
+        const op = fieldAdd(table, { name: requiredInputString(input, 'name'), type: requiredInputString(input, 'type'), ...(labels ? { options: labels } : {}) })
+        const field = op.field as { field_id: string; options?: unknown[] }
+        return { ...await commit(ctx, ws, [op], `add field ${requiredInputString(input, 'name')}`), table: table.entity_id, field_id: field.field_id, ...(field.options ? { options: field.options } : {}) }
+      }
+      case 'option-add': {
+        const op = optionAdd(table, requiredInputString(input, 'target'), requiredInputString(input, 'label'))
+        return { ...await commit(ctx, ws, [op], `add option ${requiredInputString(input, 'label')}`), table: table.entity_id, field_id: op.field_id, option: op.option }
+      }
+      default:
+        throw new UsageError('AIWS_USAGE', `table: add, set, rm, field-add or option-add, not ${action}`)
+    }
+  }),
+}
+
+const textCommand: CommandDefinition = {
+  verb: 'text',
+  summary: 'Write a rich text by blocks from Markdown: `append <doc> --file <md>`, `replace <doc> <block_id> --file <md>`, `rm <doc> <block_id>[,…]`',
+  description: 'Markdown: headings, paragraphs, bullet / ordered / task lists, fenced code, quotes, rules, pipe tables, inline code, strong, emphasis, strike and links ([label](entity:<id>) links an entity). Block ids are in the rich text as `doc.read` answers it (content.blocks) and in the selectors of `grep` hits; a replaced or removed block is expected at the version just read (REVISION_CONFLICT when it changed meanwhile). replace keeps the block id for the first block of the Markdown and inserts the rest after it.',
+  positionals: [
+    { name: 'action', description: 'append | replace | rm', required: true },
+    { name: 'doc', description: `The rich text: ${PATH_HELP}`, required: true },
+    { name: 'block', description: 'replace: block id; rm: block ids, comma-separated', required: false },
+  ],
+  options: [
+    WORKSPACE_OPTION,
+    { name: 'file', property: 'file', description: 'append / replace: a local Markdown file', type: 'string' },
+    { name: 'text', property: 'text', description: 'append / replace: the Markdown itself', type: 'string' },
+  ],
+  inputSchema: workspaceInput({ action: { type: 'string', enum: ['append', 'replace', 'rm'] }, doc: { type: 'string', minLength: 1 }, block: { type: 'string' }, file: { type: 'string' }, text: { type: 'string' } }, ['action', 'doc']),
+  outputSchema: OBJECT_OUTPUT,
+  resultSchemaVersion: 1,
+  access: WRITE_ACCESS,
+  asyncMode: 'sync',
+  requiresSession: true,
+  examples: [
+    'buckyos aiws text append /docs/周报 --file notes.md --workspace ws_abc',
+    'buckyos aiws text replace /docs/周报 b12 --text "## 下周计划" --workspace ws_abc',
+    'buckyos aiws text rm /docs/周报 b12,b13 --workspace ws_abc',
+  ],
+  handler: (ctx, input) => writing(async () => {
+    const ws = requiredInputString(input, 'workspace_id')
+    const action = requiredInputString(input, 'action')
+    const target = requiredInputString(input, 'doc')
+    if (action === 'append') {
+      const markdown = await markdownInput(input)
+      const doc = String((await aiws(ctx, 'doc.read', { workspace_id: ws, ...aiwsTarget(target), as: 'meta' })).entity_id)
+      const ops = textAppend(doc, markdown)
+      const blocks = (ops[0].blocks as { attrs: { block_id: string } }[]).map((b) => b.attrs.block_id)
+      return { ...await commit(ctx, ws, ops, 'append text'), doc, blocks }
+    }
+    if (action !== 'replace' && action !== 'rm') throw new UsageError('AIWS_USAGE', `text: append, replace or rm, not ${action}`)
+    const markdown = action === 'replace' ? await markdownInput(input) : ''
+    const doc = await aiws(ctx, 'doc.read', { workspace_id: ws, ...aiwsTarget(target) }) as unknown as RichTextRead
+    if (action === 'rm') {
+      const blocks = ids(requiredInputString(input, 'block'))
+      return { ...await commit(ctx, ws, textDeleteBlocks(doc, blocks), `delete ${blocks.length} block(s)`), doc: doc.entity_id, removed: blocks }
+    }
+    const block = requiredInputString(input, 'block')
+    const ops = textReplaceBlock(doc, block, markdown)
+    const added = ops.length > 1 ? ((ops[1] as Record<string, unknown>).blocks as { attrs: { block_id: string } }[]).map((b) => b.attrs.block_id) : []
+    return { ...await commit(ctx, ws, ops, `replace block ${block}`), doc: doc.entity_id, blocks: [block, ...added] }
+  }),
+}
+
+const mvCommand: CommandDefinition = {
+  verb: 'mv',
+  summary: 'Move an entity under another parent, after its last child (a following name moves aside if taken there)',
+  positionals: [{ name: 'path', description: PATH_HELP, required: true }, { name: 'parent', description: `The new parent: ${PATH_HELP}`, required: true }],
+  options: [WORKSPACE_OPTION],
+  inputSchema: workspaceInput({ path: { type: 'string', minLength: 1 }, parent: { type: 'string', minLength: 1 } }, ['path', 'parent']),
+  outputSchema: OBJECT_OUTPUT,
+  resultSchemaVersion: 1,
+  access: WRITE_ACCESS,
+  asyncMode: 'sync',
+  requiresSession: true,
+  examples: ['buckyos aiws mv /data/草稿 /archive --workspace ws_abc'],
+  handler: (ctx, input) => writing(async () => {
+    const ws = requiredInputString(input, 'workspace_id')
+    const entity = await envelopeOf(ctx, ws, requiredInputString(input, 'path'))
+    const parent = String((await aiws(ctx, 'doc.read', { workspace_id: ws, ...aiwsTarget(requiredInputString(input, 'parent')), as: 'meta' })).entity_id)
+    // the new place: after the last child the caller sees there
+    let last: string | undefined
+    let cursor: string | undefined
+    for (let page = 0; page < 100; page++) {
+      const listed = await aiws(ctx, 'doc.list', { workspace_id: ws, at: parent, limit: 1000, ...(cursor ? { cursor } : {}) })
+      const items = (Array.isArray(listed.items) ? listed.items : []) as { entity_id: string }[]
+      last = items.map((i) => i.entity_id).filter((id) => id !== entity.entity_id).at(-1) ?? last
+      if (typeof listed.next_cursor !== 'string' || items.length === 0) break
+      cursor = listed.next_cursor
+    }
+    const after = last ? (await envelopeOf(ctx, ws, last)).order_key : undefined
+    const op = move(entity as unknown as EntityRead, parent, typeof after === 'string' ? after : null)
+    return { ...await commit(ctx, ws, [op], `move ${entity.entity_id}`), entity_id: entity.entity_id, parent }
+  }),
+}
+
+const renameCommand: CommandDefinition = {
+  verb: 'rename',
+  summary: 'Give an entity a name of its own (its path segment), or --auto to let it follow its title again',
+  positionals: [{ name: 'path', description: PATH_HELP, required: true }, { name: 'name', description: 'The new name (1–128 characters, no /, not starting with ~)', required: false }],
+  options: [WORKSPACE_OPTION, { name: 'auto', property: 'auto', description: 'Name it after its title again (or a counter)', type: 'boolean' }],
+  inputSchema: workspaceInput({ path: { type: 'string', minLength: 1 }, name: { type: 'string' }, auto: { type: 'boolean' } }, ['path']),
+  outputSchema: OBJECT_OUTPUT,
+  resultSchemaVersion: 1,
+  access: WRITE_ACCESS,
+  asyncMode: 'sync',
+  requiresSession: true,
+  examples: ['buckyos aiws rename /data/销售 销售-2026 --workspace ws_abc', 'buckyos aiws rename ~sales --auto --workspace ws_abc'],
+  handler: (ctx, input) => writing(async () => {
+    const ws = requiredInputString(input, 'workspace_id')
+    const name = inputString(input, 'name')
+    if ((name === undefined) === (input.auto !== true)) throw new UsageError('AIWS_USAGE', 'rename: pass a new name or --auto')
+    const entity = await envelopeOf(ctx, ws, requiredInputString(input, 'path'))
+    return { ...await commit(ctx, ws, [rename(entity as unknown as EntityRead, name ?? null)], `rename ${entity.entity_id}`), entity_id: entity.entity_id, ...(name ? { name } : {}) }
+  }),
+}
+
+const setPropCommand: CommandDefinition = {
+  verb: 'set-prop',
+  summary: 'Set properties of a Block or a container: `config`, `bindings` or `on`, as JSON { <name>: value | null } (null removes one), each expected at the version just read',
+  positionals: [
+    { name: 'path', description: `The Block or container: ${PATH_HELP}`, required: true },
+    { name: 'key', description: 'config | bindings | on', required: true },
+    { name: 'props', description: 'JSON object { <name>: value | null }', required: true },
+  ],
+  options: [WORKSPACE_OPTION],
+  inputSchema: workspaceInput({ path: { type: 'string', minLength: 1 }, key: { type: 'string', enum: ['config', 'bindings', 'on'] }, props: { type: 'string', minLength: 1 } }, ['path', 'key', 'props']),
+  outputSchema: OBJECT_OUTPUT,
+  resultSchemaVersion: 1,
+  access: WRITE_ACCESS,
+  asyncMode: 'sync',
+  requiresSession: true,
+  examples: ['buckyos aiws set-prop /surfaces/看板/kpi config \'{"label":"本月销售"}\' --workspace ws_abc'],
+  handler: (ctx, input) => writing(async () => {
+    const ws = requiredInputString(input, 'workspace_id')
+    const key = requiredInputString(input, 'key')
+    if (key !== 'config' && key !== 'bindings' && key !== 'on') throw new UsageError('AIWS_USAGE', 'set-prop: the key is config, bindings or on')
+    const props = jsonArg(requiredInputString(input, 'props'), 'props')
+    if (!props || typeof props !== 'object' || Array.isArray(props)) throw new UsageError('AIWS_USAGE', 'props is a JSON object { <name>: value | null }')
+    const entity = await aiws(ctx, 'doc.read', { workspace_id: ws, ...aiwsTarget(requiredInputString(input, 'path')) })
+    return { ...await commit(ctx, ws, [setProps(entity as unknown as EntityRead, key, props as Record<string, unknown>)], `set ${key} of ${entity.entity_id}`), entity_id: entity.entity_id }
+  }),
 }
 
 const infoCommand: CommandDefinition = {
@@ -1007,7 +1449,7 @@ const templateCommand: CommandDefinition = {
 export function createAiwsModule(): CommandModule {
   return {
     name: 'aiws',
-    summary: 'AI Workspace: read a workspace, your to-do list and calendar (todo, cal), Block-controls (catalogue, import, export), extension controls (build, pull, export, library, import, upgrade), Workspace templates (list, create, export), and execute wish runs as their executor (claim, heartbeat, report)',
-    commands: [infoCommand, readCommand, queryCommand, todoCommand, calCommand, placeCommand, controlsCommand, importCommand, exportCommand, buildCommand, pullCommand, extExportCommand, libraryCommand, extImportCommand, extUpgradeCommand, templateCommand, runGetCommand, runClaimCommand, runHeartbeatCommand, runFilesCommand, runToolCommand, runProgramCommand, runReportCommand],
+    summary: 'AI Workspace: find and read a workspace by path (ls, find, grep, stat, cat, resolve, read), query its tables in SQL (sql), write tables, rich text and common properties (table, text, mv, rename, set-prop), your to-do list and calendar (todo, cal), Block-controls (catalogue, import, export), extension controls (build, pull, export, library, import, upgrade), Workspace templates (list, create, export), and execute wish runs as their executor (claim, heartbeat, report)',
+    commands: [infoCommand, lsCommand, findCommand, grepCommand, statCommand, catCommand, resolveCommand, readCommand, sqlCommand, tableCommand, textCommand, mvCommand, renameCommand, setPropCommand, todoCommand, calCommand, placeCommand, controlsCommand, importCommand, exportCommand, buildCommand, pullCommand, extExportCommand, libraryCommand, extImportCommand, extUpgradeCommand, templateCommand, runGetCommand, runClaimCommand, runHeartbeatCommand, runFilesCommand, runToolCommand, runProgramCommand, runReportCommand],
   }
 }

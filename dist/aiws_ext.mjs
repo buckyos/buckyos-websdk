@@ -1,4 +1,4 @@
-import { au as checkBindSteps } from "./aiws_bind-79905d80.mjs";
+import { av as checkBindSteps } from "./aiws_bind-3b874f77.mjs";
 import "./object_url-376c5222.mjs";
 import "./ndn_types-0fac2499.mjs";
 const AIWS_COMPONENT_FILE = "component.json";
@@ -6,7 +6,7 @@ const AIWS_COMPOSITION_FILE = "composition.json";
 const AIWS_MANIFEST_FILE = "aiws-manifest.json";
 const AIWS_BUILD_STATE_FILE = ".aiws-build.json";
 const AIWS_MANIFEST_VERSION = 5;
-const AIWS_HTML_API_VERSION = 5;
+const AIWS_HTML_API_VERSION = 6;
 const AIWS_DECLARATIVE_API_VERSION = 1;
 const AIWS_TEMPLATE_FORMAT = "aiws-template/1";
 const AIWS_MAX_SOURCE_FILES = 64;
@@ -778,10 +778,10 @@ function checkComponent(text, fileNames, readText, cellEvents) {
         else
           named.add(String(n));
       }
-    if (c.host_api !== void 0 && c.host_api !== 2 && c.host_api !== 3 && c.host_api !== 4 && c.host_api !== 5)
-      error("host_api: the HTML Block host speaks API 2, 3, 4 and 5");
-    else if (c.host_api === 5 && version < 5)
-      error(`host_api 5 ${V5_HINT}`);
+    if (c.host_api !== void 0 && ![2, 3, 4, 5, 6].includes(c.host_api))
+      error("host_api: the HTML Block host speaks API 2, 3, 4, 5 and 6");
+    else if ((c.host_api === 5 || c.host_api === 6) && version < 5)
+      error(`host_api ${c.host_api} ${V5_HINT}`);
     else if (c.host_api === 4 && version < 4)
       error(`host_api 4 ${V4_HINT}`);
     else if (c.host_api === 3 && before3)

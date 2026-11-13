@@ -5,7 +5,7 @@ export declare const SCHEDULE_TODO_ID = "todo";
 export declare const SCHEDULE_CALENDAR_ID = "calendar";
 export declare const SCHEDULE_SURFACE_ID = "schedule-board";
 export declare const TODO_DONE = "done";
-export declare const AIWS_PROTOCOL_VERSION = "1.1";
+export declare const AIWS_PROTOCOL_VERSION = "1.2";
 export type Json = null | boolean | number | string | Json[] | {
     [key: string]: Json;
 };
@@ -40,7 +40,7 @@ export declare function isOrderKey(k: unknown): k is string;
 export declare function orderKeyBetween(a?: string | null, b?: string | null): string;
 /** `count` keys spread between `a` and `b`, in order. */
 export declare function orderKeysBetween(a: string | null, b: string | null, count: number): string[];
-/** A record as `doc.query` / `doc.read` answer it. */
+/** A record as `doc.read` (`table_record`) and the SQL `_record` column answer it. */
 export interface RowLike {
     record_id: string;
     rev?: number;
@@ -251,7 +251,8 @@ export declare class ScheduleClient {
     private commitTo;
     /** Commit operations into the schedule; a refusal or conflict throws with the service's reason. */
     commit(operations: Op[], message: string): Promise<CommitResult>;
-    rows(sourceId: string, filter?: Json): Promise<RowLike[]>;
+    /** Every live record of a table, as `doc.read` answers one (the SQL `_record` column), by record id. */
+    rows(sourceId: string): Promise<RowLike[]>;
     row(sourceId: string, recordId: string): Promise<RowLike>;
     todos(opts?: {
         includeDone?: boolean;

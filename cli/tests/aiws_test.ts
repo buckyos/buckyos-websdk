@@ -19,7 +19,18 @@ Deno.test('aiws verbs are registered with their access levels', () => {
     const [verb, level] of [
       ['info', 'read'],
       ['read', 'read'],
-      ['query', 'read'],
+      ['ls', 'read'],
+      ['find', 'read'],
+      ['grep', 'read'],
+      ['stat', 'read'],
+      ['cat', 'read'],
+      ['resolve', 'read'],
+      ['sql', 'read'],
+      ['table', 'write'],
+      ['text', 'write'],
+      ['mv', 'write'],
+      ['rename', 'write'],
+      ['set-prop', 'write'],
       ['controls', 'read'],
       ['import', 'write'],
       ['export', 'read'],
@@ -36,6 +47,129 @@ Deno.test('aiws verbs are registered with their access levels', () => {
     assertEquals(described.access, { mode: 'fixed', level })
     assertEquals(described.requires_session, true)
   }
+})
+
+Deno.test('the old table query verb is gone', () => {
+  let code: string | undefined
+  try { createRegistry().get('aiws', 'query') } catch (error) { code = (error as { code?: string }).code }
+  assertEquals(typeof code, 'string')
+})
+
+Deno.test('finding and reading map onto doc.list / doc.find / doc.query / doc.read / doc.resolve, paths or ids', async () => {
+  const calls: RecordedCall[] = []
+  const clients = clientsFor(calls, (method, params) => {
+    if (method === 'doc.read' && params.as === 'body') {
+      const page = params.cursor === 'c2' ? { text: 'b\n', complete: true } : { text: 'a\n', complete: false, next_cursor: 'c2' }
+      return { ok: true, entity_id: 'notes', path: '/docs/notes', format: 'text/markdown', etag: 'e', state: 'full', ...page }
+    }
+    return { ok: true, method }
+  })
+  const registry = createRegistry()
+  assertEquals(parseCommandArgs(registry.get('aiws', 'ls'), ['/data', '--workspace', 'ws_a', '--type', 'table,richtext'], undefined).input, { path: '/data', workspace_id: 'ws_a', type: 'table,richtext' })
+  await run('ls', { workspace_id: 'ws_a' }, clients)
+  assertEquals(calls.at(-1)?.params, { workspace_id: 'ws_a' })
+  await run('ls', { workspace_id: 'ws_a', path: '/data', type: 'table', limit: 5 }, clients)
+  assertEquals(calls.at(-1)?.params, { workspace_id: 'ws_a', at: '/data', type: 'table', limit: 5 })
+  await run('find', { workspace_id: 'ws_a', text: '销售', at: '~data', depth: 2 }, clients)
+  assertEquals([calls.at(-1)?.method, calls.at(-1)?.params], ['doc.find', { workspace_id: 'ws_a', name: '销售', at: '~data', depth: 2 }])
+  await run('grep', { workspace_id: 'ws_a', text: 'Q4', case: true, not_type: 'record' }, clients)
+  assertEquals([calls.at(-1)?.method, calls.at(-1)?.params], ['doc.query', { workspace_id: 'ws_a', text: 'Q4', case: true, not_type: 'record' }])
+  await run('stat', { workspace_id: 'ws_a', path: 'sales' }, clients)
+  assertEquals(calls.at(-1)?.params, { workspace_id: 'ws_a', entity_id: 'sales', as: 'meta' })
+  await run('resolve', { workspace_id: 'ws_a', path: '/data/销售' }, clients)
+  assertEquals(calls.at(-1)?.params, { workspace_id: 'ws_a', path: '/data/销售' })
+  await run('read', { workspace_id: 'ws_a', entity_id: '/data/销售' }, clients)
+  assertEquals(calls.at(-1)?.params, { workspace_id: 'ws_a', path: '/data/销售' })
+  // cat follows the pages unless one page is asked for
+  const whole = await run('cat', { workspace_id: 'ws_a', path: '/docs/notes' }, clients)
+  assertEquals([whole.text, whole.complete, calls.at(-1)?.params], ['a\nb\n', true, { workspace_id: 'ws_a', path: '/docs/notes', as: 'body', cursor: 'c2' }])
+  const one = await run('cat', { workspace_id: 'ws_a', path: '/docs/notes', max_bytes: 4096 }, clients)
+  assertEquals([one.text, one.next_cursor, calls.at(-1)?.params], ['a\n', 'c2', { workspace_id: 'ws_a', path: '/docs/notes', as: 'body', max_bytes: 4096 }])
+})
+
+Deno.test('sql sends one SELECT with its aliases and parameters', async () => {
+  const calls: RecordedCall[] = []
+  const clients = clientsFor(calls, () => ({ ok: true, columns: ['n'], rows: [[3]], truncated: false, read: [], head_seq: 1 }))
+  const answer = await run('sql', { workspace_id: 'ws_a', sql: 'SELECT count(*) AS n FROM t WHERE "状态" = ?', table: 't=/data/销售, 1-2,u=orders', params: '["已完成"]', max_rows: 10 }, clients)
+  assertEquals(answer.rows, [[3]])
+  assertEquals(calls[0].params, { workspace_id: 'ws_a', sql: 'SELECT count(*) AS n FROM t WHERE "状态" = ?', tables: { t: '/data/销售, 1-2', u: 'orders' }, params: ['已完成'], max_rows: 10 })
+  await assertRejects(() => run('sql', { workspace_id: 'ws_a', sql: 'SELECT 1', params: '{"a":1}' }, clients), 'AIWS_USAGE')
+  await assertRejects(() => run('sql', { workspace_id: 'ws_a', sql: 'SELECT 1', table: 'nope' }, clients), 'AIWS_USAGE')
+})
+
+Deno.test('table verbs read the table and the records, then commit by field id, option id and expect', async () => {
+  const calls: RecordedCall[] = []
+  const table = {
+    ok: true, entity_id: 'sales', meta_rev: 2,
+    content: { fields: [{ field_id: 'f_c', name: '客户', type: 'text', order_key: 'a', def_rev: 1 }, { field_id: 'f_s', name: '状态', type: 'select', order_key: 'b', def_rev: 4, options: [{ option_id: 'won', label: '已完成' }] }] },
+  }
+  const record = { ok: true, entity_id: 'sales', content: { record_id: 'r1', rev: 6, revs: { f_s: 5 }, values: { f_s: 'won' } } }
+  const clients = clientsFor(calls, (method, params) => {
+    if (method === 'doc.read') return params.selector ? record : table
+    if (method === 'ws.get_info') return { ok: true, epoch: 'ep_a' }
+    if (method === 'doc.commit') return { status: 'accepted', commit_id: 'cm', seq: 9 }
+    throw new Error(method)
+  })
+  const added = await run('table', { workspace_id: 'ws_a', action: 'add', table: '/data/销售', values: '{"_id":"r9","客户":"ACME","状态":"已完成"}' }, clients)
+  assertEquals([added.status, added.record_ids, calls[0].params], ['accepted', ['r9'], { workspace_id: 'ws_a', path: '/data/销售' }])
+  const commit = calls.find((c) => c.method === 'doc.commit')!.params
+  assertEquals([commit.epoch, commit.protocol_version, commit.operations], ['ep_a', '1.2', [{ op: 'table.insert_records', source_id: 'sales', records: [{ record_id: 'r9', values: { f_c: 'ACME', f_s: 'won' } }] }]])
+  calls.length = 0
+  await run('table', { workspace_id: 'ws_a', action: 'set', table: 'sales', target: 'r1', values: '{"客户":"Beta"}' }, clients)
+  assertEquals(calls.at(-1)?.params.operations, [{ op: 'table.set_values', source_id: 'sales', values: [{ record_id: 'r1', field_id: 'f_c', expect: { rev: 0 }, value: 'Beta' }] }])
+  await run('table', { workspace_id: 'ws_a', action: 'rm', table: 'sales', target: 'r1' }, clients)
+  assertEquals(calls.at(-1)?.params.operations, [{ op: 'table.delete_records', source_id: 'sales', records: [{ record_id: 'r1', expect: { rev: 6 } }] }])
+  await run('table', { workspace_id: 'ws_a', action: 'option-add', table: 'sales', target: '状态', label: '已取消' }, clients)
+  const option = (calls.at(-1)?.params.operations as Record<string, unknown>[])[0]
+  assertEquals([option.op, option.field_id, (option.option as { label: string }).label, option.expect], ['table.add_option', 'f_s', '已取消', { rev: 4 }])
+  const field = await run('table', { workspace_id: 'ws_a', action: 'field-add', table: 'sales', name: 'Stage', type: 'select', options: 'Lead,Won' }, clients)
+  assertEquals(((field.options as { label: string }[]) ?? []).map((o) => o.label), ['Lead', 'Won'])
+  // a refusal of a helper (an unknown field) is the CLI's error, with its code
+  await assertRejects(() => run('table', { workspace_id: 'ws_a', action: 'add', table: 'sales', values: '{"Nope":1}' }, clients), 'INVALID_SCHEMA')
+  // a conflict carries the conflicting cells
+  const conflicting = clientsFor([], (method, params) => {
+    if (method === 'doc.read') return params.selector ? record : table
+    if (method === 'ws.get_info') return { ok: true, epoch: 'ep_a' }
+    return { status: 'conflict', code: 'REVISION_CONFLICT', conflicts: [{ entity_id: 'sales', selector: { kind: 'table_cell', record_id: 'r1', field_id: 'f_s' } }] }
+  })
+  let details: Record<string, unknown> | undefined
+  await assertRejects(() => run('table', { workspace_id: 'ws_a', action: 'set', table: 'sales', target: 'r1', values: '{"状态":null}' }, conflicting).catch((error: unknown) => { details = (error as { details?: Record<string, unknown> }).details; throw error }), 'REVISION_CONFLICT')
+  assertEquals((details?.data as { conflicts: unknown[] }).conflicts.length, 1)
+})
+
+Deno.test('text, mv, rename and set-prop build their operations from what they read', async () => {
+  const calls: RecordedCall[] = []
+  const clients = clientsFor(calls, (method, params) => {
+    if (method === 'ws.get_info') return { ok: true, epoch: 'ep_a' }
+    if (method === 'doc.commit') return { status: 'accepted', commit_id: 'cm', seq: 3 }
+    if (method === 'doc.list') return { ok: true, items: [{ entity_id: 'x1' }, { entity_id: 'x2' }] }
+    if (method === 'doc.read' && params.as === 'meta') return { ok: true, entity_id: params.path === '/archive' ? 'archive' : 'notes' }
+    if (method === 'doc.read' && (params.selector as { kind?: string } | undefined)?.kind === 'doc_key') {
+      return { ok: true, entity_id: params.entity_id ?? 'draft', meta_rev: 7, struct_rev: 2, order_key: params.entity_id === 'x2' ? 'm' : 'c' }
+    }
+    if (method === 'doc.read') return { ok: true, entity_id: params.path === '/docs/notes' ? 'notes' : 'blk', content: { blocks: { b1: { hash: 'h1', struct_rev: 4 } }, key_revs: { 'p:config.label': 5 } } }
+    throw new Error(method)
+  })
+  const appended = await run('text', { workspace_id: 'ws_a', action: 'append', doc: '/docs/notes', text: '# Done\n\n- a\n- b' }, clients)
+  const insert = (calls.at(-1)?.params.operations as Record<string, unknown>[])[0]
+  assertEquals([insert.op, insert.entity_id, insert.position, (insert.blocks as { type: string }[]).map((b) => b.type), (appended.blocks as string[]).length], ['richtext.insert_blocks', 'notes', { end: true }, ['heading', 'bullet_list'], 2])
+  await run('text', { workspace_id: 'ws_a', action: 'replace', doc: '/docs/notes', block: 'b1', text: 'new' }, clients)
+  const replace = (calls.at(-1)?.params.operations as Record<string, unknown>[])[0]
+  assertEquals([replace.op, replace.block_id, replace.expect, (replace.node as { attrs: { block_id: string } }).attrs.block_id], ['richtext.replace_block', 'b1', { hash: 'h1' }, 'b1'])
+  await run('text', { workspace_id: 'ws_a', action: 'rm', doc: '/docs/notes', block: 'b1' }, clients)
+  assertEquals(calls.at(-1)?.params.operations, [{ op: 'richtext.delete_blocks', entity_id: 'notes', blocks: [{ block_id: 'b1', expect: { hash: 'h1', struct_rev: 4 } }] }])
+  await assertRejects(() => run('text', { workspace_id: 'ws_a', action: 'rm', doc: '/docs/notes', block: 'b9' }, clients), 'NOT_FOUND')
+  await assertRejects(() => run('text', { workspace_id: 'ws_a', action: 'append', doc: '/docs/notes' }, clients), 'AIWS_USAGE')
+  await run('mv', { workspace_id: 'ws_a', path: '/data/draft', parent: '/archive' }, clients)
+  const moved = (calls.at(-1)?.params.operations as Record<string, unknown>[])[0]
+  assertEquals([moved.op, moved.entity_id, moved.new_parent_id, moved.expect, (moved.order_key as string) > 'm'], ['tree.move', 'draft', 'archive', { rev: 2 }, true])
+  await run('rename', { workspace_id: 'ws_a', path: '/data/draft', name: 'final' }, clients)
+  assertEquals(calls.at(-1)?.params.operations, [{ op: 'entity.rename', entity_id: 'draft', name: 'final', expect: { rev: 7 } }])
+  await run('rename', { workspace_id: 'ws_a', path: '/data/draft', auto: true }, clients)
+  assertEquals((calls.at(-1)?.params.operations as Record<string, unknown>[])[0].name, null)
+  await assertRejects(() => run('rename', { workspace_id: 'ws_a', path: '/data/draft' }, clients), 'AIWS_USAGE')
+  await run('set-prop', { workspace_id: 'ws_a', path: '/surfaces/board/kpi', key: 'config', props: '{"label":"Sales","color":null}' }, clients)
+  assertEquals(calls.at(-1)?.params.operations, [{ op: 'entity.set_props', entity_id: 'blk', key: 'config', props: { label: 'Sales', color: null }, expect: { label: 5, color: 0 } }])
 })
 
 Deno.test('controls takes its kind only for describe', () => {
