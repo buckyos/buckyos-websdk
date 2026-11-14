@@ -136,7 +136,7 @@
     "check:cli-boundary": "node scripts/check-cli-boundary.mjs",
     "lint:cli": "deno lint cli/core cli/modules cli/runtime cli/tests cli/main.ts cli/system_bootstrap.ts cli/system_launcher.ts scripts/*.mjs",
     "check:cli": "pnpm run check:cli-boundary && pnpm run lint:cli && deno check --config cli/deno.json cli/system_bootstrap.ts cli/system_launcher.ts cli/tests/*.ts",
-    "test:cli": "deno test --config cli/deno.json --allow-read --allow-write --allow-env --allow-run=docker cli/tests/",
+    "test:cli": "deno test --config cli/deno.json --allow-read --allow-write --allow-env --allow-run=docker,deno cli/tests/",
     "test:cli-conformance": "node scripts/test-cli-conformance.mjs",
     "test:tarball": "node scripts/test-npm-tarball.mjs",
     "test:release-manifest": "node scripts/test-release-manifest.mjs",

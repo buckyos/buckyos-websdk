@@ -8,7 +8,7 @@
   "tasks": {
     "run": "deno run --allow-net --allow-read --allow-write --allow-run=docker --allow-env system_launcher.ts",
     "check": "deno check system_launcher.ts tests/*.ts",
-    "test": "deno test --allow-read --allow-write --allow-env tests/",
+    "test": "deno test --allow-read --allow-write --allow-env --allow-run=docker,deno tests/",
     "fmt": "deno fmt --check core modules runtime tests main.ts system_bootstrap.ts system_launcher.ts version.ts launcher.mjs README.md ../scripts/*.mjs"
   },
   "compilerOptions": {

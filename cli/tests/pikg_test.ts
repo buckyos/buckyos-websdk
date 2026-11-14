@@ -1,7 +1,7 @@
 import './setup.ts'
 import { join, parse as parsePath } from 'node:path'
 import { BuckyOSToolApplication, type ToolStdio } from '../core/app.ts'
-import { aiwsTemplateDigest } from 'buckyos/node'
+import { AIWS_MANIFEST_VERSION, aiwsTemplateDigest } from 'buckyos/node'
 import { createDeterministicTarGz, digestFile, listTarGzStream } from '../modules/pikg_archive.ts'
 import type { DockerClient, DockerImageInfo } from '../modules/pikg.ts'
 import { appDocObjectId, validateAppDocShape } from '../modules/pikg_protocol.ts'
@@ -530,7 +530,7 @@ Deno.test('aiws-controls packages: --composite starts with a composite control t
     assertEquals(await app.run(['--non-interactive', 'pikg', 'init', '.', '--owner', 'did:bns:alice', '--kind', 'aiws-controls', '--source', './aiws', '--composite']), 0, io.stdoutText)
     io.takeEnvelope()
     const component = JSON.parse(await Deno.readTextFile(join(project, 'aiws', 'controls', 'board-pack', 'component.json')))
-    assertEquals([component.manifest_version, component.kind, component.entry], [3, 'composite', 'composition.json'])
+    assertEquals([component.manifest_version, component.kind, component.entry], [AIWS_MANIFEST_VERSION, 'composite', 'composition.json'])
     assertEquals(await app.run(['pikg', 'build']), 0, io.stdoutText)
     let envelope = io.takeEnvelope()
     assertEquals(await app.run(['pikg', 'pack', envelope.data.dist_dir]), 0, io.stdoutText)
@@ -572,7 +572,7 @@ Deno.test('aiws-controls packages: Workspace templates are checked with the bund
     const bundle = join(project, 'aiws')
     const manifestPath = join(bundle, 'aiws-manifest.json')
     const manifest = JSON.parse(await Deno.readTextFile(manifestPath))
-    assertEquals(manifest.manifest_version, 3)
+    assertEquals(manifest.manifest_version, AIWS_MANIFEST_VERSION)
     await Deno.mkdir(join(bundle, 'templates', 'team', 'objects'), { recursive: true })
     const snapshot = JSON.stringify({ format: 'aiws-template/1', content_root: 'r', entities: [] })
     await Deno.writeTextFile(join(bundle, 'templates', 'team', 'snapshot.json'), snapshot)
@@ -595,7 +595,7 @@ Deno.test('aiws-controls packages: Workspace templates are checked with the bund
     envelope = io.takeEnvelope()
     assertEquals(await app.run(['pikg', 'info', envelope.data.pikg_path]), 0, io.stdoutText)
     envelope = io.takeEnvelope()
-    assertEquals(envelope.data.aiws.manifest_version, 3)
+    assertEquals(envelope.data.aiws.manifest_version, AIWS_MANIFEST_VERSION)
     assertEquals(envelope.data.aiws.templates.map((t: { id: string; digest: string }) => [t.id, t.digest]), [['team', digest]])
 
     await writeManifest({ ...manifest, manifest_version: 2, workspace_templates: [template] })

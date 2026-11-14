@@ -455,8 +455,8 @@ Deno.test('template list / create: the library templates, typed params, the new 
   await assertRejects(() => run('template', { action: 'apply' }, clients))
 })
 
-Deno.test('template export writes one bundle: the template files, the controls it needs, manifest_version 3', async () => {
-  const { aiwsContentDigest, aiwsTemplateDigest, verifyBundle, controlSkeleton } = await import('buckyos/node')
+Deno.test('template export writes one bundle: the template files, the controls it needs, the current manifest version', async () => {
+  const { AIWS_MANIFEST_VERSION, aiwsContentDigest, aiwsTemplateDigest, verifyBundle, controlSkeleton } = await import('buckyos/node')
   const encoder = new TextEncoder()
   const skeleton: Record<string, string> = Object.fromEntries(Object.entries(controlSkeleton({ authorDid: 'did:bns:alice', name: 'kpi', title: 'KPI' })).map(([n, t]) => [n, String(t)]))
   const controlDigest = await aiwsContentDigest(Object.entries(skeleton).map(([n, t]) => [n, encoder.encode(t)] as [string, Uint8Array]))
@@ -487,7 +487,7 @@ Deno.test('template export writes one bundle: the template files, the controls i
   const root = join(out, 'aiws')
   assertEquals(result.bundle, root)
   const manifest = JSON.parse(await Deno.readTextFile(`${root}/aiws-manifest.json`))
-  assertEquals([manifest.manifest_version, manifest.workspace_templates, manifest.controls.length], [3, [item], 1])
+  assertEquals([manifest.manifest_version, manifest.workspace_templates, manifest.controls.length], [AIWS_MANIFEST_VERSION, [item], 1])
   const bundle = new Map<string, Uint8Array>()
   for (const path of ['aiws-manifest.json', ...Object.keys(skeleton).map((n) => `controls/kpi/${n}`), 'templates/team/snapshot.json', 'templates/team/objects/o1']) bundle.set(path, await Deno.readFile(`${root}/${path}`))
   assertEquals((await verifyBundle(bundle)).diagnostics.filter((d: { severity: string }) => d.severity === 'error'), [])
