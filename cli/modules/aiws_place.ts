@@ -39,6 +39,8 @@ type Envelope = Record<string, unknown> & {
   parent_id?: string | null
   order_key?: string | null
   deleted?: boolean
+  /** a path node: an entity the caller cannot read, listed above one it can (no name, no content) */
+  path_only?: boolean
 }
 // the shapes of buckyos-websdk aiws_bind.ts (the CLI reads the SDK's built JavaScript)
 type BindingDecl = {
@@ -204,7 +206,7 @@ export const placeCommand: CommandDefinition = {
     const entities = (await call(ctx, 'doc.outline', { workspace_id: ws })).entities as Envelope[]
     const byId = new Map(entities.map((e) => [e.entity_id, e]))
     const surface = byId.get(surfaceId)
-    if (!surface || surface.kind !== 'surface') {
+    if (!surface || surface.kind !== 'surface' || surface.path_only) {
       throw new UsageError('AIWS_USAGE', `${surfaceId} is not a canvas of this workspace`)
     }
     const folderId = String(surface.content_folder_id ?? '')

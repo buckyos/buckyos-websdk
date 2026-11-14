@@ -226,6 +226,9 @@ export interface AiwsFieldInput {
   currency?: string
   max_items?: number
   target_types?: string[]
+  /** What a new record holds when its insert does not give this field (display form, like a cell: a select takes its
+   * label); not on submitter, unique or object_ref fields. */
+  default?: unknown
 }
 
 /** A new id: the ASCII words of `label` and a random tail, or `prefix` and the tail. */
@@ -236,10 +239,11 @@ function newId(label: string, prefix: string): string {
 }
 
 /** `table.add_field`: a generated field id (and option ids), placed after the last field; a required field of a table
- * with records needs `backfill` (display form). */
+ * with records needs `backfill` (display form); `default` (display form) is what new records get when they do not
+ * give the field. */
 export function fieldAdd(table: AiwsTableRead, def: AiwsFieldInput, opts: { backfill?: unknown } = {}): Op {
   const fields = fieldsOf(table)
-  const { options, field_id, ...rest } = def
+  const { options, field_id, default: fallback, ...rest } = def
   const field: Record<string, Json> = { field_id: field_id ?? newId(def.name, 'f'), ...(rest as Record<string, Json>) }
   if (options) {
     const used = new Set<string>()
@@ -253,6 +257,7 @@ export function fieldAdd(table: AiwsTableRead, def: AiwsFieldInput, opts: { back
   }
   const last = fields.map((f) => f.order_key).filter((k): k is string => typeof k === 'string' && k.length > 0).sort().pop()
   const op: Op = { op: 'table.add_field', source_id: table.entity_id, field, ...(last ? { order_key: orderKeyBetween(last, null) } : {}) }
+  if (fallback !== undefined && fallback !== null) field.default = cellValue(field as unknown as AiwsFieldRead, fallback)
   if (opts.backfill !== undefined) op.backfill = cellValue(field as unknown as AiwsFieldRead, opts.backfill)
   return op
 }

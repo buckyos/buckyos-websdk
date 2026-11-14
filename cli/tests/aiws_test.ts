@@ -158,6 +158,10 @@ Deno.test('table verbs read the table and the records, then commit by field id, 
   assertEquals([option.op, option.field_id, (option.option as { label: string }).label, option.expect], ['table.add_option', 'f_s', '已取消', { rev: 4 }])
   const field = await run('table', { workspace_id: 'ws_a', action: 'field-add', table: 'sales', name: 'Stage', type: 'select', options: 'Lead,Won' }, clients)
   assertEquals(((field.options as { label: string }[]) ?? []).map((o) => o.label), ['Lead', 'Won'])
+  // --default is a display value: the select's label becomes its option id
+  await run('table', { workspace_id: 'ws_a', action: 'field-add', table: 'sales', name: 'Phase', type: 'select', options: 'Lead,Won', default: 'Won' }, clients)
+  const phase = (calls.at(-1)?.params.operations as { field: { default: string; options: { option_id: string; label: string }[] } }[])[0].field
+  assertEquals(phase.default, phase.options.find((o) => o.label === 'Won')?.option_id)
   // a refusal of a helper (an unknown field) is the CLI's error, with its code
   await assertRejects(() => run('table', { workspace_id: 'ws_a', action: 'add', table: 'sales', values: '{"Nope":1}' }, clients), 'INVALID_SCHEMA')
   // a conflict carries the conflicting cells

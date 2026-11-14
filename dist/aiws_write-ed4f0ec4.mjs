@@ -31521,7 +31521,7 @@ function newId(label, prefix) {
 }
 function fieldAdd(table, def, opts = {}) {
   const fields = fieldsOf(table);
-  const { options, field_id, ...rest } = def;
+  const { options, field_id, default: fallback, ...rest } = def;
   const field = { field_id: field_id ?? newId(def.name, "f"), ...rest };
   if (options) {
     const used = /* @__PURE__ */ new Set();
@@ -31536,6 +31536,8 @@ function fieldAdd(table, def, opts = {}) {
   }
   const last = fields.map((f2) => f2.order_key).filter((k) => typeof k === "string" && k.length > 0).sort().pop();
   const op = { op: "table.add_field", source_id: table.entity_id, field, ...last ? { order_key: orderKeyBetween(last, null) } : {} };
+  if (fallback !== void 0 && fallback !== null)
+    field.default = cellValue(field, fallback);
   if (opts.backfill !== void 0)
     op.backfill = cellValue(field, opts.backfill);
   return op;
@@ -32266,4 +32268,4 @@ export {
   NOTIFY_CHOICE_CONTROL_ID as y,
   NOTIFY_TEXT_CONTROL_ID as z
 };
-//# sourceMappingURL=aiws_write-c2de498e.mjs.map
+//# sourceMappingURL=aiws_write-ed4f0ec4.mjs.map

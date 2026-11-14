@@ -73,6 +73,12 @@ describe('table helpers', () => {
     expect(field.options[1].option_id).toMatch(/^o[0-9a-z]{6}$/)
     expect((op.order_key as string) > 'h').toBe(true)
     expect(op.backfill).toBe(field.options[0].option_id)
+    // a default in display form, like a cell: the select's label becomes its option id
+    const withDefault = fieldAdd(sales, { name: 'Stage', type: 'select', options: ['Lead', '成交'], default: '成交' })
+    const f2 = withDefault.field as { default: string; options: { option_id: string }[] }
+    expect(f2.default).toBe(f2.options[1].option_id)
+    expect((fieldAdd(sales, { name: 'Amount', type: 'decimal', scale: 2, default: 12.5 }).field as { default: string }).default).toBe('12.5')
+    expect(codeOf(() => fieldAdd(sales, { name: 'Stage', type: 'select', options: ['Lead'], default: 'Won' }))).toBe('INVALID_SCHEMA')
     const opt = optionAdd(sales, '状态', '已取消', { option_id: 'lost' })
     expect(opt).toEqual({ op: 'table.add_option', source_id: 'sales', field_id: 'f_state', option: { option_id: 'lost', label: '已取消' }, expect: { rev: 7 } })
     expect(codeOf(() => optionAdd(sales, '状态', '进行中'))).toBe('INVALID_OPERATION')

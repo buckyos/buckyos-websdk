@@ -4,7 +4,7 @@ import * as nodePath from "node:path";
 import { resolve as resolve$5, dirname as dirname$3 } from "node:path";
 import { BuckyOSSDK, RuntimeType, buckyos, namelib, VerifyHubClient, createAppInstanceId, parseSessionTokenClaims, ndn, verifyBundle, controlSkeleton, aiwsContentDigest, AIWS_MANIFEST_VERSION, AIWS_MANIFEST_FILE, taskMgrTaskEventPath, ndm_proxy, objectUrl as objectUrl$1, ExecutorCommandStream, AiwsFailure, viewerTimeZone, localDate, calendarOccurrences, ScheduleClient, resolveBindings, noUiDialogs, createOps, orderKeyBetween, bindingsPayload, AIWS_PROTOCOL_VERSION, BindFailure, aiwsTarget, watchControl, buildControl, pullControl, exportBundle, tableDelete, optionAdd, fieldAdd, tableSet, tableInsert, textAppend, textDeleteBlocks, textReplaceBlock, move, rename, setProps, NfspClient, AiwsSourceError, packBuildFiles, commitOps, templateDir, isSourcePath } from "buckyos/node";
 import * as provisionSdk from "buckyos/provision";
-import { AiccLlmClient, LLMComputeException, providerErrorFromRpc } from "buckyos/xllm";
+import { providerErrorFromRpc, AiccLlmClient, LLMComputeException } from "buckyos/xllm";
 import { createHash } from "node:crypto";
 import { readFile, writeFile, readdir, stat, lstat, realpath, mkdtemp, rename as rename$1, rm, mkdir, chmod, symlink, copyFile, open } from "node:fs/promises";
 import { createReadStream, createWriteStream, existsSync } from "node:fs";
@@ -6115,7 +6115,7 @@ async function readSkillDirectory(root, limit) {
   await walk(realRoot, "");
   return { files, ignored };
 }
-const PACKAGE_VERSION = "0.7.183";
+const PACKAGE_VERSION = "0.7.184";
 const TOOL_VERSION = PACKAGE_VERSION;
 const SDK_VERSION = PACKAGE_VERSION;
 const PROTOCOL_VERSION = "1";
@@ -13814,7 +13814,7 @@ const placeCommand = {
     const entities = (await call(ctx, "doc.outline", { workspace_id: ws })).entities;
     const byId = new Map(entities.map((e) => [e.entity_id, e]));
     const surface = byId.get(surfaceId);
-    if (!surface || surface.kind !== "surface") {
+    if (!surface || surface.kind !== "surface" || surface.path_only) {
       throw new UsageError("AIWS_USAGE", `${surfaceId} is not a canvas of this workspace`);
     }
     const folderId = String(surface.content_folder_id ?? "");
@@ -14388,7 +14388,7 @@ async function markdownInput(input) {
 const tableCommand = {
   verb: "table",
   summary: "Write a table: `add <table> --values` (records), `set <table> <record_id> --values` (cells), `rm <table> <record_id>[,…]`, `field-add <table> --name --type`, `option-add <table> <field> <label>`",
-  description: '--values is JSON keyed by field name with display values (a select takes its label, a multi-select labels, a reference an entity id; null clears a cell on set); add takes an object or an array of them, "_id" naming a record id. Each change is expected at the version just read: a concurrent change of the same cell is a REVISION_CONFLICT (read again). field-add --type: text, number, decimal, boolean, date, datetime, select, multi_select, object_ref, currency, json; --options gives a select its labels.',
+  description: '--values is JSON keyed by field name with display values (a select takes its label, a multi-select labels, a reference an entity id; null clears a cell on set); add takes an object or an array of them, "_id" naming a record id. Each change is expected at the version just read: a concurrent change of the same cell is a REVISION_CONFLICT (read again). field-add --type: text, number, decimal, boolean, date, datetime, select, multi_select, object_ref, currency, json; --options gives a select its labels; --default is what new records get when they do not give the field (a display value, like --values: a select takes its label; not on object_ref).',
   positionals: [
     { name: "action", description: "add | set | rm | field-add | option-add", required: true },
     { name: "table", description: `The table: ${PATH_HELP}`, required: true },
@@ -14400,7 +14400,8 @@ const tableCommand = {
     { name: "values", property: "values", description: "add / set: JSON keyed by field name", type: "string" },
     { name: "name", property: "name", description: "field-add: the field name", type: "string" },
     { name: "type", property: "type", description: "field-add: the field type", type: "string", enum: ["text", "number", "decimal", "boolean", "date", "datetime", "select", "multi_select", "object_ref", "currency", "json"] },
-    { name: "options", property: "options", description: "field-add: option labels of a select, a JSON array or comma-separated", type: "string" }
+    { name: "options", property: "options", description: "field-add: option labels of a select, a JSON array or comma-separated", type: "string" },
+    { name: "default", property: "default", description: "field-add: the value new records get when they do not give the field (display form)", type: "string" }
   ],
   inputSchema: workspaceInput({
     action: { type: "string", enum: ["add", "set", "rm", "field-add", "option-add"] },
@@ -14410,7 +14411,8 @@ const tableCommand = {
     values: { type: "string" },
     name: { type: "string" },
     type: { type: "string" },
-    options: { type: "string" }
+    options: { type: "string" },
+    default: { type: "string" }
   }, ["action", "table"]),
   outputSchema: OBJECT_OUTPUT,
   resultSchemaVersion: 1,
@@ -14422,6 +14424,7 @@ const tableCommand = {
     `buckyos aiws table set /data/销售 r123 --values '{"状态":"已完成"}' --workspace ws_abc`,
     "buckyos aiws table rm /data/销售 r123,r124 --workspace ws_abc",
     "buckyos aiws table field-add /data/销售 --name 负责人 --type text --workspace ws_abc",
+    "buckyos aiws table field-add /data/销售 --name 阶段 --type select --options 线索,成交 --default 线索 --workspace ws_abc",
     "buckyos aiws table option-add /data/销售 状态 已取消 --workspace ws_abc"
   ],
   handler: (ctx, input) => writing(async () => {
@@ -14462,7 +14465,8 @@ const tableCommand = {
       case "field-add": {
         const options = inputString(input, "options");
         const labels = options === void 0 ? void 0 : options.startsWith("[") ? jsonArg(options, "--options") : ids(options);
-        const op = fieldAdd(table, { name: requiredInputString(input, "name"), type: requiredInputString(input, "type"), ...labels ? { options: labels } : {} });
+        const fallback = inputString(input, "default");
+        const op = fieldAdd(table, { name: requiredInputString(input, "name"), type: requiredInputString(input, "type"), ...labels ? { options: labels } : {}, ...fallback !== void 0 ? { default: fallback } : {} });
         const field = op.field;
         return { ...await commit(ctx, ws, [op], `add field ${requiredInputString(input, "name")}`), table: table.entity_id, field_id: field.field_id, ...field.options ? { options: field.options } : {} };
       }
@@ -14725,6 +14729,23 @@ const REFUSALS = {
   attribution_unavailable: "AI_ATTRIBUTION_UNAVAILABLE",
   credentials: "AI_UNAVAILABLE"
 };
+function refusalOf(error) {
+  if (error instanceof LLMComputeException && error.error.kind === "provider" && typeof error.error.failure === "object" && "refused" in error.error.failure) {
+    const e = new Error(error.message);
+    e.code = REFUSALS[error.error.failure.refused.code] ?? "AI_QUOTA_EXHAUSTED";
+    return e;
+  }
+  return error;
+}
+function sessionAicc(ctx) {
+  return async (method, params) => {
+    try {
+      return await ctx.clients.call("aicc", method, params, rpcOptions$2(ctx));
+    } catch (error) {
+      throw refusalOf(providerErrorFromRpc(`aicc ${method} failed`, error));
+    }
+  };
+}
 function sessionInfer(ctx) {
   const call2 = async (method, params) => {
     try {
@@ -14751,18 +14772,13 @@ function sessionInfer(ctx) {
       });
       return { text: r.message.content.map((c) => c.type === "text" ? c.text ?? "" : "").join(""), tokens: r.usage?.output_tokens };
     } catch (error) {
-      if (error instanceof LLMComputeException && error.error.kind === "provider" && typeof error.error.failure === "object" && "refused" in error.error.failure) {
-        const e = new Error(error.message);
-        e.code = REFUSALS[error.error.failure.refused.code] ?? "AI_QUOTA_EXHAUSTED";
-        throw e;
-      }
-      throw error;
+      throw refusalOf(error);
     }
   };
 }
 async function execMacro(ctx, input) {
   const host2 = getHost();
-  const dir = host2.path.resolve(ctx.cwd, requiredInputString(input, "dir"));
+  const dir = await host2.realPath(host2.path.resolve(ctx.cwd, requiredInputString(input, "dir")));
   const ids2 = { workspace_id: requiredInputString(input, "workspace_id"), run_id: requiredInputString(input, "run_id"), attempt: input.attempt };
   const source = await host2.readTextFile(`${dir}/program/main.js`);
   let stage = {};
@@ -14798,6 +14814,9 @@ async function execMacro(ctx, input) {
         return { status: res.status, headers, base64: btoa(Array.from(bytes, (b) => String.fromCharCode(b)).join("")) };
       }
     },
+    aicc: sessionAicc(ctx),
+    task: (id) => ctx.clients.call("task-manager", "get_task", { task_id: id }, rpcOptions$2(ctx)),
+    importAsset: (objId) => aiws(ctx, "asset.import_object", { workspace_id: ids2.workspace_id, obj_id: objId }),
     zoneHosts: [zoneHost],
     zoneOrigin: origin,
     budget,
@@ -14819,11 +14838,18 @@ async function execMacro(ctx, input) {
   const cap = Number(budget.program_timeout_secs) || 120;
   const limit = Math.min(cap, Number(manifest?.resources?.timeout_secs) || cap);
   let timedOut = false;
-  const timer = setTimeout(() => {
-    timedOut = true;
-    child.kill();
-  }, limit * 1e3);
+  const started = Date.now();
+  let media = 0;
+  let mediaSince = 0;
+  let mediaMs = 0;
+  const timer = setInterval(() => {
+    if (Date.now() - started - mediaMs - (media ? Date.now() - mediaSince : 0) > limit * 1e3) {
+      timedOut = true;
+      child.kill();
+    }
+  }, 1e3);
   const out = [];
+  const pending = /* @__PURE__ */ new Set();
   try {
     for await (const line of child.lines()) {
       if (!line.startsWith(BRIDGE_PREFIX)) {
@@ -14831,10 +14857,19 @@ async function execMacro(ctx, input) {
         continue;
       }
       const msg = JSON.parse(line.slice(BRIDGE_PREFIX.length));
-      await child.writeLine(JSON.stringify({ id: msg.id, body: await bridge.handle(msg.op, msg.req) }));
+      const waiting = msg.op === "ai.image" || msg.op === "ai.video";
+      if (waiting && media++ === 0)
+        mediaSince = Date.now();
+      const answer = bridge.handle(msg.op, msg.req).then((body) => child.writeLine(JSON.stringify({ id: msg.id, body }))).finally(() => {
+        if (waiting && --media === 0)
+          mediaMs += Date.now() - mediaSince;
+        pending.delete(answer);
+      });
+      pending.add(answer);
     }
+    await Promise.allSettled([...pending]);
   } finally {
-    clearTimeout(timer);
+    clearInterval(timer);
     await child.closeInput();
   }
   const code = await child.status;

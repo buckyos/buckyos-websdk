@@ -93,9 +93,13 @@ export interface AiwsFieldInput {
     currency?: string;
     max_items?: number;
     target_types?: string[];
+    /** What a new record holds when its insert does not give this field (display form, like a cell: a select takes its
+     * label); not on submitter, unique or object_ref fields. */
+    default?: unknown;
 }
 /** `table.add_field`: a generated field id (and option ids), placed after the last field; a required field of a table
- * with records needs `backfill` (display form). */
+ * with records needs `backfill` (display form); `default` (display form) is what new records get when they do not
+ * give the field. */
 export declare function fieldAdd(table: AiwsTableRead, def: AiwsFieldInput, opts?: {
     backfill?: unknown;
 }): Op;

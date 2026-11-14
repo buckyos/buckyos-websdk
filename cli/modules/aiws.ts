@@ -461,7 +461,7 @@ async function markdownInput(input: Record<string, unknown>): Promise<string> {
 const tableCommand: CommandDefinition = {
   verb: 'table',
   summary: 'Write a table: `add <table> --values` (records), `set <table> <record_id> --values` (cells), `rm <table> <record_id>[,…]`, `field-add <table> --name --type`, `option-add <table> <field> <label>`',
-  description: '--values is JSON keyed by field name with display values (a select takes its label, a multi-select labels, a reference an entity id; null clears a cell on set); add takes an object or an array of them, "_id" naming a record id. Each change is expected at the version just read: a concurrent change of the same cell is a REVISION_CONFLICT (read again). field-add --type: text, number, decimal, boolean, date, datetime, select, multi_select, object_ref, currency, json; --options gives a select its labels.',
+  description: '--values is JSON keyed by field name with display values (a select takes its label, a multi-select labels, a reference an entity id; null clears a cell on set); add takes an object or an array of them, "_id" naming a record id. Each change is expected at the version just read: a concurrent change of the same cell is a REVISION_CONFLICT (read again). field-add --type: text, number, decimal, boolean, date, datetime, select, multi_select, object_ref, currency, json; --options gives a select its labels; --default is what new records get when they do not give the field (a display value, like --values: a select takes its label; not on object_ref).',
   positionals: [
     { name: 'action', description: 'add | set | rm | field-add | option-add', required: true },
     { name: 'table', description: `The table: ${PATH_HELP}`, required: true },
@@ -474,10 +474,11 @@ const tableCommand: CommandDefinition = {
     { name: 'name', property: 'name', description: 'field-add: the field name', type: 'string' },
     { name: 'type', property: 'type', description: 'field-add: the field type', type: 'string', enum: ['text', 'number', 'decimal', 'boolean', 'date', 'datetime', 'select', 'multi_select', 'object_ref', 'currency', 'json'] },
     { name: 'options', property: 'options', description: 'field-add: option labels of a select, a JSON array or comma-separated', type: 'string' },
+    { name: 'default', property: 'default', description: 'field-add: the value new records get when they do not give the field (display form)', type: 'string' },
   ],
   inputSchema: workspaceInput({
     action: { type: 'string', enum: ['add', 'set', 'rm', 'field-add', 'option-add'] }, table: { type: 'string', minLength: 1 }, target: { type: 'string' }, label: { type: 'string' },
-    values: { type: 'string' }, name: { type: 'string' }, type: { type: 'string' }, options: { type: 'string' },
+    values: { type: 'string' }, name: { type: 'string' }, type: { type: 'string' }, options: { type: 'string' }, default: { type: 'string' },
   }, ['action', 'table']),
   outputSchema: OBJECT_OUTPUT,
   resultSchemaVersion: 1,
@@ -489,6 +490,7 @@ const tableCommand: CommandDefinition = {
     'buckyos aiws table set /data/销售 r123 --values \'{"状态":"已完成"}\' --workspace ws_abc',
     'buckyos aiws table rm /data/销售 r123,r124 --workspace ws_abc',
     'buckyos aiws table field-add /data/销售 --name 负责人 --type text --workspace ws_abc',
+    'buckyos aiws table field-add /data/销售 --name 阶段 --type select --options 线索,成交 --default 线索 --workspace ws_abc',
     'buckyos aiws table option-add /data/销售 状态 已取消 --workspace ws_abc',
   ],
   handler: (ctx, input) => writing(async () => {
@@ -526,7 +528,8 @@ const tableCommand: CommandDefinition = {
       case 'field-add': {
         const options = inputString(input, 'options')
         const labels = options === undefined ? undefined : options.startsWith('[') ? jsonArg(options, '--options') as string[] : ids(options)
-        const op = fieldAdd(table, { name: requiredInputString(input, 'name'), type: requiredInputString(input, 'type'), ...(labels ? { options: labels } : {}) })
+        const fallback = inputString(input, 'default')
+        const op = fieldAdd(table, { name: requiredInputString(input, 'name'), type: requiredInputString(input, 'type'), ...(labels ? { options: labels } : {}), ...(fallback !== undefined ? { default: fallback } : {}) })
         const field = op.field as { field_id: string; options?: unknown[] }
         return { ...await commit(ctx, ws, [op], `add field ${requiredInputString(input, 'name')}`), table: table.entity_id, field_id: field.field_id, ...(field.options ? { options: field.options } : {}) }
       }
