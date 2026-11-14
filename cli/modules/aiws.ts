@@ -796,6 +796,27 @@ const REFUSALS: Record<string, string> = {
 
 interface MacroRun { source: string; results: unknown; log: string; code: number }
 
+/** An AICC refusal as the run's sub-code (AI_QUOTA_EXHAUSTED…), anything else as it came. */
+function refusalOf(error: unknown): unknown {
+  if (error instanceof LLMComputeException && error.error.kind === 'provider' && typeof error.error.failure === 'object' && 'refused' in error.error.failure) {
+    const e = new Error(error.message) as Error & { code?: string }
+    e.code = REFUSALS[error.error.failure.refused.code] ?? 'AI_QUOTA_EXHAUSTED'
+    return e
+  }
+  return error
+}
+
+/** One AICC call of a macro's generated picture or clip, with this session; a refusal carries the run's sub-code. */
+function sessionAicc(ctx: CommandContext) {
+  return async (method: string, params: Record<string, unknown>) => {
+    try {
+      return await ctx.clients.call('aicc', method, params, rpcOptions(ctx))
+    } catch (error) {
+      throw refusalOf(providerErrorFromRpc(`aicc ${method} failed`, error))
+    }
+  }
+}
+
 /** One inference with this session's AICC; a refusal carries the run's sub-code. */
 function sessionInfer(ctx: CommandContext) {
   const call = async (method: string, params: unknown) => {
@@ -815,12 +836,7 @@ function sessionInfer(ctx: CommandContext) {
       })
       return { text: r.message.content.map((c) => (c.type === 'text' ? c.text ?? '' : '')).join(''), tokens: r.usage?.output_tokens }
     } catch (error) {
-      if (error instanceof LLMComputeException && error.error.kind === 'provider' && typeof error.error.failure === 'object' && 'refused' in error.error.failure) {
-        const e = new Error(error.message) as Error & { code?: string }
-        e.code = REFUSALS[error.error.failure.refused.code] ?? 'AI_QUOTA_EXHAUSTED'
-        throw e
-      }
-      throw error
+      throw refusalOf(error)
     }
   }
 }
@@ -855,6 +871,9 @@ async function execMacro(ctx: CommandContext, input: Record<string, unknown>): P
       res.headers.forEach((v, k) => { headers[k] = v })
       try { return { status: res.status, headers, text: new TextDecoder('utf-8', { fatal: true }).decode(bytes) } } catch { return { status: res.status, headers, base64: btoa(Array.from(bytes, (b) => String.fromCharCode(b)).join('')) } }
     },
+    aicc: sessionAicc(ctx),
+    task: (id: string) => ctx.clients.call('task-manager', 'get_task', { task_id: id }, rpcOptions(ctx)),
+    importAsset: (objId: string) => aiws(ctx, 'asset.import_object', { workspace_id: ids.workspace_id, obj_id: objId }),
     zoneHosts: [zoneHost], zoneOrigin: origin, budget, manifest,
   })
   await host.remove(`${dir}/output/.aiws/results.json`).catch(() => undefined)
@@ -866,16 +885,31 @@ async function execMacro(ctx: CommandContext, input: Record<string, unknown>): P
   const cap = Number(budget.program_timeout_secs) || 120
   const limit = Math.min(cap, Number(manifest?.resources?.timeout_secs) || cap)
   let timedOut = false
-  const timer = setTimeout(() => { timedOut = true; child.kill() }, limit * 1000)
+  // the time the macro itself took: waits for generated pictures and clips have their own limit
+  const started = Date.now()
+  let media = 0
+  let mediaSince = 0
+  let mediaMs = 0
+  const timer = setInterval(() => {
+    if (Date.now() - started - mediaMs - (media ? Date.now() - mediaSince : 0) > limit * 1000) { timedOut = true; child.kill() }
+  }, 1000)
   const out: string[] = []
+  const pending = new Set<Promise<void>>()
   try {
     for await (const line of child.lines()) {
       if (!line.startsWith(BRIDGE_PREFIX)) { out.push(line); continue }
       const msg = JSON.parse(line.slice(BRIDGE_PREFIX.length)) as { id: number; op: string; req: unknown }
-      await child.writeLine(JSON.stringify({ id: msg.id, body: await bridge.handle(msg.op, msg.req) }))
+      // answered as they come: a macro that generates several pictures at once waits for the slowest, not the sum
+      const waiting = msg.op === 'ai.image' || msg.op === 'ai.video'
+      if (waiting && media++ === 0) mediaSince = Date.now()
+      const answer: Promise<void> = bridge.handle(msg.op, msg.req)
+        .then((body) => child.writeLine(JSON.stringify({ id: msg.id, body })))
+        .finally(() => { if (waiting && --media === 0) mediaMs += Date.now() - mediaSince; pending.delete(answer) })
+      pending.add(answer)
     }
+    await Promise.allSettled([...pending])
   } finally {
-    clearTimeout(timer)
+    clearInterval(timer)
     await child.closeInput()
   }
   const code = await child.status

@@ -77,3 +77,41 @@ Deno.exit(0)
     await Deno.remove(root, { recursive: true })
   }
 }
+
+Deno.test('run-exec answers bridge calls as they come and gives host.js the session to generate media with', async () => {
+  const root = await Deno.makeTempDir({ prefix: 'aiws-run-exec-media-' })
+  const dir = `${root}/work`
+  await Deno.mkdir(`${dir}/lib`, { recursive: true })
+  await Deno.mkdir(`${dir}/program`, { recursive: true })
+  await Deno.writeTextFile(`${dir}/program/main.js`, 'export default async function main() {}')
+  await Deno.writeTextFile(`${dir}/lib/stage.json`, JSON.stringify({ budget: { program_timeout_secs: 30 }, manifest: null }))
+  // the slow picture is asked first; answered as they come, the fast one arrives first
+  await Deno.writeTextFile(`${dir}/lib/host.js`, `export function createBridgeHost(o) { return { handle: async (op, req) => {
+    await new Promise((r) => setTimeout(r, req.delay))
+    return { op, prompt: req.prompt, primitives: [typeof o.aicc, typeof o.task, typeof o.importAsset] }
+  } } }`)
+  await Deno.writeTextFile(`${dir}/lib/run.js`, `
+const enc = new TextEncoder()
+Deno.stdout.writeSync(enc.encode('\\x1eaiws ' + JSON.stringify({ id: 1, op: 'ai.image', req: { prompt: 'slow', delay: 600 } }) + '\\n'))
+Deno.stdout.writeSync(enc.encode('\\x1eaiws ' + JSON.stringify({ id: 2, op: 'ai.image', req: { prompt: 'fast', delay: 0 } }) + '\\n'))
+const reader = Deno.stdin.readable.getReader()
+let text = ''
+while (text.split('\\n').length < 3) { const { value, done } = await reader.read(); if (done) break; text += new TextDecoder().decode(value) }
+const answers = text.trim().split('\\n').map((l) => JSON.parse(l))
+Deno.mkdirSync('output/.aiws', { recursive: true })
+Deno.writeTextFileSync('output/.aiws/results.json', JSON.stringify({ answers, declare: {}, ai: null, error: null }))
+Deno.exit(0)
+`)
+  try {
+    const command = createRegistry().get('aiws', 'run-exec')
+    const ctx = createMockCommandContext({ command, config: testConfig(), configStore: new ConfigStore('/tmp/buckyos-tool-aiws-test'), clients: clientsFor(), traceId: 'aiws-test' })
+    ctx.cwd = root
+    const out = await command.handler(ctx, { workspace_id: 'ws_a', run_id: 'run_1', attempt: 1, dir: 'work' }) as Record<string, unknown>
+    assertEquals(out.exit_code, 0, JSON.stringify(out))
+    const results = JSON.parse(await Deno.readTextFile(`${dir}/output/.aiws/results.json`))
+    assertEquals(results.answers.map((a: { id: number }) => a.id), [2, 1])
+    assertEquals(results.answers[0].body.primitives, ['function', 'function', 'function'])
+  } finally {
+    await Deno.remove(root, { recursive: true })
+  }
+})
