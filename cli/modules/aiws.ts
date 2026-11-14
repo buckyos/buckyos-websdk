@@ -827,7 +827,9 @@ function sessionInfer(ctx: CommandContext) {
 
 async function execMacro(ctx: CommandContext, input: Record<string, unknown>): Promise<MacroRun> {
   const host = getHost()
-  const dir = host.path.resolve(ctx.cwd, requiredInputString(input, 'dir'))
+  // Subprocess cwd resolves directory aliases (e.g. /var -> /private/var on macOS).
+  // Use the same canonical path for the macro's read/write permission scopes.
+  const dir = await host.realPath(host.path.resolve(ctx.cwd, requiredInputString(input, 'dir')))
   const ids = { workspace_id: requiredInputString(input, 'workspace_id'), run_id: requiredInputString(input, 'run_id'), attempt: input.attempt }
   const source = await host.readTextFile(`${dir}/program/main.js`)
   let stage: { budget?: Record<string, unknown>; manifest?: unknown } = {}

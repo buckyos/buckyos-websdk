@@ -20,7 +20,23 @@ function clientsFor(): ServiceClientRegistry {
 }
 
 Deno.test('run-exec runs a macro restricted to its stage directory and answers its bridge over stdio', async () => {
-  const parent = await Deno.makeTempDir({ prefix: 'aiws-run-exec-' })
+  await assertMacroExecution(false)
+})
+
+Deno.test('run-exec preserves output access and sandbox restrictions beneath a directory alias', async () => {
+  await assertMacroExecution(true)
+})
+
+async function assertMacroExecution(aliased: boolean) {
+  const root = await Deno.makeTempDir({ prefix: 'aiws-run-exec-' })
+  let parent = root
+  if (aliased) {
+    const physical = path.join(await Deno.realPath(root), 'project')
+    parent = path.join(root, 'alias')
+    await Deno.mkdir(physical)
+    await Deno.symlink(physical, parent, { type: 'junction' })
+    assert(parent !== await Deno.realPath(parent), 'the fixture must use a directory alias')
+  }
   const dir = `${parent}/work`
   await Deno.mkdir(`${dir}/lib`, { recursive: true })
   await Deno.mkdir(`${dir}/program`, { recursive: true })
@@ -58,6 +74,6 @@ Deno.exit(0)
     assertEquals(results.answer.body.budget, { program_timeout_secs: 30 })
     assert(String(out.log).includes('macro log line'))
   } finally {
-    await Deno.remove(parent, { recursive: true })
+    await Deno.remove(root, { recursive: true })
   }
-})
+}
