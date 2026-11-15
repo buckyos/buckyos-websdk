@@ -551,7 +551,7 @@ export const EXT_TOOLS_RESERVED_COMMANDS = [
   'agent-session', 'agent_tool', 'ai_provider', 'ai_provider_test', 'ai_quota', 'aicc-tool', 'ask_user', 'buckyos',
   'caption_image', 'detect_image', 'edit_image', 'edit_video', 'enhance_audio', 'extend_video', 'gen_image', 'gen_music',
   'gen_video', 'import_office', 'import_table', 'inpaint_image', 'llm_understand_media', 'materialize_resource',
-  'ocr_image', 'remove_bg', 'resume_aicc_task', 'segment_image', 'speech_to_text', 'text_to_speech', 'upscale_image',
+  'ocr_image', 'reflow', 'remove_bg', 'resume_aicc_task', 'segment_image', 'speech_to_text', 'text_to_speech', 'upscale_image',
   'upscale_video', 'xagent',
 ]
 const MAX_EXT_TOOLS_LAUNCHER_BYTES = 1024 * 1024
