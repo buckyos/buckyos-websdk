@@ -44,6 +44,7 @@ Deno.test('aiws verbs are registered with their access levels', () => {
       ['run-exec', 'write'],
       ['run-program', 'write'],
       ['run-report', 'write'],
+      ['run-rollback', 'write'],
       ['run-start', 'write'],
     ]
   ) {
@@ -223,6 +224,7 @@ Deno.test('the executor protocol maps onto proc.* with the attempt and the servi
     if (method === 'proc.heartbeat') return { ok: true, lease_until: 'later' }
     if (method === 'proc.tool') return { ok: true, status: 'ok', text: 'profile' }
     if (method === 'proc.report') return { ok: true, state: 'validating' }
+    if (method === 'proc.rollback') return params.confirm ? { ok: true, status: 'accepted', commit: { commit_id: 'c_9', seq: 9 }, record: { id: 'rb_1', action: 'rollback' } } : { ok: true, status: 'needs_confirm', lost: [{ entity_id: 'sum', what: 'edited' }], hidden_lost: 0 }
     throw new Error(`unexpected method ${method}`)
   })
   const claimed = await run('run-claim', { workspace_id: 'ws_a', run_id: 'run_1', claim_token: 'ct_1' }, clients)
@@ -238,6 +240,18 @@ Deno.test('the executor protocol maps onto proc.* with the attempt and the servi
   assertEquals(calls[3].params, { workspace_id: 'ws_a', run_id: 'run_1', attempt: 1, finished: true })
   await run('run-report', { workspace_id: 'ws_a', run_id: 'run_1', attempt: 1, error: 'no data' }, clients)
   assertEquals(calls[4].params.error, { code: 'EXECUTOR_FAILED', detail: 'no data' })
+  // what the Agent's own model loop used goes into the run's record as it is, with the outcome or the failure
+  const report = createRegistry().get('aiws', 'run-report')
+  const usage = parseCommandArgs(report, ['--workspace', 'ws_a', '--run', 'run_1', '--attempt', '1', '--finished', '--model', 'gpt-6-astra', '--input-tokens', '12340', '--output-tokens', '1205', '--calls', '7'], undefined).input
+  await run('run-report', usage, clients)
+  assertEquals(calls[5].params, { workspace_id: 'ws_a', run_id: 'run_1', attempt: 1, finished: true, usage: { model: 'gpt-6-astra', input_tokens: 12340, output_tokens: 1205, calls: 7 } })
+  await run('run-report', { workspace_id: 'ws_a', run_id: 'run_1', attempt: 1, error: 'no data', calls: 2 }, clients)
+  assertEquals([calls[6].params.error, calls[6].params.usage], [{ code: 'EXECUTOR_FAILED', detail: 'no data' }, { calls: 2 }])
+  // a rollback first says what later changes it would lose; --confirm goes ahead
+  const asked = await run('run-rollback', { workspace_id: 'ws_a', run_id: 'run_1' }, clients)
+  assertEquals([calls[7].method, calls[7].params, asked.status], ['proc.rollback', { workspace_id: 'ws_a', run_id: 'run_1' }, 'needs_confirm'])
+  const done = await run('run-rollback', parseCommandArgs(createRegistry().get('aiws', 'run-rollback'), ['--workspace', 'ws_a', '--run', 'run_1', '--confirm'], undefined).input, clients)
+  assertEquals([calls[8].params, done.status], [{ workspace_id: 'ws_a', run_id: 'run_1', confirm: true }, 'accepted'])
 })
 
 Deno.test('a service failure becomes a tool error carrying its code', async () => {

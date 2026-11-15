@@ -272,8 +272,8 @@ class AiWorkspaceClient {
   runStart(workspace_id, program, params, idempotency_key) {
     return this.call("proc.start", { workspace_id, program, params, idempotency_key });
   }
-  runGet(workspace_id, run_id, choices) {
-    return this.call("proc.get", { workspace_id, run_id, ...choices ? { choices } : {} });
+  runGet(workspace_id, run_id) {
+    return this.call("proc.get", { workspace_id, run_id });
   }
   runList(workspace_id, wish_id, limit) {
     return this.call("proc.list", { workspace_id, ...wish_id ? { wish_id } : {}, ...limit ? { limit } : {} });
@@ -287,8 +287,10 @@ class AiWorkspaceClient {
   runReport(workspace_id, report) {
     return this.call("proc.report", { workspace_id, ...report });
   }
-  runApply(workspace_id, run_id, plan_digest, session_id) {
-    return this.call("proc.apply", { workspace_id, run_id, plan_digest, ...session_id ? { session_id } : {} });
+  /** Take back what the run wrote: only the record that is current for its stage. When the outcome was changed since,
+   * nothing is written and the answer is `status: "needs_confirm"` with what would be `lost`; again with `confirm`. */
+  runRollback(workspace_id, run_id, opts = {}) {
+    return this.call("proc.rollback", { workspace_id, run_id, ...opts.confirm ? { confirm: true } : {}, ...opts.session_id ? { session_id: opts.session_id } : {} });
   }
   runCancel(workspace_id, run_id) {
     return this.call("proc.cancel", { workspace_id, run_id });
@@ -2232,4 +2234,4 @@ export {
   ymdOf as y,
   zonedParts as z
 };
-//# sourceMappingURL=aiws_bind-3b874f77.mjs.map
+//# sourceMappingURL=aiws_bind-0885ff99.mjs.map

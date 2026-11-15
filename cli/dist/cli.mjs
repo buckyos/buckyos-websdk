@@ -6115,7 +6115,7 @@ async function readSkillDirectory(root, limit) {
   await walk(realRoot, "");
   return { files, ignored };
 }
-const PACKAGE_VERSION = "0.7.184";
+const PACKAGE_VERSION = "0.7.185";
 const TOOL_VERSION = PACKAGE_VERSION;
 const SDK_VERSION = PACKAGE_VERSION;
 const PROTOCOL_VERSION = "1";
@@ -14624,7 +14624,7 @@ const infoCommand = {
 };
 const runGetCommand = {
   verb: "run-get",
-  summary: "A wish run: state, execution context, the brief an executor starts from, candidate and preview",
+  summary: "A wish run: state, progress, execution context, the brief an executor starts from, what it wrote (applied) and the record it added to the wish's history (record)",
   options: [WORKSPACE_OPTION, RUN_OPTION],
   inputSchema: workspaceInput({ run_id: { type: "string", minLength: 1 } }, ["run_id"]),
   outputSchema: OBJECT_OUTPUT,
@@ -14770,7 +14770,13 @@ function sessionInfer(ctx) {
         allow_tool_calls: false,
         signal: ctx.signal
       });
-      return { text: r.message.content.map((c) => c.type === "text" ? c.text ?? "" : "").join(""), tokens: r.usage?.output_tokens };
+      const model = r.extra?.model;
+      return {
+        text: r.message.content.map((c) => c.type === "text" ? c.text ?? "" : "").join(""),
+        tokens: r.usage?.output_tokens,
+        input_tokens: r.usage?.input_tokens,
+        ...typeof model === "string" && model ? { model } : {}
+      };
     } catch (error) {
       throw refusalOf(error);
     }
@@ -14974,20 +14980,37 @@ const runStartCommand = {
 };
 const runReportCommand = {
   verb: "run-report",
-  summary: "End a claimed run: --finished after the stage is done (submit_analysis or finish accepted, or the stored macro handed in), an analysis made elsewhere, or a failure",
-  description: "The service validates and plans what the stage collected; the user confirms it in the workspace. Results always come from the macro (run-program). A superseded attempt or a cancelled run gets RUN_REVOKED.",
+  summary: "End a claimed run: --finished after the stage is done (submit_analysis or finish accepted, or the stored macro handed in), an analysis made elsewhere, or a failure — with what your model loop used",
+  description: "The service then checks the stage and writes it at once: an analysis its task contract, coding only the macro, a run its results; each stage adds a record to the wish's history, a failure too (and writes nothing else). Results always come from the macro (run-program). --model, --input-tokens, --output-tokens and --calls go into that record as they are: what the model turns of this stage used (leave them out when you called no model, as when you only ran the stored macro). A superseded attempt or a cancelled run gets RUN_REVOKED.",
   options: [
     WORKSPACE_OPTION,
     RUN_OPTION,
     ATTEMPT_OPTION,
-    { name: "finished", property: "finished", description: "The stage is done: what it collected becomes the candidate", type: "boolean" },
+    { name: "finished", property: "finished", description: "The stage is done: the service writes what it produced", type: "boolean" },
     { name: "analysis", property: "analysis", description: "Analysis JSON (analyze runs, wish.analysis.v3)", type: "string" },
     { name: "analysis-file", property: "analysis_file", description: "Path of a JSON file holding the analysis", type: "string" },
     { name: "summary", property: "summary", description: "One paragraph on what was done", type: "string" },
     { name: "warning", property: "warnings", description: "A warning for the user (repeatable)", type: "string" },
-    { name: "error", property: "error", description: "Report a failure instead: its reason", type: "string" }
+    { name: "error", property: "error", description: "Report a failure instead: its reason", type: "string" },
+    { name: "model", property: "model", description: "The model that answered your last model turn (the stage's model when you cannot tell)", type: "string" },
+    { name: "input-tokens", property: "input_tokens", description: "Input tokens of all your model turns in this stage", type: "integer" },
+    { name: "output-tokens", property: "output_tokens", description: "Output tokens of all your model turns in this stage", type: "integer" },
+    { name: "calls", property: "calls", description: "How many model turns this stage took", type: "integer" }
   ],
-  inputSchema: workspaceInput({ run_id: { type: "string", minLength: 1 }, attempt: { type: "integer", minimum: 1 }, finished: { type: "boolean" }, analysis: { type: "string" }, analysis_file: { type: "string" }, summary: { type: "string" }, warnings: { type: "string" }, error: { type: "string" } }, ["run_id", "attempt"]),
+  inputSchema: workspaceInput({
+    run_id: { type: "string", minLength: 1 },
+    attempt: { type: "integer", minimum: 1 },
+    finished: { type: "boolean" },
+    analysis: { type: "string" },
+    analysis_file: { type: "string" },
+    summary: { type: "string" },
+    warnings: { type: "string" },
+    error: { type: "string" },
+    model: { type: "string", minLength: 1 },
+    input_tokens: { type: "integer", minimum: 0 },
+    output_tokens: { type: "integer", minimum: 0 },
+    calls: { type: "integer", minimum: 0 }
+  }, ["run_id", "attempt"]),
   outputSchema: OBJECT_OUTPUT,
   resultSchemaVersion: 1,
   access: { mode: "fixed", level: "write" },
@@ -14995,6 +15018,7 @@ const runReportCommand = {
   requiresSession: true,
   examples: [
     "buckyos aiws run-report --workspace ws_abc --run run_xyz --attempt 1 --finished",
+    "buckyos aiws run-report --workspace ws_abc --run run_xyz --attempt 1 --finished --model gpt-6-astra --input-tokens 12340 --output-tokens 1205 --calls 7",
     "buckyos aiws run-report --workspace ws_abc --run run_xyz --attempt 1 --analysis-file out/analysis.json",
     'buckyos aiws run-report --workspace ws_abc --run run_xyz --attempt 1 --error "the input table is empty"'
   ],
@@ -15014,8 +15038,35 @@ const runReportCommand = {
     const warning = inputString(input, "warnings");
     if (warning)
       params.warnings = [warning];
+    const usage2 = {};
+    const model = inputString(input, "model");
+    if (model)
+      usage2.model = model;
+    for (const key of ["input_tokens", "output_tokens", "calls"])
+      if (typeof input[key] === "number")
+        usage2[key] = input[key];
+    if (Object.keys(usage2).length)
+      params.usage = usage2;
     return aiws(ctx, "proc.report", params);
   }
+};
+const runRollbackCommand = {
+  verb: "run-rollback",
+  summary: "Roll a wish run back: what it wrote (its analysis, its macro or its results) returns to the stage's previous version; only the run whose record is current for its stage",
+  description: "Results the run updated return to what they were before it (a person's edits it overwrote included), results it created go with their Blocks; a macro or an analysis returns to the one of the previous record. When what the run wrote was changed since, nothing is written: the answer is `status: needs_confirm` with what would be lost (`lost`, `hidden_lost`); run it again with --confirm to go ahead. Otherwise one Commit: `commit` and the `rollback` record added to the history. Another record than the current one: INVALID_OPERATION / NOT_CURRENT_RECORD. Needs update on the wish.",
+  options: [WORKSPACE_OPTION, RUN_OPTION, { name: "confirm", property: "confirm", description: "Go ahead although the later changes listed by a first try are lost", type: "boolean" }],
+  inputSchema: workspaceInput({ run_id: { type: "string", minLength: 1 }, confirm: { type: "boolean" } }, ["run_id"]),
+  outputSchema: OBJECT_OUTPUT,
+  resultSchemaVersion: 1,
+  access: { mode: "fixed", level: "write" },
+  asyncMode: "sync",
+  requiresSession: true,
+  examples: ["buckyos aiws run-rollback --workspace ws_abc --run run_xyz", "buckyos aiws run-rollback --workspace ws_abc --run run_xyz --confirm"],
+  handler: (ctx, input) => aiws(ctx, "proc.rollback", {
+    workspace_id: requiredInputString(input, "workspace_id"),
+    run_id: requiredInputString(input, "run_id"),
+    ...input.confirm === true ? { confirm: true } : {}
+  })
 };
 const controlsCommand = {
   verb: "controls",
@@ -15731,8 +15782,8 @@ const templateCommand = {
 function createAiwsModule() {
   return {
     name: "aiws",
-    summary: "AI Workspace: find and read a workspace by path (ls, find, grep, stat, cat, resolve, read), its permissions (acl, acl-edit), query its tables in SQL (sql), write tables, rich text and common properties (table, text, mv, rename, set-prop), your to-do list and calendar (todo, cal), Block-controls (catalogue, import, export), extension controls (build, pull, export, library, import, upgrade), Workspace templates (list, create, export), and execute wish runs as their executor (claim, heartbeat, report)",
-    commands: [infoCommand, lsCommand, findCommand, grepCommand, statCommand, aclCommand, aclEditCommand, catCommand, resolveCommand, readCommand, sqlCommand, tableCommand, textCommand, mvCommand, renameCommand, setPropCommand, todoCommand, calCommand, placeCommand, controlsCommand, importCommand, exportCommand, buildCommand, pullCommand, extExportCommand, libraryCommand, extImportCommand, extUpgradeCommand, templateCommand, runGetCommand, runClaimCommand, runHeartbeatCommand, runFilesCommand, runToolCommand, runExecCommand, runProgramCommand, runReportCommand, runStartCommand]
+    summary: "AI Workspace: find and read a workspace by path (ls, find, grep, stat, cat, resolve, read), its permissions (acl, acl-edit), query its tables in SQL (sql), write tables, rich text and common properties (table, text, mv, rename, set-prop), your to-do list and calendar (todo, cal), Block-controls (catalogue, import, export), extension controls (build, pull, export, library, import, upgrade), Workspace templates (list, create, export), and execute wish runs as their executor (claim, heartbeat, report) or roll one back",
+    commands: [infoCommand, lsCommand, findCommand, grepCommand, statCommand, aclCommand, aclEditCommand, catCommand, resolveCommand, readCommand, sqlCommand, tableCommand, textCommand, mvCommand, renameCommand, setPropCommand, todoCommand, calCommand, placeCommand, controlsCommand, importCommand, exportCommand, buildCommand, pullCommand, extExportCommand, libraryCommand, extImportCommand, extUpgradeCommand, templateCommand, runGetCommand, runClaimCommand, runHeartbeatCommand, runFilesCommand, runToolCommand, runExecCommand, runProgramCommand, runReportCommand, runRollbackCommand, runStartCommand]
   };
 }
 const VERSION = TOOL_VERSION;

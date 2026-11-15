@@ -447,21 +447,30 @@ export interface AiwsExtPackResult {
         token: string;
     };
 }
-/** What an executor outside the service reports for a run (M3): results in the Mock executor's shape, or an analysis. */
+/** What a stage's model loop used, as its executor reports it (`proc.report { usage }`): the model of the last turn,
+ * the tokens of all turns, how many turns. A macro's own AI calls are counted by the program host. */
+export interface AiwsRunUsage {
+    model?: string;
+    input_tokens?: number;
+    output_tokens?: number;
+    calls?: number;
+}
+/** What an executor outside the service reports for a run (M3): the stage is done, an analysis made elsewhere, or a
+ * failure — each with what it used. Results always come from the macro (`proc.program`). */
 export interface AiwsRunReport {
     run_id: string;
     attempt: number;
     progress?: Record<string, unknown>;
+    finished?: boolean;
     error?: {
         code: string;
         detail: string;
     };
-    results?: Record<string, unknown>[];
-    read_set?: Record<string, unknown>[];
     summary?: string;
     warnings?: string[];
     assumptions?: string[];
     analysis?: Record<string, unknown>;
+    usage?: AiwsRunUsage;
 }
 /** One request of `doc.stage` / `doc.commit` stays under the service's 8 MiB body limit. */
 export declare const AIWS_COMMIT_PART_BYTES: number;
@@ -675,7 +684,7 @@ export declare class AiWorkspaceClient {
         folder_id?: string;
     }): Promise<AiwsExtBuildResult>;
     runStart(workspace_id: string, program: string, params: Record<string, unknown>, idempotency_key: string): Promise<Record<string, unknown>>;
-    runGet(workspace_id: string, run_id: string, choices?: Record<string, unknown>): Promise<Record<string, unknown>>;
+    runGet(workspace_id: string, run_id: string): Promise<Record<string, unknown>>;
     runList(workspace_id: string, wish_id?: string, limit?: number): Promise<Record<string, unknown>>;
     runClaim(workspace_id: string, run_id: string, claim_token: string, executor?: Record<string, unknown>): Promise<{
         run_id: string;
@@ -686,7 +695,12 @@ export declare class AiWorkspaceClient {
     }>;
     runHeartbeat(workspace_id: string, run_id: string, attempt: number, progress?: Record<string, unknown>): Promise<Record<string, unknown>>;
     runReport(workspace_id: string, report: AiwsRunReport): Promise<Record<string, unknown>>;
-    runApply(workspace_id: string, run_id: string, plan_digest: string, session_id?: string): Promise<Record<string, unknown>>;
+    /** Take back what the run wrote: only the record that is current for its stage. When the outcome was changed since,
+     * nothing is written and the answer is `status: "needs_confirm"` with what would be `lost`; again with `confirm`. */
+    runRollback(workspace_id: string, run_id: string, opts?: {
+        confirm?: boolean;
+        session_id?: string;
+    }): Promise<Record<string, unknown>>;
     runCancel(workspace_id: string, run_id: string): Promise<Record<string, unknown>>;
 }
 //# sourceMappingURL=aiworkspace_client.d.ts.map
