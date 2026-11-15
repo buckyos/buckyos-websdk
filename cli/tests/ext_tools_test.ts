@@ -30,9 +30,24 @@ function context(calls: RecordedCall[], verb: string) {
 }
 
 Deno.test('ext-tools: the verbs are registered with the access they need', () => {
-  assertEquals(registry().commands().map((command) => command.verb), ['disable', 'enable', 'import', 'list', 'status'])
+  assertEquals(registry().commands().map((command) => command.verb), ['disable', 'download', 'enable', 'import', 'list', 'status'])
   for (const verb of ['list', 'status']) assertEquals(registry().get('ext-tools', verb).access, { mode: 'fixed', level: 'read' })
-  for (const verb of ['enable', 'disable', 'import']) assertEquals(registry().get('ext-tools', verb).access, { mode: 'fixed', level: 'write' })
+  for (const verb of ['enable', 'disable', 'import', 'download']) assertEquals(registry().get('ext-tools', verb).access, { mode: 'fixed', level: 'write' })
+})
+
+Deno.test('ext-tools: download asks control-panel to have the nodes fetch an online item again', async () => {
+  const calls: RecordedCall[] = []
+  const run = (input: Record<string, unknown>) => registry().get('ext-tools', 'download').handler(context(calls, 'download'), input)
+  await run({ id: 'ext-core', item: 'chromium' })
+  await run({ id: 'ext-core', item: 'chromium', node: 'ood1' })
+  assertEquals(calls, [
+    { service: 'control-panel', method: 'ext_tools.download', params: { id: 'ext-core', item: 'chromium' } },
+    { service: 'control-panel', method: 'ext_tools.download', params: { id: 'ext-core', item: 'chromium', node: 'ood1' } },
+  ])
+  await assertRejects(() => Promise.resolve().then(() => run({ id: 'ext-core' })))
+  const definition = registry().get('ext-tools', 'download')
+  assertEquals(definition.positionals?.map((positional) => positional.name), ['id', 'item'])
+  assertEquals(definition.inputSchema.required, ['id', 'item'])
 })
 
 Deno.test('ext-tools: enable and disable ask control-panel for the desired state, dry-run for the plan', async () => {

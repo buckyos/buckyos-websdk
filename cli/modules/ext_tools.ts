@@ -44,6 +44,34 @@ function desired(verb: string, summary: string, enabled: boolean): CommandDefini
   }
 }
 
+/** An online item is what a package only declares: each node downloads it from its upstream once, when the package is
+ * installed. A download that failed stays failed until it is asked for again, which is what this does. */
+function download(): CommandDefinition {
+  return {
+    verb: 'download',
+    summary: 'Ask the nodes to download an online item of a package again: after a failure, or to replace what is there',
+    positionals: [
+      { name: 'id', description: 'Package id, e.g. ext-core' },
+      { name: 'item', description: 'Online item id, e.g. chromium (see `online` in ext-tools status)' },
+    ],
+    options: [{ name: 'node', description: 'Only this node; without it every node that has the item', type: 'string' as const }],
+    inputSchema: {
+      type: 'object',
+      properties: { id: ID, item: ID, node: { type: 'string', minLength: 1 } },
+      required: ['id', 'item'],
+      additionalProperties: false,
+    },
+    outputSchema: OBJECT_OUTPUT, resultSchemaVersion: 1, access: { mode: 'fixed', level: 'write' },
+    asyncMode: 'sync', requiresSession: true,
+    handler: (ctx, input) => {
+      for (const name of ['id', 'item']) {
+        if (typeof input[name] !== 'string' || !input[name]) throw new UsageError('MISSING_ARGUMENT', `a package id and an online item id are required`)
+      }
+      return call(ctx, 'ext_tools.download', { id: input.id, item: input.item, ...(typeof input.node === 'string' ? { node: input.node } : {}) })
+    },
+  }
+}
+
 /** The Zone's extension packages. The administrator says what the Zone should have; each node's reconciler gets there. */
 export function createExtToolsModule(): CommandModule {
   return {
@@ -51,9 +79,10 @@ export function createExtToolsModule(): CommandModule {
     summary: 'Manage the extension tool packages every Agent of the Zone shares',
     commands: [
       read('list', 'The packages published in the Repo, and what each provides', 'ext_tools.catalog'),
-      read('status', 'Package by node: what is asked for and where each node got to', 'ext_tools.status'),
+      read('status', 'Package by node: what is asked for, where each node got to, and the online items it downloaded or still waits for', 'ext_tools.status'),
       desired('enable', 'Enable or upgrade a package, with the packages it requires', true),
       desired('disable', 'Disable a package; refused while an enabled package requires it', false),
+      download(),
       {
         verb: 'import',
         summary: 'Put an already built .pikg (an official release asset) into the Repo unchanged',

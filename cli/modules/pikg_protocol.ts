@@ -579,17 +579,113 @@ export function extToolsPlatformOfKey(key: string): ExtToolsPlatform | undefined
   return EXT_TOOLS_PLATFORMS.find((platform) => platform.key === key)
 }
 
+/** Where one platform gets an online item: the upstream's own archive, and what to do with it once unpacked. */
+export interface ExtToolsOnlineSource {
+  url: string
+  sha256: string
+  size_bytes: number
+  format: string
+  into?: string
+  rename?: Array<[string, string]>
+  overlay?: string
+}
+
+/** Something a package only declares: a node downloads it from the upstream to `tools/online/<id>/` once the package is
+ * installed. A platform without an entry has no such item. */
+export interface ExtToolsOnlineItem {
+  id: string
+  version: string
+  desc?: string
+  license?: string
+  auto?: boolean
+  platforms: Record<string, ExtToolsOnlineSource>
+}
+
 export interface ExtToolsManifest {
   schema: string
   id: string
   version: string
   requires: Array<{ id: string; version: string }>
   conflicts: string[]
-  provides: Array<{ command: string; version_probe: string; smoke?: string }>
+  provides: Array<{ command: string; version_probe: string; smoke?: string; needs?: string[] }>
   platforms: string[]
   size_bytes?: Record<string, number>
   license?: string
   desc?: string
+  online?: ExtToolsOnlineItem[]
+}
+
+const EXT_TOOLS_VERSION = /^[A-Za-z0-9._+-]+$/
+export const EXT_TOOLS_ONLINE_FORMATS = ['zip', 'tar.gz']
+
+function unknownKeys(value: Record<string, unknown>, allowed: string[]): string[] {
+  return Object.keys(value).filter((key) => !allowed.includes(key))
+}
+
+function isHttpsUrl(value: unknown): boolean {
+  if (typeof value !== 'string') return false
+  try {
+    const url = new URL(value)
+    return url.protocol === 'https:' && url.hostname !== ''
+  } catch {
+    return false
+  }
+}
+
+/** What is wrong with one platform's source of online item `item` (Rust: `ExtToolsOnlineSource::problem`). */
+function extToolsOnlineSourceErrors(item: string, raw: unknown): string[] {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return ['must be an object']
+  const source = raw as Record<string, unknown>
+  const errors = unknownKeys(source, ['url', 'sha256', 'size_bytes', 'format', 'into', 'rename', 'overlay']).map((key) => `${key} is not a field`)
+  if (!isHttpsUrl(source.url)) errors.push(`url ${JSON.stringify(source.url)} must be an https address`)
+  if (typeof source.sha256 !== 'string' || !/^[0-9a-fA-F]{64}$/.test(source.sha256)) errors.push('sha256 must be 64 hex digits')
+  if (!Number.isSafeInteger(source.size_bytes) || (source.size_bytes as number) <= 0) errors.push('size_bytes must be the size of the archive')
+  if (typeof source.format !== 'string' || !EXT_TOOLS_ONLINE_FORMATS.includes(source.format)) errors.push(`format ${JSON.stringify(source.format)} must be zip or tar.gz`)
+  if (source.into !== undefined && (typeof source.into !== 'string' || !isSafeRelativePath(source.into))) errors.push('into must be a relative path inside the item')
+  const pairs = source.rename === undefined ? [] : source.rename
+  const renamed = Array.isArray(pairs) && pairs.every((pair) =>
+    Array.isArray(pair) && pair.length === 2 && pair.every((path) => typeof path === 'string' && isSafeRelativePath(path)) && pair[0] !== pair[1]
+  )
+  if (!renamed) errors.push('rename must be [from, to] pairs of relative paths inside the item')
+  const root = `online/${item}`
+  const overlay = source.overlay
+  if (overlay !== undefined && !(typeof overlay === 'string' && isSafeRelativePath(overlay) && (overlay === root || overlay.startsWith(`${root}/`)))) {
+    errors.push(`overlay must be ${root} or a directory below it`)
+  }
+  return errors
+}
+
+/** The `online` list of a manifest (Rust: `ExtToolsManifest::validate`), and the ids it declares. */
+function extToolsOnlineErrors(manifest: Record<string, unknown>): { errors: string[]; items: Set<string> } {
+  const errors: string[] = []
+  const items = new Set<string>()
+  if (manifest.online === undefined) return { errors, items }
+  if (!Array.isArray(manifest.online)) return { errors: ['online must be a list of items'], items }
+  const platforms = Array.isArray(manifest.platforms) ? manifest.platforms : []
+  for (const raw of manifest.online) {
+    const item = (raw ?? {}) as Record<string, unknown>
+    const id = item.id
+    if (typeof id !== 'string' || !EXT_TOOLS_ID.test(id)) {
+      errors.push(`online: id ${JSON.stringify(id)} must be lowercase letters, digits and -`)
+      continue
+    }
+    if (items.has(id)) errors.push(`online: ${id} is listed twice`)
+    items.add(id)
+    for (const key of unknownKeys(item, ['id', 'version', 'desc', 'license', 'auto', 'platforms'])) errors.push(`online ${id}: ${key} is not a field`)
+    if (typeof item.version !== 'string' || !EXT_TOOLS_VERSION.test(item.version)) errors.push(`online ${id}: version must be letters, digits and ._+-`)
+    for (const text of ['desc', 'license']) if (item[text] !== undefined && typeof item[text] !== 'string') errors.push(`online ${id}: ${text} must be a string`)
+    if (item.auto !== undefined && typeof item.auto !== 'boolean') errors.push(`online ${id}: auto must be true or false`)
+    const sources = item.platforms
+    if (!sources || typeof sources !== 'object' || Array.isArray(sources) || Object.keys(sources).length === 0) {
+      errors.push(`online ${id}: platforms must not be empty`)
+      continue
+    }
+    for (const [platform, source] of Object.entries(sources)) {
+      if (!platforms.includes(platform)) errors.push(`online ${id}: ${platform} is not a platform of the package`)
+      for (const problem of extToolsOnlineSourceErrors(id, source)) errors.push(`online ${id} on ${platform}: ${problem}`)
+    }
+  }
+  return { errors, items }
 }
 
 /** The manifest's own rules (`buckyos.ext_tools/1`, doc/pikg/format.md §5), each problem one line. */
@@ -597,12 +693,14 @@ export function extToolsManifestErrors(value: unknown): string[] {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return ['must be a JSON object']
   const manifest = value as Record<string, unknown>
   const errors: string[] = []
-  const allowed = ['schema', 'id', 'version', 'requires', 'conflicts', 'provides', 'platforms', 'size_bytes', 'license', 'desc']
+  const allowed = ['schema', 'id', 'version', 'requires', 'conflicts', 'provides', 'platforms', 'size_bytes', 'license', 'desc', 'online']
   for (const key of Object.keys(manifest)) if (!allowed.includes(key)) errors.push(`${key} is not a field of the manifest`)
   if (manifest.schema !== EXT_TOOLS_MANIFEST_SCHEMA) errors.push(`schema must be ${EXT_TOOLS_MANIFEST_SCHEMA}`)
   if (typeof manifest.id !== 'string' || !EXT_TOOLS_ID.test(manifest.id)) errors.push('id must be lowercase letters, digits and -')
-  if (typeof manifest.version !== 'string' || !/^[A-Za-z0-9._+-]+$/.test(manifest.version)) errors.push('version must be letters, digits and ._+-')
+  if (typeof manifest.version !== 'string' || !EXT_TOOLS_VERSION.test(manifest.version)) errors.push('version must be letters, digits and ._+-')
   if (!Array.isArray(manifest.provides) || manifest.provides.length === 0) errors.push('provides must not be empty')
+  const online = extToolsOnlineErrors(manifest)
+  errors.push(...online.errors)
   const commands = new Set<string>()
   for (const raw of Array.isArray(manifest.provides) ? manifest.provides : []) {
     const entry = (raw ?? {}) as Record<string, unknown>
@@ -614,11 +712,19 @@ export function extToolsManifestErrors(value: unknown): string[] {
     if (commands.has(command)) errors.push(`provides: command ${command} is listed twice`)
     if (EXT_TOOLS_RESERVED_COMMANDS.includes(command)) errors.push(`provides: ${command} is a standard command and cannot be provided by a package`)
     commands.add(command)
+    for (const key of unknownKeys(entry, ['command', 'version_probe', 'smoke', 'needs'])) errors.push(`provides: ${key} is not a field of ${command}`)
     if (typeof entry.version_probe !== 'string' || !entry.version_probe.trim()) errors.push(`provides: ${command} has no version_probe`)
     const smoke = entry.smoke
     if (smoke !== undefined && (typeof smoke !== 'string' || !isSafeRelativePath(smoke))) {
       errors.push(`provides: the smoke of ${command} must be a relative path inside the payload`)
     }
+    const needs = entry.needs === undefined ? [] : entry.needs
+    if (!Array.isArray(needs) || !needs.every((need) => typeof need === 'string')) {
+      errors.push(`provides: the needs of ${command} must list online items by id`)
+      continue
+    }
+    for (const need of needs as string[]) if (!online.items.has(need)) errors.push(`provides: ${command} needs ${need}, which is not an online item of the package`)
+    if (new Set(needs).size !== needs.length) errors.push(`provides: ${command} needs an online item twice`)
   }
   if (!Array.isArray(manifest.platforms) || manifest.platforms.length === 0) errors.push('platforms must not be empty')
   for (const platform of Array.isArray(manifest.platforms) ? manifest.platforms : []) {
@@ -669,12 +775,19 @@ export function extToolsPayloadErrors(manifest: ExtToolsManifest, platform: stri
   const errors: string[] = []
   const windows = platform.startsWith('windows-')
   const suffixes = windows ? EXT_TOOLS_WINDOWS_SUFFIXES : ['']
+  const online = manifest.online ?? []
   for (const path of [...tree.files.keys(), ...tree.directories]) {
     const [top, second] = path.split('/')
     const isTop = !path.includes('/')
-    const known = top === EXT_TOOLS_MANIFEST_FILE && isTop || top === 'bin' || top === 'smoke' || top === 'store'
-    if (!known) errors.push(`${path}: a package only holds ${EXT_TOOLS_MANIFEST_FILE}, bin/, smoke/ and store/${manifest.id}/`)
+    const known = top === EXT_TOOLS_MANIFEST_FILE && isTop || top === 'bin' || top === 'smoke' || top === 'store' || top === 'online'
+    if (!known) errors.push(`${path}: a package only holds ${EXT_TOOLS_MANIFEST_FILE}, bin/, smoke/, store/${manifest.id}/ and online/<item>/`)
     if (top === 'store' && second !== undefined && second !== manifest.id) errors.push(`${path}: a package only writes store/${manifest.id}/`)
+    if (top === 'online' && second !== undefined && !online.some((item) => item.id === second)) errors.push(`${path}: not an online item of the package`)
+  }
+  for (const item of online) {
+    const overlay = item.platforms[platform]?.overlay
+    const present = overlay !== undefined && (tree.directories.has(overlay) || [...tree.files.keys()].some((path) => path.startsWith(`${overlay}/`)))
+    if (overlay !== undefined && !present) errors.push(`${overlay}: the overlay of online item ${item.id} is missing`)
   }
   const declared = new Set(manifest.provides.map((provided) => provided.command))
   for (const provided of manifest.provides) {

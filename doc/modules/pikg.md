@@ -37,7 +37,7 @@ npx buckyos pikg info ./dapp_dist/demo-0.1.0.pikg
 
 报告 `healthy` 与逐项 `checks`、Tool/SDK/协议版本、权限策略、分发清单、目标 profile 和 identity candidate 顺序。它不登录、不连接 Zone、不执行 Docker inspect；目标兼容性为 `not-checked`。诊断成功不等于构建、签名或安装成功。
 
-扩展工具包（`categories: ["ext_tools"]`）另有三类检查：`ext_tools_manifest`（清单与 App 名/版本、子包一一对应）、每个平台一条 `ext_tools_payload`（launcher 齐全且可执行、没有声明外的入口、smoke 脚本存在、只写自己的 `store/<id>`、不含构建机绝对路径、payload 里的清单副本与工程根一致）、`ext_tools_catalog`。最后一条要 `--catalog <dir>`（目录下每个子目录一份 `ext-manifest.json`，如 `publish/exttool`）才运行：`requires` 的包在不在，同名命令有没有 `conflicts`；不给时记 `skipped`，因为 `doctor` 不连 Zone。出错时 `healthy: false`，各项写在 `errors` 里；`pikg build` / `pack` / `info` 对 payload 做同一组检查并拒绝。
+扩展工具包（`categories: ["ext_tools"]`）另有三类检查：`ext_tools_manifest`（清单与 App 名/版本、子包一一对应）、每个平台一条 `ext_tools_payload`（launcher 齐全且可执行、没有声明外的入口、smoke 脚本存在、只写自己的 `store/<id>`、`online/` 下只有清单声明过的在线项且它在该平台的 `overlay` 目录存在、不含构建机绝对路径、payload 里的清单副本与工程根一致）、`ext_tools_catalog`。最后一条要 `--catalog <dir>`（目录下每个子目录一份 `ext-manifest.json`，如 `publish/exttool`）才运行：`requires` 的包在不在，同名命令有没有 `conflicts`；不给时记 `skipped`，因为 `doctor` 不连 Zone。出错时 `healthy: false`，各项写在 `errors` 里；`pikg build` / `pack` / `info` 对 payload 做同一组检查并拒绝。
 
 ### `init`
 
@@ -52,7 +52,7 @@ npx buckyos pikg info ./dapp_dist/demo-0.1.0.pikg
 | `aiws-controls` | `aiws` | `aiws` | AIWS bundle 目录（`aiws-manifest.json` + `controls/<dir>/`）；不存在时写一个 declarative 控件骨架 |
 | `ext-tools` | `ext_tools` | `ext_tools_<os>_<arch>`，初始是本机平台 | 扩展包工程目录（`ext-manifest.json` + `payload/<platform>/{bin,smoke,store/<id>}`）；没有 `ext-manifest.json` 时写一个能打包的骨架 |
 
-扩展工具包的格式见 [PIKG 格式 §5.1](https://github.com/buckyos/buckyos/blob/main/doc/pikg/format.md)。`--name` 就是清单的 `id`。加平台：放好 `payload/<platform>/`，把平台写进 `ext-manifest.json` 的 `platforms`，在 `pikg.json` 加对应子包；工程根的 `ext-manifest.json` 是唯一来源，每个 payload 根上放一份相同的副本。
+扩展工具包的格式见 [PIKG 格式 §5.1](https://github.com/buckyos/buckyos/blob/main/doc/pikg/format.md)，包括在线项（清单的 `online` 与 `provides[].needs`：包只声明、节点装好以后从上游下载的东西；`ext_tools_manifest` 按同一套规则检查它，`url` 必须是 https）。在线项下载失败后的重试是 `buckyos ext-tools download <包> <在线项> [--node <节点>]`，状态在 `buckyos ext-tools status` 的 `nodes.<节点>.online` 下。`--name` 就是清单的 `id`。加平台：放好 `payload/<platform>/`，把平台写进 `ext-manifest.json` 的 `platforms`，在 `pikg.json` 加对应子包；工程根的 `ext-manifest.json` 是唯一来源，每个 payload 根上放一份相同的副本。
 
 Agent 模板没有独立 init kind，参考 [Jarvis 元数据](https://github.com/buckyos/buckyos/tree/main/src/apps/jarvis_agent/dapp_meta) 或 [Agent fixture](https://github.com/buckyos/buckyos/tree/main/test/app_installer_test/pikg_samples/agent)。
 

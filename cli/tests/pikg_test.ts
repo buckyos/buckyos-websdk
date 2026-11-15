@@ -963,6 +963,118 @@ Deno.test('ext-tools packages: a standard command cannot be provided, and a Wind
   assert(extToolsPayloadErrors(windows, 'windows-x86_64', tree(['ext-manifest.json', 'bin/tool.cmd', 'smoke/tool.sh'])).some((error: string) => error.includes('smoke/tool.ps1')))
 })
 
+const onlineManifest = () => ({
+  schema: 'buckyos.ext_tools/1', id: 'ext-x', version: '1.0.0', requires: [], conflicts: [],
+  provides: [{ command: 'tool', version_probe: 'tool -v' }, { command: 'browse', version_probe: 'browse --version', smoke: 'smoke/browse.sh', needs: ['chromium'] }],
+  platforms: ['linux-x86_64'],
+  online: [{
+    id: 'chromium', version: '159.0.8154.6', desc: 'A browser', license: "The upstream's", auto: true,
+    platforms: {
+      'linux-x86_64': {
+        url: 'https://storage.googleapis.com/chrome-for-testing-public/159.0.8154.6/linux64/chrome-linux64.zip',
+        sha256: 'ab'.repeat(32), size_bytes: 170_000_000, format: 'zip', into: 'chromium-1255',
+        rename: [['chromium-1255/chrome-linux64/chrome', 'chromium-1255/chrome-linux64/chrome-bin']] as Array<[string, string]>,
+        overlay: 'online/chromium',
+      },
+    },
+  }],
+})
+
+Deno.test('ext-tools packages: an online item names an https archive of the upstream and stays inside its directory', async () => {
+  const { extToolsManifestErrors, extToolsPayloadErrors } = await import('../modules/pikg_protocol.ts')
+  assertEquals(extToolsManifestErrors(onlineManifest()), [])
+  // deno-lint-ignore no-explicit-any
+  const source = (manifest: any) => manifest.online[0].platforms['linux-x86_64']
+  // deno-lint-ignore no-explicit-any
+  const changes: Array<[string, (manifest: any) => void]> = [
+    ['must be lowercase', (m) => { m.online[0].id = 'Chromium' }],
+    ['listed twice', (m) => { m.online.push(structuredClone(m.online[0])) }],
+    ['version must be', (m) => { m.online[0].version = '1 2' }],
+    ['platforms must not be empty', (m) => { m.online[0].platforms = {} }],
+    ['is not a platform of the package', (m) => { m.online[0].platforms['darwin-arm64'] = source(m) }],
+    ['mirror is not a field', (m) => { source(m).mirror = 'https://mirror.example/chrome.zip' }],
+    ['must be an https address', (m) => { source(m).url = 'http://storage.googleapis.com/chrome.zip' }],
+    ['must be an https address', (m) => { source(m).url = 'file:///etc/passwd' }],
+    ['must be an https address', (m) => { source(m).url = 'https://' }],
+    ['sha256 must be 64 hex digits', (m) => { source(m).sha256 = 'abc' }],
+    ['sha256 must be 64 hex digits', (m) => { source(m).sha256 = 'zz'.repeat(32) }],
+    ['size_bytes must be', (m) => { source(m).size_bytes = 0 }],
+    ['must be zip or tar.gz', (m) => { source(m).format = '7z' }],
+    ['into must be', (m) => { source(m).into = '../outside' }],
+    ['into must be', (m) => { source(m).into = '/abs' }],
+    ['rename must be', (m) => { source(m).rename = [['a', '../b']] }],
+    ['rename must be', (m) => { source(m).rename = [['a', 'a']] }],
+    ['rename must be', (m) => { source(m).rename = [['a']] }],
+    ['overlay must be online/chromium', (m) => { source(m).overlay = 'store/ext-x/overlay' }],
+    ['overlay must be online/chromium', (m) => { source(m).overlay = 'online/chromium/../other' }],
+    ['overlay must be online/chromium', (m) => { source(m).overlay = 'online/chromium-other' }],
+    ['needs firefox, which is not an online item', (m) => { m.provides[1].needs = ['firefox'] }],
+    ['needs an online item twice', (m) => { m.provides[1].needs = ['chromium', 'chromium'] }],
+    ['must list online items by id', (m) => { m.provides[1].needs = 'chromium' }],
+    ['need is not a field of browse', (m) => { m.provides[1].need = ['chromium'] }],
+    ['online must be a list', (m) => { m.online = {} }],
+  ]
+  for (const [needle, change] of changes) {
+    const manifest = onlineManifest()
+    change(manifest)
+    const errors = extToolsManifestErrors(manifest)
+    assert(errors.some((error: string) => error.includes(needle)), `${needle}: ${JSON.stringify(errors)}`)
+  }
+
+  const tree = (files: string[], directories: string[] = []) => ({
+    files: new Map(files.map((path) => [path, { executable: true }])), directories: new Set(directories), launchers: new Map(),
+  })
+  const files = ['ext-manifest.json', 'bin/tool', 'bin/browse', 'smoke/browse.sh']
+  const manifest = onlineManifest()
+  assertEquals(extToolsPayloadErrors(manifest, 'linux-x86_64', tree(files)), ['online/chromium: the overlay of online item chromium is missing'])
+  assertEquals(extToolsPayloadErrors(manifest, 'linux-x86_64', tree(files, ['online', 'online/chromium'])), [])
+  assertEquals(extToolsPayloadErrors(manifest, 'linux-x86_64', tree([...files, 'online/chromium/chromium-1255/INSTALLATION_COMPLETE'])), [])
+  assertEquals(
+    extToolsPayloadErrors(manifest, 'linux-x86_64', tree([...files, 'online/chromium/marker', 'online/firefox/marker'])),
+    ['online/firefox/marker: not an online item of the package'],
+  )
+})
+
+Deno.test('ext-tools packages: a package with an online item doctors, builds, packs and reads back', { ignore: hostHasNoExtToolsPlatform }, async () => {
+  const root = await Deno.makeTempDir()
+  try {
+    const { project, app, io, platform, payload } = await initExtTools(root)
+    const manifestPath = join(project, 'ext-manifest.json')
+    const manifest = JSON.parse(await Deno.readTextFile(manifestPath))
+    const item = onlineManifest().online[0]
+    manifest.online = [{ ...item, platforms: { [platform]: item.platforms['linux-x86_64'] } }]
+    manifest.provides[0].needs = ['chromium']
+    const text = `${JSON.stringify(manifest, null, 2)}\n`
+    await Deno.writeTextFile(manifestPath, text)
+    await Deno.writeTextFile(join(payload, 'ext-manifest.json'), text)
+
+    assertEquals(await app.run(['pikg', 'doctor']), 0, io.stdoutText)
+    let result = io.takeEnvelope()
+    assertEquals(result.data.healthy, false)
+    assert(failedChecks(result.data).some((line) => line.includes('the overlay of online item chromium is missing')), JSON.stringify(failedChecks(result.data)))
+    assertEquals(await app.run(['pikg', 'build']), 6, io.stdoutText)
+    assert(String(io.takeEnvelope().error.message).includes('overlay of online item chromium'))
+
+    await Deno.mkdir(join(payload, 'online', 'chromium', 'chromium-1255'), { recursive: true })
+    await Deno.writeTextFile(join(payload, 'online', 'chromium', 'chromium-1255', 'INSTALLATION_COMPLETE'), '')
+    assertEquals(await app.run(['pikg', 'doctor']), 0, io.stdoutText)
+    result = io.takeEnvelope()
+    assertEquals(result.data.healthy, true, JSON.stringify(result.data.checks))
+
+    assertEquals(await app.run(['pikg', 'build']), 0, io.stdoutText)
+    result = io.takeEnvelope()
+    assertEquals(await app.run(['pikg', 'pack', result.data.dist_dir]), 0, io.stdoutText)
+    result = io.takeEnvelope()
+    assertEquals(await app.run(['pikg', 'info', result.data.pikg_path]), 0, io.stdoutText)
+    result = io.takeEnvelope()
+    assertEquals(result.data.ext_tools.online[0].id, 'chromium')
+    assertEquals(result.data.ext_tools.online[0].platforms[platform].overlay, 'online/chromium')
+    assertEquals(result.data.ext_tools.provides[0].needs, ['chromium'])
+  } finally {
+    await Deno.remove(root, { recursive: true })
+  }
+})
+
 Deno.test('agent-skills packages: init writes a skill in the directory layout, doctor lints the source', async () => {
   const root = await Deno.makeTempDir()
   try {

@@ -4653,6 +4653,7 @@ const EXT_TOOLS_RESERVED_COMMANDS = [
   "llm_understand_media",
   "materialize_resource",
   "ocr_image",
+  "reflow",
   "remove_bg",
   "resume_aicc_task",
   "segment_image",
@@ -4677,12 +4678,96 @@ const EXT_TOOLS_PLATFORMS = [
 function extToolsPlatformOfKey(key) {
   return EXT_TOOLS_PLATFORMS.find((platform) => platform.key === key);
 }
+const EXT_TOOLS_VERSION = /^[A-Za-z0-9._+-]+$/;
+const EXT_TOOLS_ONLINE_FORMATS = ["zip", "tar.gz"];
+function unknownKeys(value, allowed) {
+  return Object.keys(value).filter((key) => !allowed.includes(key));
+}
+function isHttpsUrl(value) {
+  if (typeof value !== "string")
+    return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && url.hostname !== "";
+  } catch {
+    return false;
+  }
+}
+function extToolsOnlineSourceErrors(item, raw) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw))
+    return ["must be an object"];
+  const source = raw;
+  const errors = unknownKeys(source, ["url", "sha256", "size_bytes", "format", "into", "rename", "overlay"]).map((key) => `${key} is not a field`);
+  if (!isHttpsUrl(source.url))
+    errors.push(`url ${JSON.stringify(source.url)} must be an https address`);
+  if (typeof source.sha256 !== "string" || !/^[0-9a-fA-F]{64}$/.test(source.sha256))
+    errors.push("sha256 must be 64 hex digits");
+  if (!Number.isSafeInteger(source.size_bytes) || source.size_bytes <= 0)
+    errors.push("size_bytes must be the size of the archive");
+  if (typeof source.format !== "string" || !EXT_TOOLS_ONLINE_FORMATS.includes(source.format))
+    errors.push(`format ${JSON.stringify(source.format)} must be zip or tar.gz`);
+  if (source.into !== void 0 && (typeof source.into !== "string" || !isSafeRelativePath(source.into)))
+    errors.push("into must be a relative path inside the item");
+  const pairs = source.rename === void 0 ? [] : source.rename;
+  const renamed = Array.isArray(pairs) && pairs.every(
+    (pair) => Array.isArray(pair) && pair.length === 2 && pair.every((path) => typeof path === "string" && isSafeRelativePath(path)) && pair[0] !== pair[1]
+  );
+  if (!renamed)
+    errors.push("rename must be [from, to] pairs of relative paths inside the item");
+  const root = `online/${item}`;
+  const overlay = source.overlay;
+  if (overlay !== void 0 && !(typeof overlay === "string" && isSafeRelativePath(overlay) && (overlay === root || overlay.startsWith(`${root}/`)))) {
+    errors.push(`overlay must be ${root} or a directory below it`);
+  }
+  return errors;
+}
+function extToolsOnlineErrors(manifest) {
+  const errors = [];
+  const items = /* @__PURE__ */ new Set();
+  if (manifest.online === void 0)
+    return { errors, items };
+  if (!Array.isArray(manifest.online))
+    return { errors: ["online must be a list of items"], items };
+  const platforms = Array.isArray(manifest.platforms) ? manifest.platforms : [];
+  for (const raw of manifest.online) {
+    const item = raw ?? {};
+    const id = item.id;
+    if (typeof id !== "string" || !EXT_TOOLS_ID.test(id)) {
+      errors.push(`online: id ${JSON.stringify(id)} must be lowercase letters, digits and -`);
+      continue;
+    }
+    if (items.has(id))
+      errors.push(`online: ${id} is listed twice`);
+    items.add(id);
+    for (const key of unknownKeys(item, ["id", "version", "desc", "license", "auto", "platforms"]))
+      errors.push(`online ${id}: ${key} is not a field`);
+    if (typeof item.version !== "string" || !EXT_TOOLS_VERSION.test(item.version))
+      errors.push(`online ${id}: version must be letters, digits and ._+-`);
+    for (const text2 of ["desc", "license"])
+      if (item[text2] !== void 0 && typeof item[text2] !== "string")
+        errors.push(`online ${id}: ${text2} must be a string`);
+    if (item.auto !== void 0 && typeof item.auto !== "boolean")
+      errors.push(`online ${id}: auto must be true or false`);
+    const sources = item.platforms;
+    if (!sources || typeof sources !== "object" || Array.isArray(sources) || Object.keys(sources).length === 0) {
+      errors.push(`online ${id}: platforms must not be empty`);
+      continue;
+    }
+    for (const [platform, source] of Object.entries(sources)) {
+      if (!platforms.includes(platform))
+        errors.push(`online ${id}: ${platform} is not a platform of the package`);
+      for (const problem of extToolsOnlineSourceErrors(id, source))
+        errors.push(`online ${id} on ${platform}: ${problem}`);
+    }
+  }
+  return { errors, items };
+}
 function extToolsManifestErrors(value) {
   if (!value || typeof value !== "object" || Array.isArray(value))
     return ["must be a JSON object"];
   const manifest = value;
   const errors = [];
-  const allowed = ["schema", "id", "version", "requires", "conflicts", "provides", "platforms", "size_bytes", "license", "desc"];
+  const allowed = ["schema", "id", "version", "requires", "conflicts", "provides", "platforms", "size_bytes", "license", "desc", "online"];
   for (const key of Object.keys(manifest))
     if (!allowed.includes(key))
       errors.push(`${key} is not a field of the manifest`);
@@ -4690,10 +4775,12 @@ function extToolsManifestErrors(value) {
     errors.push(`schema must be ${EXT_TOOLS_MANIFEST_SCHEMA}`);
   if (typeof manifest.id !== "string" || !EXT_TOOLS_ID.test(manifest.id))
     errors.push("id must be lowercase letters, digits and -");
-  if (typeof manifest.version !== "string" || !/^[A-Za-z0-9._+-]+$/.test(manifest.version))
+  if (typeof manifest.version !== "string" || !EXT_TOOLS_VERSION.test(manifest.version))
     errors.push("version must be letters, digits and ._+-");
   if (!Array.isArray(manifest.provides) || manifest.provides.length === 0)
     errors.push("provides must not be empty");
+  const online = extToolsOnlineErrors(manifest);
+  errors.push(...online.errors);
   const commands = /* @__PURE__ */ new Set();
   for (const raw of Array.isArray(manifest.provides) ? manifest.provides : []) {
     const entry = raw ?? {};
@@ -4707,12 +4794,24 @@ function extToolsManifestErrors(value) {
     if (EXT_TOOLS_RESERVED_COMMANDS.includes(command2))
       errors.push(`provides: ${command2} is a standard command and cannot be provided by a package`);
     commands.add(command2);
+    for (const key of unknownKeys(entry, ["command", "version_probe", "smoke", "needs"]))
+      errors.push(`provides: ${key} is not a field of ${command2}`);
     if (typeof entry.version_probe !== "string" || !entry.version_probe.trim())
       errors.push(`provides: ${command2} has no version_probe`);
     const smoke = entry.smoke;
     if (smoke !== void 0 && (typeof smoke !== "string" || !isSafeRelativePath(smoke))) {
       errors.push(`provides: the smoke of ${command2} must be a relative path inside the payload`);
     }
+    const needs = entry.needs === void 0 ? [] : entry.needs;
+    if (!Array.isArray(needs) || !needs.every((need) => typeof need === "string")) {
+      errors.push(`provides: the needs of ${command2} must list online items by id`);
+      continue;
+    }
+    for (const need of needs)
+      if (!online.items.has(need))
+        errors.push(`provides: ${command2} needs ${need}, which is not an online item of the package`);
+    if (new Set(needs).size !== needs.length)
+      errors.push(`provides: ${command2} needs an online item twice`);
   }
   if (!Array.isArray(manifest.platforms) || manifest.platforms.length === 0)
     errors.push("platforms must not be empty");
@@ -4753,14 +4852,23 @@ function extToolsPayloadErrors(manifest, platform, tree, buildPaths = []) {
   const errors = [];
   const windows = platform.startsWith("windows-");
   const suffixes = windows ? EXT_TOOLS_WINDOWS_SUFFIXES : [""];
+  const online = manifest.online ?? [];
   for (const path of [...tree.files.keys(), ...tree.directories]) {
     const [top, second] = path.split("/");
     const isTop = !path.includes("/");
-    const known = top === EXT_TOOLS_MANIFEST_FILE && isTop || top === "bin" || top === "smoke" || top === "store";
+    const known = top === EXT_TOOLS_MANIFEST_FILE && isTop || top === "bin" || top === "smoke" || top === "store" || top === "online";
     if (!known)
-      errors.push(`${path}: a package only holds ${EXT_TOOLS_MANIFEST_FILE}, bin/, smoke/ and store/${manifest.id}/`);
+      errors.push(`${path}: a package only holds ${EXT_TOOLS_MANIFEST_FILE}, bin/, smoke/, store/${manifest.id}/ and online/<item>/`);
     if (top === "store" && second !== void 0 && second !== manifest.id)
       errors.push(`${path}: a package only writes store/${manifest.id}/`);
+    if (top === "online" && second !== void 0 && !online.some((item) => item.id === second))
+      errors.push(`${path}: not an online item of the package`);
+  }
+  for (const item of online) {
+    const overlay = item.platforms[platform]?.overlay;
+    const present = overlay !== void 0 && (tree.directories.has(overlay) || [...tree.files.keys()].some((path) => path.startsWith(`${overlay}/`)));
+    if (overlay !== void 0 && !present)
+      errors.push(`${overlay}: the overlay of online item ${item.id} is missing`);
   }
   const declared = new Set(manifest.provides.map((provided) => provided.command));
   for (const provided of manifest.provides) {
@@ -6115,7 +6223,7 @@ async function readSkillDirectory(root, limit) {
   await walk(realRoot, "");
   return { files, ignored };
 }
-const PACKAGE_VERSION = "0.7.185";
+const PACKAGE_VERSION = "0.7.186";
 const TOOL_VERSION = PACKAGE_VERSION;
 const SDK_VERSION = PACKAGE_VERSION;
 const PROTOCOL_VERSION = "1";
@@ -13373,15 +13481,45 @@ function desired(verb, summary2, enabled) {
     handler: (ctx, input) => call$1(ctx, input.dry_run === true ? "ext_tools.plan" : "ext_tools.set_desired", requestOf(input, enabled))
   };
 }
+function download() {
+  return {
+    verb: "download",
+    summary: "Ask the nodes to download an online item of a package again: after a failure, or to replace what is there",
+    positionals: [
+      { name: "id", description: "Package id, e.g. ext-core" },
+      { name: "item", description: "Online item id, e.g. chromium (see `online` in ext-tools status)" }
+    ],
+    options: [{ name: "node", description: "Only this node; without it every node that has the item", type: "string" }],
+    inputSchema: {
+      type: "object",
+      properties: { id: ID$1, item: ID$1, node: { type: "string", minLength: 1 } },
+      required: ["id", "item"],
+      additionalProperties: false
+    },
+    outputSchema: OBJECT_OUTPUT$3,
+    resultSchemaVersion: 1,
+    access: { mode: "fixed", level: "write" },
+    asyncMode: "sync",
+    requiresSession: true,
+    handler: (ctx, input) => {
+      for (const name of ["id", "item"]) {
+        if (typeof input[name] !== "string" || !input[name])
+          throw new UsageError("MISSING_ARGUMENT", `a package id and an online item id are required`);
+      }
+      return call$1(ctx, "ext_tools.download", { id: input.id, item: input.item, ...typeof input.node === "string" ? { node: input.node } : {} });
+    }
+  };
+}
 function createExtToolsModule() {
   return {
     name: "ext-tools",
     summary: "Manage the extension tool packages every Agent of the Zone shares",
     commands: [
       read("list", "The packages published in the Repo, and what each provides", "ext_tools.catalog"),
-      read("status", "Package by node: what is asked for and where each node got to", "ext_tools.status"),
+      read("status", "Package by node: what is asked for, where each node got to, and the online items it downloaded or still waits for", "ext_tools.status"),
       desired("enable", "Enable or upgrade a package, with the packages it requires", true),
       desired("disable", "Disable a package; refused while an enabled package requires it", false),
+      download(),
       {
         verb: "import",
         summary: "Put an already built .pikg (an official release asset) into the Repo unchanged",
