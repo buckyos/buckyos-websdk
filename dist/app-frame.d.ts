@@ -235,4 +235,94 @@ export declare class SelectEmbedHost {
     error(code: SystemDialogErrorCode): void;
     dispose(): void;
 }
+export declare const CONVERSATION_EMBED_PATH = "/embed/conversation";
+/**
+ * `agent`: the conversation with this Agent (the owner's default Agent when `agentDid` is left out) that this App
+ * started; without one, the first message starts it. `session`: an existing conversation, when the system allows
+ * this App to open it.
+ */
+export type ConversationEmbedTarget = {
+    kind: 'agent';
+    agentDid?: string;
+} | {
+    kind: 'session';
+    sessionId: string;
+};
+export interface ConversationEmbedInit {
+    nonce: string;
+    target: ConversationEmbedTarget;
+    theme: 'light' | 'dark';
+    locale: string;
+    /** The composer's placeholder. */
+    placeholder?: string;
+}
+/** What the system page receives: `target` is untrusted input it validates itself. */
+export type ConversationEmbedHostInit = Omit<ConversationEmbedInit, 'target'> & {
+    target: unknown;
+};
+/** A message the App sends in the user's name; `attachments` are content the user can read in the Zone. */
+export interface ConversationEmbedSend {
+    text: string;
+    attachments?: TransferableContentRef[];
+}
+export interface ConversationEmbedState {
+    status: 'loading' | 'ready' | 'error';
+    /** The conversation shown, once there is one. */
+    sessionId?: string;
+    error?: string;
+}
+/**
+ * What the conversation in front is doing: `idle`; `running` while the Agent handles the message in front,
+ * `interrupted` after a restart in the middle of it, `paused`; `answer` while a question of the Agent waits for the
+ * user's answer.
+ */
+export type ConversationEmbedTurnMode = 'idle' | 'running' | 'interrupted' | 'paused' | 'answer';
+export declare const CONVERSATION_EMBED_ERROR_CODES: readonly ["invalid_params", "not_found", "denied"];
+export type ConversationEmbedErrorCode = typeof CONVERSATION_EMBED_ERROR_CODES[number];
+/** App side: owns the iframe that shows the system conversation. */
+export declare class ConversationEmbed {
+    private options;
+    readonly url: string;
+    private readonly nonce;
+    private readonly origin;
+    private readonly listener;
+    private init;
+    private ready;
+    private outbox;
+    constructor(options: {
+        systemOrigin: string;
+        frame: () => HTMLIFrameElement | null;
+        init: Omit<ConversationEmbedInit, 'nonce'>;
+        onState?: (state: ConversationEmbedState) => void;
+        onTurn?: (mode: ConversationEmbedTurnMode) => void;
+        onError?: (code: ConversationEmbedErrorCode) => void;
+    });
+    private post;
+    private receive;
+    update(patch: Partial<Pick<ConversationEmbedInit, 'theme' | 'locale'>>): void;
+    /** Sends a message in the user's name. Before the handshake it waits and goes out right after `embed.init`. */
+    send(message: ConversationEmbedSend): void;
+    dispose(): void;
+}
+/** System side: the component-only page at `CONVERSATION_EMBED_PATH`. Accepts one embedding App whose origin `accept` admits. */
+export declare class ConversationEmbedHost {
+    private options;
+    readonly parentOrigin: string | null;
+    private readonly nonce;
+    private ready;
+    private readonly hello?;
+    private readonly listener;
+    constructor(options: {
+        accept: (origin: string) => boolean;
+        onInit: (init: ConversationEmbedHostInit) => void;
+        onUpdate?: (patch: Partial<Pick<ConversationEmbedInit, 'theme' | 'locale'>>) => void;
+        onSend?: (message: ConversationEmbedSend) => void;
+    });
+    private receive;
+    private post;
+    state(state: ConversationEmbedState): void;
+    turn(mode: ConversationEmbedTurnMode): void;
+    error(code: ConversationEmbedErrorCode): void;
+    dispose(): void;
+}
 //# sourceMappingURL=app-frame.d.ts.map

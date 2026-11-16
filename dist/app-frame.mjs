@@ -641,9 +641,168 @@ class SelectEmbedHost {
     window.removeEventListener("message", this.listener);
   }
 }
+const CONVERSATION_EMBED = "buckyos.conversation-embed";
+const CONVERSATION_EMBED_PATH = "/embed/conversation";
+const CONVERSATION_EMBED_ERROR_CODES = ["invalid_params", "not_found", "denied"];
+const TURN_MODES = ["idle", "running", "interrupted", "paused", "answer"];
+const MAX_EMBED_TEXT = 64 * 1024;
+const MAX_EMBED_ATTACHMENTS = 32;
+const readEmbedSend = (p) => {
+  if (typeof p.text !== "string" || p.text.length > MAX_EMBED_TEXT)
+    return null;
+  if (p.attachments === void 0)
+    return { text: p.text };
+  if (!Array.isArray(p.attachments) || p.attachments.length > MAX_EMBED_ATTACHMENTS || !p.attachments.every(isTransferableRef))
+    return null;
+  return { text: p.text, attachments: p.attachments };
+};
+class ConversationEmbed {
+  constructor(options) {
+    this.options = options;
+    this.nonce = crypto.randomUUID();
+    this.listener = (event) => this.receive(event);
+    this.ready = false;
+    this.outbox = [];
+    this.origin = new URL(options.systemOrigin).origin;
+    this.init = options.init;
+    this.url = `${this.origin}${CONVERSATION_EMBED_PATH}#bce=${this.nonce}&po=${encodeURIComponent(window.location.origin)}`;
+    window.addEventListener("message", this.listener);
+  }
+  post(type, payload) {
+    var _a, _b;
+    (_b = (_a = this.options.frame()) == null ? void 0 : _a.contentWindow) == null ? void 0 : _b.postMessage(embedEnvelope(type, payload, CONVERSATION_EMBED), this.origin);
+  }
+  receive(event) {
+    var _a, _b, _c, _d, _e, _f, _g;
+    if (event.origin !== this.origin || event.source !== ((_a = this.options.frame()) == null ? void 0 : _a.contentWindow) || !isEmbedMessage(event.data, CONVERSATION_EMBED))
+      return;
+    const { type, payload: p } = event.data;
+    if (type === "embed.hello") {
+      if (p.nonce !== this.nonce)
+        return;
+      this.ready = true;
+      this.post("embed.init", { ...this.init, nonce: this.nonce });
+      const queued = this.outbox;
+      this.outbox = [];
+      queued.forEach((message) => this.post("embed.send", message));
+      return;
+    }
+    if (type === "embed.state" && (p.status === "loading" || p.status === "ready" || p.status === "error")) {
+      (_c = (_b = this.options).onState) == null ? void 0 : _c.call(_b, {
+        status: p.status,
+        sessionId: typeof p.sessionId === "string" ? p.sessionId.slice(0, 512) : void 0,
+        error: typeof p.error === "string" ? p.error.slice(0, 128) : void 0
+      });
+    }
+    if (type === "embed.turn" && TURN_MODES.includes(p.mode))
+      (_e = (_d = this.options).onTurn) == null ? void 0 : _e.call(_d, p.mode);
+    if (type === "embed.error" && CONVERSATION_EMBED_ERROR_CODES.includes(p.code))
+      (_g = (_f = this.options).onError) == null ? void 0 : _g.call(_f, p.code);
+  }
+  update(patch) {
+    this.init = { ...this.init, ...patch };
+    if (this.ready)
+      this.post("embed.update", patch);
+  }
+  /** Sends a message in the user's name. Before the handshake it waits and goes out right after `embed.init`. */
+  send(message) {
+    var _a;
+    const payload = { text: message.text, ...((_a = message.attachments) == null ? void 0 : _a.length) ? { attachments: message.attachments } : {} };
+    if (this.ready)
+      this.post("embed.send", payload);
+    else
+      this.outbox.push(payload);
+  }
+  dispose() {
+    window.removeEventListener("message", this.listener);
+    this.outbox = [];
+  }
+}
+class ConversationEmbedHost {
+  constructor(options) {
+    this.options = options;
+    this.ready = false;
+    this.listener = (event) => this.receive(event);
+    const params = new URLSearchParams(window.location.hash.slice(1));
+    this.nonce = params.get("bce");
+    let parentOrigin = null;
+    try {
+      parentOrigin = new URL(params.get("po") ?? "").origin;
+    } catch {
+    }
+    this.parentOrigin = window.parent !== window && this.nonce && parentOrigin && options.accept(parentOrigin) ? parentOrigin : null;
+    if (!this.parentOrigin)
+      return;
+    window.addEventListener("message", this.listener);
+    const hello = () => window.parent.postMessage(embedEnvelope("embed.hello", { nonce: this.nonce }, CONVERSATION_EMBED), this.parentOrigin);
+    hello();
+    this.hello = setInterval(() => {
+      if (!this.ready)
+        hello();
+    }, 250);
+  }
+  receive(event) {
+    var _a, _b, _c, _d;
+    if (event.source !== window.parent || event.origin !== this.parentOrigin || !isEmbedMessage(event.data, CONVERSATION_EMBED))
+      return;
+    const { type, payload: p } = event.data;
+    if (type === "embed.init") {
+      if (this.ready || p.nonce !== this.nonce || typeof p.locale !== "string")
+        return;
+      this.ready = true;
+      clearInterval(this.hello);
+      this.options.onInit({
+        nonce: String(p.nonce),
+        target: p.target,
+        theme: p.theme === "dark" ? "dark" : "light",
+        locale: p.locale,
+        ...typeof p.placeholder === "string" ? { placeholder: p.placeholder.slice(0, 200) } : {}
+      });
+      return;
+    }
+    if (!this.ready)
+      return;
+    if (type === "embed.update") {
+      const patch = {};
+      if (p.theme === "dark" || p.theme === "light")
+        patch.theme = p.theme;
+      if (typeof p.locale === "string")
+        patch.locale = p.locale;
+      (_b = (_a = this.options).onUpdate) == null ? void 0 : _b.call(_a, patch);
+    }
+    if (type === "embed.send") {
+      const message = readEmbedSend(p);
+      if (message)
+        (_d = (_c = this.options).onSend) == null ? void 0 : _d.call(_c, message);
+      else
+        this.error("invalid_params");
+    }
+  }
+  post(type, payload) {
+    if (this.ready && this.parentOrigin)
+      window.parent.postMessage(embedEnvelope(type, payload, CONVERSATION_EMBED), this.parentOrigin);
+  }
+  state(state) {
+    this.post("embed.state", state);
+  }
+  turn(mode) {
+    this.post("embed.turn", { mode });
+  }
+  error(code) {
+    this.post("embed.error", { code });
+  }
+  dispose() {
+    clearInterval(this.hello);
+    window.removeEventListener("message", this.listener);
+  }
+}
 export {
   AppFrameClient,
   AppFrameHost,
+  CONVERSATION_EMBED_ERROR_CODES,
+  CONVERSATION_EMBED_PATH,
+  ConversationEmbed,
+  ConversationEmbedHost,
   PREVIEW_EMBED_PATH,
   PreviewEmbed,
   PreviewEmbedHost,

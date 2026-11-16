@@ -546,3 +546,169 @@ export class SelectEmbedHost {
   error(code: SystemDialogErrorCode): void { this.post('embed.error', { code }) }
   dispose(): void { clearInterval(this.hello); window.removeEventListener('message', this.listener) }
 }
+
+/**
+ * Conversation embed protocol (`buckyos.conversation-embed` v1): an App shows a conversation of the user with an
+ * Agent inside its own layout, rendered by the system conversation component. The App frames
+ * `<systemOrigin>/embed/conversation` (component only, no shell); the handshake is the Preview embed's
+ * (`embed.hello` → `embed.init`). The system page works with its own Zone-root session and derives the App from the
+ * embedder's origin, never from anything the App says: no token crosses origins, and message contents never travel
+ * back to the App (it reads them with its own session if it needs them).
+ */
+const CONVERSATION_EMBED = 'buckyos.conversation-embed'
+export const CONVERSATION_EMBED_PATH = '/embed/conversation'
+/**
+ * `agent`: the conversation with this Agent (the owner's default Agent when `agentDid` is left out) that this App
+ * started; without one, the first message starts it. `session`: an existing conversation, when the system allows
+ * this App to open it.
+ */
+export type ConversationEmbedTarget = { kind: 'agent'; agentDid?: string } | { kind: 'session'; sessionId: string }
+export interface ConversationEmbedInit {
+  nonce: string
+  target: ConversationEmbedTarget
+  theme: 'light' | 'dark'
+  locale: string
+  /** The composer's placeholder. */
+  placeholder?: string
+}
+/** What the system page receives: `target` is untrusted input it validates itself. */
+export type ConversationEmbedHostInit = Omit<ConversationEmbedInit, 'target'> & { target: unknown }
+/** A message the App sends in the user's name; `attachments` are content the user can read in the Zone. */
+export interface ConversationEmbedSend { text: string; attachments?: TransferableContentRef[] }
+export interface ConversationEmbedState {
+  status: 'loading' | 'ready' | 'error'
+  /** The conversation shown, once there is one. */
+  sessionId?: string
+  error?: string
+}
+/**
+ * What the conversation in front is doing: `idle`; `running` while the Agent handles the message in front,
+ * `interrupted` after a restart in the middle of it, `paused`; `answer` while a question of the Agent waits for the
+ * user's answer.
+ */
+export type ConversationEmbedTurnMode = 'idle' | 'running' | 'interrupted' | 'paused' | 'answer'
+export const CONVERSATION_EMBED_ERROR_CODES = ['invalid_params', 'not_found', 'denied'] as const
+export type ConversationEmbedErrorCode = typeof CONVERSATION_EMBED_ERROR_CODES[number]
+const TURN_MODES: readonly ConversationEmbedTurnMode[] = ['idle', 'running', 'interrupted', 'paused', 'answer']
+const MAX_EMBED_TEXT = 64 * 1024
+const MAX_EMBED_ATTACHMENTS = 32
+const readEmbedSend = (p: Record<string, unknown>): ConversationEmbedSend | null => {
+  if (typeof p.text !== 'string' || p.text.length > MAX_EMBED_TEXT) return null
+  if (p.attachments === undefined) return { text: p.text }
+  if (!Array.isArray(p.attachments) || p.attachments.length > MAX_EMBED_ATTACHMENTS || !p.attachments.every(isTransferableRef)) return null
+  return { text: p.text, attachments: p.attachments as TransferableContentRef[] }
+}
+
+/** App side: owns the iframe that shows the system conversation. */
+export class ConversationEmbed {
+  readonly url: string
+  private readonly nonce = crypto.randomUUID()
+  private readonly origin: string
+  private readonly listener = (event: MessageEvent) => this.receive(event)
+  private init: Omit<ConversationEmbedInit, 'nonce'>
+  private ready = false
+  private outbox: ConversationEmbedSend[] = []
+  constructor(private options: {
+    systemOrigin: string
+    frame: () => HTMLIFrameElement | null
+    init: Omit<ConversationEmbedInit, 'nonce'>
+    onState?: (state: ConversationEmbedState) => void
+    onTurn?: (mode: ConversationEmbedTurnMode) => void
+    onError?: (code: ConversationEmbedErrorCode) => void
+  }) {
+    this.origin = new URL(options.systemOrigin).origin
+    this.init = options.init
+    this.url = `${this.origin}${CONVERSATION_EMBED_PATH}#bce=${this.nonce}&po=${encodeURIComponent(window.location.origin)}`
+    window.addEventListener('message', this.listener)
+  }
+  private post(type: string, payload: unknown): void {
+    this.options.frame()?.contentWindow?.postMessage(embedEnvelope(type, payload, CONVERSATION_EMBED), this.origin)
+  }
+  private receive(event: MessageEvent): void {
+    if (event.origin !== this.origin || event.source !== this.options.frame()?.contentWindow || !isEmbedMessage(event.data, CONVERSATION_EMBED)) return
+    const { type, payload: p } = event.data
+    if (type === 'embed.hello') {
+      if (p.nonce !== this.nonce) return
+      this.ready = true
+      this.post('embed.init', { ...this.init, nonce: this.nonce })
+      const queued = this.outbox
+      this.outbox = []
+      queued.forEach(message => this.post('embed.send', message))
+      return
+    }
+    if (type === 'embed.state' && (p.status === 'loading' || p.status === 'ready' || p.status === 'error')) {
+      this.options.onState?.({ status: p.status,
+        sessionId: typeof p.sessionId === 'string' ? p.sessionId.slice(0, 512) : undefined,
+        error: typeof p.error === 'string' ? p.error.slice(0, 128) : undefined })
+    }
+    if (type === 'embed.turn' && TURN_MODES.includes(p.mode as ConversationEmbedTurnMode)) this.options.onTurn?.(p.mode as ConversationEmbedTurnMode)
+    if (type === 'embed.error' && CONVERSATION_EMBED_ERROR_CODES.includes(p.code as ConversationEmbedErrorCode)) this.options.onError?.(p.code as ConversationEmbedErrorCode)
+  }
+  update(patch: Partial<Pick<ConversationEmbedInit, 'theme' | 'locale'>>): void {
+    this.init = { ...this.init, ...patch }
+    if (this.ready) this.post('embed.update', patch)
+  }
+  /** Sends a message in the user's name. Before the handshake it waits and goes out right after `embed.init`. */
+  send(message: ConversationEmbedSend): void {
+    const payload: ConversationEmbedSend = { text: message.text, ...(message.attachments?.length ? { attachments: message.attachments } : {}) }
+    if (this.ready) this.post('embed.send', payload)
+    else this.outbox.push(payload)
+  }
+  dispose(): void { window.removeEventListener('message', this.listener); this.outbox = [] }
+}
+
+/** System side: the component-only page at `CONVERSATION_EMBED_PATH`. Accepts one embedding App whose origin `accept` admits. */
+export class ConversationEmbedHost {
+  readonly parentOrigin: string | null
+  private readonly nonce: string | null
+  private ready = false
+  private readonly hello?: ReturnType<typeof setInterval>
+  private readonly listener = (event: MessageEvent) => this.receive(event)
+  constructor(private options: {
+    accept: (origin: string) => boolean
+    onInit: (init: ConversationEmbedHostInit) => void
+    onUpdate?: (patch: Partial<Pick<ConversationEmbedInit, 'theme' | 'locale'>>) => void
+    onSend?: (message: ConversationEmbedSend) => void
+  }) {
+    const params = new URLSearchParams(window.location.hash.slice(1))
+    this.nonce = params.get('bce')
+    let parentOrigin: string | null = null
+    try { parentOrigin = new URL(params.get('po') ?? '').origin } catch {}
+    this.parentOrigin = window.parent !== window && this.nonce && parentOrigin && options.accept(parentOrigin) ? parentOrigin : null
+    if (!this.parentOrigin) return
+    window.addEventListener('message', this.listener)
+    const hello = () => window.parent.postMessage(embedEnvelope('embed.hello', { nonce: this.nonce }, CONVERSATION_EMBED), this.parentOrigin!)
+    hello()
+    this.hello = setInterval(() => { if (!this.ready) hello() }, 250)
+  }
+  private receive(event: MessageEvent): void {
+    if (event.source !== window.parent || event.origin !== this.parentOrigin || !isEmbedMessage(event.data, CONVERSATION_EMBED)) return
+    const { type, payload: p } = event.data
+    if (type === 'embed.init') {
+      if (this.ready || p.nonce !== this.nonce || typeof p.locale !== 'string') return
+      this.ready = true; clearInterval(this.hello)
+      this.options.onInit({ nonce: String(p.nonce), target: p.target, theme: p.theme === 'dark' ? 'dark' : 'light', locale: p.locale,
+        ...(typeof p.placeholder === 'string' ? { placeholder: p.placeholder.slice(0, 200) } : {}) })
+      return
+    }
+    if (!this.ready) return
+    if (type === 'embed.update') {
+      const patch: Partial<Pick<ConversationEmbedInit, 'theme' | 'locale'>> = {}
+      if (p.theme === 'dark' || p.theme === 'light') patch.theme = p.theme
+      if (typeof p.locale === 'string') patch.locale = p.locale
+      this.options.onUpdate?.(patch)
+    }
+    if (type === 'embed.send') {
+      const message = readEmbedSend(p)
+      if (message) this.options.onSend?.(message)
+      else this.error('invalid_params')
+    }
+  }
+  private post(type: string, payload: unknown): void {
+    if (this.ready && this.parentOrigin) window.parent.postMessage(embedEnvelope(type, payload, CONVERSATION_EMBED), this.parentOrigin)
+  }
+  state(state: ConversationEmbedState): void { this.post('embed.state', state) }
+  turn(mode: ConversationEmbedTurnMode): void { this.post('embed.turn', { mode }) }
+  error(code: ConversationEmbedErrorCode): void { this.post('embed.error', { code }) }
+  dispose(): void { clearInterval(this.hello); window.removeEventListener('message', this.listener) }
+}
