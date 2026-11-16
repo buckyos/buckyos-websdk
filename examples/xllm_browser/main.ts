@@ -144,9 +144,9 @@ const params = new URLSearchParams(location.search)
 const useAicc = params.get('llm') === 'aicc'
 
 async function aiccClient(): Promise<LlmClient> {
-  const { initBuckyOS, login, buckyos } = await import('buckyos/browser')
-  await initBuckyOS(params.get('appid') ?? 'buckyos-systest')
-  await login()
+  const { initBuckyOS, getAccountInfo, login, buckyos } = await import('buckyos/browser')
+  await initBuckyOS(params.get('appid') ?? 'buckyos-systest.buckyos.bns.did')
+  if (!(await getAccountInfo())?.user_id) await login()
   return new AiccLlmClient(buckyos.getAiccClient())
 }
 
@@ -201,6 +201,9 @@ async function rejectsWith(p: Promise<unknown>, kind: string) {
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 
+/** A run stopped from the page, with what it ran with: *Resume* continues it. */
+let stopped: { store: MemoryRunStore; runId: string; llm: LlmClient } | undefined
+
 /** (1)+(2) Build the runtime, run the loop with live events. */
 async function demoRun(): Promise<string> {
   resetDemoState()
@@ -210,14 +213,32 @@ async function demoRun(): Promise<string> {
     { tool_calls: [{ name: 'append_note', args: { text: 'Pick me' } }] },
     { text: 'Saved the selection to the note.' },
   ])
-  const deps: XllmDeps = { llm, runtime, store: new MemoryRunStore(), hostPromptSections: 'NONE', observer }
+  const store = new MemoryRunStore()
+  const deps: XllmDeps = { llm, runtime, store, hostPromptSections: 'NONE', observer }
   const task = await XllmTask.prepareHosted(LLM_CONTEXT, 'demo.notes', 'You help the user take notes from this page "{{env.PAGE_TITLE}}".', deps)
   const run = await XllmRun.start(task, deps, { input: 'Append the selected text to my note.' })
   currentRun = run
   const out = await run.execute()
+  if (out.status === 'interrupted') {
+    stopped = { store, runId: run.runId, llm }
+    return JSON.stringify({ run_id: run.runId, status: out.status, usage: out.record.usage })
+  }
   check(out.status === 'completed', `run ended ${out.status}`)
   if (!useAicc) check(getNote() === 'Pick me', `note is ${getNote()}`)
   return `${out.status}: ${out.record.result?.raw}`
+}
+
+/** (2) The stopped run continues from its last checkpoint, in a new runtime of the same scene. */
+async function demoContinue(): Promise<string> {
+  if (!stopped) throw new Error('no stopped run: run, then stop it')
+  const { store, runId, llm } = stopped
+  const start = await XllmRun.resume(store, runId, {}, { llm, runtime: buildNotesRuntime(), store, observer })
+  if (start.kind !== 'run') throw new Error(`not resumable: ${start.kind}`)
+  currentRun = start.run
+  const out = await start.run.execute()
+  check(out.record.status === 'completed', `resumed run ended ${out.record.status}`)
+  stopped = undefined
+  return JSON.stringify({ run_id: runId, status: out.record.status, usage: out.record.usage, raw: out.record.result?.raw, note: getNote() })
 }
 
 /** (3) Export a run the page left mid-call, resume it with a new runtime of the same scene. */
@@ -299,7 +320,7 @@ async function demoCustomRuntime(): Promise<string> {
 }
 
 const DEMOS: [string, () => Promise<string>][] = [
-  ['run', demoRun], ['resume', demoResume], ['boundaries', demoBoundaries], ['custom_runtime', demoCustomRuntime],
+  ['run', demoRun], ['continue', demoContinue], ['resume', demoResume], ['boundaries', demoBoundaries], ['custom_runtime', demoCustomRuntime],
 ]
 
 function setStatus(state: 'running' | 'passed' | 'failed', text: string) {
@@ -326,5 +347,5 @@ async function runAll(names: string[]) {
 
 for (const [name] of DEMOS) document.getElementById(`demo-${name}`)?.addEventListener('click', () => runAll([name]))
 renderNote()
-if (params.get('auto') === '1') void runAll(DEMOS.map(([n]) => n))
+if (params.get('auto') === '1') void runAll(DEMOS.map(([n]) => n).filter(n => n !== 'continue'))
 else setStatus('passed', 'ready')

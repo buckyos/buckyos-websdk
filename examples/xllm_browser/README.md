@@ -3,9 +3,11 @@
 A plain page that runs the xllm loop in its own main thread with a runtime it
 builds itself (`buckyos/xllm`). It opens without a Zone: the model is a
 `ScriptedLlmClient` from `buckyos/xllm/dev`. With `?llm=aicc` the first demo
-signs in (`initBuckyOS` + `login`) and uses the page's own AICC session
-(`new AiccLlmClient(buckyos.getAiccClient())`); this only works when the page
-is served from a Zone.
+uses the page's own AICC session (`new AiccLlmClient(buckyos.getAiccClient())`)
+after `initBuckyOS`, calling `login` only when there is no session yet (it
+always starts the SSO redirect); this only works when the page is served from
+a Zone. `?appid=` names the app the page belongs to (default
+`buckyos-systest.buckyos.bns.did`).
 
 ```bash
 npx vite --config examples/xllm_browser/vite.config.ts         # dev server
@@ -23,7 +25,9 @@ What the demos show (`main.ts`):
    the `demo.notes` scene with `createSiteRuntime`. `CounterRuntime` is the same
    contract written by hand (`AgentRuntime`), for a site with its own dispatcher.
 2. **Run the loop.** Events appear in the list as they happen; *Stop the run*
-   interrupts it (`run.interrupter().interrupt(...)`).
+   interrupts it (`run.interrupter().interrupt(...)`), and *Resume the stopped
+   run* continues it from its last checkpoint with a new runtime of the same
+   scene (`XllmRun.resume`).
 3. **Export and resume.** A run is exported while a call is still running (the
    page "went away"), imported into a new store and resumed with a new runtime
    of the same scene. `get_selection` and `append_note` are idempotent and run

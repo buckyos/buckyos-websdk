@@ -94,9 +94,9 @@ function setStatus(state: string, text = state) {
 
 async function model(script: ConstructorParameters<typeof ScriptedLlmClient>[0]): Promise<LlmClient> {
   if (params.get('llm') !== 'aicc') return new ScriptedLlmClient(script)
-  const { initBuckyOS, login, buckyos } = await import('buckyos/browser')
-  await initBuckyOS(params.get('appid') ?? 'buckyos-systest')
-  await login()
+  const { initBuckyOS, getAccountInfo, login, buckyos } = await import('buckyos/browser')
+  await initBuckyOS(params.get('appid') ?? 'buckyos-systest.buckyos.bns.did')
+  if (!(await getAccountInfo())?.user_id) await login()
   return new AiccLlmClient(buckyos.getAiccClient())
 }
 

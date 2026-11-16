@@ -32,6 +32,7 @@ export interface MergedConfig {
     llm_timeout?: number;
     context_window?: number;
     context_yield_ratio?: number;
+    max_consecutive_errors?: number;
     timeout?: number;
     runs_dir?: RunsDirSetting;
     loop_model?: LoopModel;

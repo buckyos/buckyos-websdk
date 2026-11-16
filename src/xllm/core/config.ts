@@ -348,7 +348,7 @@ export function parseLlmContextJson(file: string, value: JsonValue | undefined):
   const m = ctx.map('(root)', value)
   ctx.keys('', m, [
     'provider', 'runtime', 'model', 'file_model', 'max_tokens', 'max_tool_iterations', 'llm_timeout', 'context_window',
-    'context_yield_ratio', 'timeout', 'runs_dir', 'loop_model', 'run_logs', 'result_format', 'json', 'json_schema', 'tools', 'prompt',
+    'context_yield_ratio', 'max_consecutive_errors', 'timeout', 'runs_dir', 'loop_model', 'run_logs', 'result_format', 'json', 'json_schema', 'tools', 'prompt',
   ])
   const f: LlmContextFile = {}
   if (m.runtime !== undefined && m.runtime !== null) f.runtime = parseRuntime(ctx, m.runtime, baseDir)
@@ -367,6 +367,9 @@ export function parseLlmContextJson(file: string, value: JsonValue | undefined):
   const ratio = ctx.f32('', m, 'context_yield_ratio')
   if (ratio !== undefined && !(ratio > 0 && ratio <= 1)) throw ctx.err('context_yield_ratio', 'must be in (0, 1]')
   assign('context_yield_ratio', ratio)
+  const consecutive = ctx.u32('', m, 'max_consecutive_errors')
+  if (consecutive === 0) throw ctx.err('max_consecutive_errors', 'must be at least 1')
+  assign('max_consecutive_errors', consecutive)
   assign('timeout', ctx.u64('', m, 'timeout'))
   if ('runs_dir' in m) {
     const rd = m.runs_dir
@@ -470,6 +473,7 @@ export interface MergedConfig {
   llm_timeout?: number
   context_window?: number
   context_yield_ratio?: number
+  max_consecutive_errors?: number
   timeout?: number
   runs_dir?: RunsDirSetting
   loop_model?: LoopModel
@@ -536,7 +540,7 @@ export function mergeConfigLayers(layers: { path: string; file: LlmContextFile }
       if (p.headers) merged.provider.headers = { ...(merged.provider.headers ?? {}), ...p.headers }
     }
     for (const k of ['model', 'file_model', 'max_tokens', 'max_tool_iterations', 'llm_timeout', 'context_window',
-      'context_yield_ratio', 'timeout', 'runs_dir', 'loop_model', 'run_logs', 'result_format', 'json', 'json_schema'] as const) {
+      'context_yield_ratio', 'max_consecutive_errors', 'timeout', 'runs_dir', 'loop_model', 'run_logs', 'result_format', 'json', 'json_schema'] as const) {
       if (f[k] !== undefined) {
         (merged as unknown as Record<string, unknown>)[k] = f[k]
         merged.sources[k] = src

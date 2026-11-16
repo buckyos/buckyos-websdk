@@ -206,6 +206,7 @@ export async function prepareTask(llmContext: JsonValue | undefined, origin: str
   if (maxTokens !== undefined) limits.max_tokens = maxTokens
   if (merged.context_window !== undefined) limits.context_window_tokens = merged.context_window
   if (merged.context_yield_ratio !== undefined) limits.context_yield_ratio = merged.context_yield_ratio
+  if (merged.max_consecutive_errors !== undefined) limits.max_consecutive_errors = merged.max_consecutive_errors
   if (jsonOut && loopModel === 'behavior' && resultFormat.kind === 'raw') {
     throw XllmError.capability('--json cannot be satisfied with `loop_model: behavior` and `result_format: raw` (the raw behavior response is XML); use e.g. `result_format: result.report`')
   }

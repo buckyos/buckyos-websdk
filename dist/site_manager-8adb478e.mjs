@@ -2645,6 +2645,7 @@ function parseLlmContextJson(file, value) {
     "llm_timeout",
     "context_window",
     "context_yield_ratio",
+    "max_consecutive_errors",
     "timeout",
     "runs_dir",
     "loop_model",
@@ -2678,6 +2679,10 @@ function parseLlmContextJson(file, value) {
   if (ratio !== void 0 && !(ratio > 0 && ratio <= 1))
     throw ctx.err("context_yield_ratio", "must be in (0, 1]");
   assign("context_yield_ratio", ratio);
+  const consecutive = ctx.u32("", m, "max_consecutive_errors");
+  if (consecutive === 0)
+    throw ctx.err("max_consecutive_errors", "must be at least 1");
+  assign("max_consecutive_errors", consecutive);
   assign("timeout", ctx.u64("", m, "timeout"));
   if ("runs_dir" in m) {
     const rd = m.runs_dir;
@@ -2853,6 +2858,7 @@ function mergeConfigLayers(layers) {
       "llm_timeout",
       "context_window",
       "context_yield_ratio",
+      "max_consecutive_errors",
       "timeout",
       "runs_dir",
       "loop_model",
@@ -3899,6 +3905,8 @@ async function prepareTask(llmContext, origin, input, overrides, deps) {
     limits.context_window_tokens = merged.context_window;
   if (merged.context_yield_ratio !== void 0)
     limits.context_yield_ratio = merged.context_yield_ratio;
+  if (merged.max_consecutive_errors !== void 0)
+    limits.max_consecutive_errors = merged.max_consecutive_errors;
   if (jsonOut && loopModel === "behavior" && resultFormat.kind === "raw") {
     throw XllmError.capability("--json cannot be satisfied with `loop_model: behavior` and `result_format: raw` (the raw behavior response is XML); use e.g. `result_format: result.report`");
   }
@@ -5055,6 +5063,8 @@ function limitsOf(merged) {
     l.context_window_tokens = merged.context_window;
   if (merged.context_yield_ratio !== void 0)
     l.context_yield_ratio = merged.context_yield_ratio;
+  if (merged.max_consecutive_errors !== void 0)
+    l.max_consecutive_errors = merged.max_consecutive_errors;
   return l;
 }
 function runToolPolicy(cfg) {
@@ -5095,7 +5105,7 @@ function runRequest(cfg, owner, trace, objective, behaviorName, input, hosted) {
       context_yield_threshold: contextYieldThreshold(cfg.limits),
       context_window_tokens: cfg.limits.context_window_tokens ?? null
     },
-    error_policy: { max_consecutive_errors: DEFAULT_MAX_CONSECUTIVE_ERRORS },
+    error_policy: { max_consecutive_errors: cfg.limits.max_consecutive_errors ?? DEFAULT_MAX_CONSECUTIVE_ERRORS },
     forbid_next_behavior: false
   };
   if (cfg.loop_model === "behavior")
@@ -6407,4 +6417,4 @@ export {
   assemblePrompt as y,
   RUNTIME_PROTOCOL_VERSION as z
 };
-//# sourceMappingURL=site_manager-11a7a468.mjs.map
+//# sourceMappingURL=site_manager-8adb478e.mjs.map

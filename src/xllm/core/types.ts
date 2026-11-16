@@ -494,6 +494,7 @@ export interface LlmContextFile {
   llm_timeout?: number
   context_window?: number
   context_yield_ratio?: number
+  max_consecutive_errors?: number
   timeout?: number
   runs_dir?: RunsDirSetting
   loop_model?: LoopModel
@@ -515,6 +516,8 @@ export interface RunLimits {
   llm_timeout_secs: number
   context_window_tokens?: number
   context_yield_ratio?: number
+  /** Tool rounds in a row that may fail before the run fails; absent: `DEFAULT_MAX_CONSECUTIVE_ERRORS`. */
+  max_consecutive_errors?: number
 }
 
 export interface ResolvedTool {

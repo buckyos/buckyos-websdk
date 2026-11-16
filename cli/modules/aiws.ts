@@ -675,7 +675,7 @@ const setPropCommand: CommandDefinition = {
 
 const infoCommand: CommandDefinition = {
   verb: 'info',
-  summary: 'Workspace info: versions, capabilities of the caller, usage, hosted execution configuration',
+  summary: 'Workspace info: versions, capabilities of the caller, usage, where wish runs execute by default',
   options: [WORKSPACE_OPTION],
   inputSchema: workspaceInput({}),
   outputSchema: OBJECT_OUTPUT,

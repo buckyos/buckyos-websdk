@@ -135,6 +135,7 @@ function limitsOf(merged: ReturnType<typeof mergeConfigLayers>): RunLimits {
   if (merged.max_tokens !== undefined) l.max_tokens = merged.max_tokens
   if (merged.context_window !== undefined) l.context_window_tokens = merged.context_window
   if (merged.context_yield_ratio !== undefined) l.context_yield_ratio = merged.context_yield_ratio
+  if (merged.max_consecutive_errors !== undefined) l.max_consecutive_errors = merged.max_consecutive_errors
   return l
 }
 
@@ -176,7 +177,7 @@ export function runRequest(cfg: EffectiveConfig, owner: JsonValue, trace: string
       context_yield_threshold: contextYieldThreshold(cfg.limits),
       context_window_tokens: cfg.limits.context_window_tokens ?? null,
     },
-    error_policy: { max_consecutive_errors: DEFAULT_MAX_CONSECUTIVE_ERRORS },
+    error_policy: { max_consecutive_errors: cfg.limits.max_consecutive_errors ?? DEFAULT_MAX_CONSECUTIVE_ERRORS },
     forbid_next_behavior: false,
   }
   if (cfg.loop_model === 'behavior') req.behavior_name = behaviorName || 'xllm'

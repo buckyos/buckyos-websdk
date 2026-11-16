@@ -6223,7 +6223,7 @@ async function readSkillDirectory(root, limit) {
   await walk(realRoot, "");
   return { files, ignored };
 }
-const PACKAGE_VERSION = "0.7.186";
+const PACKAGE_VERSION = "0.7.187";
 const TOOL_VERSION = PACKAGE_VERSION;
 const SDK_VERSION = PACKAGE_VERSION;
 const PROTOCOL_VERSION = "1";
@@ -14749,7 +14749,7 @@ const setPropCommand = {
 };
 const infoCommand = {
   verb: "info",
-  summary: "Workspace info: versions, capabilities of the caller, usage, hosted execution configuration",
+  summary: "Workspace info: versions, capabilities of the caller, usage, where wish runs execute by default",
   options: [WORKSPACE_OPTION],
   inputSchema: workspaceInput({}),
   outputSchema: OBJECT_OUTPUT,
