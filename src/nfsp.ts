@@ -200,7 +200,7 @@ export interface HelloResult {
   session: string
   features: string[]
   limits: { max_batch: number; max_list: number; replay_window: number; attr_ttl_ms: number }
-  realms: { id: string; writable: boolean }[]
+  realms: { id: string; writable: boolean; label?: string }[]
   /** Who this session acts as (`admin` = the zone owner or a trusted service). */
   identity?: { user_id: string | null; role: 'admin' | 'user' | 'anonymous' }
   /** The Preview Pipeline's converter, also when `repr` is not advertised. */

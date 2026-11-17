@@ -196,6 +196,7 @@ export interface HelloResult {
     realms: {
         id: string;
         writable: boolean;
+        label?: string;
     }[];
     /** Who this session acts as (`admin` = the zone owner or a trusted service). */
     identity?: {

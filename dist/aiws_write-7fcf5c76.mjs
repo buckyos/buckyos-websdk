@@ -507,6 +507,9 @@ class VerifyHubClient {
     if (params.login_nonce !== void 0) {
       payload.login_nonce = params.login_nonce;
     }
+    if (params.expires_in_secs !== void 0) {
+      payload.expires_in_secs = params.expires_in_secs;
+    }
     return this.rpcClient.call("sudo_by_password", payload);
   }
   async refreshToken(params) {
@@ -32268,4 +32271,4 @@ export {
   NOTIFY_CHOICE_CONTROL_ID as y,
   NOTIFY_TEXT_CONTROL_ID as z
 };
-//# sourceMappingURL=aiws_write-675664eb.mjs.map
+//# sourceMappingURL=aiws_write-7fcf5c76.mjs.map

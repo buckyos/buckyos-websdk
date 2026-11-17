@@ -42,6 +42,7 @@ export interface SudoByPasswordParams {
     target: AuthTarget;
     aud?: string;
     login_nonce?: number;
+    expires_in_secs?: number;
 }
 export interface SudoByPasswordResponse {
     session_token: string;

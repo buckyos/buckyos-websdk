@@ -82,6 +82,7 @@ export interface SudoByPasswordParams {
   target: AuthTarget
   aud?: string
   login_nonce?: number
+  expires_in_secs?: number
 }
 
 export interface SudoByPasswordResponse {
@@ -146,6 +147,9 @@ export class VerifyHubClient {
     }
     if (params.login_nonce !== undefined) {
       payload.login_nonce = params.login_nonce
+    }
+    if (params.expires_in_secs !== undefined) {
+      payload.expires_in_secs = params.expires_in_secs
     }
     return this.rpcClient.call<SudoByPasswordResponse, Record<string, unknown>>('sudo_by_password', payload)
   }

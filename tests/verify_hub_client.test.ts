@@ -158,6 +158,7 @@ describe('VerifyHubClient', () => {
       },
       aud: 'system-config',
       login_nonce: 123,
+      expires_in_secs: 1800,
     })
 
     expect(response).toEqual({ session_token: 'sudo-session' })
@@ -172,6 +173,7 @@ describe('VerifyHubClient', () => {
         },
         aud: 'system-config',
         login_nonce: 123,
+        expires_in_secs: 1800,
       },
       sys: [31, 'init-token'],
     })
