@@ -1,4 +1,4 @@
-import { e as encodeObjQueryComponent, c as canonicalJson, b as objServiceUrl, n as normalizeObjectUrl, p as parseObjectUrl, d as objectSegments } from "./object_url-376c5222.mjs";
+import { e as encodeObjQueryComponent, c as canonicalJson, b as objServiceUrl, n as normalizeObjectUrl, p as parseObjectUrl, d as objectSegments } from "./object_url-20e94b67.mjs";
 const AIWORKSPACE_SERVICE_NAME = "aiworkspace";
 class AiwsFailure extends Error {
   constructor(error) {
@@ -2234,4 +2234,4 @@ export {
   ymdOf as y,
   zonedParts as z
 };
-//# sourceMappingURL=aiws_bind-0885ff99.mjs.map
+//# sourceMappingURL=aiws_bind-1316a842.mjs.map

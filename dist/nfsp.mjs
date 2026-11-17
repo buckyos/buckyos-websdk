@@ -4,6 +4,16 @@ const liveRef = (nodeId, gen = 0) => ({
   node_id: nodeId,
   gen
 });
+const ARCHIVE_SEGMENT = "@";
+const ARCHIVE_BRANCH = "archive";
+const ARCHIVE_INNER_ROOT = "/archive";
+const archiveInnerPath = (member) => member.replace(/^\/+|\/+$/g, "") ? `${ARCHIVE_INNER_ROOT}/${member.replace(/^\/+|\/+$/g, "")}` : ARCHIVE_INNER_ROOT;
+const archiveObjectRef = (objId, member = "") => ({ type: "object", obj_id: objId, inner_path: archiveInnerPath(member) });
+const archivePath = (filePath, member = "") => {
+  const m = member.replace(/^\/+|\/+$/g, "");
+  return `${filePath.replace(/\/+$/, "")}/${ARCHIVE_SEGMENT}/${ARCHIVE_BRANCH}${m ? `/${m}` : ""}`;
+};
+const ARCHIVE_ERROR_CODES = ["PASSWORD_REQUIRED", "PASSWORD_INVALID", "ARCHIVE_CORRUPT"];
 const toLocator = (at) => {
   if (typeof at === "string") {
     if (at.includes("://"))
@@ -41,6 +51,17 @@ class NfspClient {
   get reprCapability() {
     var _a;
     return ((_a = this.helloResult) == null ? void 0 : _a.repr) ?? null;
+  }
+  /** Archive formats this server opens (null before hello or when it opens none). */
+  get archiveCapability() {
+    var _a, _b;
+    return ((_b = (_a = this.helloResult) == null ? void 0 : _a.archive) == null ? void 0 : _b.available) ? this.helloResult.archive : null;
+  }
+  /** Whether files with this name open as archives here (`hello.archive`). */
+  opensArchive(name) {
+    var _a;
+    const ext = name.includes(".") ? name.slice(name.lastIndexOf(".") + 1).toLowerCase() : "";
+    return !!ext && !!((_a = this.archiveCapability) == null ? void 0 : _a.formats.some((f) => f.extensions.includes(ext)));
   }
   /** Features advertised by the server in hello (empty before hello). */
   get features() {
@@ -343,6 +364,17 @@ class NfspClient {
   async getRepr(workKey) {
     return await this.call("get_repr", { args: { work_key: workKey } });
   }
+  // ---------- archives ----------
+  /** Checks a password against an encrypted member (`at` a member or the archive root) and keeps it for this session. */
+  async archiveUnlock(at, password) {
+    return await this.call("archive.unlock", { at: toLocator(at), args: { password } });
+  }
+  /** Forgets this user's passwords for one archive (`at` its root) or for all archives. */
+  async archiveForget(at) {
+    if (typeof at === "object" && "all" in at)
+      return await this.call("archive.forget", { args: { all: true } });
+    return await this.call("archive.forget", { at: toLocator(at) });
+  }
   // ---------- shares (`share.*`) ----------
   async shareCapabilities() {
     return await this.call("share.capabilities", {});
@@ -601,9 +633,16 @@ const pruneUndefined = (obj) => {
   return out;
 };
 export {
+  ARCHIVE_BRANCH,
+  ARCHIVE_ERROR_CODES,
+  ARCHIVE_INNER_ROOT,
+  ARCHIVE_SEGMENT,
   NFSP_VERSION,
   NfspClient,
   NfspError,
+  archiveInnerPath,
+  archiveObjectRef,
+  archivePath,
   liveRef,
   toLocator
 };

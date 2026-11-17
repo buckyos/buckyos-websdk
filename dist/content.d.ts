@@ -1,5 +1,9 @@
 export { extensionOf, heifImageSize, isoBoxes, mediaTypeFromExtension, sniffMagic, stripMediaTypeParams, TEXT_CODE_EXTENSIONS } from './content_mime';
 export type { IsoBox } from './content_mime';
+/**
+ * A content reference that may cross App boundaries. An `object-id` with `innerPath` names a member of an archive
+ * object (`/archive/<member path>`): it is as fixed as the object itself.
+ */
 export type TransferableContentRef = {
     kind: 'cyfs-path';
     path: string;
@@ -7,8 +11,13 @@ export type TransferableContentRef = {
 } | {
     kind: 'object-id';
     objectId: string;
+    innerPath?: string;
     version?: string;
 };
+/** `/archive` or `/archive/<segments>`: every segment a valid name, no trailing slash. */
+export declare function isArchiveInnerPath(value: unknown): value is string;
+/** Inverse of `contentRefString` for `obj://` values. */
+export declare function parseObjRefString(value: string): TransferableContentRef | undefined;
 export type TransferableSessionContext = {
     kind: 'single';
 } | {

@@ -1,5 +1,27 @@
 import { e as extensionOf, m as mediaTypeFromExtension } from "./content_mime-e42d5f8d.mjs";
 import { T, h, i, s, a } from "./content_mime-e42d5f8d.mjs";
+import { f as encodeObjSegment } from "./object_url-20e94b67.mjs";
+import "./ndn_types-0fac2499.mjs";
+function isArchiveInnerPath(value) {
+  if (typeof value !== "string" || value !== "/archive" && !value.startsWith("/archive/"))
+    return false;
+  return value.split("/").slice(2).every((s2) => !!s2 && s2 !== "." && s2 !== ".." && s2.length <= 255 && !/[\\\0]/.test(s2));
+}
+const objRefString = (objectId, innerPath) => `obj://${objectId}${innerPath ? innerPath.split("/").slice(1).map((s2) => `/${encodeObjSegment(s2)}`).join("") : ""}`;
+function parseObjRefString(value) {
+  if (!value.startsWith("obj://"))
+    return void 0;
+  const rest = value.slice(6);
+  const slash = rest.indexOf("/");
+  if (slash < 0)
+    return { kind: "object-id", objectId: rest };
+  try {
+    const innerPath = "/" + rest.slice(slash + 1).split("/").map(decodeURIComponent).join("/");
+    return { kind: "object-id", objectId: rest.slice(0, slash), innerPath };
+  } catch {
+    return void 0;
+  }
+}
 function readContentHints(value) {
   if (!value || typeof value !== "object")
     return {};
@@ -23,12 +45,12 @@ const previewHandler = {
   intents: { open: { entry: { type: "builtin", target: "preview" }, modes: ["view"], fidelity: "partial", window: "reuse", priority: 90 } }
 };
 const emptyDefaults = () => ({ schema_version: 1, defaults: {}, disabled: [] });
-const contentRefString = (ref) => ref.kind === "cyfs-path" ? ref.path : `obj://${ref.objectId}`;
+const contentRefString = (ref) => ref.kind === "cyfs-path" ? ref.path : objRefString(ref.objectId, ref.innerPath);
 function isTransferableRef(value) {
   if (!value || typeof value !== "object")
     return false;
   const v = value;
-  return v.kind === "cyfs-path" && typeof v.path === "string" && /^cyfs:\/\/\/[^\0]*$/.test(v.path) || v.kind === "object-id" && typeof v.objectId === "string" && /^[\w.-]+:[\w-]+$/.test(v.objectId);
+  return v.kind === "cyfs-path" && typeof v.path === "string" && /^cyfs:\/\/\/[^\0]*$/.test(v.path) || v.kind === "object-id" && typeof v.objectId === "string" && /^[\w.-]+:[\w-]+$/.test(v.objectId) && (v.innerPath === void 0 || isArchiveInnerPath(v.innerPath));
 }
 function isOpenRequest(value) {
   if (!value || typeof value !== "object")
@@ -43,14 +65,15 @@ function isTransferableSession(value) {
   return v.kind === "single" || v.kind === "container" && isTransferableRef(v.container) && isTransferableRef(v.current) || v.kind === "list" && Array.isArray(v.items) && v.items.every((i2) => i2 && isTransferableRef(i2.source)) && Number.isInteger(v.currentIndex) && v.currentIndex >= 0 && v.currentIndex < v.items.length;
 }
 function contentDescriptor(source, hints = {}) {
-  const name = hints.name ?? contentRefString(source).split("/").pop() ?? "";
+  const tail = source.kind === "cyfs-path" ? source.path : source.innerPath ?? "";
+  const name = hints.name ?? tail.split("/").pop() ?? "";
   const ext = extensionOf(name);
   return {
     source,
     name,
     size: hints.size,
     ext: ext ? `.${ext}` : void 0,
-    objType: source.kind === "cyfs-path" ? "cyfile" : source.objectId.split(":")[0],
+    objType: source.kind === "cyfs-path" || source.innerPath ? "cyfile" : source.objectId.split(":")[0],
     mime: hints.mime || mediaTypeFromExtension(ext) || "application/octet-stream"
   };
 }
@@ -147,8 +170,11 @@ function resolveContentHandlers(registry, defaults, descriptor, intent = "open",
   });
 }
 function parentSource(source) {
-  if (source.kind !== "cyfs-path")
-    return void 0;
+  if (source.kind !== "cyfs-path") {
+    if (!source.innerPath || source.innerPath === "/archive")
+      return void 0;
+    return { kind: "object-id", objectId: source.objectId, innerPath: source.innerPath.slice(0, source.innerPath.lastIndexOf("/")) };
+  }
   const i2 = source.path.lastIndexOf("/");
   return i2 >= 7 ? { kind: "cyfs-path", path: source.path.slice(0, i2) || "cyfs:///" } : void 0;
 }
@@ -192,7 +218,7 @@ function parseSystemOpen(params) {
   const value = params.get("open");
   if (!value)
     return void 0;
-  const source = value.startsWith("obj://") ? { kind: "object-id", objectId: value.slice(6) } : { kind: "cyfs-path", path: value };
+  const source = value.startsWith("obj://") ? parseObjRefString(value) : { kind: "cyfs-path", path: value };
   if (!isTransferableRef(source))
     return void 0;
   const intent = params.get("intent");
@@ -332,6 +358,7 @@ export {
   extensionOf,
   handlerOfApp,
   h as heifImageSize,
+  isArchiveInnerPath,
   isOpenRequest,
   isTransferableRef,
   isTransferableSession,
@@ -339,6 +366,7 @@ export {
   matchSelector,
   mediaTypeFromExtension,
   parentSource,
+  parseObjRefString,
   parseSystemOpen,
   previewHandler,
   readContentHints,

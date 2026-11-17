@@ -50,6 +50,48 @@ export interface Locator {
 /** Sugar: accept a dfs path string, a `xxx://` uri, a WireRef or a Locator. */
 export type LocatorLike = string | WireRef | Locator
 
+// ---------- archives (ZIP members as a read-only tree) ----------
+
+/** `<file>/@/archive/<member>`: the path segments that enter an archive. */
+export const ARCHIVE_SEGMENT = '@'
+export const ARCHIVE_BRANCH = 'archive'
+export const ARCHIVE_INNER_ROOT = '/archive'
+
+/** `inner_path` of a member (`''` = the archive root). */
+export const archiveInnerPath = (member: string): string =>
+  member.replace(/^\/+|\/+$/g, '') ? `${ARCHIVE_INNER_ROOT}/${member.replace(/^\/+|\/+$/g, '')}` : ARCHIVE_INNER_ROOT
+
+/** A member of an archive object (fixed: the object never changes). */
+export const archiveObjectRef = (objId: string, member = ''): ObjectRef => ({ type: 'object', obj_id: objId, inner_path: archiveInnerPath(member) })
+
+/** The address of a member of an archive file in the Zone (live: STALE once the file changes). */
+export const archivePath = (filePath: string, member = ''): string => {
+  const m = member.replace(/^\/+|\/+$/g, '')
+  return `${filePath.replace(/\/+$/, '')}/${ARCHIVE_SEGMENT}/${ARCHIVE_BRANCH}${m ? `/${m}` : ''}`
+}
+
+/** Archive error codes (nfs_server README). */
+export type ArchiveErrorCode = 'PASSWORD_REQUIRED' | 'PASSWORD_INVALID' | 'ARCHIVE_CORRUPT'
+export const ARCHIVE_ERROR_CODES: readonly ArchiveErrorCode[] = ['PASSWORD_REQUIRED', 'PASSWORD_INVALID', 'ARCHIVE_CORRUPT']
+
+/** `hello.archive`: what archives this server opens. Clients enter an archive only when it lists the format. */
+export interface ArchiveCapability {
+  available: boolean
+  formats: { format: 'zip'; extensions: string[]; methods: string[]; encryption: string[] }[]
+  limits?: { max_central_directory_bytes: number; max_entries: number; max_materialize_bytes: number }
+}
+
+/** `attrs.archive` of an archive root (stat, and the container of its listing). */
+export interface ArchiveSummary {
+  format: 'zip'
+  entries: number
+  /** Members that cannot be addressed (unsafe or clashing names, links); not listed. */
+  hidden_entries: number
+  encrypted_entries: number
+  /** How names without the UTF-8 flag were decoded. */
+  name_encoding: { encoding: string; by: 'flag' | 'utf8' | 'detected' | 'preference' | 'fallback' }
+}
+
 export const toLocator = (at: LocatorLike): Locator => {
   if (typeof at === 'string') {
     if (at.includes('://')) return { uri: at }
@@ -139,6 +181,11 @@ export interface NodeInfo {
   access_urls?: { kind: string; url: string }[]
   // meta
   meta_summary?: Record<string, number>
+  // archives
+  /** Set on archive roots and members (read-only, `remove_semantics: none`). */
+  archive_member?: boolean
+  canonical_path?: string
+  attrs?: { archive?: ArchiveSummary; compressed_size?: number; encrypted?: boolean; method?: string } & Record<string, unknown>
   // view / collection extras
   view_id?: string
   collection_id?: string
@@ -205,6 +252,7 @@ export interface HelloResult {
   identity?: { user_id: string | null; role: 'admin' | 'user' | 'anonymous' }
   /** The Preview Pipeline's converter, also when `repr` is not advertised. */
   repr?: ReprCapability
+  archive?: ArchiveCapability
 }
 
 // ---------- Preview Pipeline (`repr` / `get_repr`) ----------
@@ -646,6 +694,17 @@ export class NfspClient {
     return this.helloResult?.repr ?? null
   }
 
+  /** Archive formats this server opens (null before hello or when it opens none). */
+  get archiveCapability(): ArchiveCapability | null {
+    return this.helloResult?.archive?.available ? this.helloResult.archive : null
+  }
+
+  /** Whether files with this name open as archives here (`hello.archive`). */
+  opensArchive(name: string): boolean {
+    const ext = name.includes('.') ? name.slice(name.lastIndexOf('.') + 1).toLowerCase() : ''
+    return !!ext && !!this.archiveCapability?.formats.some(f => f.extensions.includes(ext))
+  }
+
   /** Features advertised by the server in hello (empty before hello). */
   get features(): string[] {
     return this.helloResult?.features ?? []
@@ -1059,6 +1118,19 @@ export class NfspClient {
   /** Queries a work this principal ensured; never starts an attempt. */
   async getRepr(workKey: string): Promise<ReprRecord> {
     return (await this.call('get_repr', { args: { work_key: workKey } })) as ReprRecord
+  }
+
+  // ---------- archives ----------
+
+  /** Checks a password against an encrypted member (`at` a member or the archive root) and keeps it for this session. */
+  async archiveUnlock(at: LocatorLike, password: string): Promise<{ ok: true; encrypted: boolean }> {
+    return (await this.call('archive.unlock', { at: toLocator(at), args: { password } })) as { ok: true; encrypted: boolean }
+  }
+
+  /** Forgets this user's passwords for one archive (`at` its root) or for all archives. */
+  async archiveForget(at: LocatorLike | { all: true }): Promise<{ forgotten: number }> {
+    if (typeof at === 'object' && 'all' in at) return (await this.call('archive.forget', { args: { all: true } })) as { forgotten: number }
+    return (await this.call('archive.forget', { at: toLocator(at as LocatorLike) })) as { forgotten: number }
   }
 
   // ---------- shares (`share.*`) ----------

@@ -1,5 +1,7 @@
 import { SystemDialogError, isOpenRequest, readContentHints, readSelectDialogResult, systemOpenUrl, SELECT_DIALOG_PATH, isTransferableRef, isTransferableSession, SYSTEM_DIALOG_ERROR_CODES } from "./content.mjs";
 import "./content_mime-e42d5f8d.mjs";
+import "./object_url-20e94b67.mjs";
+import "./ndn_types-0fac2499.mjs";
 const dialogErrorCode = (value) => SYSTEM_DIALOG_ERROR_CODES.includes(value) ? value : "protocol";
 const envelope = (type, payload, extra = {}) => ({ protocol: "buckyos.app-frame", version: 1, type, payload, ...extra });
 const isMessage = (value) => {

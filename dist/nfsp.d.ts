@@ -44,6 +44,47 @@ export interface Locator {
 }
 /** Sugar: accept a dfs path string, a `xxx://` uri, a WireRef or a Locator. */
 export type LocatorLike = string | WireRef | Locator;
+/** `<file>/@/archive/<member>`: the path segments that enter an archive. */
+export declare const ARCHIVE_SEGMENT = "@";
+export declare const ARCHIVE_BRANCH = "archive";
+export declare const ARCHIVE_INNER_ROOT = "/archive";
+/** `inner_path` of a member (`''` = the archive root). */
+export declare const archiveInnerPath: (member: string) => string;
+/** A member of an archive object (fixed: the object never changes). */
+export declare const archiveObjectRef: (objId: string, member?: string) => ObjectRef;
+/** The address of a member of an archive file in the Zone (live: STALE once the file changes). */
+export declare const archivePath: (filePath: string, member?: string) => string;
+/** Archive error codes (nfs_server README). */
+export type ArchiveErrorCode = 'PASSWORD_REQUIRED' | 'PASSWORD_INVALID' | 'ARCHIVE_CORRUPT';
+export declare const ARCHIVE_ERROR_CODES: readonly ArchiveErrorCode[];
+/** `hello.archive`: what archives this server opens. Clients enter an archive only when it lists the format. */
+export interface ArchiveCapability {
+    available: boolean;
+    formats: {
+        format: 'zip';
+        extensions: string[];
+        methods: string[];
+        encryption: string[];
+    }[];
+    limits?: {
+        max_central_directory_bytes: number;
+        max_entries: number;
+        max_materialize_bytes: number;
+    };
+}
+/** `attrs.archive` of an archive root (stat, and the container of its listing). */
+export interface ArchiveSummary {
+    format: 'zip';
+    entries: number;
+    /** Members that cannot be addressed (unsafe or clashing names, links); not listed. */
+    hidden_entries: number;
+    encrypted_entries: number;
+    /** How names without the UTF-8 flag were decoded. */
+    name_encoding: {
+        encoding: string;
+        by: 'flag' | 'utf8' | 'detected' | 'preference' | 'fallback';
+    };
+}
 export declare const toLocator: (at: LocatorLike) => Locator;
 export type WantGroup = 'base' | 'ident' | 'access' | 'meta';
 export type NodeKind = 'dir' | 'file' | 'symlink' | 'view' | 'collection' | 'group';
@@ -120,6 +161,15 @@ export interface NodeInfo {
         url: string;
     }[];
     meta_summary?: Record<string, number>;
+    /** Set on archive roots and members (read-only, `remove_semantics: none`). */
+    archive_member?: boolean;
+    canonical_path?: string;
+    attrs?: {
+        archive?: ArchiveSummary;
+        compressed_size?: number;
+        encrypted?: boolean;
+        method?: string;
+    } & Record<string, unknown>;
     view_id?: string;
     collection_id?: string;
     title?: string;
@@ -205,6 +255,7 @@ export interface HelloResult {
     };
     /** The Preview Pipeline's converter, also when `repr` is not advertised. */
     repr?: ReprCapability;
+    archive?: ArchiveCapability;
 }
 /** What the node converts with: ffmpeg / ffprobe found on it, or why not. */
 export type ReprCapability = {
@@ -706,6 +757,10 @@ export declare class NfspClient {
     get sessionId(): string | null;
     /** The Preview Pipeline converter reported by hello (null before hello). */
     get reprCapability(): ReprCapability | null;
+    /** Archive formats this server opens (null before hello or when it opens none). */
+    get archiveCapability(): ArchiveCapability | null;
+    /** Whether files with this name open as archives here (`hello.archive`). */
+    opensArchive(name: string): boolean;
     /** Features advertised by the server in hello (empty before hello). */
     get features(): string[];
     get limits(): HelloResult['limits'] | null;
@@ -883,6 +938,17 @@ export declare class NfspClient {
     repr(at: LocatorLike | null, args?: ReprArgs): Promise<ReprRecord>;
     /** Queries a work this principal ensured; never starts an attempt. */
     getRepr(workKey: string): Promise<ReprRecord>;
+    /** Checks a password against an encrypted member (`at` a member or the archive root) and keeps it for this session. */
+    archiveUnlock(at: LocatorLike, password: string): Promise<{
+        ok: true;
+        encrypted: boolean;
+    }>;
+    /** Forgets this user's passwords for one archive (`at` its root) or for all archives. */
+    archiveForget(at: LocatorLike | {
+        all: true;
+    }): Promise<{
+        forgotten: number;
+    }>;
     shareCapabilities(): Promise<ShareCapabilities>;
     /** Side-effect free: size, exclusions, existing links, Public state, target fit. */
     sharePlan(source: LocatorLike, opts?: {

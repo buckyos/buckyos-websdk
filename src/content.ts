@@ -1,10 +1,35 @@
 import { extensionOf, mediaTypeFromExtension } from './content_mime'
+import { encodeObjSegment } from './object_url'
 export { extensionOf, heifImageSize, isoBoxes, mediaTypeFromExtension, sniffMagic, stripMediaTypeParams, TEXT_CODE_EXTENSIONS } from './content_mime'
 export type { IsoBox } from './content_mime'
 
+/**
+ * A content reference that may cross App boundaries. An `object-id` with `innerPath` names a member of an archive
+ * object (`/archive/<member path>`): it is as fixed as the object itself.
+ */
 export type TransferableContentRef =
   | { kind: 'cyfs-path'; path: string; version?: string }
-  | { kind: 'object-id'; objectId: string; version?: string }
+  | { kind: 'object-id'; objectId: string; innerPath?: string; version?: string }
+/** `/archive` or `/archive/<segments>`: every segment a valid name, no trailing slash. */
+export function isArchiveInnerPath(value: unknown): value is string {
+  if (typeof value !== 'string' || (value !== '/archive' && !value.startsWith('/archive/'))) return false
+  return value.split('/').slice(2).every(s => !!s && s !== '.' && s !== '..' && s.length <= 255 && !/[\\\0]/.test(s))
+}
+const objRefString = (objectId: string, innerPath?: string) =>
+  `obj://${objectId}${innerPath ? innerPath.split('/').slice(1).map(s => `/${encodeObjSegment(s)}`).join('') : ''}`
+/** Inverse of `contentRefString` for `obj://` values. */
+export function parseObjRefString(value: string): TransferableContentRef | undefined {
+  if (!value.startsWith('obj://')) return undefined
+  const rest = value.slice(6)
+  const slash = rest.indexOf('/')
+  if (slash < 0) return { kind: 'object-id', objectId: rest }
+  try {
+    const innerPath = '/' + rest.slice(slash + 1).split('/').map(decodeURIComponent).join('/')
+    return { kind: 'object-id', objectId: rest.slice(0, slash), innerPath }
+  } catch {
+    return undefined
+  }
+}
 export type TransferableSessionContext =
   | { kind: 'single' }
   | { kind: 'container'; container: TransferableContentRef; current: TransferableContentRef; sort?: unknown; navigation?: 'wrap' | 'bounded' }
@@ -84,12 +109,13 @@ export const previewHandler: ContentHandlerEntry = {
   intents: { open: { entry: { type: 'builtin', target: 'preview' }, modes: ['view'], fidelity: 'partial', window: 'reuse', priority: 90 } },
 }
 export const emptyDefaults = (): ContentDefaults => ({ schema_version: 1, defaults: {}, disabled: [] })
-export const contentRefString = (ref: TransferableContentRef): string => ref.kind === 'cyfs-path' ? ref.path : `obj://${ref.objectId}`
+export const contentRefString = (ref: TransferableContentRef): string => ref.kind === 'cyfs-path' ? ref.path : objRefString(ref.objectId, ref.innerPath)
 export function isTransferableRef(value: unknown): value is TransferableContentRef {
   if (!value || typeof value !== 'object') return false
   const v = value as TransferableContentRef
   return (v.kind === 'cyfs-path' && typeof v.path === 'string' && /^cyfs:\/\/\/[^\0]*$/.test(v.path)) ||
-    (v.kind === 'object-id' && typeof v.objectId === 'string' && /^[\w.-]+:[\w-]+$/.test(v.objectId))
+    (v.kind === 'object-id' && typeof v.objectId === 'string' && /^[\w.-]+:[\w-]+$/.test(v.objectId) &&
+      (v.innerPath === undefined || isArchiveInnerPath(v.innerPath)))
 }
 export function isOpenRequest(value: unknown): value is OpenRequest {
   if (!value || typeof value !== 'object') return false
@@ -107,10 +133,11 @@ export function isTransferableSession(value: unknown): value is TransferableSess
       Number.isInteger(v.currentIndex) && v.currentIndex >= 0 && v.currentIndex < v.items.length)
 }
 export function contentDescriptor(source: TransferableContentRef, hints: { name?: string; mime?: string; size?: number } = {}): ContentDescriptor {
-  const name = hints.name ?? contentRefString(source).split('/').pop() ?? ''
+  const tail = source.kind === 'cyfs-path' ? source.path : source.innerPath ?? ''
+  const name = hints.name ?? tail.split('/').pop() ?? ''
   const ext = extensionOf(name)
   return { source, name, size: hints.size, ext: ext ? `.${ext}` : undefined,
-    objType: source.kind === 'cyfs-path' ? 'cyfile' : source.objectId.split(':')[0],
+    objType: source.kind === 'cyfs-path' || source.innerPath ? 'cyfile' : source.objectId.split(':')[0],
     mime: hints.mime || mediaTypeFromExtension(ext) || 'application/octet-stream' }
 }
 const values = (v?: string | string[]) => v === undefined ? [] : Array.isArray(v) ? v : [v]
@@ -180,7 +207,10 @@ export function resolveContentHandlers(registry: ContentRegistry, defaults: Cont
     reason: m.key === preferredKey ? 'user-default' : m.h.provider === 'system' ? 'system-default' : 'ranked' }))
 }
 export function parentSource(source: TransferableContentRef): TransferableContentRef | undefined {
-  if (source.kind !== 'cyfs-path') return undefined
+  if (source.kind !== 'cyfs-path') {
+    if (!source.innerPath || source.innerPath === '/archive') return undefined
+    return { kind: 'object-id', objectId: source.objectId, innerPath: source.innerPath.slice(0, source.innerPath.lastIndexOf('/')) }
+  }
   const i = source.path.lastIndexOf('/')
   return i >= 7 ? { kind: 'cyfs-path', path: source.path.slice(0, i) || 'cyfs:///' } : undefined
 }
@@ -223,7 +253,7 @@ export function systemOpenUrl(systemOrigin: string, open: SystemOpenRequest): st
 export function parseSystemOpen(params: URLSearchParams): SystemOpenRequest | undefined {
   const value = params.get('open')
   if (!value) return undefined
-  const source: TransferableContentRef = value.startsWith('obj://') ? { kind: 'object-id', objectId: value.slice(6) } : { kind: 'cyfs-path', path: value }
+  const source: TransferableContentRef | undefined = value.startsWith('obj://') ? parseObjRefString(value) : { kind: 'cyfs-path', path: value }
   if (!isTransferableRef(source)) return undefined
   const intent = params.get('intent')
   const target: ContentOpenTarget = intent === 'preview' || intent === 'chooser' ? intent : 'default'

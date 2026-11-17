@@ -404,9 +404,10 @@ export {
   canonicalJson as c,
   objectSegments as d,
   encodeObjQueryComponent as e,
-  objectEndpoint as f,
+  encodeObjSegment as f,
+  objectEndpoint as g,
   normalizeObjectUrl as n,
   object_url as o,
   parseObjectUrl as p
 };
-//# sourceMappingURL=object_url-376c5222.mjs.map
+//# sourceMappingURL=object_url-20e94b67.mjs.map
