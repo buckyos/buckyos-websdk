@@ -13,6 +13,15 @@ const archivePath = (filePath, member = "") => {
   const m = member.replace(/^\/+|\/+$/g, "");
   return `${filePath.replace(/\/+$/, "")}/${ARCHIVE_SEGMENT}/${ARCHIVE_BRANCH}${m ? `/${m}` : ""}`;
 };
+const archiveExtensionOf = (name, extensions) => {
+  const lower = name.toLowerCase();
+  let best = null;
+  for (const ext of extensions) {
+    if (lower.length > ext.length + 1 && lower.endsWith(`.${ext}`) && (best === null || ext.length > best.length))
+      best = ext;
+  }
+  return best;
+};
 const ARCHIVE_ERROR_CODES = ["PASSWORD_REQUIRED", "PASSWORD_INVALID", "ARCHIVE_CORRUPT"];
 const toLocator = (at) => {
   if (typeof at === "string") {
@@ -60,8 +69,8 @@ class NfspClient {
   /** Whether files with this name open as archives here (`hello.archive`). */
   opensArchive(name) {
     var _a;
-    const ext = name.includes(".") ? name.slice(name.lastIndexOf(".") + 1).toLowerCase() : "";
-    return !!ext && !!((_a = this.archiveCapability) == null ? void 0 : _a.formats.some((f) => f.extensions.includes(ext)));
+    const formats = ((_a = this.archiveCapability) == null ? void 0 : _a.formats) ?? [];
+    return archiveExtensionOf(name, formats.flatMap((f) => f.extensions)) !== null;
   }
   /** Features advertised by the server in hello (empty before hello). */
   get features() {
@@ -640,6 +649,7 @@ export {
   NFSP_VERSION,
   NfspClient,
   NfspError,
+  archiveExtensionOf,
   archiveInnerPath,
   archiveObjectRef,
   archivePath,

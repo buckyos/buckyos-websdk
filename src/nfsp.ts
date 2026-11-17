@@ -50,7 +50,7 @@ export interface Locator {
 /** Sugar: accept a dfs path string, a `xxx://` uri, a WireRef or a Locator. */
 export type LocatorLike = string | WireRef | Locator
 
-// ---------- archives (ZIP members as a read-only tree) ----------
+// ---------- archives (members of zip / tar / 7z files as a read-only tree) ----------
 
 /** `<file>/@/archive/<member>`: the path segments that enter an archive. */
 export const ARCHIVE_SEGMENT = '@'
@@ -70,26 +70,62 @@ export const archivePath = (filePath: string, member = ''): string => {
   return `${filePath.replace(/\/+$/, '')}/${ARCHIVE_SEGMENT}/${ARCHIVE_BRANCH}${m ? `/${m}` : ''}`
 }
 
+/**
+ * The archive extension `name` ends with, the longest of `extensions` (`a.tar.gz` is `tar.gz`, not `gz`);
+ * null when none matches or nothing comes before it. Extensions are lower case, without the leading dot.
+ */
+export const archiveExtensionOf = (name: string, extensions: Iterable<string>): string | null => {
+  const lower = name.toLowerCase()
+  let best: string | null = null
+  for (const ext of extensions) {
+    if (lower.length > ext.length + 1 && lower.endsWith(`.${ext}`) && (best === null || ext.length > best.length)) best = ext
+  }
+  return best
+}
+
 /** Archive error codes (nfs_server README). */
 export type ArchiveErrorCode = 'PASSWORD_REQUIRED' | 'PASSWORD_INVALID' | 'ARCHIVE_CORRUPT'
 export const ARCHIVE_ERROR_CODES: readonly ArchiveErrorCode[] = ['PASSWORD_REQUIRED', 'PASSWORD_INVALID', 'ARCHIVE_CORRUPT']
 
+/** `zip`, `tar` (plain or compressed), `7z`, or one compressed file (`compressed`: a one-member archive). */
+export type ArchiveFormatName = 'zip' | 'tar' | '7z' | 'compressed'
+
+/** One format in `hello.archive.formats`. */
+export interface ArchiveFormat {
+  format: ArchiveFormatName
+  /** File extensions it opens, lower case; may hold dots (`tar.gz`). */
+  extensions: string[]
+  /** Compression methods it decodes (zip, 7z). */
+  methods?: string[]
+  /** 7z filters it decodes. */
+  filters?: string[]
+  encryption?: string[]
+  /** Stream compressions around a tar or a single file (`none`, `gzip`, `xz`, `bzip2`, `zstd`). */
+  compression?: string[]
+}
+
 /** `hello.archive`: what archives this server opens. Clients enter an archive only when it lists the format. */
 export interface ArchiveCapability {
   available: boolean
-  formats: { format: 'zip'; extensions: string[]; methods: string[]; encryption: string[] }[]
-  limits?: { max_central_directory_bytes: number; max_entries: number; max_materialize_bytes: number }
+  formats: ArchiveFormat[]
+  limits?: { max_central_directory_bytes: number; max_entries: number; max_materialize_bytes: number; max_decoder_memory?: number }
 }
 
 /** `attrs.archive` of an archive root (stat, and the container of its listing). */
 export interface ArchiveSummary {
-  format: 'zip'
+  format: ArchiveFormatName
+  /** Stream compression of a tar or a single file. */
+  compression?: string
+  /** 7z: some block holds several files (first reads of them decode the block once). */
+  solid?: boolean
+  /** 7z: names are encrypted too; listing needs the password (`PASSWORD_REQUIRED`). */
+  header_encrypted?: boolean
   entries: number
   /** Members that cannot be addressed (unsafe or clashing names, links); not listed. */
   hidden_entries: number
   encrypted_entries: number
-  /** How names without the UTF-8 flag were decoded. */
-  name_encoding: { encoding: string; by: 'flag' | 'utf8' | 'detected' | 'preference' | 'fallback' }
+  /** How names were decoded (`format`: the format fixes it, as 7z's UTF-16 names). */
+  name_encoding: { encoding: string; by: 'flag' | 'utf8' | 'detected' | 'preference' | 'fallback' | 'format' }
 }
 
 export const toLocator = (at: LocatorLike): Locator => {
@@ -701,8 +737,8 @@ export class NfspClient {
 
   /** Whether files with this name open as archives here (`hello.archive`). */
   opensArchive(name: string): boolean {
-    const ext = name.includes('.') ? name.slice(name.lastIndexOf('.') + 1).toLowerCase() : ''
-    return !!ext && !!this.archiveCapability?.formats.some(f => f.extensions.includes(ext))
+    const formats = this.archiveCapability?.formats ?? []
+    return archiveExtensionOf(name, formats.flatMap(f => f.extensions)) !== null
   }
 
   /** Features advertised by the server in hello (empty before hello). */

@@ -1,5 +1,5 @@
 import { contentDescriptor, contentRefString, isTransferableRef, parentSource, parseObjRefString, parseSystemOpen, systemOpenUrl } from '../src/content'
-import { archiveInnerPath, archiveObjectRef, archivePath, NfspClient } from '../src/nfsp'
+import { archiveExtensionOf, archiveInnerPath, archiveObjectRef, archivePath, NfspClient } from '../src/nfsp'
 import { formatObjectUrl, parseObjectUrl } from '../src/object_url'
 
 describe('archive member references', () => {
@@ -52,5 +52,18 @@ describe('archive member references', () => {
     expect(client.opensArchive('A.ZIP')).toBe(true)
     expect(client.opensArchive('a.docx')).toBe(false)
     expect(client.opensArchive('zip')).toBe(false)
+    expect(client.opensArchive('a.tar.gz')).toBe(false)
+  })
+
+  it('matches the longest archive extension', () => {
+    const exts = ['zip', 'tar', 'tar.gz', 'tgz', 'gz', '7z']
+    expect(archiveExtensionOf('Backup.TAR.GZ', exts)).toBe('tar.gz')
+    expect(archiveExtensionOf('server.log.gz', exts)).toBe('gz')
+    expect(archiveExtensionOf('photos.7z', exts)).toBe('7z')
+    expect(archiveExtensionOf('a.tgz', exts)).toBe('tgz')
+    expect(archiveExtensionOf('.tar.gz', exts)).toBe('gz')
+    expect(archiveExtensionOf('tar.gz', exts)).toBe('gz')
+    expect(archiveExtensionOf('.gz', exts)).toBeNull()
+    expect(archiveExtensionOf('a.docx', exts)).toBeNull()
   })
 })
