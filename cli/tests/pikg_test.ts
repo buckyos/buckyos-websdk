@@ -983,6 +983,11 @@ const onlineManifest = () => ({
 Deno.test('ext-tools packages: an online item names an https archive of the upstream and stays inside its directory', async () => {
   const { extToolsManifestErrors, extToolsPayloadErrors } = await import('../modules/pikg_protocol.ts')
   assertEquals(extToolsManifestErrors(onlineManifest()), [])
+  // A package of online items only, like the font package: no command, no bin/.
+  const fonts = { ...onlineManifest(), provides: [] }
+  assertEquals(extToolsManifestErrors(fonts), [])
+  assertEquals(extToolsPayloadErrors(fonts, 'linux-x86_64', { files: new Map([['ext-manifest.json', { executable: false }]]), directories: new Set(['online', 'online/chromium']), launchers: new Map() }), [])
+  assert(extToolsManifestErrors({ ...fonts, online: [] }).some((error: string) => error.includes('provides commands or declares online items')))
   // deno-lint-ignore no-explicit-any
   const source = (manifest: any) => manifest.online[0].platforms['linux-x86_64']
   // deno-lint-ignore no-explicit-any

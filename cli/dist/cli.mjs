@@ -4777,8 +4777,11 @@ function extToolsManifestErrors(value) {
     errors.push("id must be lowercase letters, digits and -");
   if (typeof manifest.version !== "string" || !EXT_TOOLS_VERSION.test(manifest.version))
     errors.push("version must be letters, digits and ._+-");
-  if (!Array.isArray(manifest.provides) || manifest.provides.length === 0)
-    errors.push("provides must not be empty");
+  if (!Array.isArray(manifest.provides))
+    errors.push("provides must be a list");
+  else if (manifest.provides.length === 0 && !(Array.isArray(manifest.online) && manifest.online.length > 0)) {
+    errors.push("a package provides commands or declares online items");
+  }
   const online = extToolsOnlineErrors(manifest);
   errors.push(...online.errors);
   const commands = /* @__PURE__ */ new Set();
@@ -6223,7 +6226,7 @@ async function readSkillDirectory(root, limit) {
   await walk(realRoot, "");
   return { files, ignored };
 }
-const PACKAGE_VERSION = "0.7.188";
+const PACKAGE_VERSION = "0.7.189";
 const TOOL_VERSION = PACKAGE_VERSION;
 const SDK_VERSION = PACKAGE_VERSION;
 const PROTOCOL_VERSION = "1";
