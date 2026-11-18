@@ -7,7 +7,7 @@
  * host (the Desktop, the CLI) answers the data queries, shows the dialogs — or, with `no_ui` (an Agent), fails where a
  * person would have to choose — and turns the result into one Commit (`bindOps`). Shared by the Desktop and the CLI.
  */
-import { CALENDAR_SCHEMA_ID, standardTableOp, TODO_SCHEMA_ID, type Json, type Op } from './aiws_schedule'
+import { CALENDAR_SCHEMA_ID, standardTableOp, TODO_SCHEMA_ID, type Json, type Op, type ScheduleLocale } from './aiws_schedule'
 
 /** One binding a control declares (component.json `bindings`, a built-in control's contract). */
 export interface BindingDecl {
@@ -351,7 +351,7 @@ export async function resolveBindings(root: BindNode, host: BindHost): Promise<B
 
 /** The operations of what a placement creates, ids for its refs: `name(spec)` gives a free name in the folder, `orderKey()`
  * the next key there. */
-export function createOps(results: Map<string, BindResult>, opts: { folderId: string; newId: () => string; orderKey: () => string; freeName: (name: string) => string; locale?: 'zh' | 'en' }): { ops: Op[]; ids: Record<string, string> } {
+export function createOps(results: Map<string, BindResult>, opts: { folderId: string; newId: () => string; orderKey: () => string; freeName: (name: string) => string; locale?: ScheduleLocale }): { ops: Op[]; ids: Record<string, string> } {
   const ops: Op[] = []
   const ids: Record<string, string> = {}
   for (const result of results.values()) {

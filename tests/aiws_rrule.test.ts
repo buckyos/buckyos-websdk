@@ -88,6 +88,28 @@ describe('RRULE subset: words', () => {
     expect(describeRRule(parseRRule('FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,WE;COUNT=6'), 'en')).toBe('every 2 weeks on Monday and Wednesday, 6 times')
     expect(describeRRule(parseRRule('FREQ=MONTHLY;BYDAY=MO,TU,WE,TH,FR;BYSETPOS=-1'))).toBe('每月最后一个工作日')
   })
+  it('describes rules in each language of the product', () => {
+    const say = (rule: string, locale: Parameters<typeof describeRRule>[1]) => describeRRule(parseRRule(rule), locale)
+    expect(say('FREQ=MONTHLY;BYDAY=-1FR', 'zh-TW')).toBe('每月最後一個週五')
+    expect(say('FREQ=MONTHLY;BYDAY=2TU', 'ja')).toBe('毎月第2火曜日')
+    expect(say('FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,WE;COUNT=6', 'ko')).toBe('2주마다 월요일, 수요일, 6회')
+    expect(say('FREQ=MONTHLY;BYDAY=1MO', 'fr')).toBe('tous les mois le premier lundi')
+    expect(say('FREQ=YEARLY;BYMONTH=3;BYMONTHDAY=15', 'de')).toBe('jährlich am 15. März')
+    expect(say('FREQ=DAILY;INTERVAL=3;UNTIL=20261231T000000Z', 'es')).toBe('cada 3 días, hasta el 2026-12-31')
+    // Russian: "во" before "вт", the ordinal agrees with the weekday, counts take their plural form
+    expect(say('FREQ=MONTHLY;BYDAY=2TU', 'ru')).toBe('каждый месяц во второй вторник')
+    expect(say('FREQ=MONTHLY;BYDAY=-1FR', 'ru')).toBe('каждый месяц в последнюю пятницу')
+    expect(say('FREQ=WEEKLY;INTERVAL=3;BYDAY=WE;COUNT=2', 'ru')).toBe('раз в 3 недели в среду, 2 раза')
+    // a language the module does not have reads English
+    expect(describeRRule(parseRRule('FREQ=DAILY'), 'pt' as never)).toBe('every day')
+  })
+  it('offers the presets in each language', () => {
+    const label = (locale: Parameters<typeof recurrencePresets>[1], id: string) => recurrencePresets('2026-11-27', locale).find((p) => p.id === id)?.label
+    expect(label('ja', 'monthly_last')).toBe('毎月最終金曜日')
+    expect(label('fr', 'yearly')).toBe('Tous les ans le 27 novembre')
+    expect(label('ru', 'weekly')).toBe('Каждую неделю в пятницу')
+    expect(label('de', 'monthly_nth')).toBe('Monatlich am vierten Freitag')
+  })
   it('offers the presets of a repeat menu for a date', () => {
     const presets = recurrencePresets('2026-11-27')
     expect(presets.map((p) => p.id)).toEqual(['none', 'daily', 'weekdays', 'weekly', 'monthly_day', 'monthly_nth', 'monthly_last', 'yearly'])

@@ -20,7 +20,9 @@ export const AIWS_PROTOCOL_VERSION = '1.2'
 
 export type Json = null | boolean | number | string | Json[] | { [key: string]: Json }
 export type Op = Record<string, Json>
-export type ScheduleLocale = 'zh' | 'en'
+/** The languages standard tables are named in: Simplified Chinese ('zh'), Traditional Chinese, English, Japanese,
+ * Korean, French, German, Spanish, Russian (any other value reads English). */
+export type ScheduleLocale = 'zh' | 'zh-TW' | 'en' | 'ja' | 'ko' | 'fr' | 'de' | 'es' | 'ru'
 
 export interface FieldDef {
   field_id: string
@@ -46,10 +48,59 @@ const LABELS: Record<ScheduleLocale, Record<string, string>> = {
     confirmed: 'Confirmed', tentative: 'Tentative', cancelled: 'Cancelled',
     todo_table: 'To-do', calendar_table: 'Calendar', workspace: 'My schedule', board: 'Schedule',
   },
+  'zh-TW': {
+    title: '標題', status: '狀態', due: '截止', order: '順序', done_at: '完成時間', ext: '擴充',
+    todo: '待辦', doing: '進行中', done: '已完成',
+    all_day: '全天', start: '開始', end: '結束', start_date: '開始日期', end_date: '結束日期',
+    confirmed: '已確認', tentative: '暫定', cancelled: '已取消',
+    todo_table: '待辦事項', calendar_table: '行程', workspace: '我的行程', board: '行程',
+  },
+  ja: {
+    title: 'タイトル', status: 'ステータス', due: '期限', order: '順序', done_at: '完了日時', ext: '拡張',
+    todo: '未着手', doing: '進行中', done: '完了',
+    all_day: '終日', start: '開始', end: '終了', start_date: '開始日', end_date: '終了日',
+    confirmed: '確定', tentative: '仮', cancelled: 'キャンセル',
+    todo_table: 'ToDo', calendar_table: '予定', workspace: 'マイスケジュール', board: 'スケジュール',
+  },
+  ko: {
+    title: '제목', status: '상태', due: '마감', order: '순서', done_at: '완료 시각', ext: '확장',
+    todo: '할 일', doing: '진행 중', done: '완료',
+    all_day: '종일', start: '시작', end: '종료', start_date: '시작일', end_date: '종료일',
+    confirmed: '확정', tentative: '미정', cancelled: '취소됨',
+    todo_table: '할 일', calendar_table: '일정', workspace: '내 일정', board: '일정',
+  },
+  fr: {
+    title: 'Titre', status: 'Statut', due: 'Échéance', order: 'Ordre', done_at: 'Terminé le', ext: 'Extension',
+    todo: 'À faire', doing: 'En cours', done: 'Terminé',
+    all_day: 'Toute la journée', start: 'Début', end: 'Fin', start_date: 'Date de début', end_date: 'Date de fin',
+    confirmed: 'Confirmé', tentative: 'Provisoire', cancelled: 'Annulé',
+    todo_table: 'Tâches', calendar_table: 'Calendrier', workspace: 'Mon agenda', board: 'Agenda',
+  },
+  de: {
+    title: 'Titel', status: 'Status', due: 'Fällig', order: 'Reihenfolge', done_at: 'Erledigt am', ext: 'Erweiterung',
+    todo: 'Offen', doing: 'In Arbeit', done: 'Erledigt',
+    all_day: 'Ganztägig', start: 'Beginn', end: 'Ende', start_date: 'Startdatum', end_date: 'Enddatum',
+    confirmed: 'Bestätigt', tentative: 'Vorläufig', cancelled: 'Abgesagt',
+    todo_table: 'Aufgaben', calendar_table: 'Kalender', workspace: 'Mein Terminplan', board: 'Terminplan',
+  },
+  es: {
+    title: 'Título', status: 'Estado', due: 'Vencimiento', order: 'Orden', done_at: 'Completado el', ext: 'Extensión',
+    todo: 'Pendiente', doing: 'En curso', done: 'Hecho',
+    all_day: 'Todo el día', start: 'Inicio', end: 'Fin', start_date: 'Fecha de inicio', end_date: 'Fecha de fin',
+    confirmed: 'Confirmado', tentative: 'Provisional', cancelled: 'Cancelado',
+    todo_table: 'Tareas', calendar_table: 'Calendario', workspace: 'Mi agenda', board: 'Agenda',
+  },
+  ru: {
+    title: 'Название', status: 'Статус', due: 'Срок', order: 'Порядок', done_at: 'Выполнено', ext: 'Расширение',
+    todo: 'К выполнению', doing: 'В работе', done: 'Готово',
+    all_day: 'Весь день', start: 'Начало', end: 'Конец', start_date: 'Дата начала', end_date: 'Дата окончания',
+    confirmed: 'Подтверждено', tentative: 'Предварительно', cancelled: 'Отменено',
+    todo_table: 'Задачи', calendar_table: 'Календарь', workspace: 'Моё расписание', board: 'Расписание',
+  },
 }
 
 export function scheduleLabel(locale: ScheduleLocale, key: string): string {
-  return LABELS[locale][key] ?? LABELS.en[key] ?? key
+  return LABELS[locale]?.[key] ?? LABELS.en[key] ?? key
 }
 
 /** The standard fields of a to-do table (`buckyos.todo@1`). */
