@@ -10,7 +10,9 @@ export type Json = null | boolean | number | string | Json[] | {
     [key: string]: Json;
 };
 export type Op = Record<string, Json>;
-export type ScheduleLocale = 'zh' | 'en';
+/** The languages standard tables are named in: Simplified Chinese ('zh'), Traditional Chinese, English, Japanese,
+ * Korean, French, German, Spanish, Russian (any other value reads English). */
+export type ScheduleLocale = 'zh' | 'zh-TW' | 'en' | 'ja' | 'ko' | 'fr' | 'de' | 'es' | 'ru';
 export interface FieldDef {
     field_id: string;
     name: string;

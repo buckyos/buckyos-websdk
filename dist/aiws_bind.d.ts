@@ -7,7 +7,7 @@
  * host (the Desktop, the CLI) answers the data queries, shows the dialogs — or, with `no_ui` (an Agent), fails where a
  * person would have to choose — and turns the result into one Commit (`bindOps`). Shared by the Desktop and the CLI.
  */
-import { type Json, type Op } from './aiws_schedule';
+import { type Json, type Op, type ScheduleLocale } from './aiws_schedule';
 /** One binding a control declares (component.json `bindings`, a built-in control's contract). */
 export interface BindingDecl {
     accepts?: string[];
@@ -218,7 +218,7 @@ export declare function createOps(results: Map<string, BindResult>, opts: {
     newId: () => string;
     orderKey: () => string;
     freeName: (name: string) => string;
-    locale?: 'zh' | 'en';
+    locale?: ScheduleLocale;
 }): {
     ops: Op[];
     ids: Record<string, string>;

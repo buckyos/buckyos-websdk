@@ -729,63 +729,363 @@ function parseOccurrenceId(id) {
   const at = id.indexOf("@");
   return at < 0 ? { recordId: id, original: null } : { recordId: id.slice(0, at), original: id.slice(at + 1) };
 }
-const ORD_ZH = { 1: "第一个", 2: "第二个", 3: "第三个", 4: "第四个", 5: "第五个", [-1]: "最后一个", [-2]: "倒数第二个", [-3]: "倒数第三个", [-4]: "倒数第四个", [-5]: "倒数第五个" };
-const ORD_EN = { 1: "first", 2: "second", 3: "third", 4: "fourth", 5: "fifth", [-1]: "last", [-2]: "second to last", [-3]: "third to last", [-4]: "fourth to last", [-5]: "fifth to last" };
-const WD_ZH = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
-const WD_EN = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
-const MONTH_EN = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const andJoin = (word) => (xs) => xs.length > 1 ? `${xs.slice(0, -1).join(", ")} ${word} ${xs[xs.length - 1]}` : xs.join("");
+const ruPlural = (n, one, few, many) => {
+  const d = n % 10, h = n % 100;
+  return d === 1 && h !== 11 ? one : d >= 2 && d <= 4 && (h < 12 || h > 14) ? few : many;
+};
+const ZH_ORD = { 1: "第一个", 2: "第二个", 3: "第三个", 4: "第四个", 5: "第五个", [-1]: "最后一个", [-2]: "倒数第二个", [-3]: "倒数第三个", [-4]: "倒数第四个", [-5]: "倒数第五个" };
+const ZH_WD = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
+const zh = {
+  day: (wd) => ZH_WD[wd],
+  nth: (o, wd) => `${ZH_ORD[o]}${ZH_WD[wd]}`,
+  nthWorkday: (o) => `${ZH_ORD[o]}工作日`,
+  nthOf: (o, days) => `${ZH_ORD[o]}${days.map((wd) => ZH_WD[wd]).join("、")}`,
+  monthlyDays: (items) => items.join("、"),
+  monthDay: (d) => d === -1 ? "最后一天" : `${d} 日`,
+  join: (xs) => xs.join("、"),
+  daily: (n) => n === 1 ? "每天" : `每 ${n} 天`,
+  workdays: "每个工作日",
+  weekly: (n, on) => `${n === 1 ? "每周" : `每 ${n} 周的`}${on}`,
+  monthly: (n, on) => `${n === 1 ? "每月" : `每 ${n} 个月的`}${on}`,
+  yearly: (n, months, mdays, days) => `${n === 1 ? "每年" : `每 ${n} 年的`}${months ? months.map((m) => `${m} 月`).join("、") : ""}${mdays ? mdays.map(zh.monthDay).join("、") : days ? days.join("、") : ""}`,
+  count: (n) => `，共 ${n} 次`,
+  until: (date) => `，到 ${date} 为止`,
+  preset: {
+    none: "不重复",
+    daily: "每天",
+    weekdays: "每个工作日（周一至周五）",
+    weekly: (wd) => `每周的${ZH_WD[wd]}`,
+    monthlyDay: (d) => `每月 ${d} 日`,
+    monthlyNth: (n, wd) => `每月${ZH_ORD[n]}${ZH_WD[wd]}`,
+    monthlyLast: (wd) => `每月最后一个${ZH_WD[wd]}`,
+    yearly: (m, d) => `每年 ${m} 月 ${d} 日`
+  }
+};
+const TW_ORD = { 1: "第一個", 2: "第二個", 3: "第三個", 4: "第四個", 5: "第五個", [-1]: "最後一個", [-2]: "倒數第二個", [-3]: "倒數第三個", [-4]: "倒數第四個", [-5]: "倒數第五個" };
+const TW_WD = ["週一", "週二", "週三", "週四", "週五", "週六", "週日"];
+const zhTW = {
+  day: (wd) => TW_WD[wd],
+  nth: (o, wd) => `${TW_ORD[o]}${TW_WD[wd]}`,
+  nthWorkday: (o) => `${TW_ORD[o]}工作日`,
+  nthOf: (o, days) => `${TW_ORD[o]}${days.map((wd) => TW_WD[wd]).join("、")}`,
+  monthlyDays: (items) => items.join("、"),
+  monthDay: (d) => d === -1 ? "最後一天" : `${d} 日`,
+  join: (xs) => xs.join("、"),
+  daily: (n) => n === 1 ? "每天" : `每 ${n} 天`,
+  workdays: "每個工作日",
+  weekly: (n, on) => `${n === 1 ? "每週" : `每 ${n} 週的`}${on}`,
+  monthly: (n, on) => `${n === 1 ? "每月" : `每 ${n} 個月的`}${on}`,
+  yearly: (n, months, mdays, days) => `${n === 1 ? "每年" : `每 ${n} 年的`}${months ? months.map((m) => `${m} 月`).join("、") : ""}${mdays ? mdays.map(zhTW.monthDay).join("、") : days ? days.join("、") : ""}`,
+  count: (n) => `，共 ${n} 次`,
+  until: (date) => `，到 ${date} 為止`,
+  preset: {
+    none: "不重複",
+    daily: "每天",
+    weekdays: "每個工作日（週一至週五）",
+    weekly: (wd) => `每週的${TW_WD[wd]}`,
+    monthlyDay: (d) => `每月 ${d} 日`,
+    monthlyNth: (n, wd) => `每月${TW_ORD[n]}${TW_WD[wd]}`,
+    monthlyLast: (wd) => `每月最後一個${TW_WD[wd]}`,
+    yearly: (m, d) => `每年 ${m} 月 ${d} 日`
+  }
+};
+const EN_ORD = { 1: "first", 2: "second", 3: "third", 4: "fourth", 5: "fifth", [-1]: "last", [-2]: "second to last", [-3]: "third to last", [-4]: "fourth to last", [-5]: "fifth to last" };
+const EN_WD = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+const EN_MONTH = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const en = {
+  day: (wd) => EN_WD[wd],
+  nth: (o, wd) => `${EN_ORD[o]} ${EN_WD[wd]}`,
+  nthWorkday: (o) => `the ${EN_ORD[o]} weekday`,
+  nthOf: (o, days) => days.length === 1 ? `the ${EN_ORD[o]} ${EN_WD[days[0]]}` : `the ${EN_ORD[o]} of ${andJoin("and")(days.map((wd) => EN_WD[wd]))}`,
+  monthlyDays: (items) => `the ${andJoin("and")(items)}`,
+  monthDay: (d) => d === -1 ? "the last day" : `day ${d}`,
+  join: andJoin("and"),
+  daily: (n) => n === 1 ? "every day" : `every ${n} days`,
+  workdays: "every weekday",
+  weekly: (n, on) => `${n === 1 ? "every week" : `every ${n} weeks`}${on ? ` on ${on}` : ""}`,
+  monthly: (n, on) => `${n === 1 ? "every month" : `every ${n} months`}${on ? ` on ${on}` : ""}`,
+  yearly: (n, months, mdays, days) => {
+    let on = months ? andJoin("and")(months.map((m) => EN_MONTH[m - 1])) : "";
+    if (mdays)
+      on += ` ${andJoin("and")(mdays.map((d) => d === -1 ? "last day" : String(d)))}`;
+    else if (days)
+      on += ` on the ${andJoin("and")(days)}`;
+    return `${n === 1 ? "every year" : `every ${n} years`}${on.trim() ? ` in ${on.trim()}` : ""}`;
+  },
+  count: (n) => `, ${n} times`,
+  until: (date) => `, until ${date}`,
+  preset: {
+    none: "Does not repeat",
+    daily: "Daily",
+    weekdays: "Every weekday (Monday to Friday)",
+    weekly: (wd) => `Weekly on ${EN_WD[wd]}`,
+    monthlyDay: (d) => `Monthly on day ${d}`,
+    monthlyNth: (n, wd) => `Monthly on the ${EN_ORD[n]} ${EN_WD[wd]}`,
+    monthlyLast: (wd) => `Monthly on the last ${EN_WD[wd]}`,
+    yearly: (m, d) => `Annually on ${EN_MONTH[m - 1]} ${d}`
+  }
+};
+const JA_WD = ["月曜日", "火曜日", "水曜日", "木曜日", "金曜日", "土曜日", "日曜日"];
+const jaOrd = (o) => o > 0 ? `第${o}` : o === -1 ? "最終" : `最後から${-o}番目の`;
+const ja = {
+  day: (wd) => JA_WD[wd],
+  nth: (o, wd) => `${jaOrd(o)}${JA_WD[wd]}`,
+  nthWorkday: (o) => `${jaOrd(o)}平日`,
+  nthOf: (o, days) => `${jaOrd(o)}${days.map((wd) => JA_WD[wd]).join("・")}`,
+  monthlyDays: (items) => items.join("、"),
+  monthDay: (d) => d === -1 ? "最終日" : `${d}日`,
+  join: (xs) => xs.join("、"),
+  daily: (n) => n === 1 ? "毎日" : `${n}日ごと`,
+  workdays: "毎週平日",
+  weekly: (n, on) => n === 1 ? `毎週${on}` : `${n}週間ごと${on ? `の${on}` : ""}`,
+  monthly: (n, on) => n === 1 ? `毎月${on}` : `${n}か月ごと${on ? `の${on}` : ""}`,
+  yearly: (n, months, mdays, days) => {
+    const on = `${months ? months.map((m) => `${m}月`).join("、") : ""}${mdays ? mdays.map(ja.monthDay).join("、") : days ? days.join("、") : ""}`;
+    return n === 1 ? `毎年${on}` : `${n}年ごと${on ? `の${on}` : ""}`;
+  },
+  count: (n) => `、${n}回`,
+  until: (date) => `、${date}まで`,
+  preset: {
+    none: "繰り返さない",
+    daily: "毎日",
+    weekdays: "毎週平日（月曜日～金曜日）",
+    weekly: (wd) => `毎週${JA_WD[wd]}`,
+    monthlyDay: (d) => `毎月${d}日`,
+    monthlyNth: (n, wd) => `毎月第${n}${JA_WD[wd]}`,
+    monthlyLast: (wd) => `毎月最終${JA_WD[wd]}`,
+    yearly: (m, d) => `毎年${m}月${d}日`
+  }
+};
+const KO_WD = ["월요일", "화요일", "수요일", "목요일", "금요일", "토요일", "일요일"];
+const KO_ORD = { 1: "첫째", 2: "둘째", 3: "셋째", 4: "넷째", 5: "다섯째", [-1]: "마지막", [-2]: "끝에서 둘째", [-3]: "끝에서 셋째", [-4]: "끝에서 넷째", [-5]: "끝에서 다섯째" };
+const koOn = (head, on) => on ? `${head} ${on}` : head;
+const ko = {
+  day: (wd) => KO_WD[wd],
+  nth: (o, wd) => `${KO_ORD[o]} ${KO_WD[wd]}`,
+  nthWorkday: (o) => `${KO_ORD[o]} 평일`,
+  nthOf: (o, days) => `${KO_ORD[o]} ${days.map((wd) => KO_WD[wd]).join("·")}`,
+  monthlyDays: (items) => items.join(", "),
+  monthDay: (d) => d === -1 ? "마지막 날" : `${d}일`,
+  join: (xs) => xs.join(", "),
+  daily: (n) => n === 1 ? "매일" : `${n}일마다`,
+  workdays: "매주 평일",
+  weekly: (n, on) => koOn(n === 1 ? "매주" : `${n}주마다`, on),
+  monthly: (n, on) => koOn(n === 1 ? "매월" : `${n}개월마다`, on),
+  yearly: (n, months, mdays, days) => {
+    const on = [months ? months.map((m) => `${m}월`).join(", ") : "", mdays ? mdays.map(ko.monthDay).join(", ") : days ? days.join(", ") : ""].filter(Boolean).join(" ");
+    return koOn(n === 1 ? "매년" : `${n}년마다`, on);
+  },
+  count: (n) => `, ${n}회`,
+  until: (date) => `, ${date}까지`,
+  preset: {
+    none: "반복 안 함",
+    daily: "매일",
+    weekdays: "매주 평일(월요일~금요일)",
+    weekly: (wd) => `매주 ${KO_WD[wd]}`,
+    monthlyDay: (d) => `매월 ${d}일`,
+    monthlyNth: (n, wd) => `매월 ${KO_ORD[n]} ${KO_WD[wd]}`,
+    monthlyLast: (wd) => `매월 마지막 ${KO_WD[wd]}`,
+    yearly: (m, d) => `매년 ${m}월 ${d}일`
+  }
+};
+const FR_WD = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"];
+const FR_MONTH = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
+const FR_ORD = { 1: "premier", 2: "deuxième", 3: "troisième", 4: "quatrième", 5: "cinquième" };
+const frNth = (o, what) => o > 0 ? `le ${FR_ORD[o]} ${what}` : o === -1 ? `le dernier ${what}` : o === -2 ? `l'avant-dernier ${what}` : `le ${FR_ORD[-o]} ${what} avant la fin`;
+const frDay = (d) => d === 1 ? "1er" : String(d);
+const frOn = (head, on) => on ? `${head} ${on}` : head;
+const fr = {
+  day: (wd) => `le ${FR_WD[wd]}`,
+  nth: (o, wd) => frNth(o, FR_WD[wd]),
+  nthWorkday: (o) => frNth(o, "jour ouvrable"),
+  nthOf: (o, days) => frNth(o, days.length === 1 ? FR_WD[days[0]] : `jour parmi ${andJoin("et")(days.map((wd) => FR_WD[wd]))}`),
+  monthlyDays: (items) => andJoin("et")(items),
+  monthDay: (d) => d === -1 ? "le dernier jour" : `le ${frDay(d)}`,
+  join: andJoin("et"),
+  daily: (n) => n === 1 ? "tous les jours" : `tous les ${n} jours`,
+  workdays: "tous les jours ouvrables",
+  weekly: (n, on) => frOn(n === 1 ? "toutes les semaines" : `toutes les ${n} semaines`, on),
+  monthly: (n, on) => frOn(n === 1 ? "tous les mois" : `tous les ${n} mois`, on),
+  yearly: (n, months, mdays, days) => {
+    let on;
+    if ((months == null ? void 0 : months.length) === 1 && (mdays == null ? void 0 : mdays.length) === 1)
+      on = mdays[0] === -1 ? `le dernier jour de ${FR_MONTH[months[0] - 1]}` : `le ${frDay(mdays[0])} ${FR_MONTH[months[0] - 1]}`;
+    else
+      on = [mdays ? andJoin("et")(mdays.map(fr.monthDay)) : days ? andJoin("et")(days) : "", months ? `en ${andJoin("et")(months.map((m) => FR_MONTH[m - 1]))}` : ""].filter(Boolean).join(" ");
+    return frOn(n === 1 ? "tous les ans" : `tous les ${n} ans`, on);
+  },
+  count: (n) => `, ${n} fois`,
+  until: (date) => `, jusqu’au ${date}`,
+  preset: {
+    none: "Ne se répète pas",
+    daily: "Tous les jours",
+    weekdays: "Tous les jours ouvrables (du lundi au vendredi)",
+    weekly: (wd) => `Toutes les semaines le ${FR_WD[wd]}`,
+    monthlyDay: (d) => `Tous les mois le ${frDay(d)}`,
+    monthlyNth: (n, wd) => `Tous les mois ${frNth(n, FR_WD[wd])}`,
+    monthlyLast: (wd) => `Tous les mois le dernier ${FR_WD[wd]}`,
+    yearly: (m, d) => `Tous les ans le ${frDay(d)} ${FR_MONTH[m - 1]}`
+  }
+};
+const DE_WD = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"];
+const DE_MONTH = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
+const DE_ORD = { 1: "ersten", 2: "zweiten", 3: "dritten", 4: "vierten", 5: "fünften", [-1]: "letzten", [-2]: "vorletzten", [-3]: "drittletzten", [-4]: "viertletzten", [-5]: "fünftletzten" };
+const deOn = (head, on) => on ? `${head} ${on}` : head;
+const de = {
+  day: (wd) => `am ${DE_WD[wd]}`,
+  nth: (o, wd) => `am ${DE_ORD[o]} ${DE_WD[wd]}`,
+  nthWorkday: (o) => `am ${DE_ORD[o]} Werktag`,
+  nthOf: (o, days) => days.length === 1 ? `am ${DE_ORD[o]} ${DE_WD[days[0]]}` : `am ${DE_ORD[o]} Tag aus ${andJoin("und")(days.map((wd) => DE_WD[wd]))}`,
+  monthlyDays: (items) => andJoin("und")(items),
+  monthDay: (d) => d === -1 ? "am letzten Tag" : `am ${d}.`,
+  join: andJoin("und"),
+  daily: (n) => n === 1 ? "täglich" : `alle ${n} Tage`,
+  workdays: "an jedem Werktag",
+  weekly: (n, on) => deOn(n === 1 ? "wöchentlich" : `alle ${n} Wochen`, on),
+  monthly: (n, on) => deOn(n === 1 ? "monatlich" : `alle ${n} Monate`, on),
+  yearly: (n, months, mdays, days) => {
+    let on;
+    if ((months == null ? void 0 : months.length) === 1 && (mdays == null ? void 0 : mdays.length) === 1)
+      on = mdays[0] === -1 ? `am letzten Tag im ${DE_MONTH[months[0] - 1]}` : `am ${mdays[0]}. ${DE_MONTH[months[0] - 1]}`;
+    else
+      on = [mdays ? andJoin("und")(mdays.map(de.monthDay)) : days ? andJoin("und")(days) : "", months ? `im ${andJoin("und")(months.map((m) => DE_MONTH[m - 1]))}` : ""].filter(Boolean).join(" ");
+    return deOn(n === 1 ? "jährlich" : `alle ${n} Jahre`, on);
+  },
+  count: (n) => `, ${n}-mal`,
+  until: (date) => `, bis ${date}`,
+  preset: {
+    none: "Wiederholt sich nicht",
+    daily: "Täglich",
+    weekdays: "Jeden Werktag (Montag bis Freitag)",
+    weekly: (wd) => `Wöchentlich am ${DE_WD[wd]}`,
+    monthlyDay: (d) => `Monatlich am ${d}.`,
+    monthlyNth: (n, wd) => `Monatlich am ${DE_ORD[n]} ${DE_WD[wd]}`,
+    monthlyLast: (wd) => `Monatlich am letzten ${DE_WD[wd]}`,
+    yearly: (m, d) => `Jährlich am ${d}. ${DE_MONTH[m - 1]}`
+  }
+};
+const ES_WD = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"];
+const ES_MONTH = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+const ES_ORD = { 1: "primer", 2: "segundo", 3: "tercer", 4: "cuarto", 5: "quinto", [-1]: "último", [-2]: "penúltimo", [-3]: "antepenúltimo", [-4]: "cuarto desde el final", [-5]: "quinto desde el final" };
+const esNth = (o, what) => o < -3 ? `el ${ES_ORD[-o]} ${what} desde el final` : `el ${ES_ORD[o]} ${what}`;
+const esOn = (head, on) => on ? `${head} ${on}` : head;
+const es = {
+  day: (wd) => `el ${ES_WD[wd]}`,
+  nth: (o, wd) => esNth(o, ES_WD[wd]),
+  nthWorkday: (o) => esNth(o, "día laborable"),
+  nthOf: (o, days) => esNth(o, days.length === 1 ? ES_WD[days[0]] : `día entre ${andJoin("y")(days.map((wd) => ES_WD[wd]))}`),
+  monthlyDays: (items) => andJoin("y")(items),
+  monthDay: (d) => d === -1 ? "el último día" : `el día ${d}`,
+  join: andJoin("y"),
+  daily: (n) => n === 1 ? "todos los días" : `cada ${n} días`,
+  workdays: "todos los días laborables",
+  weekly: (n, on) => esOn(n === 1 ? "cada semana" : `cada ${n} semanas`, on),
+  monthly: (n, on) => esOn(n === 1 ? "cada mes" : `cada ${n} meses`, on),
+  yearly: (n, months, mdays, days) => {
+    let on;
+    if ((months == null ? void 0 : months.length) === 1 && (mdays == null ? void 0 : mdays.length) === 1)
+      on = mdays[0] === -1 ? `el último día de ${ES_MONTH[months[0] - 1]}` : `el ${mdays[0]} de ${ES_MONTH[months[0] - 1]}`;
+    else
+      on = [mdays ? andJoin("y")(mdays.map(es.monthDay)) : days ? andJoin("y")(days) : "", months ? `de ${andJoin("y")(months.map((m) => ES_MONTH[m - 1]))}` : ""].filter(Boolean).join(" ");
+    return esOn(n === 1 ? "cada año" : `cada ${n} años`, on);
+  },
+  count: (n) => `, ${n} veces`,
+  until: (date) => `, hasta el ${date}`,
+  preset: {
+    none: "No se repite",
+    daily: "Todos los días",
+    weekdays: "Todos los días laborables (de lunes a viernes)",
+    weekly: (wd) => `Cada semana el ${ES_WD[wd]}`,
+    monthlyDay: (d) => `Cada mes el día ${d}`,
+    monthlyNth: (n, wd) => `Cada mes ${esNth(n, ES_WD[wd])}`,
+    monthlyLast: (wd) => `Cada mes el último ${ES_WD[wd]}`,
+    yearly: (m, d) => `Cada año el ${d} de ${ES_MONTH[m - 1]}`
+  }
+};
+const RU_WD = ["понедельник", "вторник", "среду", "четверг", "пятницу", "субботу", "воскресенье"];
+const RU_WD_GENDER = [0, 0, 1, 0, 1, 1, 2];
+const RU_ORD = {
+  1: ["первый", "первую", "первое"],
+  2: ["второй", "вторую", "второе"],
+  3: ["третий", "третью", "третье"],
+  4: ["четвёртый", "четвёртую", "четвёртое"],
+  5: ["пятый", "пятую", "пятое"],
+  [-1]: ["последний", "последнюю", "последнее"],
+  [-2]: ["предпоследний", "предпоследнюю", "предпоследнее"]
+};
+const RU_MONTH_GEN = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"];
+const RU_MONTH_PREP = ["январе", "феврале", "марте", "апреле", "мае", "июне", "июле", "августе", "сентябре", "октябре", "ноябре", "декабре"];
+const ruIn = (phrase) => `${/^вт/.test(phrase) ? "во" : "в"} ${phrase}`;
+const ruOrd = (o, gender) => RU_ORD[o] ? RU_ORD[o][gender] : `${RU_ORD[-o][gender]} с конца`;
+const ruOn = (head, on) => on ? `${head} ${on}` : head;
+const ru = {
+  day: (wd) => ruIn(RU_WD[wd]),
+  nth: (o, wd) => ruIn(`${ruOrd(o, RU_WD_GENDER[wd])} ${RU_WD[wd]}`),
+  nthWorkday: (o) => ruIn(`${ruOrd(o, 0)} рабочий день`),
+  nthOf: (o, days) => days.length === 1 ? ruIn(`${ruOrd(o, RU_WD_GENDER[days[0]])} ${RU_WD[days[0]]}`) : ruIn(`${ruOrd(o, 0)} из дней: ${days.map((wd) => RU_WD[wd]).join(", ")}`),
+  monthlyDays: (items) => andJoin("и")(items),
+  monthDay: (d) => d === -1 ? "в последний день" : `${d}-го числа`,
+  join: andJoin("и"),
+  daily: (n) => n === 1 ? "каждый день" : `раз в ${n} ${ruPlural(n, "день", "дня", "дней")}`,
+  workdays: "по будням",
+  weekly: (n, on) => ruOn(n === 1 ? "каждую неделю" : `раз в ${n} ${ruPlural(n, "неделю", "недели", "недель")}`, on),
+  monthly: (n, on) => ruOn(n === 1 ? "каждый месяц" : `раз в ${n} ${ruPlural(n, "месяц", "месяца", "месяцев")}`, on),
+  yearly: (n, months, mdays, days) => {
+    let on;
+    if ((months == null ? void 0 : months.length) === 1 && (mdays == null ? void 0 : mdays.length) === 1)
+      on = mdays[0] === -1 ? `в последний день ${RU_MONTH_GEN[months[0] - 1]}` : `${mdays[0]} ${RU_MONTH_GEN[months[0] - 1]}`;
+    else
+      on = [mdays ? andJoin("и")(mdays.map(ru.monthDay)) : days ? andJoin("и")(days) : "", months ? ruIn(andJoin("и")(months.map((m) => RU_MONTH_PREP[m - 1]))) : ""].filter(Boolean).join(" ");
+    return ruOn(n === 1 ? "каждый год" : `раз в ${n} ${ruPlural(n, "год", "года", "лет")}`, on);
+  },
+  count: (n) => `, ${n} ${ruPlural(n, "раз", "раза", "раз")}`,
+  until: (date) => `, до ${date}`,
+  preset: {
+    none: "Не повторяется",
+    daily: "Каждый день",
+    weekdays: "По будням (с понедельника по пятницу)",
+    weekly: (wd) => `Каждую неделю ${ruIn(RU_WD[wd])}`,
+    monthlyDay: (d) => `Каждый месяц ${d}-го числа`,
+    monthlyNth: (n, wd) => `Каждый месяц ${ruIn(`${ruOrd(n, RU_WD_GENDER[wd])} ${RU_WD[wd]}`)}`,
+    monthlyLast: (wd) => `Каждый месяц ${ruIn(`${ruOrd(-1, RU_WD_GENDER[wd])} ${RU_WD[wd]}`)}`,
+    yearly: (m, d) => `Каждый год ${d} ${RU_MONTH_GEN[m - 1]}`
+  }
+};
+const PHRASEBOOKS = { zh, "zh-TW": zhTW, en, ja, ko, fr, de, es, ru };
+const phrasebook = (locale) => PHRASEBOOKS[locale] ?? en;
 const isWorkdays = (d) => !!d && d.length === 5 && d.every((x) => x.ordinal === void 0) && [0, 1, 2, 3, 4].every((w) => d.some((x) => x.weekday === w));
 function describeRRule(rule, locale = "zh") {
-  var _a;
-  const zh = locale === "zh";
+  const p = phrasebook(locale);
   const n = rule.interval;
-  const days = (d) => d.map((x) => {
-    const wd = zh ? WD_ZH[x.weekday] : WD_EN[x.weekday];
-    if (x.ordinal === void 0)
-      return wd;
-    return zh ? `${ORD_ZH[x.ordinal]}${wd}` : `${ORD_EN[x.ordinal]} ${wd}`;
-  });
-  const join = (xs) => zh ? xs.join("、") : xs.length > 1 ? `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}` : xs.join("");
-  const mday = (d) => zh ? d === -1 ? "最后一天" : `${d} 日` : d === -1 ? "the last day" : `day ${d}`;
+  const days = (d) => d.map((x) => x.ordinal === void 0 ? p.day(x.weekday) : p.nth(x.ordinal, x.weekday));
   let text;
   switch (rule.freq) {
     case "DAILY":
-      text = zh ? n === 1 ? "每天" : `每 ${n} 天` : n === 1 ? "every day" : `every ${n} days`;
+      text = p.daily(n);
       break;
     case "WEEKLY":
-      if (isWorkdays(rule.byDay) && n === 1)
-        text = zh ? "每个工作日" : "every weekday";
-      else {
-        const on = rule.byDay ? join(days(rule.byDay)) : "";
-        text = zh ? `${n === 1 ? "每周" : `每 ${n} 周的`}${on}` : `${n === 1 ? "every week" : `every ${n} weeks`}${on ? ` on ${on}` : ""}`;
-      }
+      text = isWorkdays(rule.byDay) && n === 1 ? p.workdays : p.weekly(n, rule.byDay ? p.join(days(rule.byDay)) : "");
       break;
     case "MONTHLY": {
       let on = "";
       if (rule.byMonthDay)
-        on = join(rule.byMonthDay.map(mday));
+        on = p.join(rule.byMonthDay.map(p.monthDay));
       else if (rule.byDay && rule.bySetPos !== void 0) {
-        on = isWorkdays(rule.byDay) ? zh ? `${ORD_ZH[rule.bySetPos]}工作日` : `the ${ORD_EN[rule.bySetPos]} weekday` : zh ? `${ORD_ZH[rule.bySetPos]}${join(days(rule.byDay))}` : `the ${ORD_EN[rule.bySetPos]} of ${join(days(rule.byDay))}`;
+        on = isWorkdays(rule.byDay) ? p.nthWorkday(rule.bySetPos) : p.nthOf(rule.bySetPos, rule.byDay.map((x) => x.weekday));
       } else if (rule.byDay)
-        on = zh ? join(days(rule.byDay)) : `the ${join(days(rule.byDay))}`;
-      text = zh ? `${n === 1 ? "每月" : `每 ${n} 个月的`}${on}` : `${n === 1 ? "every month" : `every ${n} months`}${on ? ` on ${on}` : ""}`;
+        on = p.monthlyDays(days(rule.byDay));
+      text = p.monthly(n, on);
       break;
     }
-    case "YEARLY": {
-      const months = (_a = rule.byMonth) == null ? void 0 : _a.map((m) => zh ? `${m} 月` : MONTH_EN[m - 1]);
-      let on = months ? join(months) : "";
-      if (rule.byMonthDay)
-        on += zh ? join(rule.byMonthDay.map(mday)) : ` ${join(rule.byMonthDay.map((d) => d === -1 ? "last day" : String(d)))}`;
-      else if (rule.byDay)
-        on += zh ? join(days(rule.byDay)) : ` on the ${join(days(rule.byDay))}`;
-      text = zh ? `${n === 1 ? "每年" : `每 ${n} 年的`}${on}` : `${n === 1 ? "every year" : `every ${n} years`}${on.trim() ? ` in ${on.trim()}` : ""}`;
+    case "YEARLY":
+      text = p.yearly(n, rule.byMonth, rule.byMonthDay, rule.byMonthDay ? void 0 : rule.byDay ? days(rule.byDay) : void 0);
       break;
-    }
   }
   if (rule.count !== void 0)
-    text += zh ? `，共 ${rule.count} 次` : `, ${rule.count} times`;
+    text += p.count(rule.count);
   if (rule.until !== void 0)
-    text += zh ? `，到 ${rule.until.slice(0, 10)} 为止` : `, until ${rule.until.slice(0, 10)}`;
+    text += p.until(rule.until.slice(0, 10));
   return text;
 }
 function recurrencePresets(date, locale = "zh") {
@@ -794,20 +1094,20 @@ function recurrencePresets(date, locale = "zh") {
   const wd = weekdayOf(day);
   const nth = Math.floor((d - 1) / 7) + 1;
   const last = d + 7 > daysInMonth(y, m);
-  const zh = locale === "zh";
+  const p = phrasebook(locale).preset;
   const w = WEEKDAYS[wd];
   const out = [
-    { id: "none", label: zh ? "不重复" : "Does not repeat", rrule: null },
-    { id: "daily", label: zh ? "每天" : "Daily", rrule: "FREQ=DAILY" },
-    { id: "weekdays", label: zh ? "每个工作日（周一至周五）" : "Every weekday (Monday to Friday)", rrule: "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR" },
-    { id: "weekly", label: zh ? `每周的${WD_ZH[wd]}` : `Weekly on ${WD_EN[wd]}`, rrule: `FREQ=WEEKLY;BYDAY=${w}` },
-    { id: "monthly_day", label: zh ? `每月 ${d} 日` : `Monthly on day ${d}`, rrule: `FREQ=MONTHLY;BYMONTHDAY=${d}` }
+    { id: "none", label: p.none, rrule: null },
+    { id: "daily", label: p.daily, rrule: "FREQ=DAILY" },
+    { id: "weekdays", label: p.weekdays, rrule: "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR" },
+    { id: "weekly", label: p.weekly(wd), rrule: `FREQ=WEEKLY;BYDAY=${w}` },
+    { id: "monthly_day", label: p.monthlyDay(d), rrule: `FREQ=MONTHLY;BYMONTHDAY=${d}` }
   ];
   if (nth <= 4)
-    out.push({ id: "monthly_nth", label: zh ? `每月${ORD_ZH[nth]}${WD_ZH[wd]}` : `Monthly on the ${ORD_EN[nth]} ${WD_EN[wd]}`, rrule: `FREQ=MONTHLY;BYDAY=${nth}${w}` });
+    out.push({ id: "monthly_nth", label: p.monthlyNth(nth, wd), rrule: `FREQ=MONTHLY;BYDAY=${nth}${w}` });
   if (last)
-    out.push({ id: "monthly_last", label: zh ? `每月最后一个${WD_ZH[wd]}` : `Monthly on the last ${WD_EN[wd]}`, rrule: `FREQ=MONTHLY;BYDAY=-1${w}` });
-  out.push({ id: "yearly", label: zh ? `每年 ${m} 月 ${d} 日` : `Annually on ${MONTH_EN[m - 1]} ${d}`, rrule: `FREQ=YEARLY;BYMONTH=${m};BYMONTHDAY=${d}` });
+    out.push({ id: "monthly_last", label: p.monthlyLast(wd), rrule: `FREQ=MONTHLY;BYDAY=-1${w}` });
+  out.push({ id: "yearly", label: p.yearly(m, d), rrule: `FREQ=YEARLY;BYMONTH=${m};BYMONTHDAY=${d}` });
   return out;
 }
 const TODO_SCHEMA_ID = "buckyos.todo@1";
@@ -864,10 +1164,172 @@ const LABELS = {
     calendar_table: "Calendar",
     workspace: "My schedule",
     board: "Schedule"
+  },
+  "zh-TW": {
+    title: "標題",
+    status: "狀態",
+    due: "截止",
+    order: "順序",
+    done_at: "完成時間",
+    ext: "擴充",
+    todo: "待辦",
+    doing: "進行中",
+    done: "已完成",
+    all_day: "全天",
+    start: "開始",
+    end: "結束",
+    start_date: "開始日期",
+    end_date: "結束日期",
+    confirmed: "已確認",
+    tentative: "暫定",
+    cancelled: "已取消",
+    todo_table: "待辦事項",
+    calendar_table: "行程",
+    workspace: "我的行程",
+    board: "行程"
+  },
+  ja: {
+    title: "タイトル",
+    status: "ステータス",
+    due: "期限",
+    order: "順序",
+    done_at: "完了日時",
+    ext: "拡張",
+    todo: "未着手",
+    doing: "進行中",
+    done: "完了",
+    all_day: "終日",
+    start: "開始",
+    end: "終了",
+    start_date: "開始日",
+    end_date: "終了日",
+    confirmed: "確定",
+    tentative: "仮",
+    cancelled: "キャンセル",
+    todo_table: "ToDo",
+    calendar_table: "予定",
+    workspace: "マイスケジュール",
+    board: "スケジュール"
+  },
+  ko: {
+    title: "제목",
+    status: "상태",
+    due: "마감",
+    order: "순서",
+    done_at: "완료 시각",
+    ext: "확장",
+    todo: "할 일",
+    doing: "진행 중",
+    done: "완료",
+    all_day: "종일",
+    start: "시작",
+    end: "종료",
+    start_date: "시작일",
+    end_date: "종료일",
+    confirmed: "확정",
+    tentative: "미정",
+    cancelled: "취소됨",
+    todo_table: "할 일",
+    calendar_table: "일정",
+    workspace: "내 일정",
+    board: "일정"
+  },
+  fr: {
+    title: "Titre",
+    status: "Statut",
+    due: "Échéance",
+    order: "Ordre",
+    done_at: "Terminé le",
+    ext: "Extension",
+    todo: "À faire",
+    doing: "En cours",
+    done: "Terminé",
+    all_day: "Toute la journée",
+    start: "Début",
+    end: "Fin",
+    start_date: "Date de début",
+    end_date: "Date de fin",
+    confirmed: "Confirmé",
+    tentative: "Provisoire",
+    cancelled: "Annulé",
+    todo_table: "Tâches",
+    calendar_table: "Calendrier",
+    workspace: "Mon agenda",
+    board: "Agenda"
+  },
+  de: {
+    title: "Titel",
+    status: "Status",
+    due: "Fällig",
+    order: "Reihenfolge",
+    done_at: "Erledigt am",
+    ext: "Erweiterung",
+    todo: "Offen",
+    doing: "In Arbeit",
+    done: "Erledigt",
+    all_day: "Ganztägig",
+    start: "Beginn",
+    end: "Ende",
+    start_date: "Startdatum",
+    end_date: "Enddatum",
+    confirmed: "Bestätigt",
+    tentative: "Vorläufig",
+    cancelled: "Abgesagt",
+    todo_table: "Aufgaben",
+    calendar_table: "Kalender",
+    workspace: "Mein Terminplan",
+    board: "Terminplan"
+  },
+  es: {
+    title: "Título",
+    status: "Estado",
+    due: "Vencimiento",
+    order: "Orden",
+    done_at: "Completado el",
+    ext: "Extensión",
+    todo: "Pendiente",
+    doing: "En curso",
+    done: "Hecho",
+    all_day: "Todo el día",
+    start: "Inicio",
+    end: "Fin",
+    start_date: "Fecha de inicio",
+    end_date: "Fecha de fin",
+    confirmed: "Confirmado",
+    tentative: "Provisional",
+    cancelled: "Cancelado",
+    todo_table: "Tareas",
+    calendar_table: "Calendario",
+    workspace: "Mi agenda",
+    board: "Agenda"
+  },
+  ru: {
+    title: "Название",
+    status: "Статус",
+    due: "Срок",
+    order: "Порядок",
+    done_at: "Выполнено",
+    ext: "Расширение",
+    todo: "К выполнению",
+    doing: "В работе",
+    done: "Готово",
+    all_day: "Весь день",
+    start: "Начало",
+    end: "Конец",
+    start_date: "Дата начала",
+    end_date: "Дата окончания",
+    confirmed: "Подтверждено",
+    tentative: "Предварительно",
+    cancelled: "Отменено",
+    todo_table: "Задачи",
+    calendar_table: "Календарь",
+    workspace: "Моё расписание",
+    board: "Расписание"
   }
 };
 function scheduleLabel(locale, key) {
-  return LABELS[locale][key] ?? LABELS.en[key] ?? key;
+  var _a;
+  return ((_a = LABELS[locale]) == null ? void 0 : _a[key]) ?? LABELS.en[key] ?? key;
 }
 function todoFields(locale = "zh") {
   const l = (k) => scheduleLabel(locale, k);
@@ -2234,4 +2696,4 @@ export {
   ymdOf as y,
   zonedParts as z
 };
-//# sourceMappingURL=aiws_bind-1316a842.mjs.map
+//# sourceMappingURL=aiws_bind-ec6fe2d5.mjs.map

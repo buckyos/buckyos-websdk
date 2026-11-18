@@ -1,4 +1,4 @@
-import { av as checkBindSteps } from "./aiws_bind-1316a842.mjs";
+import { av as checkBindSteps } from "./aiws_bind-ec6fe2d5.mjs";
 import "./object_url-20e94b67.mjs";
 import "./ndn_types-0fac2499.mjs";
 const AIWS_COMPONENT_FILE = "component.json";
