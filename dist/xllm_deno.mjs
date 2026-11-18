@@ -1018,12 +1018,19 @@ const EDIT_FILE_SPEC = {
     type: "object"
   }
 };
-async function readText(path) {
+async function readRaw(path) {
   try {
-    return decodeLossy(await deno().readFile(path));
+    return await deno().readFile(path);
   } catch (e) {
     throw execFailed(`read file failed: ${errorText(e)}`);
   }
+}
+async function readText(path) {
+  return decodeLossy(await readRaw(path));
+}
+const BINARY_PROBE_BYTES = 8192;
+function looksBinary(bytes) {
+  return bytes.subarray(0, BINARY_PROBE_BYTES).includes(0);
 }
 async function writeText(path, text) {
   try {
@@ -1060,7 +1067,11 @@ function readFileTool(cfg) {
       if (!filePath)
         throw invalidArgs("missing required arg `path`");
       const abs = await resolvePath(cfg.root, filePath, cfg.allowedRead);
-      const full = await readText(abs);
+      const raw = await readRaw(abs);
+      if (looksBinary(raw)) {
+        throw invalidArgs(`\`${filePath}\` is a binary file (${raw.length} bytes): read_file only reads text. Use llm_understand_media for images, PDFs and office documents, or a shell command that converts or inspects the format.`);
+      }
+      const full = decodeLossy(raw);
       let chunk;
       let matched = true;
       let chunkStart = 1;

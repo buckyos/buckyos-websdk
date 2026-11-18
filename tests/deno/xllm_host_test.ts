@@ -178,6 +178,26 @@ Deno.test('file tools: write, read (dedup), edit; artifacts', async () => {
   eq(t.manager.artifacts(), [`${t.work}/a/b.txt`], 'artifacts')
 })
 
+Deno.test('read_file refuses binary files (a NUL in the first 8 KB), reads any text', async () => {
+  const t = await opened()
+  // PNG signature + IHDR chunk: the length field already has NUL bytes.
+  const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0x0d, 0x49, 0x48, 0x44, 0x52,
+    0, 0, 0, 1, 0, 0, 0, 1, 8, 6, 0, 0, 0, 0x1f, 0x15, 0xc4, 0x89])
+  await Deno.writeFile(`${t.work}/shot.png`, png)
+  const r = await t.call('read_file', { path: ' shot.png ' })
+  eq(r.kind, 'error', 'binary refused')
+  eq(r.message, `invalid args: \`shot.png\` is a binary file (${png.length} bytes): read_file only reads text. `
+    + 'Use llm_understand_media for images, PDFs and office documents, or a shell command that converts or inspects the format.', 'binary message (Rust text)')
+  await Deno.writeTextFile(`${t.work}/note.md`, '# 标题\nplain text\n')
+  const text = await t.call('read_file', { path: 'note.md' })
+  eq(text.kind, 'success', 'UTF-8 text reads')
+  eq(text.content, 'succeeded, read 20 bytes across 2 lines at 1-2\n```content\n1: # 标题\n2: plain text\n```', 'UTF-8 text unchanged')
+  await Deno.writeFile(`${t.work}/gbk.txt`, new Uint8Array([0xd6, 0xd0, 0xce, 0xc4, 0x0a]))
+  eq((await t.call('read_file', { path: 'gbk.txt' })).kind, 'success', 'non-UTF-8 text (GBK) still reads, lossily')
+  await Deno.writeFile(`${t.work}/late_nul.txt`, new Uint8Array([...new Uint8Array(8192).fill(0x61), 0x0a, 0]))
+  eq((await t.call('read_file', { path: 'late_nul.txt' })).kind, 'success', 'a NUL past the 8192-byte probe is not looked at')
+})
+
 Deno.test('workspace policy checks real paths', async () => {
   const t = await opened()
   const outside = await tempDir('xllm-outside-')

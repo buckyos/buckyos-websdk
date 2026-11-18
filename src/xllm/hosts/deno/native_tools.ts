@@ -456,12 +456,24 @@ export const EDIT_FILE_SPEC: ToolSpecLite = {
   },
 }
 
-async function readText(path: string): Promise<string> {
+async function readRaw(path: string): Promise<Uint8Array> {
   try {
-    return decodeLossy(await deno().readFile(path))
+    return await deno().readFile(path)
   } catch (e) {
     throw execFailed(`read file failed: ${errorText(e)}`)
   }
+}
+
+async function readText(path: string): Promise<string> {
+  return decodeLossy(await readRaw(path))
+}
+
+/** `BINARY_PROBE_BYTES`: how much of a file `looksBinary` inspects. */
+const BINARY_PROBE_BYTES = 8192
+
+/** `looks_binary`: a NUL byte near the start. Text in a legacy encoding (GBK, Latin-1) has none, so it still reads, lossily. */
+function looksBinary(bytes: Uint8Array): boolean {
+  return bytes.subarray(0, BINARY_PROBE_BYTES).includes(0)
 }
 
 async function writeText(path: string, text: string): Promise<void> {
@@ -500,7 +512,11 @@ export function readFileTool(cfg: FileToolConfig): NativeTool {
       const filePath = rawPath.trim()
       if (!filePath) throw invalidArgs('missing required arg `path`')
       const abs = await resolvePath(cfg.root, filePath, cfg.allowedRead)
-      const full = await readText(abs)
+      const raw = await readRaw(abs)
+      if (looksBinary(raw)) {
+        throw invalidArgs(`\`${filePath}\` is a binary file (${raw.length} bytes): read_file only reads text. Use llm_understand_media for images, PDFs and office documents, or a shell command that converts or inspects the format.`)
+      }
+      const full = decodeLossy(raw)
       let chunk: string
       let matched = true
       let chunkStart = 1
