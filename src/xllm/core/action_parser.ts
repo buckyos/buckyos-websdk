@@ -112,14 +112,15 @@ export class XllmActionParser implements LLMResultParser {
     const reports = children.filter(e => e.name === 'report')
     if (reports.length > 1) throw new Error('a decision must contain at most one report')
     const selfReport = reports[0] ? xmlText(reports[0]) : undefined
-    let reportEnd = false
-    if (reports[0]) {
-      const ends = reports[0].attrs.filter(([k]) => k === 'end')
-      if (ends.length > 1) throw new Error('report has duplicate end attributes')
-      const v = ends[0]?.[1]
-      if (v === 'true') reportEnd = true
-      else if (v !== undefined && v !== 'false') throw new Error('report end must be true or false')
+    const reportAttr = (name: string): string | undefined => {
+      const attrs = reports[0]?.attrs.filter(([k]) => k === name) ?? []
+      if (attrs.length > 1) throw new Error(`report has duplicate ${name} attributes`)
+      return attrs[0]?.[1]
     }
+    const end = reportAttr('end')
+    if (end !== undefined && end !== 'true' && end !== 'false') throw new Error('report end must be true or false')
+    const reportEnd = end === 'true'
+    const reportOutcome = reportAttr('outcome')
     const payload = (name: string): JsonValue | undefined => {
       const els = children.filter(e => e.name === name)
       if (els.length > 1) throw new Error(`a decision must contain at most one ${name}`)
@@ -153,6 +154,7 @@ export class XllmActionParser implements LLMResultParser {
     if (observation !== undefined) result.observation = observation
     if (thought !== undefined) result.thought = thought
     if (selfReport !== undefined) result.self_report = selfReport
+    if (reportOutcome !== undefined) result.report_outcome = reportOutcome
     if (reportResult !== undefined) result.report_result = reportResult
     const invalid = validateBehaviorResult(result)
     if (invalid) throw new Error(invalid)

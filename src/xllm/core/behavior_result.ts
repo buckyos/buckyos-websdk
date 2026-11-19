@@ -10,6 +10,10 @@ export function validateBehaviorResult(r: LLMBehaviorResult): string | undefined
     return 'next_behavior END/done is invalid; submit <report end="true"> to finish'
   }
   if (r.self_report === undefined && r.report_result !== undefined) return 'a report result requires a report in the same response'
+  if (r.report_outcome !== undefined) {
+    if (!r.report_end) return 'report outcome requires a final report'
+    if (!['succeeded', 'failed', 'blocked'].includes(r.report_outcome)) return 'report outcome must be succeeded, failed or blocked'
+  }
   if (r.report_end) {
     if (!rustTrim(r.self_report ?? '')) return 'an ending report must contain non-empty text'
     if ((r.do_actions ?? []).length > 0) return 'an ending report cannot contain actions or native tool_calls'
@@ -36,6 +40,7 @@ export function stepFromResult(r: LLMBehaviorResult): StepRecord {
   if (r.do_actions?.length) step.actions = r.do_actions
   if (r.next_behavior !== undefined) step.next_behavior = r.next_behavior
   if (r.self_report !== undefined) step.self_report = r.self_report
+  if (r.report_outcome !== undefined) step.report_outcome = r.report_outcome
   if (r.report_result !== undefined) step.report_result = r.report_result
   return step
 }
@@ -47,6 +52,7 @@ export function resultFromStep(step: StepRecord): LLMBehaviorResult {
   if (step.observation !== undefined) r.observation = step.observation
   if (step.thought !== undefined) r.thought = step.thought
   if (step.self_report !== undefined) r.self_report = step.self_report
+  if (step.report_outcome !== undefined) r.report_outcome = step.report_outcome
   if (step.report_result !== undefined) r.report_result = step.report_result
   return r
 }

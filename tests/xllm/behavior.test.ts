@@ -60,12 +60,12 @@ function ctx(script: ConstructorParameters<typeof ScriptedLlmClient>[0], tools: 
 describe('behavior loop', () => {
   test('a reply with a final report and no actions completes the run', async () => {
     const seen: string[] = []
-    const { c } = ctx([{ text: '<response><intent>answer</intent><report end="true"><![CDATA[final answer]]></report></response>' }], manager({}, seen))
+    const { c } = ctx([{ text: '<response><intent>answer</intent><report end="true" outcome="blocked"><![CDATA[missing input]]></report></response>' }], manager({}, seen))
     const out = await c.run()
     expect(out.kind).toBe('done')
     if (out.kind !== 'done') return
-    expect(out.behavior_result).toMatchObject({ report_end: true, self_report: 'final answer', thought: 'answer' })
-    expect(c.snapshot().state.steps?.length).toBe(1)
+    expect(out.behavior_result).toMatchObject({ report_end: true, report_outcome: 'blocked', self_report: 'missing input', thought: 'answer' })
+    expect(c.snapshot().state.steps?.[0]?.report_outcome).toBe('blocked')
   })
 
   test('actions run in order; their results are rendered into the next step', async () => {

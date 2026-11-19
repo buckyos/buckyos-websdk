@@ -354,6 +354,7 @@ export class LLMContext {
       thought: result.thought,
       self_report: result.self_report,
       report_end: result.report_end,
+      report_outcome: result.report_outcome,
       report_result: result.report_result,
     }
     const parent = this.innerParent.parent

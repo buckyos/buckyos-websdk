@@ -477,7 +477,8 @@ function renderInheritedStepRecord(step: StepRecord, timestamps: boolean): strin
   // The step's report is part of what the inheriting context needs (a
   // caller's report is often the hand-over itself); it is not an action.
   const reportText = step.self_report === undefined ? '' : rustTrim(step.self_report)
-  const report = reportText === '' ? '' : `<report end="${step.report_end}">${escapeXmlText(reportText)}</report>\n`
+  const outcome = step.report_outcome === undefined ? '' : ` outcome="${escapeXmlText(step.report_outcome).replace(/"/g, '&quot;')}"`
+  const report = reportText === '' ? '' : `<report end="${step.report_end}"${outcome}>${escapeXmlText(reportText)}</report>\n`
   const times = timestamps ? ` started_at_ms="${step.meta.started_at_ms}" ended_at_ms="${step.meta.ended_at_ms ?? ''}"` : ''
   return `<step_record behavior="${step.meta.behavior_name ?? ''}" index="${step.meta.step_index}"${times} compression="${step.meta.compression_level}">\n` +
     `<observation>${observation}</observation>\n<intent>${thought}</intent>\n${report}<actions>\n${actions}\n</actions>\n</step_record>`

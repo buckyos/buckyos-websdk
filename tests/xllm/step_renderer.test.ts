@@ -136,6 +136,9 @@ describe('XmlStepRenderer (step_record.rs)', () => {
     expect(inherited).not.toContain('Report acknowledged')
     expect(inherited).not.toContain('- Report')
 
+    const final = withMeta(stepRecord({ self_report: 'check failed', report_end: true, report_outcome: 'failed' }), 'work', 1)
+    expect(plainText(renderer.renderHistory([final], 'plan', [])[0])).toContain('<report end="true" outcome="failed">check failed</report>')
+
     const plain = withMeta(stepRecord({ thought: 'no report here' }), 'plan', 0)
     expect(plainText(renderer.renderHistory([plain], 'do', [])[0])).not.toContain('<report')
   })

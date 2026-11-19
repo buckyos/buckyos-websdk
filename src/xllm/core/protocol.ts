@@ -113,6 +113,7 @@ export function buildRuntimeProtocolFor(flavor: HostProtocolFlavor, loopModel: L
   s += '- A reply without actions, native tool calls, next_behavior or a final report (a progress report alone, or nothing) yields: this context stops and waits for new input, such as the result of work it started that is still running or a new message. Never yield while there is work you can do now.\n'
   s += '- next_behavior is reserved for host scheduling, including WAIT_USER_MSG; END and done are invalid. A report without end="true" never implies completion.\n'
   if (flavor.kind === 'session') {
+    s += '- When the session requires a work outcome, include outcome="succeeded", outcome="failed" or outcome="blocked" on the final <report end="true">. Only a final report can carry an outcome.\n'
     s += '- A report may include sibling <artifacts> containing a JSON array of relative file paths and <result> containing any JSON value. These require a report in the same response. The host validates and persists the submission; completion applies to the current context, with child reports returned to their caller.\n'
     s += '- Yielding is how you wait for work this session started (tasks, sub sessions): the session wakes you with its result. When nothing it started is running, the session ends the Turn instead.\n'
   }

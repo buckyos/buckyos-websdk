@@ -181,6 +181,7 @@ export interface StepRecord {
   next_behavior?: string
   self_report?: string
   report_end: boolean
+  report_outcome?: string
   report_result?: JsonValue
   action_results?: Observation[]
   next_user_message?: AiMessage
@@ -194,6 +195,7 @@ export interface LLMBehaviorResult {
   thought?: string
   self_report?: string
   report_end: boolean
+  report_outcome?: string
   report_result?: JsonValue
 }
 

@@ -211,6 +211,12 @@ function validateBehaviorResult(r) {
   }
   if (r.self_report === void 0 && r.report_result !== void 0)
     return "a report result requires a report in the same response";
+  if (r.report_outcome !== void 0) {
+    if (!r.report_end)
+      return "report outcome requires a final report";
+    if (!["succeeded", "failed", "blocked"].includes(r.report_outcome))
+      return "report outcome must be succeeded, failed or blocked";
+  }
   if (r.report_end) {
     if (!rustTrim(r.self_report ?? ""))
       return "an ending report must contain non-empty text";
@@ -245,6 +251,8 @@ function stepFromResult(r) {
     step.next_behavior = r.next_behavior;
   if (r.self_report !== void 0)
     step.self_report = r.self_report;
+  if (r.report_outcome !== void 0)
+    step.report_outcome = r.report_outcome;
   if (r.report_result !== void 0)
     step.report_result = r.report_result;
   return step;
@@ -262,6 +270,8 @@ function resultFromStep(step) {
     r.thought = step.thought;
   if (step.self_report !== void 0)
     r.self_report = step.self_report;
+  if (step.report_outcome !== void 0)
+    r.report_outcome = step.report_outcome;
   if (step.report_result !== void 0)
     r.report_result = step.report_result;
   return r;
@@ -1365,6 +1375,7 @@ class LLMContext {
       thought: result.thought,
       self_report: result.self_report,
       report_end: result.report_end,
+      report_outcome: result.report_outcome,
       report_result: result.report_result
     };
     const parent = this.innerParent.parent;
@@ -1949,6 +1960,7 @@ function buildRuntimeProtocolFor(flavor, loopModel, tools, json) {
   s += "- A reply without actions, native tool calls, next_behavior or a final report (a progress report alone, or nothing) yields: this context stops and waits for new input, such as the result of work it started that is still running or a new message. Never yield while there is work you can do now.\n";
   s += '- next_behavior is reserved for host scheduling, including WAIT_USER_MSG; END and done are invalid. A report without end="true" never implies completion.\n';
   if (flavor.kind === "session") {
+    s += '- When the session requires a work outcome, include outcome="succeeded", outcome="failed" or outcome="blocked" on the final <report end="true">. Only a final report can carry an outcome.\n';
     s += "- A report may include sibling <artifacts> containing a JSON array of relative file paths and <result> containing any JSON value. These require a report in the same response. The host validates and persists the submission; completion applies to the current context, with child reports returned to their caller.\n";
     s += "- Yielding is how you wait for work this session started (tasks, sub sessions): the session wakes you with its result. When nothing it started is running, the session ends the Turn instead.\n";
   }
@@ -3476,7 +3488,6 @@ class XllmActionParser {
     return { name: el.name, args, call_id: callId ?? `action-${autoId.n}` };
   }
   parse(response) {
-    var _a;
     const rawText = textContent(response.message);
     const providerCalls = toolCalls(response.message);
     if (!rustTrim(rawText) && providerCalls.length === 0)
@@ -3498,17 +3509,18 @@ class XllmActionParser {
     if (reports.length > 1)
       throw new Error("a decision must contain at most one report");
     const selfReport = reports[0] ? xmlText(reports[0]) : void 0;
-    let reportEnd = false;
-    if (reports[0]) {
-      const ends = reports[0].attrs.filter(([k]) => k === "end");
-      if (ends.length > 1)
-        throw new Error("report has duplicate end attributes");
-      const v = (_a = ends[0]) == null ? void 0 : _a[1];
-      if (v === "true")
-        reportEnd = true;
-      else if (v !== void 0 && v !== "false")
-        throw new Error("report end must be true or false");
-    }
+    const reportAttr = (name) => {
+      var _a, _b;
+      const attrs = ((_a = reports[0]) == null ? void 0 : _a.attrs.filter(([k]) => k === name)) ?? [];
+      if (attrs.length > 1)
+        throw new Error(`report has duplicate ${name} attributes`);
+      return (_b = attrs[0]) == null ? void 0 : _b[1];
+    };
+    const end = reportAttr("end");
+    if (end !== void 0 && end !== "true" && end !== "false")
+      throw new Error("report end must be true or false");
+    const reportEnd = end === "true";
+    const reportOutcome = reportAttr("outcome");
     const payload = (name) => {
       const els = children.filter((e) => e.name === name);
       if (els.length > 1)
@@ -3551,6 +3563,8 @@ class XllmActionParser {
       result.thought = thought;
     if (selfReport !== void 0)
       result.self_report = selfReport;
+    if (reportOutcome !== void 0)
+      result.report_outcome = reportOutcome;
     if (reportResult !== void 0)
       result.report_result = reportResult;
     const invalid2 = validateBehaviorResult(result);
@@ -4528,7 +4542,8 @@ function renderInheritedStepRecord(step, timestamps) {
   const observation = step.observation === void 0 ? "" : rustTrim(step.observation);
   const actions = renderHistoryActionsCompact(step, 512);
   const reportText = step.self_report === void 0 ? "" : rustTrim(step.self_report);
-  const report = reportText === "" ? "" : `<report end="${step.report_end}">${escapeXmlText(reportText)}</report>
+  const outcome = step.report_outcome === void 0 ? "" : ` outcome="${escapeXmlText(step.report_outcome).replace(/"/g, "&quot;")}"`;
+  const report = reportText === "" ? "" : `<report end="${step.report_end}"${outcome}>${escapeXmlText(reportText)}</report>
 `;
   const times = timestamps ? ` started_at_ms="${step.meta.started_at_ms}" ended_at_ms="${step.meta.ended_at_ms ?? ""}"` : "";
   return `<step_record behavior="${step.meta.behavior_name ?? ""}" index="${step.meta.step_index}"${times} compression="${step.meta.compression_level}">
@@ -6417,4 +6432,4 @@ export {
   assemblePrompt as y,
   RUNTIME_PROTOCOL_VERSION as z
 };
-//# sourceMappingURL=site_manager-8adb478e.mjs.map
+//# sourceMappingURL=site_manager-91b4d899.mjs.map
