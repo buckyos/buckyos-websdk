@@ -146,6 +146,7 @@ describe('TaskManagerClient 2.0', () => {
       runner_app_id: 'runner-app',
       runner_target_id: 'node-01',
       include_archived: true,
+      newest_first: true,
       limit: 10,
     })).resolves.toMatchObject({ next_cursor: 'cursor-2' })
     await expect(client.getTaskTree({ root_id: 'task-01', depth: 2 })).resolves.toMatchObject({
@@ -164,6 +165,7 @@ describe('TaskManagerClient 2.0', () => {
       runner_app_id: 'runner-app',
       runner_target_id: 'node-01',
       include_archived: true,
+      newest_first: true,
       limit: 10,
     })
     expect(requestBody(fetcher, 2).params).toEqual({ root_id: 'task-01', depth: 2 })

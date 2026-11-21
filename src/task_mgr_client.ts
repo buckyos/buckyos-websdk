@@ -433,6 +433,8 @@ export interface ListTasksReq {
   created_after?: number
   created_before?: number
   include_archived?: boolean
+  /** List by descending creation time. Keep the same order when following a cursor. */
+  newest_first?: boolean
   cursor?: string
   limit?: number
 }
