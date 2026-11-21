@@ -29,6 +29,19 @@ function fixture(name: string): unknown {
 }
 
 describeFixtures('hybrid SSO wire fixtures', () => {
+  it('preserves the OAuth source on both account and external identities', () => {
+    for (const kind of ['account', 'external'] as const) {
+      const wire = Object.assign({}, fixture(`current_identity_${kind}.json`), {
+        auth_method: 'oauth', oauth_source_id: 'google',
+      })
+      const identity = parseCurrentIdentity(wire)
+      expect(identity?.kind).toBe(kind)
+      if (!identity || identity.kind === 'anonymous') throw new Error('expected a signed-in identity')
+      expect(identity.auth_method).toBe('oauth')
+      expect(identity.oauth_source_id).toBe('google')
+    }
+  })
+
   it('parses every identity kind', () => {
     const account = parseCurrentIdentity(fixture('current_identity_account.json'))
     expect(account?.kind).toBe('account')

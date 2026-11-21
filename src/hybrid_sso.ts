@@ -12,6 +12,7 @@ export type AuthMethod =
   | 'assertion'
   | 'app_access_token'
   | 'cross_zone_assertion'
+  | 'oauth'
 
 export type SessionScope =
   | 'account_self'
@@ -100,6 +101,7 @@ export interface AccountIdentity {
   show_name: string
   zone_host: string
   auth_method?: AuthMethod
+  oauth_source_id?: string
   restricted: boolean
   scopes?: SessionScope[]
   password_set: boolean
@@ -111,6 +113,7 @@ export interface ExternalIdentity {
   show_name: string
   zone_host: string
   auth_method?: AuthMethod
+  oauth_source_id?: string
   restricted: boolean
   scopes?: SessionScope[]
 }
@@ -161,10 +164,11 @@ export function identityAllows(identity: CurrentIdentity, scope: SessionScope): 
 
 // ─── entries and Zone SSO configuration ─────────────────────────────────────
 
-export type EntryMethod = 'guest' | 'password' | 'self_register' | 'did_login'
+export type EntryMethod = 'guest' | 'password' | 'self_register' | 'did_login' | 'oauth'
 export type EntryService = 'aiworkspace' | 'msg-center'
 
 export interface EntryMethods {
+  oauth?: boolean
   guest: boolean
   password: boolean
   self_register: boolean
@@ -195,10 +199,33 @@ export interface EntryDescriptor {
   expires_at?: number
 }
 
+export interface PublicOAuthSource {
+  id: string
+  display_name: string
+}
+
 export interface SsoPublicConfig {
+  /** Canonical root origin published by the Control Panel. Older Zones omit this field. */
+  zone_origin?: string
+  oauth_sources?: PublicOAuthSource[]
   self_register_enabled: boolean
   did_login_enabled: boolean
   jump_base_url: string
+}
+
+/** Control Panel registers this invitation to exactly one installed instance or system service. */
+export interface ResourceShare {
+  invite_id: string
+  issuer: string
+  target: {kind: 'system'; service_id: string} | {kind:'app'; app_instance_id: string}
+  target_url: string
+  resource_id: string
+  sharer: string
+  title: string
+  operations: string[]
+  audience: {kind: 'directed'; did: string} | {kind:'open'}
+  methods: EntryMethods
+  expires_at?: number | null
 }
 
 // ─── jump ─────────────────────────────────────────────────────────────────

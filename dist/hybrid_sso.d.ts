@@ -1,5 +1,5 @@
 import type { ZoneUserType } from './runtime';
-export type AuthMethod = 'password' | 'exclusive_invite' | 'did_federation' | 'assertion' | 'app_access_token' | 'cross_zone_assertion';
+export type AuthMethod = 'password' | 'exclusive_invite' | 'did_federation' | 'assertion' | 'app_access_token' | 'cross_zone_assertion' | 'oauth';
 export type SessionScope = 'account_self' | 'msg_group' | 'aiworkspace' | 'homestation' | 'aicc' | 'msg_inbox';
 export type DenyReason = 'session_kind_not_allowed' | 'session_ceiling_exceeded' | 'resource_grant_missing' | 'entry_unavailable' | 'zone_method_disabled' | 'account_state' | 'credential_state' | 'source_revoked' | 'authorization_unavailable';
 export declare const DENY_REASONS: readonly DenyReason[];
@@ -31,6 +31,7 @@ export interface AccountIdentity {
     show_name: string;
     zone_host: string;
     auth_method?: AuthMethod;
+    oauth_source_id?: string;
     restricted: boolean;
     scopes?: SessionScope[];
     password_set: boolean;
@@ -41,6 +42,7 @@ export interface ExternalIdentity {
     show_name: string;
     zone_host: string;
     auth_method?: AuthMethod;
+    oauth_source_id?: string;
     restricted: boolean;
     scopes?: SessionScope[];
 }
@@ -54,9 +56,10 @@ export declare function parseCurrentIdentity(value: unknown): CurrentIdentity | 
 /** Stable key of an identity within a Zone; changes whenever the subject does. */
 export declare function identityKey(identity: CurrentIdentity): string;
 export declare function identityAllows(identity: CurrentIdentity, scope: SessionScope): boolean;
-export type EntryMethod = 'guest' | 'password' | 'self_register' | 'did_login';
+export type EntryMethod = 'guest' | 'password' | 'self_register' | 'did_login' | 'oauth';
 export type EntryService = 'aiworkspace' | 'msg-center';
 export interface EntryMethods {
+    oauth?: boolean;
     guest: boolean;
     password: boolean;
     self_register: boolean;
@@ -83,10 +86,42 @@ export interface EntryDescriptor {
     zone_disabled?: EntryMethod[];
     expires_at?: number;
 }
+export interface PublicOAuthSource {
+    id: string;
+    display_name: string;
+}
 export interface SsoPublicConfig {
+    /** Canonical root origin published by the Control Panel. Older Zones omit this field. */
+    zone_origin?: string;
+    oauth_sources?: PublicOAuthSource[];
     self_register_enabled: boolean;
     did_login_enabled: boolean;
     jump_base_url: string;
+}
+/** Control Panel registers this invitation to exactly one installed instance or system service. */
+export interface ResourceShare {
+    invite_id: string;
+    issuer: string;
+    target: {
+        kind: 'system';
+        service_id: string;
+    } | {
+        kind: 'app';
+        app_instance_id: string;
+    };
+    target_url: string;
+    resource_id: string;
+    sharer: string;
+    title: string;
+    operations: string[];
+    audience: {
+        kind: 'directed';
+        did: string;
+    } | {
+        kind: 'open';
+    };
+    methods: EntryMethods;
+    expires_at?: number | null;
 }
 export declare const DEFAULT_JUMP_BASE_URL = "https://jump.buckyos.org";
 /**
