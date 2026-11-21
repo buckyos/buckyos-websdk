@@ -41,6 +41,14 @@ describe('order keys', () => {
 })
 
 describe('to-do operations', () => {
+  it('localizes standard table labels while preserving their identifiers', () => {
+    const op = standardTableOp('todo', { entity_id: 'todo', parent_id: 'data', order_key: 'u', locale: 'ar' })
+    expect(op.name).toBe('المهام')
+    expect(op.payload).toMatchObject({
+      fields: expect.arrayContaining([expect.objectContaining({ field_id: 'title', name: 'العنوان' })]),
+    })
+  })
+
   it('creates a standard table', () => {
     const op = standardTableOp('todo', { entity_id: 'todo', parent_id: 'data', order_key: 'u', locale: 'en' })
     expect(op.schema_id).toBe('buckyos.todo@1')

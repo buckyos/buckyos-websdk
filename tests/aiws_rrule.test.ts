@@ -100,6 +100,7 @@ describe('RRULE subset: words', () => {
     expect(say('FREQ=MONTHLY;BYDAY=2TU', 'ru')).toBe('каждый месяц во второй вторник')
     expect(say('FREQ=MONTHLY;BYDAY=-1FR', 'ru')).toBe('каждый месяц в последнюю пятницу')
     expect(say('FREQ=WEEKLY;INTERVAL=3;BYDAY=WE;COUNT=2', 'ru')).toBe('раз в 3 недели в среду, 2 раза')
+    expect(say('FREQ=MONTHLY;BYDAY=-1FR', 'ar')).toBe('كل شهر، في يوم الجمعة الأخير')
     // a language the module does not have reads English
     expect(describeRRule(parseRRule('FREQ=DAILY'), 'pt' as never)).toBe('every day')
   })
@@ -108,6 +109,7 @@ describe('RRULE subset: words', () => {
     expect(label('ja', 'monthly_last')).toBe('毎月最終金曜日')
     expect(label('fr', 'yearly')).toBe('Tous les ans le 27 novembre')
     expect(label('ru', 'weekly')).toBe('Каждую неделю в пятницу')
+    expect(label('ar', 'weekly')).toBe('كل أسبوع يوم الجمعة')
     expect(label('de', 'monthly_nth')).toBe('Monatlich am vierten Freitag')
   })
   it('offers the presets of a repeat menu for a date', () => {

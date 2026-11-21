@@ -21,8 +21,8 @@ export const AIWS_PROTOCOL_VERSION = '1.2'
 export type Json = null | boolean | number | string | Json[] | { [key: string]: Json }
 export type Op = Record<string, Json>
 /** The languages standard tables are named in: Simplified Chinese ('zh'), Traditional Chinese, English, Japanese,
- * Korean, French, German, Spanish, Russian (any other value reads English). */
-export type ScheduleLocale = 'zh' | 'zh-TW' | 'en' | 'ja' | 'ko' | 'fr' | 'de' | 'es' | 'ru'
+ * Korean, French, German, Spanish, Russian and Arabic (any other value reads English). */
+export type ScheduleLocale = 'zh' | 'zh-TW' | 'en' | 'ja' | 'ko' | 'fr' | 'de' | 'es' | 'ru' | 'ar'
 
 export interface FieldDef {
   field_id: string
@@ -89,6 +89,13 @@ const LABELS: Record<ScheduleLocale, Record<string, string>> = {
     all_day: 'Todo el día', start: 'Inicio', end: 'Fin', start_date: 'Fecha de inicio', end_date: 'Fecha de fin',
     confirmed: 'Confirmado', tentative: 'Provisional', cancelled: 'Cancelado',
     todo_table: 'Tareas', calendar_table: 'Calendario', workspace: 'Mi agenda', board: 'Agenda',
+  },
+  ar: {
+    title: 'العنوان', status: 'الحالة', due: 'تاريخ الاستحقاق', order: 'الترتيب', done_at: 'وقت الإكمال', ext: 'بيانات إضافية',
+    todo: 'قيد الانتظار', doing: 'قيد التنفيذ', done: 'مكتملة',
+    all_day: 'طوال اليوم', start: 'البداية', end: 'النهاية', start_date: 'تاريخ البدء', end_date: 'تاريخ الانتهاء',
+    confirmed: 'مؤكد', tentative: 'مبدئي', cancelled: 'ملغى',
+    todo_table: 'المهام', calendar_table: 'التقويم', workspace: 'جدولي', board: 'الجدول',
   },
   ru: {
     title: 'Название', status: 'Статус', due: 'Срок', order: 'Порядок', done_at: 'Выполнено', ext: 'Расширение',

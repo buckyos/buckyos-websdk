@@ -459,8 +459,8 @@ export function parseOccurrenceId(id: string): { recordId: string; original: str
 // ---- the choices a mainstream calendar offers, and a description
 
 /** The languages rules are described in: Simplified Chinese ('zh'), Traditional Chinese, English, Japanese,
- * Korean, French, German, Spanish, Russian. Any other value reads English. */
-export type RecurrenceLocale = 'zh' | 'zh-TW' | 'en' | 'ja' | 'ko' | 'fr' | 'de' | 'es' | 'ru'
+ * Korean, French, German, Spanish, Russian and Arabic. Any other value reads English. */
+export type RecurrenceLocale = 'zh' | 'zh-TW' | 'en' | 'ja' | 'ko' | 'fr' | 'de' | 'es' | 'ru' | 'ar'
 
 /** How one language says the parts of a rule. Weekdays and months are indexes (0 = Monday; 1 = January). */
 interface Phrasebook {
@@ -777,7 +777,52 @@ const ru: Phrasebook = {
   },
 }
 
-const PHRASEBOOKS: Record<RecurrenceLocale, Phrasebook> = { zh, 'zh-TW': zhTW, en, ja, ko, fr, de, es, ru }
+const AR_DAYS = ['الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت', 'الأحد']
+const AR_MONTHS = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر']
+const arNumber = new Intl.NumberFormat('ar')
+const arList = (items: string[]) => items.join(' و')
+const arOrdinal = (position: number) => {
+  const ordinals = ['الأول', 'الثاني', 'الثالث', 'الرابع', 'الخامس']
+  if (position === -1) return 'الأخير'
+  const ordinal = ordinals[Math.abs(position) - 1] ?? arNumber.format(Math.abs(position))
+  return position < 0 ? ordinal + ' من النهاية' : ordinal
+}
+const arEvery = (n: number, one: string, two: string, few: string, many: string) => {
+  if (n === 1) return 'كل ' + one
+  if (n === 2) return 'كل ' + two
+  return 'كل ' + arNumber.format(n) + ' ' + (n % 100 >= 3 && n % 100 <= 10 ? few : many)
+}
+const arOn = (frequency: string, on: string) => on ? frequency + '، في ' + on : frequency
+const ar: Phrasebook = {
+  day: (wd) => AR_DAYS[wd],
+  nth: (o, wd) => `يوم ${AR_DAYS[wd]} ${arOrdinal(o)}`,
+  nthWorkday: (o) => `يوم العمل ${arOrdinal(o)}`,
+  nthOf: (o, days) => days.length === 1 ? ar.nth(o, days[0]) : `اليوم ${arOrdinal(o)} من بين أيام ${arList(days.map(ar.day))}`,
+  monthlyDays: arList,
+  monthDay: (d) => d === -1 ? 'اليوم الأخير' : d < 0 ? `اليوم ${arOrdinal(d)}` : `اليوم ${arNumber.format(d)}`,
+  join: arList,
+  daily: (n) => arEvery(n, 'يوم', 'يومين', 'أيام', 'يومًا'),
+  workdays: 'من الاثنين إلى الجمعة',
+  weekly: (n, on) => [arEvery(n, 'أسبوع', 'أسبوعين', 'أسابيع', 'أسبوعًا'), on].filter(Boolean).join('، '),
+  monthly: (n, on) => arOn(arEvery(n, 'شهر', 'شهرين', 'أشهر', 'شهرًا'), on),
+  yearly: (n, months, mdays, days) => {
+    const month = months ? arList(months.map((m) => AR_MONTHS[m - 1])) : ''
+    const day = mdays ? arList(mdays.map(ar.monthDay)) : arList(days ?? [])
+    return arOn(arEvery(n, 'سنة', 'سنتين', 'سنوات', 'سنة'), [day, month].filter(Boolean).join(' من '))
+  },
+  count: (n) => `، عدد المرات: ${arNumber.format(n)}`,
+  until: (date) => `، حتى ${date}`,
+  preset: {
+    none: 'بلا تكرار', daily: 'كل يوم', weekdays: 'أيام العمل (من الاثنين إلى الجمعة)',
+    weekly: (wd) => `كل أسبوع يوم ${ar.day(wd)}`,
+    monthlyDay: (d) => ar.monthly(1, ar.monthDay(d)),
+    monthlyNth: (n, wd) => ar.monthly(1, ar.nth(n, wd)),
+    monthlyLast: (wd) => ar.monthly(1, ar.nth(-1, wd)),
+    yearly: (m, d) => `كل سنة في ${arNumber.format(d)} ${AR_MONTHS[m - 1]}`,
+  },
+}
+
+const PHRASEBOOKS: Record<RecurrenceLocale, Phrasebook> = { zh, 'zh-TW': zhTW, en, ja, ko, fr, de, es, ru, ar }
 const phrasebook = (locale: string): Phrasebook => PHRASEBOOKS[locale as RecurrenceLocale] ?? en
 
 const isWorkdays = (d?: ByDay[]) => !!d && d.length === 5 && d.every((x) => x.ordinal === undefined) && [0, 1, 2, 3, 4].every((w) => d.some((x) => x.weekday === w))

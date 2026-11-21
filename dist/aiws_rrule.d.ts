@@ -109,8 +109,8 @@ export declare function parseOccurrenceId(id: string): {
     original: string | null;
 };
 /** The languages rules are described in: Simplified Chinese ('zh'), Traditional Chinese, English, Japanese,
- * Korean, French, German, Spanish, Russian. Any other value reads English. */
-export type RecurrenceLocale = 'zh' | 'zh-TW' | 'en' | 'ja' | 'ko' | 'fr' | 'de' | 'es' | 'ru';
+ * Korean, French, German, Spanish, Russian and Arabic. Any other value reads English. */
+export type RecurrenceLocale = 'zh' | 'zh-TW' | 'en' | 'ja' | 'ko' | 'fr' | 'de' | 'es' | 'ru' | 'ar';
 /** A sentence for a rule ("每个工作日", "每月最后一个周五", "every 2 weeks on Monday, Wednesday, 10 times"). */
 export declare function describeRRule(rule: RRule, locale?: RecurrenceLocale): string;
 export interface RecurrencePreset {

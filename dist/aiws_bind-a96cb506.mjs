@@ -1059,7 +1059,56 @@ const ru = {
     yearly: (m, d) => `Каждый год ${d} ${RU_MONTH_GEN[m - 1]}`
   }
 };
-const PHRASEBOOKS = { zh, "zh-TW": zhTW, en, ja, ko, fr, de, es, ru };
+const AR_DAYS = ["الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت", "الأحد"];
+const AR_MONTHS = ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"];
+const arNumber = new Intl.NumberFormat("ar");
+const arList = (items) => items.join(" و");
+const arOrdinal = (position) => {
+  const ordinals = ["الأول", "الثاني", "الثالث", "الرابع", "الخامس"];
+  if (position === -1)
+    return "الأخير";
+  const ordinal = ordinals[Math.abs(position) - 1] ?? arNumber.format(Math.abs(position));
+  return position < 0 ? ordinal + " من النهاية" : ordinal;
+};
+const arEvery = (n, one, two, few, many) => {
+  if (n === 1)
+    return "كل " + one;
+  if (n === 2)
+    return "كل " + two;
+  return "كل " + arNumber.format(n) + " " + (n % 100 >= 3 && n % 100 <= 10 ? few : many);
+};
+const arOn = (frequency, on) => on ? frequency + "، في " + on : frequency;
+const ar = {
+  day: (wd) => AR_DAYS[wd],
+  nth: (o, wd) => `يوم ${AR_DAYS[wd]} ${arOrdinal(o)}`,
+  nthWorkday: (o) => `يوم العمل ${arOrdinal(o)}`,
+  nthOf: (o, days) => days.length === 1 ? ar.nth(o, days[0]) : `اليوم ${arOrdinal(o)} من بين أيام ${arList(days.map(ar.day))}`,
+  monthlyDays: arList,
+  monthDay: (d) => d === -1 ? "اليوم الأخير" : d < 0 ? `اليوم ${arOrdinal(d)}` : `اليوم ${arNumber.format(d)}`,
+  join: arList,
+  daily: (n) => arEvery(n, "يوم", "يومين", "أيام", "يومًا"),
+  workdays: "من الاثنين إلى الجمعة",
+  weekly: (n, on) => [arEvery(n, "أسبوع", "أسبوعين", "أسابيع", "أسبوعًا"), on].filter(Boolean).join("، "),
+  monthly: (n, on) => arOn(arEvery(n, "شهر", "شهرين", "أشهر", "شهرًا"), on),
+  yearly: (n, months, mdays, days) => {
+    const month = months ? arList(months.map((m) => AR_MONTHS[m - 1])) : "";
+    const day = mdays ? arList(mdays.map(ar.monthDay)) : arList(days ?? []);
+    return arOn(arEvery(n, "سنة", "سنتين", "سنوات", "سنة"), [day, month].filter(Boolean).join(" من "));
+  },
+  count: (n) => `، عدد المرات: ${arNumber.format(n)}`,
+  until: (date) => `، حتى ${date}`,
+  preset: {
+    none: "بلا تكرار",
+    daily: "كل يوم",
+    weekdays: "أيام العمل (من الاثنين إلى الجمعة)",
+    weekly: (wd) => `كل أسبوع يوم ${ar.day(wd)}`,
+    monthlyDay: (d) => ar.monthly(1, ar.monthDay(d)),
+    monthlyNth: (n, wd) => ar.monthly(1, ar.nth(n, wd)),
+    monthlyLast: (wd) => ar.monthly(1, ar.nth(-1, wd)),
+    yearly: (m, d) => `كل سنة في ${arNumber.format(d)} ${AR_MONTHS[m - 1]}`
+  }
+};
+const PHRASEBOOKS = { zh, "zh-TW": zhTW, en, ja, ko, fr, de, es, ru, ar };
 const phrasebook = (locale) => PHRASEBOOKS[locale] ?? en;
 const isWorkdays = (d) => !!d && d.length === 5 && d.every((x) => x.ordinal === void 0) && [0, 1, 2, 3, 4].every((w) => d.some((x) => x.weekday === w));
 function describeRRule(rule, locale = "zh") {
@@ -1309,6 +1358,29 @@ const LABELS = {
     calendar_table: "Calendario",
     workspace: "Mi agenda",
     board: "Agenda"
+  },
+  ar: {
+    title: "العنوان",
+    status: "الحالة",
+    due: "تاريخ الاستحقاق",
+    order: "الترتيب",
+    done_at: "وقت الإكمال",
+    ext: "بيانات إضافية",
+    todo: "قيد الانتظار",
+    doing: "قيد التنفيذ",
+    done: "مكتملة",
+    all_day: "طوال اليوم",
+    start: "البداية",
+    end: "النهاية",
+    start_date: "تاريخ البدء",
+    end_date: "تاريخ الانتهاء",
+    confirmed: "مؤكد",
+    tentative: "مبدئي",
+    cancelled: "ملغى",
+    todo_table: "المهام",
+    calendar_table: "التقويم",
+    workspace: "جدولي",
+    board: "الجدول"
   },
   ru: {
     title: "Название",
@@ -2728,4 +2800,4 @@ export {
   ymdOf as y,
   zonedParts as z
 };
-//# sourceMappingURL=aiws_bind-d3748dec.mjs.map
+//# sourceMappingURL=aiws_bind-a96cb506.mjs.map
