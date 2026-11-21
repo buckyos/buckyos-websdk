@@ -1,0 +1,160 @@
+version = 1
+reserved_roots = ["owner"]
+
+[[objects]]
+id = "personal-tools/person"
+profile = "profiles/person.json"
+
+[objects.actions.who]
+script = "scripts/person.mjs"
+host_calls = ["owner.who"]
+
+[objects.actions.resolve]
+script = "scripts/person.mjs"
+host_calls = ["owner.resolve"]
+
+[objects.actions.notify]
+script = "scripts/person.mjs"
+host_calls = ["notify.send"]
+
+[objects.actions.ask]
+script = "scripts/person.mjs"
+host_calls = ["notify.send"]
+
+[objects.actions.notification_status]
+script = "scripts/person.mjs"
+host_calls = ["notify.get"]
+
+[[aliases]]
+name = "owner"
+kind = "local"
+object = "personal-tools/person"
+
+[[objects]]
+id = "personal-tools/bindings"
+profile = "profiles/bindings.json"
+
+[objects.actions.get]
+script = "scripts/bindings.mjs"
+host_calls = ["binding.get"]
+
+[objects.actions.set]
+script = "scripts/bindings.mjs"
+host_calls = ["binding.set"]
+
+[objects.actions.reset]
+script = "scripts/bindings.mjs"
+host_calls = ["binding.reset"]
+
+[[aliases]]
+name = "owner.bindings"
+kind = "local"
+object = "personal-tools/bindings"
+
+[[objects]]
+id = "personal-tools/contacts"
+profile = "profiles/contacts.json"
+
+[objects.actions.find]
+script = "scripts/contacts.mjs"
+host_calls = ["contact.find"]
+
+[objects.actions.get]
+script = "scripts/contacts.mjs"
+host_calls = ["contact.get"]
+
+[objects.actions.update]
+script = "scripts/contacts.mjs"
+host_calls = ["contact.update"]
+
+[[aliases]]
+name = "owner.contacts"
+kind = "local"
+object = "personal-tools/contacts"
+
+[[objects]]
+id = "personal-tools/sharing"
+profile = "profiles/sharing.json"
+
+[objects.actions.grant]
+script = "scripts/sharing.mjs"
+host_calls = ["sharing.grant"]
+
+[objects.actions.revoke]
+script = "scripts/sharing.mjs"
+host_calls = ["sharing.revoke"]
+
+[[aliases]]
+name = "owner.sharing"
+kind = "local"
+object = "personal-tools/sharing"
+
+[[objects]]
+id = "personal-tools/calendar"
+profile = "profiles/calendar.json"
+
+[objects.actions.list]
+script = "scripts/calendar.mjs"
+host_calls = ["owner.prepare", "aiws.ws.get_info", "aiws.doc.read", "aiws.doc.query", "aiws.ws.lookup"]
+
+[objects.actions.add]
+script = "scripts/calendar.mjs"
+host_calls = ["owner.prepare", "aiws.ws.get_info", "aiws.doc.read", "aiws.doc.query", "owner.pin", "aiws.doc.get_submission", "aiws.doc.commit", "aiws.ws.ensure"]
+
+[objects.actions.update]
+script = "scripts/calendar.mjs"
+host_calls = ["owner.prepare", "aiws.ws.get_info", "aiws.doc.read", "aiws.doc.query", "owner.pin", "aiws.doc.get_submission", "aiws.doc.commit"]
+
+[objects.actions.rm]
+script = "scripts/calendar.mjs"
+host_calls = ["owner.prepare", "aiws.ws.get_info", "aiws.doc.read", "aiws.doc.query", "owner.pin", "aiws.doc.get_submission", "aiws.doc.commit"]
+
+[objects.actions.skip]
+script = "scripts/calendar.mjs"
+host_calls = ["owner.prepare", "aiws.ws.get_info", "aiws.doc.read", "aiws.doc.query", "owner.pin", "aiws.doc.get_submission", "aiws.doc.commit"]
+
+[objects.actions.postpone]
+script = "scripts/calendar.mjs"
+host_calls = ["owner.prepare", "aiws.ws.get_info", "aiws.doc.read", "aiws.doc.query", "owner.pin", "aiws.doc.get_submission", "aiws.doc.commit"]
+
+[[aliases]]
+name = "owner.cal"
+kind = "local"
+object = "personal-tools/calendar"
+
+[[objects]]
+id = "personal-tools/todo"
+profile = "profiles/todo.json"
+
+[objects.actions.list]
+script = "scripts/todo.mjs"
+host_calls = ["owner.prepare", "aiws.ws.get_info", "aiws.doc.read", "aiws.doc.query", "aiws.ws.lookup"]
+
+[objects.actions.add]
+script = "scripts/todo.mjs"
+host_calls = ["owner.prepare", "aiws.ws.get_info", "aiws.doc.read", "aiws.doc.query", "owner.pin", "aiws.doc.get_submission", "aiws.doc.commit", "aiws.ws.ensure"]
+
+[objects.actions.update]
+script = "scripts/todo.mjs"
+host_calls = ["owner.prepare", "aiws.ws.get_info", "aiws.doc.read", "aiws.doc.query", "owner.pin", "aiws.doc.get_submission", "aiws.doc.commit"]
+
+[objects.actions.move]
+script = "scripts/todo.mjs"
+host_calls = ["owner.prepare", "aiws.ws.get_info", "aiws.doc.read", "aiws.doc.query", "owner.pin", "aiws.doc.get_submission", "aiws.doc.commit"]
+
+[objects.actions.rm]
+script = "scripts/todo.mjs"
+host_calls = ["owner.prepare", "aiws.ws.get_info", "aiws.doc.read", "aiws.doc.query", "owner.pin", "aiws.doc.get_submission", "aiws.doc.commit"]
+
+[objects.actions.done]
+script = "scripts/todo.mjs"
+host_calls = ["owner.prepare", "aiws.ws.get_info", "aiws.doc.read", "aiws.doc.query", "owner.pin", "aiws.doc.get_submission", "aiws.doc.commit"]
+
+[objects.actions.undone]
+script = "scripts/todo.mjs"
+host_calls = ["owner.prepare", "aiws.ws.get_info", "aiws.doc.read", "aiws.doc.query", "owner.pin", "aiws.doc.get_submission", "aiws.doc.commit"]
+
+[[aliases]]
+name = "owner.todo"
+kind = "local"
+object = "personal-tools/todo"

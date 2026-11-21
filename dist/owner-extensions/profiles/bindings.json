@@ -1,0 +1,165 @@
+{
+  "@context": "https://www.w3.org/2022/wot/td/v1.1",
+  "id": "urn:opendan:personal-tools:bindings:v1",
+  "title": "Personal resource bindings",
+  "actions": {
+    "get": {
+      "description": "Read the current binding and revision.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "slot": {
+            "type": "string",
+            "enum": [
+              "calendar",
+              "todo"
+            ]
+          }
+        },
+        "required": [
+          "slot"
+        ],
+        "additionalProperties": false
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "slot": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "binding_revision": {
+            "type": "integer"
+          },
+          "provider_ref": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "slot",
+          "mode",
+          "binding_revision"
+        ],
+        "additionalProperties": true
+      },
+      "x-buckyos:action": {
+        "effect": "read"
+      }
+    },
+    "set": {
+      "description": "Set the resource destination, using its observed revision.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "slot": {
+            "type": "string",
+            "enum": [
+              "calendar",
+              "todo"
+            ]
+          },
+          "if_revision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "default",
+              "disabled",
+              "object"
+            ]
+          },
+          "provider_ref": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "slot",
+          "mode",
+          "if_revision"
+        ],
+        "additionalProperties": false
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "slot": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "binding_revision": {
+            "type": "integer"
+          },
+          "provider_ref": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "slot",
+          "mode",
+          "binding_revision"
+        ],
+        "additionalProperties": true
+      },
+      "x-buckyos:action": {
+        "effect": "write"
+      }
+    },
+    "reset": {
+      "description": "Restore the default resource and increment its revision.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "slot": {
+            "type": "string",
+            "enum": [
+              "calendar",
+              "todo"
+            ]
+          },
+          "if_revision": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "slot",
+          "if_revision"
+        ],
+        "additionalProperties": false
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "slot": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "binding_revision": {
+            "type": "integer"
+          },
+          "provider_ref": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "slot",
+          "mode",
+          "binding_revision"
+        ],
+        "additionalProperties": true
+      },
+      "x-buckyos:action": {
+        "effect": "write"
+      }
+    }
+  }
+}

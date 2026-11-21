@@ -1,0 +1,65 @@
+{
+  "@context": "https://www.w3.org/2022/wot/td/v1.1",
+  "id": "urn:opendan:personal-tools:sharing:v1",
+  "title": "Share availability",
+  "actions": {
+    "grant": {
+      "description": "Share busy intervals with a Zone user.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "slot": {
+            "type": "string",
+            "enum": [
+              "availability"
+            ]
+          },
+          "to": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "slot",
+          "to"
+        ],
+        "additionalProperties": false
+      },
+      "output": {
+        "type": "object"
+      },
+      "x-buckyos:action": {
+        "effect": "write"
+      }
+    },
+    "revoke": {
+      "description": "Withdraw an availability grant.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "slot": {
+            "type": "string",
+            "enum": [
+              "availability"
+            ]
+          },
+          "to": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "slot",
+          "to"
+        ],
+        "additionalProperties": false
+      },
+      "output": {
+        "type": "object"
+      },
+      "x-buckyos:action": {
+        "effect": "write"
+      }
+    }
+  }
+}

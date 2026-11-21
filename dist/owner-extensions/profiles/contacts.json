@@ -1,0 +1,89 @@
+{
+  "@context": "https://www.w3.org/2022/wot/td/v1.1",
+  "id": "urn:opendan:personal-tools:contacts:v1",
+  "title": "System contacts",
+  "actions": {
+    "find": {
+      "description": "Find visible contacts with this name.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "candidates": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          }
+        },
+        "required": [
+          "candidates"
+        ],
+        "additionalProperties": true
+      },
+      "x-buckyos:action": {
+        "effect": "read"
+      }
+    },
+    "get": {
+      "description": "Read one contact by DID.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "did": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "did"
+        ],
+        "additionalProperties": false
+      },
+      "output": {
+        "type": "object"
+      },
+      "x-buckyos:action": {
+        "effect": "read"
+      }
+    },
+    "update": {
+      "description": "Update the selected contact.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "did": {
+            "type": "string",
+            "minLength": 1
+          },
+          "patch": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "did",
+          "patch"
+        ],
+        "additionalProperties": false
+      },
+      "output": {
+        "type": "object"
+      },
+      "x-buckyos:action": {
+        "effect": "write"
+      }
+    }
+  }
+}

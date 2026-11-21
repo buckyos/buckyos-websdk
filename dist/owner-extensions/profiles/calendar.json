@@ -1,0 +1,489 @@
+{
+  "@context": "https://www.w3.org/2022/wot/td/v1.1",
+  "id": "urn:opendan:personal-tools:calendar:v1",
+  "title": "Personal calendar",
+  "actions": {
+    "list": {
+      "description": "List occurrences overlapping [from,to).",
+      "input": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string",
+            "description": "RFC 3339 instant including offset"
+          },
+          "to": {
+            "type": "string",
+            "description": "RFC 3339 instant including offset"
+          },
+          "tz": {
+            "type": "string",
+            "minLength": 1
+          },
+          "cursor": {
+            "type": "string",
+            "minLength": 1
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000
+          }
+        },
+        "required": [
+          "from",
+          "to"
+        ],
+        "additionalProperties": false
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "initialized": {
+            "type": "boolean"
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "title": {
+                  "type": "string"
+                },
+                "record_ref": {
+                  "type": "string"
+                },
+                "open_url": {
+                  "type": "string"
+                },
+                "provider_record_ref": {
+                  "type": "string",
+                  "description": "Original external Provider reference. Use record_ref with the personal object."
+                }
+              },
+              "required": [
+                "title",
+                "record_ref"
+              ],
+              "additionalProperties": true
+            }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "events",
+          "next_cursor"
+        ],
+        "additionalProperties": true
+      },
+      "x-buckyos:action": {
+        "effect": "read"
+      }
+    },
+    "add": {
+      "description": "Create a timed or all-day event, with an inclusive end date for all-day events.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "start": {
+            "type": "string",
+            "description": "RFC 3339 instant including offset"
+          },
+          "end": {
+            "type": "string",
+            "description": "RFC 3339 instant including offset"
+          },
+          "start_date": {
+            "type": "string",
+            "description": "YYYY-MM-DD"
+          },
+          "end_date": {
+            "type": "string",
+            "description": "YYYY-MM-DD"
+          },
+          "rrule": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tz": {
+            "type": "string",
+            "minLength": 1
+          },
+          "location": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reminders": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "status": {
+            "type": "string",
+            "minLength": 1
+          },
+          "ext": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "additionalProperties": false
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "owner_did": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "record_ref": {
+            "type": "string"
+          },
+          "open_url": {
+            "type": "string"
+          },
+          "binding_revision": {
+            "type": "integer"
+          },
+          "idempotency_key": {
+            "type": "string"
+          },
+          "resource_ref": {
+            "type": "string"
+          },
+          "provider_record_ref": {
+            "type": "string",
+            "description": "Original external Provider reference. Use record_ref with the personal object."
+          }
+        },
+        "required": [
+          "owner_did",
+          "status",
+          "record_ref"
+        ],
+        "additionalProperties": true
+      },
+      "x-buckyos:action": {
+        "effect": "write"
+      }
+    },
+    "update": {
+      "description": "Edit the series or a selected occurrence.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "record_ref": {
+            "type": "string",
+            "minLength": 1
+          },
+          "patch": {
+            "type": "object",
+            "properties": {
+              "title": {
+                "type": "string",
+                "minLength": 1
+              },
+              "start": {
+                "type": "string",
+                "description": "RFC 3339 instant including offset"
+              },
+              "end": {
+                "type": "string",
+                "description": "RFC 3339 instant including offset"
+              },
+              "start_date": {
+                "type": "string",
+                "description": "YYYY-MM-DD"
+              },
+              "end_date": {
+                "type": "string",
+                "description": "YYYY-MM-DD"
+              },
+              "rrule": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "tz": {
+                "type": "string",
+                "minLength": 1
+              },
+              "location": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "reminders": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "status": {
+                "type": "string",
+                "minLength": 1
+              },
+              "ext": {
+                "type": "object"
+              }
+            },
+            "required": [],
+            "additionalProperties": false
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "one",
+              "following",
+              "all"
+            ]
+          }
+        },
+        "required": [
+          "record_ref",
+          "patch"
+        ],
+        "additionalProperties": false
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "owner_did": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "record_ref": {
+            "type": "string"
+          },
+          "open_url": {
+            "type": "string"
+          },
+          "binding_revision": {
+            "type": "integer"
+          },
+          "idempotency_key": {
+            "type": "string"
+          },
+          "resource_ref": {
+            "type": "string"
+          },
+          "provider_record_ref": {
+            "type": "string",
+            "description": "Original external Provider reference. Use record_ref with the personal object."
+          }
+        },
+        "required": [
+          "owner_did",
+          "status",
+          "record_ref"
+        ],
+        "additionalProperties": true
+      },
+      "x-buckyos:action": {
+        "effect": "write"
+      }
+    },
+    "rm": {
+      "description": "Delete an occurrence, subsequent occurrences, or the series.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "record_ref": {
+            "type": "string",
+            "minLength": 1
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "one",
+              "following",
+              "all"
+            ]
+          }
+        },
+        "required": [
+          "record_ref"
+        ],
+        "additionalProperties": false
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "owner_did": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "record_ref": {
+            "type": "string"
+          },
+          "open_url": {
+            "type": "string"
+          },
+          "binding_revision": {
+            "type": "integer"
+          },
+          "idempotency_key": {
+            "type": "string"
+          },
+          "resource_ref": {
+            "type": "string"
+          },
+          "provider_record_ref": {
+            "type": "string",
+            "description": "Original external Provider reference. Use record_ref with the personal object."
+          }
+        },
+        "required": [
+          "owner_did",
+          "status"
+        ],
+        "additionalProperties": true
+      },
+      "x-buckyos:action": {
+        "effect": "destructive"
+      }
+    },
+    "skip": {
+      "description": "Skip one occurrence.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "record_ref": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "record_ref"
+        ],
+        "additionalProperties": false
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "owner_did": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "record_ref": {
+            "type": "string"
+          },
+          "open_url": {
+            "type": "string"
+          },
+          "binding_revision": {
+            "type": "integer"
+          },
+          "idempotency_key": {
+            "type": "string"
+          },
+          "resource_ref": {
+            "type": "string"
+          },
+          "provider_record_ref": {
+            "type": "string",
+            "description": "Original external Provider reference. Use record_ref with the personal object."
+          }
+        },
+        "required": [
+          "owner_did",
+          "status",
+          "record_ref"
+        ],
+        "additionalProperties": true
+      },
+      "x-buckyos:action": {
+        "effect": "write"
+      }
+    },
+    "postpone": {
+      "description": "Move one occurrence later.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "record_ref": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minutes": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "record_ref",
+          "minutes"
+        ],
+        "additionalProperties": false
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "owner_did": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "record_ref": {
+            "type": "string"
+          },
+          "open_url": {
+            "type": "string"
+          },
+          "binding_revision": {
+            "type": "integer"
+          },
+          "idempotency_key": {
+            "type": "string"
+          },
+          "resource_ref": {
+            "type": "string"
+          },
+          "provider_record_ref": {
+            "type": "string",
+            "description": "Original external Provider reference. Use record_ref with the personal object."
+          }
+        },
+        "required": [
+          "owner_did",
+          "status",
+          "record_ref"
+        ],
+        "additionalProperties": true
+      },
+      "x-buckyos:action": {
+        "effect": "write"
+      }
+    }
+  },
+  "x-buckyos:slot": "calendar"
+}

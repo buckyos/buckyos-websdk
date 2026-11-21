@@ -1,0 +1,193 @@
+{
+  "@context": "https://www.w3.org/2022/wot/td/v1.1",
+  "id": "urn:opendan:personal-tools:person:v1",
+  "title": "Current owner",
+  "actions": {
+    "who": {
+      "description": "Identity of the verified owner.",
+      "input": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "owner_did": {
+            "type": "string"
+          },
+          "caller_did": {
+            "type": "string"
+          },
+          "zone_did": {
+            "type": "string"
+          },
+          "person_ref": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "owner_did"
+        ],
+        "additionalProperties": true
+      },
+      "x-buckyos:action": {
+        "effect": "read"
+      }
+    },
+    "resolve": {
+      "description": "Inspect the owner’s resource binding.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "slot": {
+            "type": "string",
+            "enum": [
+              "calendar",
+              "todo"
+            ]
+          }
+        },
+        "required": [
+          "slot"
+        ],
+        "additionalProperties": false
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "slot": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "binding_revision": {
+            "type": "integer"
+          },
+          "resource_ref": {
+            "type": "string"
+          },
+          "actions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "slot",
+          "mode",
+          "binding_revision"
+        ],
+        "additionalProperties": true
+      },
+      "x-buckyos:action": {
+        "effect": "read"
+      }
+    },
+    "notify": {
+      "description": "Send the owner a notice.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "additionalProperties": false
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "notify_id": {
+            "type": "string"
+          },
+          "task_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "idempotency_key": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "notify_id"
+        ],
+        "additionalProperties": true
+      },
+      "x-buckyos:action": {
+        "effect": "write"
+      }
+    },
+    "ask": {
+      "description": "Ask the owner a question.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "additionalProperties": false
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "notify_id": {
+            "type": "string"
+          },
+          "task_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "idempotency_key": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "notify_id"
+        ],
+        "additionalProperties": true
+      },
+      "x-buckyos:action": {
+        "effect": "write"
+      }
+    },
+    "notification_status": {
+      "description": "Read the notification status and any answer.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "notify_id": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "notify_id"
+        ],
+        "additionalProperties": false
+      },
+      "output": {
+        "type": "object"
+      },
+      "x-buckyos:action": {
+        "effect": "read"
+      }
+    }
+  }
+}
