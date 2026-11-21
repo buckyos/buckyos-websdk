@@ -122,3 +122,9 @@ Runtime 优先使用 `appInstanceId`，并可为 `AppClient` / `AppService` 从
     - Named Store 一旦分布式化，就肯定会daemon service
 
 ## 使用kevent/kmsgqueue
+
+### AICC usage dimensions and finance
+
+`AiUsage` preserves cache, reasoning and image/audio/video token subsets, generated/reference image counts, media seconds, characters, billable requests, compute seconds and megapixels. These are different units; the subsets must not be added to total tokens. An absent counter is unknown, while an explicitly reported zero is a known value. `cost_source` and `cost_unknown_reason` describe the settled cost or why it is unknown.
+
+`UsageAggregate.dimensions` maps each reported numeric unit to `{ amount, reported_events }`. `unpriced_requests` counts events without valid cost; `finance_totals` keeps currencies separate. `QueryUsageResponse.total` and `grouped` cover all matching events regardless of the raw-event cursor. See [the current interfaces](src/aicc_client.ts) and use the same filters and scope for summaries and event lists.
