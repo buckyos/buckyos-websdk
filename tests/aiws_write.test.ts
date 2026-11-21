@@ -235,3 +235,16 @@ describe('commitOps', () => {
     expect(calls).toHaveLength(1)
   })
 })
+
+test('readMeta exposes the builtin contacts provider, cadence and deployment binding', async () => {
+  const data = { mode: 'synced', write: 'refresh', binding: 'bound', owner_did: 'did:bns:alice',
+    source: { kind: 'builtin', provider: 'contacts', refresh: { interval_s: 900 } } }
+  const rpc = { call: jest.fn().mockResolvedValue({ entity_id: 'friends', data }) }
+  const result = await new AiWorkspaceClient(rpc as never).readMeta('ws_1', 'friends')
+  expect(rpc.call).toHaveBeenCalledWith('doc.read', { workspace_id: 'ws_1', entity_id: 'friends', as: 'meta' })
+  expect(result.data?.binding).toBe('bound')
+  if (result.data?.source?.kind !== 'builtin') throw new Error('missing builtin source')
+  const provider: 'contacts' = result.data.source.provider
+  expect(provider).toBe('contacts')
+  expect(result.data.source.refresh?.interval_s).toBe(900)
+})

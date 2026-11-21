@@ -181,6 +181,15 @@ export interface AiwsSourceQueryParams {
     consistency?: string;
     source_revision?: string;
 }
+export type AiwsSourceSummary = Record<string, unknown> & ({
+    kind: 'builtin';
+    provider: 'contacts';
+    refresh?: {
+        interval_s: number;
+    };
+} | {
+    kind: 'url' | 'workspace' | 'zone' | 'session';
+});
 /** `doc.read { as: "meta" }`: what an entity is, without scanning its content. */
 export interface AiwsMeta {
     entity_id: string;
@@ -220,7 +229,11 @@ export interface AiwsMeta {
     data?: {
         mode: 'local' | 'synced' | 'url_query';
         write: 'edit' | 'refresh' | 'none';
-        source?: Record<string, unknown>;
+        source?: AiwsSourceSummary;
+        binding?: 'bound' | 'needs_rebind';
+        owner_did?: string;
+        localize_after_refresh?: boolean;
+        last_success_at?: string;
         derived?: Record<string, unknown>;
     };
     children: number;

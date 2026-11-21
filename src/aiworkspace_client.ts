@@ -182,6 +182,11 @@ export interface AiwsSourceQueryParams {
   source_revision?: string
 }
 
+export type AiwsSourceSummary = Record<string, unknown> & (
+  | { kind: 'builtin'; provider: 'contacts'; refresh?: { interval_s: number } }
+  | { kind: 'url' | 'workspace' | 'zone' | 'session' }
+)
+
 /** `doc.read { as: "meta" }`: what an entity is, without scanning its content. */
 export interface AiwsMeta {
   entity_id: string
@@ -200,7 +205,16 @@ export interface AiwsMeta {
   body: { state: string; format: string | null; format_version: number; etag: string; records: number | null; bytes: number | null; reason?: string }
   /** Data entities: where the content comes from and who writes it — `edit` (Commits under `capabilities`),
    * `refresh` (only the Source's refresh; edits are `SOURCE_READ_ONLY`), `none` (a URL table: rows are remote). */
-  data?: { mode: 'local' | 'synced' | 'url_query'; write: 'edit' | 'refresh' | 'none'; source?: Record<string, unknown>; derived?: Record<string, unknown> }
+  data?: {
+    mode: 'local' | 'synced' | 'url_query'
+    write: 'edit' | 'refresh' | 'none'
+    source?: AiwsSourceSummary
+    binding?: 'bound' | 'needs_rebind'
+    owner_did?: string
+    localize_after_refresh?: boolean
+    last_success_at?: string
+    derived?: Record<string, unknown>
+  }
   children: number
   capabilities: string[]
   ops: string[]
