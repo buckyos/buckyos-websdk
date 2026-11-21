@@ -29,6 +29,7 @@ export interface FieldDef {
   name: string
   type: string
   required?: boolean
+  default?: Json
   nullable?: boolean
   options?: { option_id: string; label: string }[]
 }
@@ -115,7 +116,7 @@ export function todoFields(locale: ScheduleLocale = 'zh'): FieldDef[] {
   const l = (k: string) => scheduleLabel(locale, k)
   return [
     { field_id: 'title', name: l('title'), type: 'text', required: true },
-    { field_id: 'status', name: l('status'), type: 'select', required: true, options: ['todo', 'doing', 'done'].map((id) => ({ option_id: id, label: l(id) })) },
+    { field_id: 'status', name: l('status'), type: 'select', required: true, default: 'todo', options: ['todo', 'doing', 'done'].map((id) => ({ option_id: id, label: l(id) })) },
     { field_id: 'due', name: l('due'), type: 'date', nullable: true },
     { field_id: 'order', name: l('order'), type: 'text', nullable: true },
     { field_id: 'done_at', name: l('done_at'), type: 'datetime', nullable: true },
@@ -212,6 +213,7 @@ export function orderKeysBetween(a: string | null, b: string | null, count: numb
 /** A record as `doc.read` (`table_record`) and the SQL `_record` column answer it. */
 export interface RowLike {
   record_id: string
+  created_seq?: number
   rev?: number
   revs?: Record<string, number>
   values: Record<string, Json | undefined>
@@ -321,7 +323,7 @@ export function todoAddOps(sourceId: string, input: TodoValues & { title: string
       order = orderKeyBetween(last, null)
     }
   }
-  const status = input.status ?? 'todo'
+  const status = input.status
   const values: Record<string, Json | undefined> = {
     title: input.title, status, order,
     due: input.due ?? undefined, ext: input.ext && Object.keys(input.ext).length ? input.ext : undefined,

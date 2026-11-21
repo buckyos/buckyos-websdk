@@ -52,13 +52,15 @@ describe('to-do operations', () => {
   it('creates a standard table', () => {
     const op = standardTableOp('todo', { entity_id: 'todo', parent_id: 'data', order_key: 'u', locale: 'en' })
     expect(op.schema_id).toBe('buckyos.todo@1')
+    expect(op.payload).toMatchObject({ fields: expect.arrayContaining([expect.objectContaining({ field_id: 'status', default: 'todo' })]) })
     const fields = (op.payload as { fields: { field_id: string; type: string }[] }).fields
     expect(fields.map((f) => `${f.field_id}:${f.type}`)).toEqual(['title:text', 'status:select', 'due:date', 'order:text', 'done_at:datetime', 'ext:json'])
   })
   it('adds at the end, completes, reopens and moves with cell expectations', () => {
     const { record_id, ops, order } = todoAddOps('todo', { title: 'Buy milk' }, { items: [{ order: 'b' }, { order: 'c' }] })
     expect(order > 'c').toBe(true)
-    expect(ops[0]).toMatchObject({ op: 'table.insert_records', records: [{ record_id, values: { title: 'Buy milk', status: 'todo', order } }] })
+    expect(ops[0].records).toEqual([{ record_id, values: { title: 'Buy milk', order } }])
+    expect(todoAddOps('todo', { title: 'In progress', status: 'doing' }).ops[0]).toMatchObject({ records: [{ values: { status: 'doing' } }] })
     const row: RowLike = { record_id, rev: 3, revs: { status: 3, order: 2 }, values: { title: 'Buy milk', status: 'todo', order } }
     const done = todoCompleteOps('todo', row, true, { now: '2026-11-11T10:00:00.000Z' })
     expect(done).toEqual([{ op: 'table.set_values', source_id: 'todo', values: [

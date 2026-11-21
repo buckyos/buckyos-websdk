@@ -1,6 +1,6 @@
 {
   "name": "buckyos",
-  "version": "0.7.199",
+  "version": "0.7.200",
   "description": "BuckyOS WebSDK for browser and Node.js environments",
   "license": "Apache-2.0",
   "repository": {
