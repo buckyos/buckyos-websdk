@@ -1,0 +1,493 @@
+{
+  "@context": "https://www.w3.org/2022/wot/td/v1.1",
+  "id": "urn:opendan:personal-tools:todo:v1",
+  "title": "Personal to-dos",
+  "actions": {
+    "list": {
+      "description": "List open items or include completed items.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "cursor": {
+            "type": "string",
+            "minLength": 1
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000
+          },
+          "include_done": {
+            "type": "boolean"
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "initialized": {
+            "type": "boolean"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "title": {
+                  "type": "string"
+                },
+                "record_ref": {
+                  "type": "string"
+                },
+                "open_url": {
+                  "type": "string"
+                },
+                "provider_record_ref": {
+                  "type": "string",
+                  "description": "Original external Provider reference. Use record_ref with the personal object."
+                }
+              },
+              "required": [
+                "title",
+                "record_ref"
+              ],
+              "additionalProperties": true
+            }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "additionalProperties": true
+      },
+      "x-buckyos:action": {
+        "effect": "read"
+      }
+    },
+    "add": {
+      "description": "Create a to-do, optionally positioning it relative to a record reference.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "status": {
+            "type": "string",
+            "minLength": 1
+          },
+          "due": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "low",
+              "normal",
+              "high",
+              "urgent",
+              "none"
+            ]
+          },
+          "ext": {
+            "type": "object"
+          },
+          "before": {
+            "type": "string",
+            "minLength": 1
+          },
+          "after": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "additionalProperties": false
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "owner_did": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "record_ref": {
+            "type": "string"
+          },
+          "open_url": {
+            "type": "string"
+          },
+          "binding_revision": {
+            "type": "integer"
+          },
+          "idempotency_key": {
+            "type": "string"
+          },
+          "resource_ref": {
+            "type": "string"
+          },
+          "provider_record_ref": {
+            "type": "string",
+            "description": "Original external Provider reference. Use record_ref with the personal object."
+          }
+        },
+        "required": [
+          "owner_did",
+          "status",
+          "record_ref"
+        ],
+        "additionalProperties": true
+      },
+      "x-buckyos:action": {
+        "effect": "write"
+      }
+    },
+    "update": {
+      "description": "Patch an item, clearing due with null.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "record_ref": {
+            "type": "string",
+            "minLength": 1
+          },
+          "patch": {
+            "type": "object",
+            "properties": {
+              "title": {
+                "type": "string",
+                "minLength": 1
+              },
+              "status": {
+                "type": "string",
+                "minLength": 1
+              },
+              "due": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "priority": {
+                "type": "string",
+                "enum": [
+                  "low",
+                  "normal",
+                  "high",
+                  "urgent",
+                  "none"
+                ]
+              },
+              "ext": {
+                "type": "object"
+              }
+            },
+            "required": [],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "record_ref",
+          "patch"
+        ],
+        "additionalProperties": false
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "owner_did": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "record_ref": {
+            "type": "string"
+          },
+          "open_url": {
+            "type": "string"
+          },
+          "binding_revision": {
+            "type": "integer"
+          },
+          "idempotency_key": {
+            "type": "string"
+          },
+          "resource_ref": {
+            "type": "string"
+          },
+          "provider_record_ref": {
+            "type": "string",
+            "description": "Original external Provider reference. Use record_ref with the personal object."
+          }
+        },
+        "required": [
+          "owner_did",
+          "status",
+          "record_ref"
+        ],
+        "additionalProperties": true
+      },
+      "x-buckyos:action": {
+        "effect": "write"
+      }
+    },
+    "move": {
+      "description": "Change a to-do’s position or status.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "record_ref": {
+            "type": "string",
+            "minLength": 1
+          },
+          "before": {
+            "type": "string",
+            "minLength": 1
+          },
+          "after": {
+            "type": "string",
+            "minLength": 1
+          },
+          "status": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "record_ref"
+        ],
+        "additionalProperties": false
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "owner_did": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "record_ref": {
+            "type": "string"
+          },
+          "open_url": {
+            "type": "string"
+          },
+          "binding_revision": {
+            "type": "integer"
+          },
+          "idempotency_key": {
+            "type": "string"
+          },
+          "resource_ref": {
+            "type": "string"
+          },
+          "provider_record_ref": {
+            "type": "string",
+            "description": "Original external Provider reference. Use record_ref with the personal object."
+          }
+        },
+        "required": [
+          "owner_did",
+          "status",
+          "record_ref"
+        ],
+        "additionalProperties": true
+      },
+      "x-buckyos:action": {
+        "effect": "write"
+      }
+    },
+    "rm": {
+      "description": "Remove one record_ref or an explicit array of record_refs in the same table.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "record_ref": {
+            "type": "string",
+            "minLength": 1
+          },
+          "record_refs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "owner_did": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "record_ref": {
+            "type": "string"
+          },
+          "open_url": {
+            "type": "string"
+          },
+          "binding_revision": {
+            "type": "integer"
+          },
+          "idempotency_key": {
+            "type": "string"
+          },
+          "resource_ref": {
+            "type": "string"
+          },
+          "removed": {
+            "type": "integer"
+          },
+          "provider_record_ref": {
+            "type": "string",
+            "description": "Original external Provider reference. Use record_ref with the personal object."
+          }
+        },
+        "required": [
+          "owner_did",
+          "status"
+        ],
+        "additionalProperties": true
+      },
+      "x-buckyos:action": {
+        "effect": "destructive"
+      }
+    },
+    "done": {
+      "description": "Complete an item.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "record_ref": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "record_ref"
+        ],
+        "additionalProperties": false
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "owner_did": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "record_ref": {
+            "type": "string"
+          },
+          "open_url": {
+            "type": "string"
+          },
+          "binding_revision": {
+            "type": "integer"
+          },
+          "idempotency_key": {
+            "type": "string"
+          },
+          "resource_ref": {
+            "type": "string"
+          },
+          "provider_record_ref": {
+            "type": "string",
+            "description": "Original external Provider reference. Use record_ref with the personal object."
+          }
+        },
+        "required": [
+          "owner_did",
+          "status",
+          "record_ref"
+        ],
+        "additionalProperties": true
+      },
+      "x-buckyos:action": {
+        "effect": "write"
+      }
+    },
+    "undone": {
+      "description": "Reopen a completed item.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "record_ref": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "record_ref"
+        ],
+        "additionalProperties": false
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "owner_did": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "record_ref": {
+            "type": "string"
+          },
+          "open_url": {
+            "type": "string"
+          },
+          "binding_revision": {
+            "type": "integer"
+          },
+          "idempotency_key": {
+            "type": "string"
+          },
+          "resource_ref": {
+            "type": "string"
+          },
+          "provider_record_ref": {
+            "type": "string",
+            "description": "Original external Provider reference. Use record_ref with the personal object."
+          }
+        },
+        "required": [
+          "owner_did",
+          "status",
+          "record_ref"
+        ],
+        "additionalProperties": true
+      },
+      "x-buckyos:action": {
+        "effect": "write"
+      }
+    }
+  },
+  "x-buckyos:slot": "todo"
+}

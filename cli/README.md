@@ -80,6 +80,26 @@ only during session creation and only for `IDENTITY_KIND_NOT_ACCEPTED` or `AUTHE
 timeouts, network errors, capability mismatches and RBAC denial never rotate. Private keys and
 tokens are never shown.
 
+## Personal objects
+
+On an installed node, `xcall` uses the signed-in human or Agent session. The system Tool’s
+`buckyos obj call` passes the same arguments to its paired `agent_tool xcall`.
+
+```bash
+xcall owner who
+xcall owner.cal add --params '{"title":"Review","start":"2026-11-20T14:00:00+08:00","end":"2026-11-20T14:30:00+08:00"}' --idempotency-key review-1120
+xcall owner.todo list include_done=true
+buckyos obj alias list
+```
+
+Save the creation receipt’s `record_ref` for later updates and its `open_url` for Desktop.
+Native references carry the owner, Zone, and original workspace epoch. A workspace restore invalidates earlier record receipts.
+An externally bound resource also supplies `provider_record_ref` for its original Provider.
+Keep the complete `record_ref`, including its fragment, when calling the personal object after a change of binding.
+A calendar list takes an offset-qualified `from` and `to`. An all-day event takes
+`start_date` and an inclusive `end_date`. A resource owner can resolve a conflict between
+existing named workspaces with `buckyos aiws select-name schedule --workspace <workspace_id>`.
+
 ## Verification
 
 ```bash

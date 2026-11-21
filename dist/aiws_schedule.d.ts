@@ -176,6 +176,7 @@ export declare function calendarOccurrences(rows: RowLike[], window: {
 }, opts?: {
     viewerTz?: string;
     limit?: number;
+    onTruncated?: () => void;
 }): EventOccurrence[];
 /** A new event: timed (`start` / `end` ISO) or all-day (`start_date` / `end_date`). */
 export declare function eventAddOps(sourceId: string, input: EventValues & {
@@ -243,13 +244,21 @@ export interface ScheduleTransport {
  * `calendar` (fixed ids), and a page showing both, created the first time. Agents and commands use it by name. */
 export declare class ScheduleClient {
     readonly aiws: ScheduleTransport;
+    private readonly opts;
     private handle;
     private readonly locale;
     constructor(aiws: ScheduleTransport, opts?: {
         locale?: ScheduleLocale;
+        idempotencyKey?: string;
+        newRecordId?: () => string;
     });
     /** The schedule Workspace with its two tables (created when missing; concurrent first uses converge). */
     ensure(): Promise<ScheduleHandle>;
+    open(ws: {
+        workspace_id: string;
+        epoch: string;
+        created?: boolean;
+    }, initialize?: boolean): Promise<ScheduleHandle>;
     private commitTo;
     /** Commit operations into the schedule; a refusal or conflict throws with the service's reason. */
     commit(operations: Op[], message: string): Promise<CommitResult>;
@@ -261,10 +270,12 @@ export declare class ScheduleClient {
     }): Promise<TodoItem[]>;
     addTodo(input: TodoValues & {
         title: string;
+        record_id?: string;
     }, place?: {
         after?: string;
         before?: string;
     }): Promise<TodoItem>;
+    private commitRowChange;
     completeTodo(recordId: string, done?: boolean): Promise<void>;
     updateTodo(recordId: string, changes: TodoValues & {
         ext_merge?: Record<string, Json | null>;
@@ -284,6 +295,7 @@ export declare class ScheduleClient {
     }): Promise<EventOccurrence[]>;
     addEvent(input: EventValues & {
         title: string;
+        record_id?: string;
     }): Promise<string>;
     /** The occurrence an id names (`record_id` or `<master>@<original>`), from all rows. */
     occurrence(id: string): Promise<{

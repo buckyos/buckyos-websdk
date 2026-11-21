@@ -150,6 +150,10 @@ export function parseCommandArgs(
   deferValidation = false,
 ): ParsedCommandArgs {
   const scoped: GlobalOptions = {}
+  if (command.module === 'obj' && command.verb === 'call') {
+    if (inputObject) throw new UsageError('INVALID_ARGUMENT', 'pass xcall arguments directly')
+    return { input: { argv }, scoped, help: false }
+  }
   const replScoped = (parsed: LongOption, args: string[], index: number): number | undefined => {
     if (!allowReplScopedGlobals) return undefined
     if (REPL_SCOPED_BOOLEAN_GLOBALS.has(parsed.name)) {

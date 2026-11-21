@@ -210,7 +210,8 @@ export function zonedToUtc(day: number, minuteOfDay: number, secondOfMinute: num
   const local = day * 86_400_000 + minuteOfDay * 60_000 + secondOfMinute * 1000
   const first = local - offsetMs(local, tz)
   const second = local - offsetMs(first, tz)
-  return second
+  // A gap has no fixed point; choosing the later instant advances the skipped wall time.
+  return second !== first && local - offsetMs(second, tz) !== second ? Math.max(first, second) : second
 }
 
 /** The local date (day number) of an instant in `tz`. */
@@ -243,6 +244,7 @@ export interface ExpandOptions {
   viewerTz?: string
   /** At most this many occurrences (default 2000). */
   limit?: number
+  onTruncated?: () => void
 }
 
 const MAX_PERIODS = 200_000
@@ -402,7 +404,8 @@ export function expandSeries(rule: RRule, start: SeriesStart, window: { fromMs: 
       const date = dateOf(day)
       occ = { original: date, date }
     } else {
-      const ms = zonedToUtc(day, minute, second, tz)
+      const firstMs = Date.parse(start.utc)
+      const ms = day === startDay ? firstMs : zonedToUtc(day, minute, second, tz) + new Date(firstMs).getUTCMilliseconds()
       if (untilMs !== undefined && ms > untilMs) return false
       occ = { original: new Date(ms).toISOString(), startMs: ms }
     }
@@ -417,13 +420,18 @@ export function expandSeries(rule: RRule, start: SeriesStart, window: { fromMs: 
   // nothing counted: the periods wholly before the window are skipped
   let period = rule.count === undefined ? periodsBefore(rule, startDay, fromDay) + 1 : 0
   for (let guard = 0; guard < MAX_PERIODS && out.length < limit; guard++, period++) {
-    if (periodStart(rule, period, startDay) > toDay) break
+    if (periodStart(rule, period, startDay) > toDay) return out
     for (const day of candidates(rule, period, startDay)) {
       if (day <= startDay) continue
       if (day > toDay) return out
-      if (!emit(day) || out.length >= limit) return out
+      if (!emit(day)) return out
+      if (out.length >= limit) {
+        opts.onTruncated?.()
+        return out
+      }
     }
   }
+  if (periodStart(rule, period, startDay) <= toDay) opts.onTruncated?.()
   return out
 }
 

@@ -160,7 +160,7 @@ describe('the schedule client', () => {
       call: async <T,>(method: string, params: Record<string, unknown>): Promise<T> => {
         calls.push({ method, params })
         if (method === 'ws.ensure') return { workspace_id: 'ws_s', epoch: 'ep', created: false } as T
-        if (method === 'doc.read') return { entity_id: params.entity_id } as T
+        if (method === 'doc.read') return { entity_id: params.entity_id, schema_id: `buckyos.${params.entity_id}@1` } as T
         const [limit, offset] = params.params as number[]
         const total = 1001
         return { columns: ['_record'], rows: Array.from({ length: Math.max(0, Math.min(limit, total - offset)) }, (_, k) => [JSON.stringify(record(offset + k))]), truncated: false, read: [], head_seq: 3 } as T

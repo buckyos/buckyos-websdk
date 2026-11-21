@@ -81,6 +81,7 @@ export interface ExpandOptions {
     viewerTz?: string;
     /** At most this many occurrences (default 2000). */
     limit?: number;
+    onTruncated?: () => void;
 }
 /** The occurrences of a series overlapping the window `[fromMs, toMs)`, in order. DTSTART is always the first
  * occurrence (as mainstream calendars show it), counted by COUNT. Excluded originals (EXDATE) are left out but still

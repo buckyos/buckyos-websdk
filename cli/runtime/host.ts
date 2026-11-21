@@ -257,6 +257,8 @@ export function buildDistributionPolicy(options: PolicyOptions): DistributionPol
     ? ['docker']
     : parsed.module === 'aiws' && ['run-exec', 'run-program'].includes(parsed.verb ?? '') && options.runtimeExecutable
     ? [options.runtimeExecutable]
+    : options.distribution === 'system' && parsed.module === 'obj' && parsed.verb === 'call'
+    ? [path.join(buckyosRoot, 'bin', 'opendan', path.sep === '\\' ? 'agent_tool.exe' : 'agent_tool')]
     : []
   const network = parsed.module !== undefined &&
     !['pikg', 'command', 'completion', 'config', 'provision'].includes(parsed.module)

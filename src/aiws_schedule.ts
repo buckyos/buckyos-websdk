@@ -462,7 +462,7 @@ export function viewerTimeZone(): string {
 /** Every occurrence of the calendar's records overlapping `[fromMs, toMs)`: single events, expanded series (EXDATE
  * removed, overridden occurrences replaced by their override records), and the occurrences an Agent wrote for rules
  * outside the subset. Sorted by start. A series whose rule cannot be read shows its first occurrence only. */
-export function calendarOccurrences(rows: RowLike[], window: { fromMs: number; toMs: number }, opts: { viewerTz?: string; limit?: number } = {}): EventOccurrence[] {
+export function calendarOccurrences(rows: RowLike[], window: { fromMs: number; toMs: number }, opts: { viewerTz?: string; limit?: number; onTruncated?: () => void } = {}): EventOccurrence[] {
   const viewerTz = opts.viewerTz ?? viewerTimeZone()
   const out: EventOccurrence[] = []
   const overrides = new Map<string, RowLike>()
@@ -499,7 +499,7 @@ export function calendarOccurrences(rows: RowLike[], window: { fromMs: number; t
       const start = seriesStartOf(row.values, typeof ext.tz === 'string' ? ext.tz : undefined, viewerTz)
       if (!start) continue
       const exdate = originals(ext.exdate)
-      const occs = expandSeries(rule, start, window, { exdate, viewerTz, durationMs: times.allDay ? undefined : duration, durationDays: times.allDay ? duration : undefined, limit: opts.limit })
+      const occs = expandSeries(rule, start, window, { exdate, viewerTz, durationMs: times.allDay ? undefined : duration, durationDays: times.allDay ? duration : undefined, limit: opts.limit, onTruncated: opts.onTruncated })
       for (const o of occs) { const s = shift(o); if (s) out.push(s) }
       continue
     }
@@ -792,7 +792,9 @@ export class ScheduleClient {
   private handle: ScheduleHandle | null = null
   private readonly locale: ScheduleLocale
 
-  constructor(readonly aiws: ScheduleTransport, opts: { locale?: ScheduleLocale } = {}) {
+  constructor(readonly aiws: ScheduleTransport, private readonly opts: {
+    locale?: ScheduleLocale; idempotencyKey?: string; newRecordId?: () => string
+  } = {}) {
     this.locale = opts.locale ?? 'zh'
   }
 
@@ -800,12 +802,22 @@ export class ScheduleClient {
   async ensure(): Promise<ScheduleHandle> {
     if (this.handle) return this.handle
     const ws = await this.aiws.call<{ workspace_id: string; epoch: string; created: boolean }>('ws.ensure', { name: SCHEDULE_WORKSPACE_NAME, title: scheduleLabel(this.locale, 'workspace') })
-    const handle: ScheduleHandle = { workspace_id: ws.workspace_id, epoch: ws.epoch, created: ws.created, todo: SCHEDULE_TODO_ID, calendar: SCHEDULE_CALENDAR_ID }
+    return this.open(ws, true)
+  }
+
+  async open(ws: { workspace_id: string; epoch: string; created?: boolean }, initialize = false): Promise<ScheduleHandle> {
+    const handle: ScheduleHandle = { workspace_id: ws.workspace_id, epoch: ws.epoch, created: ws.created ?? false, todo: SCHEDULE_TODO_ID, calendar: SCHEDULE_CALENDAR_ID }
+    if (!initialize) {
+      this.handle = handle
+      return handle
+    }
     // what is there already (`doc.read` is stable; the outline is the Desktop's)
     const have = new Set<string>()
     for (const id of [SCHEDULE_TODO_ID, SCHEDULE_CALENDAR_ID, SCHEDULE_SURFACE_ID]) {
       try {
-        const read = await this.aiws.call<{ deleted?: boolean }>('doc.read', { workspace_id: ws.workspace_id, entity_id: id })
+        const read = await this.aiws.call<{ deleted?: boolean; schema_id?: string }>('doc.read', { workspace_id: ws.workspace_id, entity_id: id, as: 'meta' })
+        const schema = id === SCHEDULE_TODO_ID ? TODO_SCHEMA_ID : id === SCHEDULE_CALENDAR_ID ? CALENDAR_SCHEMA_ID : undefined
+        if (schema && read.schema_id !== schema) throw new AiwsFailure({ code: 'RESOURCE_TYPE_MISMATCH', detail: id + ' is not the expected schedule table', retryable: false })
         if (!read.deleted) have.add(id)
       } catch (error) {
         // a transport's failure carries the service's code (an AiwsFailure, or any error with `code`)
@@ -818,20 +830,27 @@ export class ScheduleClient {
     if (!have.has(SCHEDULE_CALENDAR_ID)) ops.push(standardTableOp('calendar', { entity_id: SCHEDULE_CALENDAR_ID, parent_id: 'data', order_key: 'v', locale: this.locale }))
     if (!have.has(SCHEDULE_SURFACE_ID)) ops.push(...scheduleBoardOps(this.locale))
     if (ops.length) {
-      const result = await this.commitTo(handle, ops, 'create the schedule', 'system')
+      const initKey = `init-${this.opts.idempotencyKey ?? newRecordId('k')}`
+      const result = await this.commitTo(handle, ops, 'create the schedule', 'system', initKey)
       // a concurrent first use created them: fine
       const idConflict = (result.sub_code ?? result.errors?.[0]?.sub_code ?? result.error?.sub_code) === 'ID_CONFLICT'
-      if (result.status !== 'accepted' && !(result.status === 'rejected' && idConflict)) throw failureOf(result)
+      if (result.status !== 'accepted') {
+        if (!(result.status === 'rejected' && idConflict)) throw failureOf(result)
+        for (const id of [SCHEDULE_TODO_ID, SCHEDULE_CALENDAR_ID, SCHEDULE_SURFACE_ID]) {
+          const meta = await this.aiws.call<{ schema_id?: string }>('doc.read', { workspace_id: ws.workspace_id, entity_id: id, as: 'meta' })
+          if (id !== SCHEDULE_SURFACE_ID && meta.schema_id !== (id === SCHEDULE_TODO_ID ? TODO_SCHEMA_ID : CALENDAR_SCHEMA_ID)) throw failureOf(result)
+        }
+      }
     }
     this.handle = handle
     return handle
   }
 
-  private async commitTo(handle: ScheduleHandle, operations: Op[], message: string, origin: 'agent' | 'human' | 'system' = 'agent'): Promise<CommitResult> {
-    const key = `sched-${newRecordId('k')}`
+  private async commitTo(handle: ScheduleHandle, operations: Op[], message: string, origin: 'agent' | 'human' | 'system' = 'agent', key = this.opts.idempotencyKey ?? `sched-${newRecordId('k')}`): Promise<CommitResult> {
     const request = (epoch: string) => ({ protocol_version: AIWS_PROTOCOL_VERSION, workspace_id: handle.workspace_id, epoch, idempotency_key: key, origin, message, operations })
     let result = await this.aiws.call<CommitResult>('doc.commit', request(handle.epoch))
     if (result.status === 'rejected' && (result.code ?? result.error?.code) === 'EPOCH_MISMATCH') {
+      if (this.opts.idempotencyKey) throw new AiwsFailure({ code: 'WRITE_OUTCOME_UNKNOWN', retryable: false, detail: 'original workspace epoch changed', data: { workspace_id: handle.workspace_id, idempotency_key: key } })
       const info = await this.aiws.call<{ epoch: string }>('ws.get_info', { workspace_id: handle.workspace_id })
       handle.epoch = info.epoch
       result = await this.aiws.call<CommitResult>('doc.commit', request(handle.epoch))
@@ -851,7 +870,7 @@ export class ScheduleClient {
   async rows(sourceId: string): Promise<RowLike[]> {
     const handle = await this.ensure()
     const rows: RowLike[] = []
-    for (let i = 0; i < 100; i++) {
+    for (let i = 0; ; i++) {
       const page = await this.aiws.call<{ rows: unknown[][] }>('doc.query', {
         workspace_id: handle.workspace_id, sql: 'SELECT "_record" FROM t ORDER BY "_id" LIMIT ? OFFSET ?',
         params: [ROWS_PAGE, i * ROWS_PAGE], tables: { t: sourceId }, max_rows: ROWS_PAGE,
@@ -877,9 +896,10 @@ export class ScheduleClient {
     return opts.includeDone ? items : items.filter((i) => !i.done)
   }
 
-  async addTodo(input: TodoValues & { title: string }, place: { after?: string; before?: string } = {}): Promise<TodoItem> {
+  async addTodo(input: TodoValues & { title: string; record_id?: string }, place: { after?: string; before?: string } = {}): Promise<TodoItem> {
     const items = sortTodos((await this.rows(SCHEDULE_TODO_ID)).map(todoItem))
     const at = (id?: string) => items.find((i) => i.record_id === id)
+    if ((place.after && !at(place.after)) || (place.before && !at(place.before))) throw new AiwsFailure({ code: 'NOT_FOUND', retryable: false, detail: 'placement anchor does not exist' })
     let pos: { after?: string | null; before?: string | null; items?: TodoItem[] } = { items }
     if (place.after) { const i = items.findIndex((x) => x.record_id === place.after); pos = { after: at(place.after)?.order ?? null, before: items[i + 1]?.order ?? null } }
     else if (place.before) { const i = items.findIndex((x) => x.record_id === place.before); pos = { after: items[i - 1]?.order ?? null, before: at(place.before)?.order ?? null } }
@@ -888,16 +908,25 @@ export class ScheduleClient {
     return todoItem(await this.row(SCHEDULE_TODO_ID, record_id))
   }
 
+  private async commitRowChange(source: string, row: RowLike, ops: Op[], message: string, field = 'title') {
+    // A keyed request must leave a provider submission even when the requested state already holds.
+    // Guard the observed cell revision so a retry after another edit cannot perform a new write.
+    if (!ops.length && this.opts.idempotencyKey) {
+      ops = setValuesOps(source, row, { [field]: row.values[field] ?? (field === 'status' ? 'todo' : row.values.title) })
+    }
+    if (ops.length) await this.commit(ops, message)
+  }
+
   async completeTodo(recordId: string, done = true): Promise<void> {
     const row = await this.row(SCHEDULE_TODO_ID, recordId)
     const ops = todoCompleteOps(SCHEDULE_TODO_ID, row, done)
-    if (ops.length) await this.commit(ops, `${done ? 'complete' : 'reopen'} to-do ${recordId}`)
+    await this.commitRowChange(SCHEDULE_TODO_ID, row, ops, `${done ? 'complete' : 'reopen'} to-do ${recordId}`, 'status')
   }
 
   async updateTodo(recordId: string, changes: TodoValues & { ext_merge?: Record<string, Json | null> }): Promise<void> {
     const row = await this.row(SCHEDULE_TODO_ID, recordId)
     const ops = todoUpdateOps(SCHEDULE_TODO_ID, row, changes)
-    if (ops.length) await this.commit(ops, `update to-do ${recordId}`)
+    await this.commitRowChange(SCHEDULE_TODO_ID, row, ops, `update to-do ${recordId}`)
   }
 
   /** Move a to-do before / after another one, and / or into another status. */
@@ -913,7 +942,7 @@ export class ScheduleClient {
       order = orderAt(others, to.before ? anchor : anchor + 1)
     }
     const ops = todoMoveOps(SCHEDULE_TODO_ID, row, { status: to.status, order })
-    if (ops.length) await this.commit(ops, `move to-do ${recordId}`)
+    await this.commitRowChange(SCHEDULE_TODO_ID, row, ops, `move to-do ${recordId}`, 'status')
   }
 
   async removeTodos(recordIds: string[]): Promise<void> {
@@ -927,7 +956,7 @@ export class ScheduleClient {
     return calendarOccurrences(await this.rows(SCHEDULE_CALENDAR_ID), window, opts)
   }
 
-  async addEvent(input: EventValues & { title: string }): Promise<string> {
+  async addEvent(input: EventValues & { title: string; record_id?: string }): Promise<string> {
     if (input.ext?.rrule !== undefined && typeof input.ext.rrule === 'string') input = { ...input, ext: { ...input.ext, rrule: formatRRule(parseRRule(input.ext.rrule)) } }
     const { record_id, ops } = eventAddOps(SCHEDULE_CALENDAR_ID, input)
     await this.commit(ops, `add event: ${input.title}`)
@@ -942,8 +971,8 @@ export class ScheduleClient {
 
   async editEvent(id: string, change: EventChange, scope: RecurrenceScope = 'one'): Promise<string> {
     const { occ, rows } = await this.occurrence(id)
-    const { ops, record_id } = eventEditOps(SCHEDULE_CALENDAR_ID, occ, change, scope, { rows })
-    if (ops.length) await this.commit(ops, `edit event ${id} (${scope})`)
+    const { ops, record_id } = eventEditOps(SCHEDULE_CALENDAR_ID, occ, change, scope, { rows, newRecordId: this.opts.newRecordId })
+    await this.commitRowChange(SCHEDULE_CALENDAR_ID, occ.row, ops, `edit event ${id} (${scope})`)
     return record_id
   }
 
@@ -997,11 +1026,11 @@ export function findOccurrence(rows: RowLike[], id: string): EventOccurrence {
   const times = rowTimes(row)
   if (!times) throw new AiwsFailure({ code: 'INVALID_OPERATION', retryable: false, detail: `event ${recordId} has no time` })
   if (override) return occurrenceOf(override, rowTimes(override)!, { id, master: row, original, recurring: true, override: true })
-  const allDay = times.allDay
-  const durationMs = allDay ? 0 : times.endMs! - times.startMs!
-  const durationDays = allDay ? daysBetween(times.startDate!, times.endDate!) : 0
-  const occTimes = allDay ? { allDay: true, startDate: original, endDate: addDays(original, durationDays) } : { allDay: false, startMs: Date.parse(original), endMs: Date.parse(original) + durationMs }
-  return occurrenceOf(row, occTimes, { id, master: row, original, recurring: true })
+  const fromMs = Date.parse(times.allDay ? original + 'T00:00:00Z' : original)
+  const instance = Number.isFinite(fromMs) && calendarOccurrences([row], { fromMs, toMs: fromMs + 1 }, { viewerTz: 'UTC' })
+    .find(o => o.original === original)
+  if (!instance) throw new AiwsFailure({ code: 'NOT_FOUND', retryable: false, detail: 'occurrence is outside the series or was removed' })
+  return instance
 }
 
 /** The schedule page of the private Workspace: a Surface with the calendar and the to-do list side by side. */

@@ -54,10 +54,12 @@ Deno.test('aiws verbs are registered with their access levels', () => {
   }
 })
 
-Deno.test('the old table query verb is gone', () => {
-  let code: string | undefined
-  try { createRegistry().get('aiws', 'query') } catch (error) { code = (error as { code?: string }).code }
-  assertEquals(typeof code, 'string')
+Deno.test('retired table-query and personal schedule verbs are absent', () => {
+  for (const verb of ['query', 'cal', 'todo']) {
+    let code: string | undefined
+    try { createRegistry().get('aiws', verb) } catch (error) { code = (error as { code?: string }).code }
+    assertEquals(typeof code, 'string')
+  }
 })
 
 Deno.test('finding and reading map onto doc.list / doc.find / doc.query / doc.read / doc.resolve, paths or ids', async () => {

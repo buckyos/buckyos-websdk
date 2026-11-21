@@ -2,7 +2,8 @@ import { objectUrl } from 'buckyos/node'
 import type { CommandDefinition, CommandModule, JsonSchema } from '../core/command.ts'
 import type { CommandContext } from '../core/context.ts'
 import { EXIT_INTERNAL, ToolError, UsageError } from '../core/errors.ts'
-import { requiredInputString } from '../core/service.ts'
+import { getHost } from '../runtime/host.ts'
+import { callService, expectObject, requiredInputString } from '../core/service.ts'
 
 // System URLs (buckyos doc/key url.md part one): `resolve` normalizes a reference and
 // says where it lives, `read` follows a DID Object Card to its Profile and summary
@@ -26,7 +27,7 @@ export function createObjModule(): CommandModule {
   return {
     name: 'obj',
     summary: 'Resolve system URLs and read DID Objects (obj://, cyfs://, file://, https://)',
-    commands: [resolveCommand(), readCommand()],
+    commands: [resolveCommand(), readCommand(), aliasCommand(), callCommand()],
   }
 }
 
@@ -89,7 +90,7 @@ function resolveCommand(): CommandDefinition {
 
 async function getJson(ctx: CommandContext, url: string): Promise<unknown> {
   const headers: Record<string, string> = { accept: 'application/json' }
-  if (ctx.session) headers.authorization = `Bearer ${(await ctx.session.ensureValid()).token}`
+  if (ctx.session && new URL(url).origin === new URL(ctx.connection.endpoint).origin) headers.authorization = `Bearer ${(await ctx.session.ensureValid()).token}`
   const response = await fetch(url, { headers, signal: ctx.signal })
   const text = await response.text()
   if (!response.ok) {
@@ -151,6 +152,72 @@ function readCommand(): CommandDefinition {
           events: Object.fromEntries(Object.entries(profile.events ?? {}).map(([name, e]) => [name, e['x-buckyos:kevent']])),
         },
         properties,
+      }
+    },
+  }
+}
+
+function aliasCommand(): CommandDefinition {
+  const names = ['list', 'set', 'rm']
+  return {
+    verb: 'alias', summary: 'List, override or reset object aliases in your current Zone',
+    positionals: [{ name: 'action', description: 'list | set | rm', required: true }, { name: 'name', description: 'Complete alias name (set, rm)', required: false }],
+    options: [
+      { name: 'kind', description: 'local | link | disabled', type: 'string', enum: ['local', 'link', 'disabled'] },
+      { name: 'object', description: 'Installed object ID for a local binding', type: 'string' },
+      { name: 'url', description: 'Fixed Object URL for a link', type: 'string' },
+      { name: 'if-revision', property: 'if_revision', description: 'Expected override revision (0 if never configured)', type: 'integer' },
+    ],
+    inputSchema: { type: 'object', properties: {
+      action: { type: 'string', enum: names }, name: { type: 'string' }, kind: { type: 'string' },
+      object: { type: 'string' }, url: { type: 'string' }, if_revision: { type: 'integer', minimum: 0 },
+    }, required: ['action'], additionalProperties: false },
+    outputSchema: OBJECT_OUTPUT, resultSchemaVersion: 1, access: { mode: 'operation', operationIdField: 'action', possibleLevels: ['read', 'write'] },
+    asyncMode: 'sync', requiresSession: true,
+    examples: ['buckyos obj alias list', 'buckyos obj alias set owner.cal --kind link --url obj://cal/calendars/alice --if-revision 0', 'buckyos obj alias rm owner.cal --if-revision 1'],
+    handler: async (ctx, input) => {
+      const { action, ...params } = input
+      if (!names.includes(String(action))) throw new UsageError('INVALID_ARGUMENT', 'expected list, set or rm')
+      if (action === 'list' && Object.keys(params).length) throw new UsageError('INVALID_ARGUMENT', 'list takes no arguments')
+      if (action !== 'list' && (!params.name || !Number.isSafeInteger(params.if_revision))) throw new UsageError('INVALID_ARGUMENT', 'name and --if-revision are required')
+      if (action === 'set' && !params.kind) throw new UsageError('INVALID_ARGUMENT', 'set requires --kind')
+      const result = expectObject(await callService(ctx, 'control-panel', 'owner.alias.' + action, params), 'owner.alias.' + action)
+      if (result.ok === false) {
+        const e = expectObject(result.error, 'alias error')
+        throw new ToolError(String(e.code), String(e.message), undefined, false, { detail: e.detail })
+      }
+      return result
+    },
+  }
+}
+
+function callCommand(): CommandDefinition {
+  return {
+    verb: 'call', summary: 'Invoke xcall with your current Zone session',
+    description: 'Pass the object, action and xcall arguments verbatim. The installed agent_tool handles profiles, permissions, output and exit status.',
+    examples: ['buckyos obj call owner who', 'buckyos obj call owner.todo add title=Review'],
+    inputSchema: { type: 'object', properties: { argv: { type: 'array', items: { type: 'string' } } }, required: ['argv'] },
+    outputSchema: { type: 'object', properties: { exit_code: { type: 'integer' } }, required: ['exit_code'] }, resultSchemaVersion: 1, access: { mode: 'fixed', level: 'write' },
+    asyncMode: 'sync', requiresSession: true,
+    handler: async (ctx, input) => {
+      const host = getHost()
+      const root = host.policy.buckyosRoot
+      if (!root || host.policy.distribution !== 'system') throw new ToolError('EXTENSION_UNAVAILABLE', 'xcall requires the BuckyOS system installation')
+      if (!ctx.session) throw new ToolError('AUTH_REQUIRED', 'xcall requires a signed-in Zone session')
+      const { token } = await ctx.session.ensureValid()
+      const exe = host.path.join(root, 'bin', 'opendan', host.platform === 'win32' || host.platform === 'windows' ? 'agent_tool.exe' : 'agent_tool')
+      const env = { BUCKYOS_ROOT: root, BUCKYOS_TOOL_ENDPOINT: ctx.connection.endpoint, BUCKYOS_APPCLIENT_SESSION_TOKEN: token }
+      const child = host.spawn(exe, ['xcall', ...(input.argv as string[])], { cwd: ctx.cwd, env })
+      const cancel = () => child.kill()
+      ctx.signal.addEventListener('abort', cancel, { once: true })
+      try {
+        await child.closeInput()
+        for await (const line of child.lines()) await ctx.io.stdout(line + '\n')
+        const stderr = await child.stderr
+        if (stderr) await ctx.io.stderr(stderr)
+        return { exit_code: await child.status }
+      } finally {
+        ctx.signal.removeEventListener('abort', cancel)
       }
     },
   }

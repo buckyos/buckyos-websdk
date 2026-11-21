@@ -32,7 +32,6 @@ import { EXIT_AUTH, ToolError, UsageError } from '../core/errors.ts'
 import { callService, expectObject, inputString, requiredInputString, rpcOptions } from '../core/service.ts'
 import { getHost } from '../runtime/host.ts'
 import { createPikgModule } from './pikg.ts'
-import { calCommand, todoCommand } from './aiws_schedule.ts'
 import { placeCommand } from './aiws_place.ts'
 import { gatewayOrigin } from './share.ts'
 
@@ -1777,10 +1776,19 @@ const templateCommand: CommandDefinition = {
   },
 }
 
+const selectNameCommand: CommandDefinition = {
+  verb: 'select-name', summary: 'Choose the workspace that keeps a conflicting personal name',
+  positionals: [{ name: 'name', description: 'Conflicting workspace name', required: true }],
+  options: [WORKSPACE_OPTION], inputSchema: workspaceInput({ name: { type: 'string', minLength: 1 } }, ['name']),
+  outputSchema: OBJECT_OUTPUT, resultSchemaVersion: 1, access: WRITE_ACCESS, asyncMode: 'sync', requiresSession: true,
+  examples: ['buckyos aiws select-name schedule --workspace ws_2611a123'],
+  handler: (ctx, input) => aiws(ctx, 'ws.select_name', input),
+}
+
 export function createAiwsModule(): CommandModule {
   return {
     name: 'aiws',
-    summary: 'AI Workspace: find and read a workspace by path (ls, find, grep, stat, cat, resolve, read), its permissions (acl, acl-edit), query its tables in SQL (sql), write tables, rich text and common properties (table, text, mv, rename, set-prop), your to-do list and calendar (todo, cal), Block-controls (catalogue, import, export), extension controls (build, pull, export, library, import, upgrade), Workspace templates (list, create, export), and execute wish runs as their executor (claim, heartbeat, report) or roll one back',
-    commands: [infoCommand, lsCommand, findCommand, grepCommand, statCommand, aclCommand, aclEditCommand, catCommand, resolveCommand, readCommand, sqlCommand, tableCommand, textCommand, mvCommand, renameCommand, setPropCommand, todoCommand, calCommand, placeCommand, controlsCommand, importCommand, exportCommand, buildCommand, pullCommand, extExportCommand, libraryCommand, extImportCommand, extUpgradeCommand, templateCommand, runGetCommand, runClaimCommand, runHeartbeatCommand, runFilesCommand, runToolCommand, runExecCommand, runProgramCommand, runReportCommand, runRollbackCommand, runStartCommand],
+    summary: 'AI Workspace: find and read a workspace by path (ls, find, grep, stat, cat, resolve, read), its permissions (acl, acl-edit), query its tables in SQL (sql), write tables, rich text and common properties (table, text, mv, rename, set-prop), resolve conflicting workspace names (select-name), Block-controls (catalogue, import, export), extension controls (build, pull, export, library, import, upgrade), Workspace templates (list, create, export), and execute wish runs as their executor (claim, heartbeat, report) or roll one back',
+    commands: [infoCommand, selectNameCommand, lsCommand, findCommand, grepCommand, statCommand, aclCommand, aclEditCommand, catCommand, resolveCommand, readCommand, sqlCommand, tableCommand, textCommand, mvCommand, renameCommand, setPropCommand, placeCommand, controlsCommand, importCommand, exportCommand, buildCommand, pullCommand, extExportCommand, libraryCommand, extImportCommand, extUpgradeCommand, templateCommand, runGetCommand, runClaimCommand, runHeartbeatCommand, runFilesCommand, runToolCommand, runExecCommand, runProgramCommand, runReportCommand, runRollbackCommand, runStartCommand],
   }
 }

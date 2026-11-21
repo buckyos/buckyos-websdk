@@ -26,3 +26,17 @@ Deno.test('obj resolve without a session gives the gateway-relative endpoint', a
   const out = (await resolve.handler(local, { url: 'obj://dfs/home/alice' })) as Record<string, unknown>
   assertEquals(out.endpoint, '/kapi/dfs/obj/home/alice')
 })
+
+Deno.test('alias set sends the exact name and expected revision to Control Panel', async () => {
+  const alias = createObjModule().commands.find(c => c.verb === 'alias')!
+  const calls: unknown[] = []
+  const context = { ...ctx(), signal: new AbortController().signal, clients: {
+    call(service: string, method: string, params: Record<string, unknown>) {
+      calls.push([service, method, params])
+      return Promise.resolve({ alias_revision: 3 })
+    },
+  } } as unknown as CommandContext
+  const params = { name: 'owner.cal', if_revision: 2, kind: 'disabled' }
+  assertEquals(await alias.handler(context, { ...params, action: 'set' }), { alias_revision: 3 })
+  assertEquals(calls, [['control-panel', 'owner.alias.set', params]])
+})

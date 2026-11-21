@@ -366,6 +366,7 @@ export class BuckyOSToolApplication {
           9,
         )
       }
+      if (command.module === 'obj' && command.verb === 'call') return (data as { exit_code: number }).exit_code
       const envelope = successEnvelope(data, {
         command: `${command.module}.${command.verb}`,
         trace_id: traceId,

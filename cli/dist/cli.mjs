@@ -2,7 +2,7 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 import * as nodePath from "node:path";
 import { resolve as resolve$5, dirname as dirname$3 } from "node:path";
-import { BuckyOSSDK, RuntimeType, buckyos, namelib, VerifyHubClient, createAppInstanceId, parseSessionTokenClaims, ndn, verifyBundle, controlSkeleton, aiwsContentDigest, AIWS_MANIFEST_VERSION, AIWS_MANIFEST_FILE, taskMgrTaskEventPath, ndm_proxy, objectUrl as objectUrl$1, ExecutorCommandStream, AiwsFailure, viewerTimeZone, localDate, calendarOccurrences, ScheduleClient, resolveBindings, noUiDialogs, createOps, orderKeyBetween, bindingsPayload, AIWS_PROTOCOL_VERSION, BindFailure, aiwsTarget, watchControl, buildControl, pullControl, exportBundle, tableDelete, optionAdd, fieldAdd, tableSet, tableInsert, textAppend, textDeleteBlocks, textReplaceBlock, move, rename, setProps, NfspClient, AiwsSourceError, packBuildFiles, commitOps, templateDir, isSourcePath } from "buckyos/node";
+import { BuckyOSSDK, RuntimeType, buckyos, namelib, VerifyHubClient, createAppInstanceId, parseSessionTokenClaims, ndn, verifyBundle, controlSkeleton, aiwsContentDigest, AIWS_MANIFEST_VERSION, AIWS_MANIFEST_FILE, taskMgrTaskEventPath, ndm_proxy, objectUrl as objectUrl$1, ExecutorCommandStream, resolveBindings, noUiDialogs, createOps, orderKeyBetween, bindingsPayload, AIWS_PROTOCOL_VERSION, BindFailure, aiwsTarget, watchControl, buildControl, pullControl, exportBundle, AiwsFailure, tableDelete, optionAdd, fieldAdd, tableSet, tableInsert, textAppend, textDeleteBlocks, textReplaceBlock, move, rename, setProps, NfspClient, AiwsSourceError, packBuildFiles, commitOps, templateDir, isSourcePath } from "buckyos/node";
 import * as provisionSdk from "buckyos/provision";
 import { providerErrorFromRpc, AiccLlmClient, LLMComputeException } from "buckyos/xllm";
 import { createHash } from "node:crypto";
@@ -393,6 +393,11 @@ function parseInvocation(argv) {
 }
 function parseCommandArgs(command2, argv, inputObject, allowReplScopedGlobals = false, deferValidation = false) {
   const scoped = {};
+  if (command2.module === "obj" && command2.verb === "call") {
+    if (inputObject)
+      throw new UsageError("INVALID_ARGUMENT", "pass xcall arguments directly");
+    return { input: { argv }, scoped, help: false };
+  }
   const replScoped = (parsed, args, index) => {
     if (!allowReplScopedGlobals)
       return void 0;
@@ -542,7 +547,7 @@ function buildDistributionPolicy(options) {
   for (const candidate of parsed.writeParents) {
     writePaths.add(path.dirname(resolveInputPath(candidate, cwd, path)));
   }
-  const subprocesses = parsed.module === "pikg" && ["init", "build"].includes(parsed.verb ?? "") ? ["docker"] : parsed.module === "aiws" && ["run-exec", "run-program"].includes(parsed.verb ?? "") && options.runtimeExecutable ? [options.runtimeExecutable] : [];
+  const subprocesses = parsed.module === "pikg" && ["init", "build"].includes(parsed.verb ?? "") ? ["docker"] : parsed.module === "aiws" && ["run-exec", "run-program"].includes(parsed.verb ?? "") && options.runtimeExecutable ? [options.runtimeExecutable] : options.distribution === "system" && parsed.module === "obj" && parsed.verb === "call" ? [path.join(buckyosRoot, "bin", "opendan", path.sep === "\\" ? "agent_tool.exe" : "agent_tool")] : [];
   const network = parsed.module !== void 0 && !["pikg", "command", "completion", "config", "provision"].includes(parsed.module);
   const allowedEnvironment = options.distribution === "developer" ? TOOL_ENVIRONMENT_NAMES.filter((name) => name !== "BUCKYOS_ROOT") : TOOL_ENVIRONMENT_NAMES;
   return Object.freeze({
@@ -2521,7 +2526,7 @@ function replPrompt(config) {
   return `buckyos[${profile}|${zone}|${identity}]> `;
 }
 const EMPTY_INPUT$3 = { type: "object", properties: {}, additionalProperties: false };
-const OBJECT_OUTPUT$j = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$i = { type: "object", additionalProperties: true };
 function createAuthModule() {
   return {
     name: "auth",
@@ -2531,7 +2536,7 @@ function createAuthModule() {
         verb: "whoami",
         summary: "Show the effective principal and application identity",
         inputSchema: EMPTY_INPUT$3,
-        outputSchema: OBJECT_OUTPUT$j,
+        outputSchema: OBJECT_OUTPUT$i,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -2549,7 +2554,7 @@ function createAuthModule() {
         verb: "session-status",
         summary: "Show the in-memory session state without exposing credentials",
         inputSchema: EMPTY_INPUT$3,
-        outputSchema: OBJECT_OUTPUT$j,
+        outputSchema: OBJECT_OUTPUT$i,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -2570,7 +2575,7 @@ const EMPTY_INPUT$2 = {
   properties: {},
   additionalProperties: false
 };
-const OBJECT_OUTPUT$i = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$h = { type: "object", additionalProperties: true };
 function createCoreModules(registry) {
   return [createCommandModule(registry), createConfigModule(), createCompletionModule(registry)];
 }
@@ -2583,7 +2588,7 @@ function createCommandModule(registry) {
         verb: "list",
         summary: "List registered modules and commands",
         inputSchema: EMPTY_INPUT$2,
-        outputSchema: OBJECT_OUTPUT$i,
+        outputSchema: OBJECT_OUTPUT$h,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -2616,7 +2621,7 @@ function createCommandModule(registry) {
           required: ["target_module", "target_verb"],
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$i,
+        outputSchema: OBJECT_OUTPUT$h,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -2638,7 +2643,7 @@ function createConfigModule() {
         verb: "list",
         summary: "List the global configuration and available profiles",
         inputSchema: EMPTY_INPUT$2,
-        outputSchema: OBJECT_OUTPUT$i,
+        outputSchema: OBJECT_OUTPUT$h,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -2669,7 +2674,7 @@ function createConfigModule() {
           },
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$i,
+        outputSchema: OBJECT_OUTPUT$h,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -2715,7 +2720,7 @@ function createConfigModule() {
           required: ["key", "value"],
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$i,
+        outputSchema: OBJECT_OUTPUT$h,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "write" },
         asyncMode: "sync",
@@ -2755,7 +2760,7 @@ function createConfigModule() {
           required: ["profile_name"],
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$i,
+        outputSchema: OBJECT_OUTPUT$h,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "write" },
         asyncMode: "sync",
@@ -2787,7 +2792,7 @@ function createConfigModule() {
           properties: { effective: { type: "boolean" } },
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$i,
+        outputSchema: OBJECT_OUTPUT$h,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -3029,7 +3034,7 @@ async function buckyosInfo(ctx) {
   );
 }
 const SERVICE_NAME = "system_config";
-const OBJECT_OUTPUT$h = { type: "object", additionalProperties: false };
+const OBJECT_OUTPUT$g = { type: "object", additionalProperties: false };
 const KEY_INPUT = {
   type: "object",
   properties: { key: { type: "string", minLength: 1 } },
@@ -3047,7 +3052,7 @@ function createSystemConfigModule() {
         positionals: [{ name: "key", description: "System-config key" }],
         inputSchema: KEY_INPUT,
         outputSchema: {
-          ...OBJECT_OUTPUT$h,
+          ...OBJECT_OUTPUT$g,
           properties: {
             key: { type: "string" },
             value: { type: "string" },
@@ -3090,7 +3095,7 @@ function createSystemConfigModule() {
           additionalProperties: false
         },
         outputSchema: {
-          ...OBJECT_OUTPUT$h,
+          ...OBJECT_OUTPUT$g,
           properties: {
             key: { type: "string" },
             items: { type: "array", items: { type: "string" } }
@@ -3144,7 +3149,7 @@ function setCommand() {
       additionalProperties: false
     },
     outputSchema: {
-      ...OBJECT_OUTPUT$h,
+      ...OBJECT_OUTPUT$g,
       properties: { key: { type: "string" }, updated: { type: "boolean" } },
       required: ["key", "updated"]
     },
@@ -3183,7 +3188,7 @@ function setFileCommand() {
       additionalProperties: false
     },
     outputSchema: {
-      ...OBJECT_OUTPUT$h,
+      ...OBJECT_OUTPUT$g,
       properties: { key: { type: "string" }, updated: { type: "boolean" } },
       required: ["key", "updated"]
     },
@@ -3220,7 +3225,7 @@ function mutationCommand(options) {
       additionalProperties: false
     },
     outputSchema: {
-      ...OBJECT_OUTPUT$h,
+      ...OBJECT_OUTPUT$g,
       properties: {
         key: { type: "string" },
         [options.resultProperty]: { type: "boolean" }
@@ -6226,7 +6231,7 @@ async function readSkillDirectory(root, limit) {
   await walk(realRoot, "");
   return { files, ignored };
 }
-const PACKAGE_VERSION = "0.7.195";
+const PACKAGE_VERSION = "0.7.196";
 const TOOL_VERSION = PACKAGE_VERSION;
 const SDK_VERSION = PACKAGE_VERSION;
 const PROTOCOL_VERSION = "1";
@@ -6243,7 +6248,7 @@ const VERSION$1 = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 const SHA256_ID = /^sha256:[0-9a-f]{64}$/;
 const OBJECT_ID = /^(?:appdoc|pkg):[0-9a-f]{64}$/;
 const SAFE_GENERATED_FILE = /^[A-Za-z0-9._-]+$/;
-const OBJECT_OUTPUT$g = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$f = { type: "object", additionalProperties: true };
 const APP_KINDS = ["static-web", "script", "docker", "agent-skills", "aiws-controls", "ext-tools"];
 const PATH_KINDS = {
   "static-web": { key: "web", category: "web", selectorType: "static" },
@@ -6301,7 +6306,7 @@ function createPikgModule(dependencies = {}) {
           },
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$g,
+        outputSchema: OBJECT_OUTPUT$f,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -6358,7 +6363,7 @@ function createPikgModule(dependencies = {}) {
           },
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$g,
+        outputSchema: OBJECT_OUTPUT$f,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "write" },
         asyncMode: "sync",
@@ -6386,7 +6391,7 @@ function createPikgModule(dependencies = {}) {
           properties: { meta_dir: { type: "string", minLength: 1 } },
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$g,
+        outputSchema: OBJECT_OUTPUT$f,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "write" },
         asyncMode: "sync",
@@ -6407,7 +6412,7 @@ function createPikgModule(dependencies = {}) {
           properties: { dist_dir: { type: "string", minLength: 1 } },
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$g,
+        outputSchema: OBJECT_OUTPUT$f,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "write" },
         asyncMode: "sync",
@@ -6427,7 +6432,7 @@ function createPikgModule(dependencies = {}) {
           required: ["pikg_path"],
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$g,
+        outputSchema: OBJECT_OUTPUT$f,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -6448,7 +6453,7 @@ function createPikgModule(dependencies = {}) {
           properties: { meta_dir: { type: "string", minLength: 1 } },
           additionalProperties: false
         },
-        outputSchema: OBJECT_OUTPUT$g,
+        outputSchema: OBJECT_OUTPUT$f,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "destructive" },
         asyncMode: "sync",
@@ -8126,7 +8131,7 @@ const CONTROL_PANEL_SERVICE = "control-panel";
 const PLAN_SCHEMA_VERSION = 4;
 const STAGING_RELEASE_TIMEOUT_MS = 5e3;
 const ZIP_LOCAL_MAGIC = [80, 75, 3, 4];
-const OBJECT_OUTPUT$f = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$e = { type: "object", additionalProperties: true };
 const INSTALL_POLICIES = [
   "strict-public",
   "normal",
@@ -8177,7 +8182,7 @@ function cancelCommand$1() {
       required: ["task_id"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$f,
+    outputSchema: OBJECT_OUTPUT$e,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "sync",
@@ -8212,7 +8217,7 @@ function fetchCommand(dependencies) {
       target: { type: "object", additionalProperties: true },
       install_params: { type: "object", additionalProperties: true }
     }),
-    outputSchema: OBJECT_OUTPUT$f,
+    outputSchema: OBJECT_OUTPUT$e,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -8229,7 +8234,7 @@ function listCommand$3() {
     verb: "list",
     summary: "List visible installed Apps",
     inputSchema: emptyInputSchema(),
-    outputSchema: OBJECT_OUTPUT$f,
+    outputSchema: OBJECT_OUTPUT$e,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -8287,7 +8292,7 @@ function installCommand$1(dependencies) {
       no_wait: { type: "boolean" },
       policy: { type: "string", enum: [...INSTALL_POLICIES] }
     }),
-    outputSchema: OBJECT_OUTPUT$f,
+    outputSchema: OBJECT_OUTPUT$e,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "either",
@@ -8331,7 +8336,7 @@ function upgradeCommand(dependencies) {
       },
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$f,
+    outputSchema: OBJECT_OUTPUT$e,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "either",
@@ -8460,7 +8465,7 @@ function statusCommand$1() {
       properties: { app_name: { type: "string", minLength: 1 } },
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$f,
+    outputSchema: OBJECT_OUTPUT$e,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -8531,7 +8536,7 @@ function publishCommand() {
       required: ["local_dir", "app_doc"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$f,
+    outputSchema: OBJECT_OUTPUT$e,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "sync",
@@ -9677,7 +9682,7 @@ function selectorCommand(options) {
       required: ["app_name"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$f,
+    outputSchema: OBJECT_OUTPUT$e,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: options.access },
     asyncMode: options.asyncMode,
@@ -9841,7 +9846,7 @@ function toHex(bytes) {
   return [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 const CONTROL_PANEL$4 = "control-panel";
-const OBJECT_OUTPUT$e = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$d = { type: "object", additionalProperties: true };
 function createDiagnosticModule(dependencies = {}) {
   return {
     name: "diagnostic",
@@ -9880,7 +9885,7 @@ function collectCommand() {
       required: ["services"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$e,
+    outputSchema: OBJECT_OUTPUT$d,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "privileged" },
     asyncMode: "task",
@@ -9934,7 +9939,7 @@ function exportCommand$2(dependencies) {
       required: ["bundle_id", "path"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$e,
+    outputSchema: OBJECT_OUTPUT$d,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "privileged" },
     asyncMode: "sync",
@@ -9976,7 +9981,7 @@ function compact$2(value) {
   return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== void 0));
 }
 const CONTROL_PANEL$3 = "control-panel";
-const OBJECT_OUTPUT$d = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$c = { type: "object", additionalProperties: true };
 const LOG_LEVELS = ["error", "warning", "info", "debug", "trace"];
 function createLogModule(dependencies = {}) {
   return {
@@ -9997,7 +10002,7 @@ function servicesCommand() {
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
     outputSchema: {
       type: "object",
-      properties: { services: { type: "array", items: OBJECT_OUTPUT$d } },
+      properties: { services: { type: "array", items: OBJECT_OUTPUT$c } },
       required: ["services"],
       additionalProperties: false
     },
@@ -10070,7 +10075,7 @@ function tailCommand(dependencies) {
       }
     ],
     inputSchema: filterSchema({ from: { type: "string", enum: ["start", "end"] } }),
-    outputSchema: OBJECT_OUTPUT$d,
+    outputSchema: OBJECT_OUTPUT$c,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "stream",
@@ -10126,7 +10131,7 @@ function exportCommand$1(dependencies) {
       ...filterSchema({ path: { type: "string", minLength: 1 } }),
       required: ["path"]
     },
-    outputSchema: OBJECT_OUTPUT$d,
+    outputSchema: OBJECT_OUTPUT$c,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -10278,7 +10283,7 @@ function abortableSleep(milliseconds, signal) {
 }
 const TASK_MANAGER = "task-manager";
 const CONTROL_PANEL$2 = "control-panel";
-const OBJECT_OUTPUT$c = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$b = { type: "object", additionalProperties: true };
 function createTaskModule() {
   return {
     name: "task",
@@ -10381,7 +10386,7 @@ function getCommand$2() {
       required: ["task_id"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$c,
+    outputSchema: OBJECT_OUTPUT$b,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -10422,7 +10427,7 @@ function waitCommand() {
     summary: "Stream changes until a Task becomes terminal",
     positionals: [{ name: "task_id", description: "Opaque Task ID", required: true }],
     inputSchema: taskIdSchema(),
-    outputSchema: OBJECT_OUTPUT$c,
+    outputSchema: OBJECT_OUTPUT$b,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "stream",
@@ -10473,7 +10478,7 @@ function cancelCommand() {
       required: ["task_id"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$c,
+    outputSchema: OBJECT_OUTPUT$b,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "sync",
@@ -10516,7 +10521,7 @@ function retryCommand() {
       required: ["task_id"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$c,
+    outputSchema: OBJECT_OUTPUT$b,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "either",
@@ -10590,7 +10595,7 @@ function invalidResponse$1(label) {
   throw new ToolError("INVALID_SERVICE_RESPONSE", `${label} is invalid`, EXIT_INTERNAL);
 }
 const sdk = provisionSdk;
-const OBJECT_OUTPUT$b = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$a = { type: "object", additionalProperties: true };
 const ROOT_OPTION = {
   name: "root",
   description: "Installed BuckyOS root on this machine (BUCKYOS_ROOT); read by status/check, written by activate",
@@ -10674,7 +10679,7 @@ function statusCommand(deps) {
       additionalProperties: false
     },
     outputSchema: {
-      ...OBJECT_OUTPUT$b,
+      ...OBJECT_OUTPUT$a,
       properties: {
         root: { type: "string" },
         state: {
@@ -10712,7 +10717,7 @@ function checkCommand(deps) {
       additionalProperties: false
     },
     outputSchema: {
-      ...OBJECT_OUTPUT$b,
+      ...OBJECT_OUTPUT$a,
       properties: {
         ready: { type: "boolean" },
         root: { type: "string" },
@@ -10760,7 +10765,7 @@ function activateCommand(deps) {
       additionalProperties: false
     },
     outputSchema: {
-      ...OBJECT_OUTPUT$b,
+      ...OBJECT_OUTPUT$a,
       properties: {
         root: { type: "string" },
         state: { type: "string", enum: ["configured"] },
@@ -10909,9 +10914,9 @@ async function confirmActivation(ctx, precheck) {
 function isSdkError(error) {
   return error instanceof Error && error.name === "ActivationError" && typeof error.code === "string";
 }
-async function runSdk(run2) {
+async function runSdk(run) {
   try {
-    return await run2();
+    return await run();
   } catch (error) {
     if (isSdkError(error)) {
       const exitCode = error.code === "INVALID_ARGUMENT" ? EXIT_USAGE : error.code === "ACTIVATION_COMMIT_FAILED" ? EXIT_PARTIAL : EXIT_OPERATION;
@@ -11042,7 +11047,7 @@ function inputFingerprint(input) {
   hash.update(new TextEncoder().encode(JSON.stringify(material)));
   return hash.digestHex();
 }
-const OBJECT_OUTPUT$a = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$9 = { type: "object", additionalProperties: true };
 const SKILLS_SUB_PKG = "agent_skills";
 const SKILL_SCOPES = ["ui", "work"];
 const IMPORT_SCOPES = ["work", "ui", "plan"];
@@ -11082,7 +11087,7 @@ function command$1(definition) {
       required: ["agent_id", ...required ?? []],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$a,
+    outputSchema: OBJECT_OUTPUT$9,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level },
     asyncMode: "sync",
@@ -11695,8 +11700,8 @@ function base64(bytes) {
   return btoa(binary);
 }
 const CONTROL_PANEL$1 = "control-panel";
-const OBJECT_OUTPUT$9 = { type: "object", additionalProperties: true };
-const ID$2 = { type: "string", minLength: 1 };
+const OBJECT_OUTPUT$8 = { type: "object", additionalProperties: true };
+const ID$1 = { type: "string", minLength: 1 };
 const DEVICE_PREFIX = "exec-";
 const AGENT_RUNTIME_ACTIONS = ["list", "enable", "disable", "default"];
 const AGENT_OPTION = {
@@ -11870,7 +11875,7 @@ function command(definition) {
   const { level, properties, required, ...rest } = definition;
   return {
     inputSchema: { type: "object", properties, required: required ?? [], additionalProperties: false },
-    outputSchema: OBJECT_OUTPUT$9,
+    outputSchema: OBJECT_OUTPUT$8,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level },
     asyncMode: "sync",
@@ -11902,7 +11907,7 @@ function createRuntimeModule() {
         positionals: [{ name: "runtime_id", description: "Runtime id as `runtime list` prints it" }],
         options: [AGENT_OPTION, { name: "disabled", description: "Assign it switched off", type: "boolean" }],
         level: "write",
-        properties: { runtime_id: ID$2, agent_id: ID$2, disabled: { type: "boolean" } },
+        properties: { runtime_id: ID$1, agent_id: ID$1, disabled: { type: "boolean" } },
         required: ["runtime_id", "agent_id"],
         examples: [
           "buckyos runtime assign host --agent jarvis.example.zone",
@@ -11917,7 +11922,7 @@ function createRuntimeModule() {
         positionals: [{ name: "runtime_id", description: "Runtime id" }],
         options: [AGENT_OPTION],
         level: "destructive",
-        properties: { runtime_id: ID$2, agent_id: ID$2 },
+        properties: { runtime_id: ID$1, agent_id: ID$1 },
         required: ["runtime_id", "agent_id"],
         examples: ["buckyos runtime unassign host --agent jarvis.example.zone"],
         handler: async (ctx, input) => await unassign(ctx, input)
@@ -11928,7 +11933,7 @@ function createRuntimeModule() {
         description: "Devices only (exec-<executor_id>, or the executor id). Refused while sessions of the Agent using it run there (SESSIONS_IN_PROGRESS); otherwise shows the Agents the device is assigned to and asks; --yes skips the question.",
         positionals: [{ name: "runtime_id", description: "Device runtime id (exec-<executor_id>) or executor id" }],
         level: "destructive",
-        properties: { runtime_id: ID$2 },
+        properties: { runtime_id: ID$1 },
         required: ["runtime_id"],
         examples: ["buckyos runtime revoke exec-laptop", "buckyos --yes runtime revoke laptop"],
         handler: async (ctx, input) => await revoke(ctx, input)
@@ -11948,11 +11953,11 @@ function agentRuntimeCommand() {
     options: [AGENT_OPTION],
     inputSchema: {
       type: "object",
-      properties: { action: { type: "string", enum: AGENT_RUNTIME_ACTIONS }, runtime_id: ID$2, agent_id: ID$2 },
+      properties: { action: { type: "string", enum: AGENT_RUNTIME_ACTIONS }, runtime_id: ID$1, agent_id: ID$1 },
       required: ["action", "agent_id"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$9,
+    outputSchema: OBJECT_OUTPUT$8,
     resultSchemaVersion: 1,
     access: { mode: "operation", operationIdField: "action", possibleLevels: ["read", "write"] },
     asyncMode: "sync",
@@ -12141,7 +12146,7 @@ async function revoke(ctx, input) {
   return { runtime_id: device.runtime_id, executor_id: device.executor_id, revoked: true, assigned_to: assigned, impacts, ...revoked };
 }
 const CONTROL_PANEL = "control-panel";
-const OBJECT_OUTPUT$8 = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$7 = { type: "object", additionalProperties: true };
 const AGENT_POSITIONAL = {
   name: "agent_id",
   description: "Agent ID as `agent list` prints it (raw host name, e.g. jarvis.example.zone)"
@@ -12165,7 +12170,7 @@ function createAgentModule() {
         inputSchema: { type: "object", properties: {}, additionalProperties: false },
         outputSchema: {
           type: "object",
-          properties: { agents: { type: "array", items: OBJECT_OUTPUT$8 } },
+          properties: { agents: { type: "array", items: OBJECT_OUTPUT$7 } },
           required: ["agents"],
           additionalProperties: false
         },
@@ -12191,7 +12196,7 @@ function createAgentModule() {
         summary: "Get one Agent: profile, settings, install state, template, and runtime",
         positionals: [AGENT_POSITIONAL],
         inputSchema: AGENT_INPUT,
-        outputSchema: OBJECT_OUTPUT$8,
+        outputSchema: OBJECT_OUTPUT$7,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -12204,7 +12209,7 @@ function createAgentModule() {
         summary: "Get the public profile (display name, bio, avatar) of an Agent",
         positionals: [AGENT_POSITIONAL],
         inputSchema: AGENT_INPUT,
-        outputSchema: OBJECT_OUTPUT$8,
+        outputSchema: OBJECT_OUTPUT$7,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "read" },
         asyncMode: "sync",
@@ -12245,8 +12250,8 @@ function createAgentModule() {
           type: "object",
           properties: {
             agent_id: { type: "string" },
-            before: OBJECT_OUTPUT$8,
-            profile: OBJECT_OUTPUT$8
+            before: OBJECT_OUTPUT$7,
+            profile: OBJECT_OUTPUT$7
           },
           required: ["agent_id", "before", "profile"],
           additionalProperties: false
@@ -12292,7 +12297,7 @@ async function callAgent(ctx, method, params) {
   }
 }
 const AICC = "aicc";
-const OBJECT_OUTPUT$7 = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$6 = { type: "object", additionalProperties: true };
 const EMPTY_INPUT = { type: "object", properties: {}, additionalProperties: false };
 const RANGES = ["last1d", "last7d", "last30d"];
 const GROUPS = [
@@ -12340,7 +12345,7 @@ function quotaCommand() {
       properties: { app: { type: "string", minLength: 1 } },
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$7,
+    outputSchema: OBJECT_OUTPUT$6,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -12358,7 +12363,7 @@ function readCommand$2(options) {
     summary: options.summary,
     description: options.description,
     inputSchema: EMPTY_INPUT,
-    outputSchema: OBJECT_OUTPUT$7,
+    outputSchema: OBJECT_OUTPUT$6,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -12410,7 +12415,7 @@ function usageCommand() {
       },
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$7,
+    outputSchema: OBJECT_OUTPUT$6,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -12455,7 +12460,7 @@ function timeRange(input) {
   }
   return { kind: "explicit", start_time_ms: since, end_time_ms: until ?? Date.now() };
 }
-const OBJECT_OUTPUT$6 = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$5 = { type: "object", additionalProperties: true };
 const DAY_MS$1 = 864e5;
 const EXPIRES_HELP = "1d, 7d (default), 30d, none, or an RFC 3339 time";
 function createShareModule() {
@@ -12566,7 +12571,7 @@ function createCommand() {
       required: ["path"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$6,
+    outputSchema: OBJECT_OUTPUT$5,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "either",
@@ -12635,7 +12640,7 @@ function listCommand() {
       },
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$6,
+    outputSchema: OBJECT_OUTPUT$5,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -12667,7 +12672,7 @@ function getCommand$1() {
       required: ["share_id"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$6,
+    outputSchema: OBJECT_OUTPUT$5,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -12704,7 +12709,7 @@ function updateCommand() {
       required: ["share_id"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$6,
+    outputSchema: OBJECT_OUTPUT$5,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "sync",
@@ -12748,7 +12753,7 @@ function stopCommand() {
       required: ["share_id"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$6,
+    outputSchema: OBJECT_OUTPUT$5,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "destructive" },
     asyncMode: "sync",
@@ -12780,7 +12785,7 @@ function statsCommand() {
       },
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$6,
+    outputSchema: OBJECT_OUTPUT$5,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -12799,7 +12804,7 @@ function statsCommand() {
     }
   };
 }
-const OBJECT_OUTPUT$5 = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$4 = { type: "object", additionalProperties: true };
 const SERVICE$2 = "nfs-server";
 const MAX_PUT_BYTES = 32 * 1024 * 1024;
 const DAY_MS = 864e5;
@@ -12904,7 +12909,7 @@ function lsCommand$1() {
       },
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$5,
+    outputSchema: OBJECT_OUTPUT$4,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -12937,7 +12942,7 @@ function statCommand$1() {
       required: ["target"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$5,
+    outputSchema: OBJECT_OUTPUT$4,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -12978,7 +12983,7 @@ function putCommand() {
       required: ["target", "file"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$5,
+    outputSchema: OBJECT_OUTPUT$4,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "sync",
@@ -13027,7 +13032,7 @@ function getCommand() {
       required: ["target", "output"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$5,
+    outputSchema: OBJECT_OUTPUT$4,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -13065,7 +13070,7 @@ function rmCommand() {
       required: ["target"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$5,
+    outputSchema: OBJECT_OUTPUT$4,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "sync",
@@ -13096,7 +13101,7 @@ function linkCommand() {
       required: ["target"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$5,
+    outputSchema: OBJECT_OUTPUT$4,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "sync",
@@ -13125,7 +13130,7 @@ function s3KeysCommand() {
     verb: "s3-keys",
     summary: "List your S3 access keys (secrets are shown only when created)",
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
-    outputSchema: OBJECT_OUTPUT$5,
+    outputSchema: OBJECT_OUTPUT$4,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -13149,7 +13154,7 @@ function s3KeyCreateCommand() {
       required: ["app"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$5,
+    outputSchema: OBJECT_OUTPUT$4,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "sync",
@@ -13180,7 +13185,7 @@ function s3KeyRevokeCommand() {
       required: ["access_key_id"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$5,
+    outputSchema: OBJECT_OUTPUT$4,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "sync",
@@ -13189,13 +13194,13 @@ function s3KeyRevokeCommand() {
     handler: async (ctx, input) => await call$3(ctx, "bucket.revoke_s3_key", { access_key_id: requiredInputString(input, "access_key_id") })
   };
 }
-const OBJECT_OUTPUT$4 = { type: "object", additionalProperties: true };
+const OBJECT_OUTPUT$3 = { type: "object", additionalProperties: true };
 const URL_ARG = { name: "url", description: "obj:// cyfs:// file:// https:// url, or //<service>/... /abs/path shorthand", required: true };
 function createObjModule() {
   return {
     name: "obj",
     summary: "Resolve system URLs and read DID Objects (obj://, cyfs://, file://, https://)",
-    commands: [resolveCommand$1(), readCommand$1()]
+    commands: [resolveCommand$1(), readCommand$1(), aliasCommand(), callCommand()]
   };
 }
 function gatewayOrigin(endpoint) {
@@ -13240,7 +13245,7 @@ function resolveCommand$1() {
     summary: "Normalize a URL and show its identity, RBAC key, events and endpoint (no access check)",
     positionals: [URL_ARG],
     inputSchema: { type: "object", properties: { url: { type: "string", minLength: 1 } }, required: ["url"], additionalProperties: false },
-    outputSchema: OBJECT_OUTPUT$4,
+    outputSchema: OBJECT_OUTPUT$3,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -13251,7 +13256,7 @@ function resolveCommand$1() {
 }
 async function getJson(ctx, url) {
   const headers = { accept: "application/json" };
-  if (ctx.session)
+  if (ctx.session && new URL(url).origin === new URL(ctx.connection.endpoint).origin)
     headers.authorization = `Bearer ${(await ctx.session.ensureValid()).token}`;
   const response = await fetch(url, { headers, signal: ctx.signal });
   const text2 = await response.text();
@@ -13277,7 +13282,7 @@ function readCommand$1() {
       required: ["url"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$4,
+    outputSchema: OBJECT_OUTPUT$3,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -13317,6 +13322,90 @@ function readCommand$1() {
         },
         properties
       };
+    }
+  };
+}
+function aliasCommand() {
+  const names = ["list", "set", "rm"];
+  return {
+    verb: "alias",
+    summary: "List, override or reset object aliases in your current Zone",
+    positionals: [{ name: "action", description: "list | set | rm", required: true }, { name: "name", description: "Complete alias name (set, rm)", required: false }],
+    options: [
+      { name: "kind", description: "local | link | disabled", type: "string", enum: ["local", "link", "disabled"] },
+      { name: "object", description: "Installed object ID for a local binding", type: "string" },
+      { name: "url", description: "Fixed Object URL for a link", type: "string" },
+      { name: "if-revision", property: "if_revision", description: "Expected override revision (0 if never configured)", type: "integer" }
+    ],
+    inputSchema: { type: "object", properties: {
+      action: { type: "string", enum: names },
+      name: { type: "string" },
+      kind: { type: "string" },
+      object: { type: "string" },
+      url: { type: "string" },
+      if_revision: { type: "integer", minimum: 0 }
+    }, required: ["action"], additionalProperties: false },
+    outputSchema: OBJECT_OUTPUT$3,
+    resultSchemaVersion: 1,
+    access: { mode: "operation", operationIdField: "action", possibleLevels: ["read", "write"] },
+    asyncMode: "sync",
+    requiresSession: true,
+    examples: ["buckyos obj alias list", "buckyos obj alias set owner.cal --kind link --url obj://cal/calendars/alice --if-revision 0", "buckyos obj alias rm owner.cal --if-revision 1"],
+    handler: async (ctx, input) => {
+      const { action, ...params } = input;
+      if (!names.includes(String(action)))
+        throw new UsageError("INVALID_ARGUMENT", "expected list, set or rm");
+      if (action === "list" && Object.keys(params).length)
+        throw new UsageError("INVALID_ARGUMENT", "list takes no arguments");
+      if (action !== "list" && (!params.name || !Number.isSafeInteger(params.if_revision)))
+        throw new UsageError("INVALID_ARGUMENT", "name and --if-revision are required");
+      if (action === "set" && !params.kind)
+        throw new UsageError("INVALID_ARGUMENT", "set requires --kind");
+      const result = expectObject$4(await callService(ctx, "control-panel", "owner.alias." + action, params), "owner.alias." + action);
+      if (result.ok === false) {
+        const e = expectObject$4(result.error, "alias error");
+        throw new ToolError(String(e.code), String(e.message), void 0, false, { detail: e.detail });
+      }
+      return result;
+    }
+  };
+}
+function callCommand() {
+  return {
+    verb: "call",
+    summary: "Invoke xcall with your current Zone session",
+    description: "Pass the object, action and xcall arguments verbatim. The installed agent_tool handles profiles, permissions, output and exit status.",
+    examples: ["buckyos obj call owner who", "buckyos obj call owner.todo add title=Review"],
+    inputSchema: { type: "object", properties: { argv: { type: "array", items: { type: "string" } } }, required: ["argv"] },
+    outputSchema: { type: "object", properties: { exit_code: { type: "integer" } }, required: ["exit_code"] },
+    resultSchemaVersion: 1,
+    access: { mode: "fixed", level: "write" },
+    asyncMode: "sync",
+    requiresSession: true,
+    handler: async (ctx, input) => {
+      const host2 = getHost();
+      const root = host2.policy.buckyosRoot;
+      if (!root || host2.policy.distribution !== "system")
+        throw new ToolError("EXTENSION_UNAVAILABLE", "xcall requires the BuckyOS system installation");
+      if (!ctx.session)
+        throw new ToolError("AUTH_REQUIRED", "xcall requires a signed-in Zone session");
+      const { token } = await ctx.session.ensureValid();
+      const exe = host2.path.join(root, "bin", "opendan", host2.platform === "win32" || host2.platform === "windows" ? "agent_tool.exe" : "agent_tool");
+      const env = { BUCKYOS_ROOT: root, BUCKYOS_TOOL_ENDPOINT: ctx.connection.endpoint, BUCKYOS_APPCLIENT_SESSION_TOKEN: token };
+      const child = host2.spawn(exe, ["xcall", ...input.argv], { cwd: ctx.cwd, env });
+      const cancel = () => child.kill();
+      ctx.signal.addEventListener("abort", cancel, { once: true });
+      try {
+        await child.closeInput();
+        for await (const line of child.lines())
+          await ctx.io.stdout(line + "\n");
+        const stderr = await child.stderr;
+        if (stderr)
+          await ctx.io.stderr(stderr);
+        return { exit_code: await child.status };
+      } finally {
+        ctx.signal.removeEventListener("abort", cancel);
+      }
     }
   };
 }
@@ -13437,8 +13526,8 @@ function operation(verb, extra, required) {
     }
   };
 }
-const OBJECT_OUTPUT$3 = { type: "object", additionalProperties: true };
-const ID$1 = { type: "string", minLength: 1 };
+const OBJECT_OUTPUT$2 = { type: "object", additionalProperties: true };
+const ID = { type: "string", minLength: 1 };
 function call$1(ctx, method, params) {
   return ctx.clients.call("control-panel", method, params, {
     traceId: ctx.traceId,
@@ -13457,7 +13546,7 @@ function read(verb, summary2, method) {
     verb,
     summary: summary2,
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
-    outputSchema: OBJECT_OUTPUT$3,
+    outputSchema: OBJECT_OUTPUT$2,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "read" },
     asyncMode: "sync",
@@ -13466,7 +13555,7 @@ function read(verb, summary2, method) {
   };
 }
 function desired(verb, summary2, enabled) {
-  const properties = { id: ID$1, ...enabled ? { version: { type: "string", minLength: 1 } } : {}, dry_run: { type: "boolean" } };
+  const properties = { id: ID, ...enabled ? { version: { type: "string", minLength: 1 } } : {}, dry_run: { type: "boolean" } };
   return {
     verb,
     summary: summary2,
@@ -13476,7 +13565,7 @@ function desired(verb, summary2, enabled) {
       { name: "dry-run", property: "dry_run", description: "Only show what would change", type: "boolean" }
     ],
     inputSchema: { type: "object", properties, required: ["id"], additionalProperties: false },
-    outputSchema: OBJECT_OUTPUT$3,
+    outputSchema: OBJECT_OUTPUT$2,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "sync",
@@ -13495,11 +13584,11 @@ function download() {
     options: [{ name: "node", description: "Only this node; without it every node that has the item", type: "string" }],
     inputSchema: {
       type: "object",
-      properties: { id: ID$1, item: ID$1, node: { type: "string", minLength: 1 } },
+      properties: { id: ID, item: ID, node: { type: "string", minLength: 1 } },
       required: ["id", "item"],
       additionalProperties: false
     },
-    outputSchema: OBJECT_OUTPUT$3,
+    outputSchema: OBJECT_OUTPUT$2,
     resultSchemaVersion: 1,
     access: { mode: "fixed", level: "write" },
     asyncMode: "sync",
@@ -13528,7 +13617,7 @@ function createExtToolsModule() {
         summary: "Put an already built .pikg (an official release asset) into the Repo unchanged",
         positionals: [{ name: "pikg", description: "Local .pikg file" }],
         inputSchema: { type: "object", properties: { pikg: { type: "string", minLength: 1 } }, required: ["pikg"], additionalProperties: false },
-        outputSchema: OBJECT_OUTPUT$3,
+        outputSchema: OBJECT_OUTPUT$2,
         resultSchemaVersion: 1,
         access: { mode: "fixed", level: "write" },
         asyncMode: "sync",
@@ -13540,285 +13629,6 @@ function createExtToolsModule() {
       }
     ]
   };
-}
-const OBJECT_OUTPUT$2 = { type: "object", additionalProperties: true };
-function schedule(ctx) {
-  return new ScheduleClient({
-    call: async (method, params) => {
-      const result = expectObject$4(await callService(ctx, "aiworkspace", method, params), method);
-      if (result.ok === false) {
-        const error = expectObject$4(result.error, `${method}.error`);
-        throw new AiwsFailure({ code: String(error.code ?? "AIWS_ERROR"), retryable: Boolean(error.retryable), detail: String(error.detail ?? error.code ?? ""), sub_code: typeof error.sub_code === "string" ? error.sub_code : void 0, data: error.data });
-      }
-      return result;
-    }
-  }, { locale: /^zh/i.test(Intl.DateTimeFormat().resolvedOptions().locale) ? "zh" : "en" });
-}
-async function run(work) {
-  try {
-    return await work();
-  } catch (error) {
-    if (error instanceof AiwsFailure)
-      throw new ToolError(error.code, error.message, void 0, false, { ...error.subCode ? { sub_code: error.subCode } : {}, ...error.data !== void 0 ? { data: error.data } : {} });
-    throw error;
-  }
-}
-const todoView = (i) => ({ id: i.record_id, title: i.title, status: i.status, done: i.done, due: i.due, order: i.order, ...i.done_at ? { done_at: i.done_at } : {}, ...Object.keys(i.ext).length ? { ext: i.ext } : {} });
-const eventView = (o) => ({
-  id: o.id,
-  record_id: o.row.record_id,
-  title: o.title,
-  all_day: o.allDay,
-  ...o.allDay ? { start_date: o.startDate, end_date: o.endDate } : { start: new Date(o.startMs).toISOString(), end: new Date(o.endMs).toISOString() },
-  ...o.recurring ? { recurring: true, original: o.original } : {},
-  ...o.override ? { changed_once: true } : {},
-  ...o.agentWritten ? { agent_written: true } : {},
-  ...o.status ? { status: o.status } : {},
-  ...Object.keys(o.ext).length ? { ext: o.ext } : {}
-});
-const DATE = /^\d{4}-\d{2}-\d{2}$/;
-function parseExt(input) {
-  const text2 = inputString(input, "ext");
-  if (!text2)
-    return void 0;
-  const ext = JSON.parse(text2);
-  if (!ext || typeof ext !== "object" || Array.isArray(ext))
-    throw new UsageError("AIWS_USAGE", "--ext must be a JSON object");
-  return ext;
-}
-const ID = { name: "id", property: "id", description: "To-do record id (`todo list` shows them)", type: "string" };
-const todoCommand = {
-  verb: "todo",
-  summary: "Your to-do list (the private schedule Workspace): list | add | done | undone | update | move | rm",
-  description: "The to-dos are records of the table `todo` in your Workspace named `schedule` (created on first use); the to-do control shows every change at once. Status is a board column (`todo`, `doing`, `done` unless columns were added); `done` completes.",
-  positionals: [{ name: "action", description: "list | add | done | undone | update | move | rm", required: true }, { name: "title", description: "add: the title", required: false }],
-  options: [
-    ID,
-    { name: "all", property: "all", description: "list: completed ones too", type: "boolean" },
-    { name: "title", property: "new_title", description: "update: the new title", type: "string" },
-    { name: "status", property: "status", description: "add / update / move: the status (board column) option id", type: "string" },
-    { name: "due", property: "due", description: 'add / update: due date YYYY-MM-DD (update: "none" clears it)', type: "string" },
-    { name: "priority", property: "priority", description: "add / update: low | normal | high | urgent | none", type: "string", enum: ["low", "normal", "high", "urgent", "none"] },
-    { name: "before", property: "before", description: "add / move: place before this to-do id", type: "string" },
-    { name: "after", property: "after", description: "add / move: place after this to-do id", type: "string" },
-    { name: "ext", property: "ext", description: "add / update: extension fields JSON (merged on update; null removes a key)", type: "string" }
-  ],
-  inputSchema: {
-    type: "object",
-    properties: { action: { type: "string", enum: ["list", "add", "done", "undone", "update", "move", "rm"] }, title: { type: "string" }, id: { type: "string" }, all: { type: "boolean" }, new_title: { type: "string" }, status: { type: "string" }, due: { type: "string" }, priority: { type: "string" }, before: { type: "string" }, after: { type: "string" }, ext: { type: "string" } },
-    required: ["action"],
-    additionalProperties: false
-  },
-  outputSchema: OBJECT_OUTPUT$2,
-  resultSchemaVersion: 1,
-  access: { mode: "fixed", level: "write" },
-  asyncMode: "sync",
-  requiresSession: true,
-  examples: [
-    "buckyos aiws todo list",
-    'buckyos aiws todo add "Renew the passport" --due 2026-12-01 --priority high',
-    "buckyos aiws todo done --id t…",
-    "buckyos aiws todo move --id t… --status doing --before t…"
-  ],
-  handler: (ctx, input) => run(async () => {
-    const s = schedule(ctx);
-    const action = requiredInputString(input, "action");
-    const id = () => requiredInputString(input, "id");
-    const due = inputString(input, "due");
-    if (due && due !== "none" && !DATE.test(due))
-      throw new UsageError("AIWS_USAGE", "--due must be YYYY-MM-DD");
-    const priority = inputString(input, "priority");
-    switch (action) {
-      case "list": {
-        const handle = await s.ensure();
-        const items = await s.todos({ includeDone: input.all === true });
-        return { workspace_id: handle.workspace_id, table: handle.todo, items: items.map(todoView) };
-      }
-      case "add": {
-        const title = requiredInputString(input, "title");
-        const ext = { ...parseExt(input) ?? {}, ...priority && priority !== "none" ? { priority } : {} };
-        const item = await s.addTodo({ title, status: inputString(input, "status") ?? void 0, due: due && due !== "none" ? due : void 0, ext }, { before: inputString(input, "before") ?? void 0, after: inputString(input, "after") ?? void 0 });
-        return { item: todoView(item) };
-      }
-      case "done":
-      case "undone":
-        await s.completeTodo(id(), action === "done");
-        return { ok: true, id: id(), done: action === "done" };
-      case "update": {
-        const ext = parseExt(input);
-        const merge = { ...ext ?? {} };
-        if (priority)
-          merge.priority = priority === "none" ? null : priority;
-        await s.updateTodo(id(), { ...inputString(input, "new_title") ? { title: inputString(input, "new_title") } : {}, ...inputString(input, "status") ? { status: inputString(input, "status") } : {}, ...due ? { due: due === "none" ? null : due } : {}, ...Object.keys(merge).length ? { ext_merge: merge } : {} });
-        return { ok: true, id: id() };
-      }
-      case "move":
-        await s.moveTodo(id(), { status: inputString(input, "status") ?? void 0, before: inputString(input, "before") ?? void 0, after: inputString(input, "after") ?? void 0 });
-        return { ok: true, id: id() };
-      case "rm": {
-        const ids2 = id().split(",").map((x) => x.trim()).filter(Boolean);
-        await s.removeTodos(ids2);
-        return { ok: true, removed: ids2 };
-      }
-      default:
-        throw new UsageError("AIWS_USAGE", `todo: unknown action ${action}`);
-    }
-  })
-};
-const SCOPE = { name: "scope", property: "scope", description: "A repeating event: one (only this occurrence, default) | following (this and later) | all", type: "string", enum: ["one", "following", "all"] };
-const calCommand = {
-  verb: "cal",
-  summary: "Your calendar (the private schedule Workspace): list | add | update | rm | skip | postpone",
-  description: "Events are records of the table `calendar` in your Workspace named `schedule`. A repeating event has `ext.rrule` (iCalendar RRULE subset: FREQ DAILY/WEEKLY/MONTHLY/YEARLY, INTERVAL, COUNT or UNTIL, BYDAY with -1FR style ordinals, BYMONTHDAY, BYMONTH, BYSETPOS); `list` expands it and names each occurrence `<record_id>@<original start>` — pass that id to change, skip or postpone one occurrence. Rules the subset cannot express go to ext.rule_text with ext.occurrences written by you.",
-  positionals: [{ name: "action", description: "list | add | update | rm | skip | postpone", required: true }, { name: "title", description: "add: the title", required: false }],
-  options: [
-    { name: "id", property: "id", description: "Event id or occurrence id (`cal list` shows them)", type: "string" },
-    { name: "from", property: "from", description: "list: first day YYYY-MM-DD (default today)", type: "string" },
-    { name: "days", property: "days", description: "list: how many days (default 7, ≤ 366)", type: "integer" },
-    { name: "start", property: "start", description: "add / update: start, RFC 3339 instant (timed) or YYYY-MM-DD (all-day)", type: "string" },
-    { name: "end", property: "end", description: "add / update: end, same form as --start (all-day: the last day, inclusive)", type: "string" },
-    { name: "title", property: "new_title", description: "update: the new title", type: "string" },
-    { name: "rrule", property: "rrule", description: 'add / update: repeat rule, e.g. FREQ=WEEKLY;BYDAY=MO,WE ("none" stops repeating)', type: "string" },
-    { name: "tz", property: "tz", description: "add: the IANA time zone a series repeats in (default this machine’s)", type: "string" },
-    { name: "location", property: "location", description: "add / update: where", type: "string" },
-    { name: "reminder", property: "reminder", description: "add: minutes before to remind, comma separated (e.g. 10,1440)", type: "string" },
-    { name: "minutes", property: "minutes", description: "postpone: by how many minutes", type: "integer" },
-    { name: "ext", property: "ext", description: "add / update: extension fields JSON (merged on update; null removes a key)", type: "string" },
-    SCOPE
-  ],
-  inputSchema: {
-    type: "object",
-    properties: {
-      action: { type: "string", enum: ["list", "add", "update", "rm", "skip", "postpone"] },
-      title: { type: "string" },
-      id: { type: "string" },
-      from: { type: "string" },
-      days: { type: "integer" },
-      start: { type: "string" },
-      end: { type: "string" },
-      new_title: { type: "string" },
-      rrule: { type: "string" },
-      tz: { type: "string" },
-      location: { type: "string" },
-      reminder: { type: "string" },
-      minutes: { type: "integer" },
-      ext: { type: "string" },
-      scope: { type: "string", enum: ["one", "following", "all"] }
-    },
-    required: ["action"],
-    additionalProperties: false
-  },
-  outputSchema: OBJECT_OUTPUT$2,
-  resultSchemaVersion: 1,
-  access: { mode: "fixed", level: "write" },
-  asyncMode: "sync",
-  requiresSession: true,
-  examples: [
-    "buckyos aiws cal list --days 14",
-    'buckyos aiws cal add "Stand-up" --start 2026-11-16T09:00:00+08:00 --end 2026-11-16T09:15:00+08:00 --rrule "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR"',
-    'buckyos aiws cal add "Trip" --start 2026-11-20 --end 2026-11-22',
-    "buckyos aiws cal skip --id e…@2026-11-18T01:00:00.000Z",
-    "buckyos aiws cal update --id e…@2026-11-18T01:00:00.000Z --start 2026-11-18T10:00:00+08:00 --end 2026-11-18T10:15:00+08:00 --scope following"
-  ],
-  handler: (ctx, input) => run(async () => {
-    const s = schedule(ctx);
-    const action = requiredInputString(input, "action");
-    const tz = viewerTimeZone();
-    const scope = inputString(input, "scope") ?? "one";
-    const times = () => {
-      const start = inputString(input, "start"), end = inputString(input, "end");
-      if (!start && !end)
-        return void 0;
-      if (!start)
-        throw new UsageError("AIWS_USAGE", "--end needs --start");
-      if (DATE.test(start)) {
-        const last = end ?? start;
-        if (!DATE.test(last))
-          throw new UsageError("AIWS_USAGE", "an all-day event takes dates for --start and --end");
-        return { allDay: true, startDate: start, endDate: last };
-      }
-      const s0 = Date.parse(start);
-      const e0 = end ? Date.parse(end) : s0 + 36e5;
-      if (!Number.isFinite(s0) || !Number.isFinite(e0))
-        throw new UsageError("AIWS_USAGE", "--start / --end must be RFC 3339 instants with an offset (or dates for all-day)");
-      return { allDay: false, start: new Date(s0).toISOString(), end: new Date(e0).toISOString() };
-    };
-    switch (action) {
-      case "list": {
-        const handle = await s.ensure();
-        const from = inputString(input, "from") ?? localDate(Date.now(), tz);
-        if (!DATE.test(from))
-          throw new UsageError("AIWS_USAGE", "--from must be YYYY-MM-DD");
-        const days = typeof input.days === "number" ? Math.max(1, Math.min(366, input.days)) : 7;
-        const fromMs = Date.parse(`${from}T00:00:00Z`) - 14 * 36e5;
-        const window = { fromMs, toMs: fromMs + days * 864e5 + 28 * 36e5 };
-        const rows = await s.rows(handle.calendar);
-        const last = localDate(Date.parse(`${from}T12:00:00Z`) + (days - 1) * 864e5, "UTC");
-        const occ = calendarOccurrences(rows, window, { viewerTz: tz }).filter((o) => o.allDay ? o.endDate >= from && o.startDate <= last : localDate(o.endMs, tz) >= from && localDate(o.startMs, tz) <= last);
-        return { workspace_id: handle.workspace_id, table: handle.calendar, from, days, time_zone: tz, events: occ.map(eventView) };
-      }
-      case "add": {
-        const title = requiredInputString(input, "title");
-        const t = times();
-        if (!t)
-          throw new UsageError("AIWS_USAGE", "add needs --start");
-        const ext = { ...parseExt(input) ?? {} };
-        const rrule = inputString(input, "rrule");
-        if (rrule && rrule !== "none") {
-          ext.rrule = rrule;
-          ext.tz = inputString(input, "tz") ?? tz;
-        }
-        const location = inputString(input, "location");
-        if (location)
-          ext.location = location;
-        const reminder = inputString(input, "reminder");
-        if (reminder)
-          ext.reminders = reminder.split(",").map((m) => ({ before_min: Number(m.trim()) })).filter((r) => Number.isFinite(r.before_min));
-        const id = await s.addEvent(t.allDay ? { title, all_day: true, start_date: t.startDate, end_date: t.endDate, ext } : { title, start: t.start, end: t.end, ext });
-        return { ok: true, id };
-      }
-      case "update": {
-        const change = {};
-        const t = times();
-        if (t)
-          change.times = t;
-        const title = inputString(input, "new_title");
-        if (title)
-          change.values = { title };
-        const merge = { ...parseExt(input) ?? {} };
-        const location = inputString(input, "location");
-        if (location !== void 0 && location !== null)
-          merge.location = location || null;
-        if (Object.keys(merge).length)
-          change.ext_merge = merge;
-        const rrule = inputString(input, "rrule");
-        if (rrule)
-          change.rrule = rrule === "none" ? null : rrule;
-        const id = await s.editEvent(requiredInputString(input, "id"), change, scope);
-        return { ok: true, id };
-      }
-      case "rm":
-        await s.deleteEvent(requiredInputString(input, "id"), scope);
-        return { ok: true };
-      case "skip":
-        await s.deleteEvent(requiredInputString(input, "id"), "one");
-        return { ok: true };
-      case "postpone": {
-        const minutes = typeof input.minutes === "number" ? input.minutes : 0;
-        if (minutes <= 0)
-          throw new UsageError("AIWS_USAGE", "postpone needs --minutes");
-        const { occ } = await s.occurrence(requiredInputString(input, "id"));
-        const change = occ.allDay ? { times: { allDay: true, startDate: shiftDate(occ.startDate, Math.max(1, Math.round(minutes / 1440))), endDate: shiftDate(occ.endDate, Math.max(1, Math.round(minutes / 1440))) } } : { times: { allDay: false, start: new Date(occ.startMs + minutes * 6e4).toISOString(), end: new Date(occ.endMs + minutes * 6e4).toISOString() } };
-        const id = await s.editEvent(requiredInputString(input, "id"), change, "one");
-        return { ok: true, id };
-      }
-      default:
-        throw new UsageError("AIWS_USAGE", `cal: unknown action ${action}`);
-    }
-  })
-};
-function shiftDate(date, days) {
-  return new Date(Date.parse(`${date}T00:00:00Z`) + days * 864e5).toISOString().slice(0, 10);
 }
 const OBJECT_OUTPUT$1 = { type: "object", additionalProperties: true };
 const SERVICE$1 = "aiworkspace";
@@ -15051,9 +14861,9 @@ const runExecCommand = {
   requiresSession: true,
   examples: ["buckyos aiws run-exec --workspace ws_abc --run run_xyz --attempt 1 --dir work"],
   handler: async (ctx, input) => {
-    const run2 = await execMacro(ctx, input);
-    const r = run2.results ?? {};
-    return { exit_code: run2.code, error: r.error ?? null, error_code: r.error_code ?? null, ai: r.ai ?? null, declare: r.declare ?? null, log: run2.log };
+    const run = await execMacro(ctx, input);
+    const r = run.results ?? {};
+    return { exit_code: run.code, error: r.error ?? null, error_code: r.error_code ?? null, ai: r.ai ?? null, declare: r.declare ?? null, log: run.log };
   }
 };
 const runProgramCommand = {
@@ -15071,7 +14881,7 @@ const runProgramCommand = {
   handler: async (ctx, input) => {
     const host2 = getHost();
     const dir = host2.path.resolve(ctx.cwd, requiredInputString(input, "dir"));
-    const run2 = await execMacro(ctx, input);
+    const run = await execMacro(ctx, input);
     const files = {};
     const walk = async (rel) => {
       for (const entry of await host2.readDir(`${dir}/output${rel ? `/${rel}` : ""}`)) {
@@ -15093,7 +14903,7 @@ const runProgramCommand = {
       }
     };
     await walk("");
-    return aiws(ctx, "proc.program", { workspace_id: requiredInputString(input, "workspace_id"), run_id: requiredInputString(input, "run_id"), attempt: input.attempt, source: run2.source, results: run2.results, log: run2.log, files });
+    return aiws(ctx, "proc.program", { workspace_id: requiredInputString(input, "workspace_id"), run_id: requiredInputString(input, "run_id"), attempt: input.attempt, source: run.source, results: run.results, log: run.log, files });
   }
 };
 const runStartCommand = {
@@ -15332,9 +15142,9 @@ function assetFetcher(ctx) {
     return new Uint8Array(await response.arrayBuffer());
   };
 }
-async function sourceErrors(run2) {
+async function sourceErrors(run) {
   try {
-    return await run2();
+    return await run();
   } catch (error) {
     if (error instanceof AiwsSourceError)
       throw new ToolError("BUILD_FAILED", `BUILD_FAILED: ${error.message}`, void 0, false, { data: { diagnostics: error.diagnostics } });
@@ -15920,11 +15730,25 @@ const templateCommand = {
     return aiws(ctx, "ext.create_from_template", { pkg_id, template_id, ...title ? { title } : {}, ...params ? { params } : {} });
   }
 };
+const selectNameCommand = {
+  verb: "select-name",
+  summary: "Choose the workspace that keeps a conflicting personal name",
+  positionals: [{ name: "name", description: "Conflicting workspace name", required: true }],
+  options: [WORKSPACE_OPTION],
+  inputSchema: workspaceInput({ name: { type: "string", minLength: 1 } }, ["name"]),
+  outputSchema: OBJECT_OUTPUT,
+  resultSchemaVersion: 1,
+  access: WRITE_ACCESS,
+  asyncMode: "sync",
+  requiresSession: true,
+  examples: ["buckyos aiws select-name schedule --workspace ws_2611a123"],
+  handler: (ctx, input) => aiws(ctx, "ws.select_name", input)
+};
 function createAiwsModule() {
   return {
     name: "aiws",
-    summary: "AI Workspace: find and read a workspace by path (ls, find, grep, stat, cat, resolve, read), its permissions (acl, acl-edit), query its tables in SQL (sql), write tables, rich text and common properties (table, text, mv, rename, set-prop), your to-do list and calendar (todo, cal), Block-controls (catalogue, import, export), extension controls (build, pull, export, library, import, upgrade), Workspace templates (list, create, export), and execute wish runs as their executor (claim, heartbeat, report) or roll one back",
-    commands: [infoCommand, lsCommand, findCommand, grepCommand, statCommand, aclCommand, aclEditCommand, catCommand, resolveCommand, readCommand, sqlCommand, tableCommand, textCommand, mvCommand, renameCommand, setPropCommand, todoCommand, calCommand, placeCommand, controlsCommand, importCommand, exportCommand, buildCommand, pullCommand, extExportCommand, libraryCommand, extImportCommand, extUpgradeCommand, templateCommand, runGetCommand, runClaimCommand, runHeartbeatCommand, runFilesCommand, runToolCommand, runExecCommand, runProgramCommand, runReportCommand, runRollbackCommand, runStartCommand]
+    summary: "AI Workspace: find and read a workspace by path (ls, find, grep, stat, cat, resolve, read), its permissions (acl, acl-edit), query its tables in SQL (sql), write tables, rich text and common properties (table, text, mv, rename, set-prop), resolve conflicting workspace names (select-name), Block-controls (catalogue, import, export), extension controls (build, pull, export, library, import, upgrade), Workspace templates (list, create, export), and execute wish runs as their executor (claim, heartbeat, report) or roll one back",
+    commands: [infoCommand, selectNameCommand, lsCommand, findCommand, grepCommand, statCommand, aclCommand, aclEditCommand, catCommand, resolveCommand, readCommand, sqlCommand, tableCommand, textCommand, mvCommand, renameCommand, setPropCommand, placeCommand, controlsCommand, importCommand, exportCommand, buildCommand, pullCommand, extExportCommand, libraryCommand, extImportCommand, extUpgradeCommand, templateCommand, runGetCommand, runClaimCommand, runHeartbeatCommand, runFilesCommand, runToolCommand, runExecCommand, runProgramCommand, runReportCommand, runRollbackCommand, runStartCommand]
   };
 }
 const VERSION = TOOL_VERSION;
@@ -16182,6 +16006,8 @@ class BuckyOSToolApplication {
           9
         );
       }
+      if (command2.module === "obj" && command2.verb === "call")
+        return data.exit_code;
       const envelope = successEnvelope(data, {
         command: `${command2.module}.${command2.verb}`,
         trace_id: traceId,

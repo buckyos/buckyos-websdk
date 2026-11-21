@@ -1,6 +1,6 @@
 {
   "name": "buckyos",
-  "version": "0.7.195",
+  "version": "0.7.196",
   "description": "BuckyOS WebSDK for browser and Node.js environments",
   "license": "Apache-2.0",
   "repository": {
@@ -120,7 +120,7 @@
     "NOTICE"
   ],
   "scripts": {
-    "build": "node scripts/clean-build.mjs all && node scripts/generate-cli-version.mjs && vite build && tsc -p tsconfig.build.json && vite build --config vite.cli.config.ts",
+    "build": "node scripts/clean-build.mjs all && node scripts/generate-cli-version.mjs && vite build && tsc -p tsconfig.build.json && vite build --config vite.cli.config.ts && node scripts/build-owner-extensions.mjs",
     "types": "node scripts/clean-build.mjs sdk && tsc -p tsconfig.build.json",
     "build:all": "pnpm run build",
     "dev": "vite",

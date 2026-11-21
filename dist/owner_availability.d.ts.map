@@ -1,0 +1,1 @@
+{"version":3,"file":"owner_availability.d.ts","sourceRoot":"","sources":["../src/owner_availability.ts"],"names":[],"mappings":"AAAA,OAAO,EAAuB,KAAK,OAAO,EAAE,MAAM,iBAAiB,CAAA;AAInE,wBAAgB,QAAQ,CAAC,KAAK,EAAE;IAAE,IAAI,EAAE,OAAO,EAAE,CAAC;IAAC,IAAI,EAAE,MAAM,CAAC;IAAC,EAAE,EAAE,MAAM,CAAC;IAAC,EAAE,CAAC,EAAE,MAAM,CAAC;IAAC,SAAS,CAAC,EAAE,OAAO,CAAA;CAAE;;;;;;EAoD9G"}
