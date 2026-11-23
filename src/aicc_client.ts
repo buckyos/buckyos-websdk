@@ -485,8 +485,8 @@ export interface UsageQueryFilters { tenant_ids?: string[]; user_ids?: string[];
   provider_instance_query?: string; capabilities?: string[]; task_ids?: string[]; idempotency_keys?: string[]; methods?: string[] }
 export type UsageQueryGroup = 'provider_model' | 'provider_instance_name' | 'request_model' | 'method' | 'capability' |
   'caller_app_id' | 'user_id' | 'tenant_id'
-export interface QueryUsageRequest { time_range: UsageQueryTimeRange; filters?: UsageQueryFilters; group_by?: UsageQueryGroup[];
-  time_bucket?: 'five_minutes' | 'hour' | 'day'; output_mode?: 'summary' | 'events' | 'summary_and_events'; limit?: number; cursor?: string;
+export interface QueryUsageRequest { time_range: UsageQueryTimeRange; filters?: UsageQueryFilters; group_by?: UsageQueryGroup[]; group_limit?: number; group_offset?: number;
+  time_bucket?: 'five_minutes' | 'hour' | 'day'; output_mode?: 'summary' | 'events' | 'page' | 'groups' | 'summary_and_events'; limit?: number; cursor?: string;
   /** Admins only: every user of the Zone instead of the caller alone. */
   zone_wide?: boolean }
 export interface UsageDimensionAggregate { amount: number; reported_events: number }
