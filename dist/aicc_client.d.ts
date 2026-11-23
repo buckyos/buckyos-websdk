@@ -1509,8 +1509,10 @@ export interface QueryUsageRequest {
     time_range: UsageQueryTimeRange;
     filters?: UsageQueryFilters;
     group_by?: UsageQueryGroup[];
+    group_limit?: number;
+    group_offset?: number;
     time_bucket?: 'five_minutes' | 'hour' | 'day';
-    output_mode?: 'summary' | 'events' | 'summary_and_events';
+    output_mode?: 'summary' | 'events' | 'page' | 'groups' | 'summary_and_events';
     limit?: number;
     cursor?: string;
     /** Admins only: every user of the Zone instead of the caller alone. */
