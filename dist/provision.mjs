@@ -15001,9 +15001,7 @@ async function generateMaterial(params, adminPassword, ownerKeyPair, deviceKeyPa
     admin_password_hash: hashAdminPassword(params.ownerName, adminPassword),
     guest_access: params.guestAccess,
     friend_passcode: "",
-    enabled_features: {},
-    ai_provider_config: {},
-    owner_telegram_account_id: ""
+    enabled_features: {}
   };
   return {
     documentIat: now,

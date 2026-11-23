@@ -1311,8 +1311,6 @@ async function generateMaterial(
     guest_access: params.guestAccess,
     friend_passcode: '',
     enabled_features: {},
-    ai_provider_config: {},
-    owner_telegram_account_id: '',
   }
 
   return {
