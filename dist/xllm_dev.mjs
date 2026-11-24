@@ -1,5 +1,5 @@
-import { m as cloneJson, L as LLMComputeException } from "./aicc-67851c41.mjs";
-import { O, m, o } from "./openai-ae2978de.mjs";
+import { m as cloneJson, L as LLMComputeException } from "./aicc-732de5a5.mjs";
+import { O, m, o } from "./openai-98057453.mjs";
 import "./krpc_client-673448e5.mjs";
 class ScriptedLlmClient {
   constructor(script, options = {}) {

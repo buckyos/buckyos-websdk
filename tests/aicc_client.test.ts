@@ -1,3 +1,5 @@
+import { aiccProviderFailure, providerErrorFromRpc } from '../src/xllm/providers/aicc'
+import { classifyError } from '../src/xllm/core/run'
 import { kRPCClient } from '../src/krpc_client'
 import {
   AICC_AI_METHODS,
@@ -430,3 +432,24 @@ describe('video.generate protocol', () => {
     expect(() => validateVideoGeneration({ prompt: 'a', conditions: [{ type: 'keyframe', id: 'a', position: 'middle', resource: { kind: 'url', url: 'https://example.test/a.png' } } as never] })).toThrow()
   })
 })
+
+test('no candidate is classified distinctly from resource permission and quota refusals', () => {
+  for (const code of ['no_candidate_model', 'resource_not_permitted', 'quota_exhausted'] as const) {
+    expect(aiccProviderFailure({ code })).toEqual({ refused: { code } })
+  }
+})
+
+test.each(['no_candidate_model', 'resource_not_permitted'] as const)(
+  '%s survives kRPC transport and stops xllm with its own recovery condition', async (code) => {
+    const fetcher = jest.fn(async () => new Response(JSON.stringify({
+      error: 'request cannot be served', code, data: { code, message: 'request cannot be served' }, sys: [1],
+    })))
+    const client = new AiccClient(new kRPCClient('/kapi/aicc/', null, 1, { fetcher }))
+    const error = await client.helperLlmChat({ logical_model: 'llm.chat', messages: [] }).catch((e: unknown) => e)
+    const classified = providerErrorFromRpc('chat failed', error)
+    expect(classified.error).toMatchObject({ kind: 'provider', failure: { refused: { code } } })
+    const record = classifyError(classified.error)
+    expect(record).toMatchObject({ kind: code, recoverable: false })
+    expect(record.condition).toContain(code === 'no_candidate_model' ? 'inventory' : 'administrator')
+  },
+)
