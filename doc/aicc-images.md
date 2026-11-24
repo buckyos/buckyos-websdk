@@ -4,7 +4,7 @@
 
 ```ts
 await client.imageToImage({
-  exact_model: 'gemini-image@my-provider',
+  exact_model: 'gemini-3.1-flash-image@my-provider',
   images: [reference],
   prompt: 'Keep the subject, change the background to a garden',
   aspect_ratio: '16:9',
@@ -12,6 +12,8 @@ await client.imageToImage({
   output: { size: '2K', media_type: 'image/jpeg' },
 })
 ```
+
+示例中的 `reference` 为已有资源引用；`exact_model` 应替换为 `models.list` 返回的实际模型与实例。
 
 比例使用两边为 1–100 的 `W:H`。显式像素尺寸与比例冲突时客户端拒绝发送。1K/2K/4K 是渠道相关档位，不能用于任意模型。
 
