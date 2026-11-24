@@ -238,16 +238,24 @@ export declare class SelectEmbedHost {
 export declare const CONVERSATION_EMBED_PATH = "/embed/conversation";
 /**
  * `agent`: the conversation with this Agent (the owner's default Agent when `agentDid` is left out) that this App
- * started; without one, the first message starts it. `session`: an existing conversation, when the system allows
- * this App to open it.
+ * started; without one, the first message starts it. With a `memoryMode`, only a conversation in that mode counts, and
+ * the one the first message starts has it (`normal` when left out). `session`: an existing conversation, when the
+ * system allows this App to open it.
  */
 export type ConversationEmbedTarget = {
     kind: 'agent';
     agentDid?: string;
+    memoryMode?: ConversationMemoryMode;
 } | {
     kind: 'session';
     sessionId: string;
 };
+/**
+ * Whether what is said in a conversation with an Agent, and what the work it starts finds, reaches the Agent's
+ * long-term memory (`no_write`: it does not), and whether that memory reaches the conversation (`no_read_write`:
+ * neither way).
+ */
+export type ConversationMemoryMode = 'normal' | 'no_write' | 'no_read_write';
 export interface ConversationEmbedInit {
     nonce: string;
     target: ConversationEmbedTarget;
