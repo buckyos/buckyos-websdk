@@ -28,6 +28,7 @@ import { AiccClient } from './aicc_client'
 import { MsgQueueClient } from './msg_queue_client'
 import { MsgCenterClient } from './msg_center_client'
 import { RepoClient } from './repo_client'
+import { getRuntimeEnvironment } from './runtime_env'
 import {
   KEventClient,
   KEvent,
@@ -967,6 +968,7 @@ export function createSDKModule(target: SDKTarget) {
       AuthClient,
       ...api,
       hashPassword,
+      getRuntimeEnvironment,
     },
   }
 }
@@ -1015,6 +1017,8 @@ export {
   NOTIFY_ACTION_ANSWER,
   NOTIFY_ACTION_DISMISS,
   NOTIFY_LINK_PATH,
+  NOTIFY_ERR_NOT_DECLARED,
+  NOTIFY_ERR_DISABLED,
   isNotifyClosed,
   notifyCategorySessionId,
   notifyCategoryFromSessionId,
@@ -1087,6 +1091,8 @@ export type {
   NotifyView,
   NotifyListReq,
   NotifyListResult,
+  NotifySummary,
+  NotifyApp,
   NotifyMessageData,
   NotifyDeliveredData,
   NotifyAnswer,

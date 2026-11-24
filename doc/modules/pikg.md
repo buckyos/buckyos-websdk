@@ -88,6 +88,7 @@ Agent 模板没有独立 init kind，参考 [Jarvis 元数据](https://github.co
 | `permissions` | 缺省 `[]`；条目和授权语义见 [App 包配置](https://github.com/buckyos/buckyos/blob/main/doc/sdk/app-package-config.md) |
 | `content_handlers` | 可选；打包时校验，与 App permissions 一起处理 |
 | `presentation` | 可选，原样进入 AppDoc；完整字段和图标示例见下文。 |
+| `window` | 可选，窗口声明，原样进入 AppDoc（不补缺省值）；字段见下文。 |
 | `service_config_tips` | 缺省 `{}`；端点、挂载、数据库等字段见 [App 包配置](https://github.com/buckyos/buckyos/blob/main/doc/sdk/app-package-config.md) |
 
 根对象严格拒绝未知字段。不得手工加入 `pkg_list/pkg_id/pkg_objid`、PackageMeta、payload size/digest、Object ID、签名、`deps` 或 `source_url`。这些派生内容由 build 构造。build 不改写两个开发输入文件。
@@ -108,6 +109,22 @@ Agent 模板没有独立 init kind，参考 [Jarvis 元数据](https://github.co
 ```
 
 Desktop 使用 `links.app_icon_url`，支持 HTTPS 地址、小图片 data URL，或在应用有 Web 地址时使用相对路径。`./icon.svg` 相对于应用的 Web 地址，文件需要随应用提供；`/icon.svg` 则相对于 Desktop 所在站点。网页 favicon 不会自动成为应用图标。此元数据控制应用的展示图标，不会自动在 Desktop 创建快捷方式。
+
+`window` 声明 Desktop 和 BuckyOS 客户端怎样显示应用的窗口，字段都可以不写，缺省值如下：
+
+```json
+"window": {
+  "instance": "single",
+  "default_mode": "windowed",
+  "width": 960, "height": 640, "min_width": 420, "min_height": 280,
+  "resizable": true,
+  "allow_minimize": true,
+  "allow_maximize": true,
+  "mobile_header": "standard"
+}
+```
+
+`instance` 为 `single`（应用只有一个窗口）或 `multi`（按窗口路径多开）；`default_mode` 为 `windowed` 或 `maximized`；四个尺寸是 1 到 16384 的整数，没有缺省值，最小尺寸不能大于对应的尺寸；`resizable: false` 是固定大小；`mobile_header` 为 `standard`（固定底色）或 `compact`（浮在应用上面）。未知字段和非法值会在 build 时拒绝。打开规则见 [SDK 说明](../../SDK.md#打开应用)。
 
 ## 4. `dapp_meta/pikg.json`
 

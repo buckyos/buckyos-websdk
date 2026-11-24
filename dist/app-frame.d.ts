@@ -1,4 +1,6 @@
 import { type ContentHints, type ContentOpenTarget, type OpenRequest, type SelectDialogParams, type SelectDialogResult, type SystemDialogErrorCode, type TransferableContentRef, type TransferableSessionContext } from './content';
+import { type AppOpenRequest } from './open_app';
+import { type RuntimeContainer } from './runtime_env';
 export type SystemDialogReply = {
     ok: true;
     result: unknown;
@@ -25,36 +27,113 @@ export interface FrameInit {
     locale: string;
     launch?: OpenRequest;
     shellCapabilities: string[];
+    /** `tab`: the App fills a tab of the host, which has its own navigation, so the App leaves out its outer one. */
+    presentation?: 'window' | 'tab';
+    container?: RuntimeContainer;
 }
 export type CloseDecision = 'allow' | 'deny' | 'pending';
+export type AppOpenErrorCode = 'not_found' | 'denied' | 'unsupported';
+export type AppOpenReply = {
+    ok: true;
+} | {
+    ok: false;
+    code: AppOpenErrorCode;
+};
+export interface HeaderItem {
+    id: string;
+    label: string;
+    active?: boolean;
+}
+/** `icon`: the name of an icon, or the address of an image. */
+export interface HeaderMenuItem {
+    id: string;
+    label: string;
+    icon?: string;
+    danger?: boolean;
+}
+/**
+ * What an App puts into the header the host draws above it (mobile containers; elsewhere it is ignored). A field left
+ * out keeps its value; an empty list, or `null` for the search, removes it.
+ */
+export interface HeaderState {
+    title?: string;
+    /** A second row below the title, such as tabs. Only a `standard` header has room for it. */
+    second_row?: HeaderItem[];
+    search?: {
+        placeholder?: string;
+        value?: string;
+    } | null;
+    menu?: HeaderMenuItem[];
+    /** Whether the back button applies inside the App; pressing it arrives as `frame.back`. */
+    back?: boolean;
+}
+/** `search`: `value` is the text; `item` and `menu`: `id` is the entry that was chosen. */
+export interface HeaderEvent {
+    kind: 'search' | 'item' | 'menu';
+    id?: string;
+    value?: string;
+}
+/**
+ * A channel to one peer that the platform has already identified. The native client's bridge is one: it knows which
+ * view a message comes from, so there is no origin to check.
+ */
+export interface AppFrameTransport {
+    post(message: AppFrameMessage): void;
+    onMessage(cb: (message: unknown) => void): () => void;
+}
+export interface AppFrameHostCallbacks {
+    onReady?: () => void;
+    onTitle?: (title: string, dirty: boolean) => void;
+    onRequestClose?: () => void;
+    onContentOpen?: (request: OpenRequest, target: ContentOpenTarget, options: {
+        newWindow: boolean;
+        hints: ContentHints;
+    }) => void;
+    /** Opens another App, or a page of one (`app.open`). Without a `zone` the request is for the App's own Zone. */
+    onAppOpen?: (request: AppOpenRequest) => Promise<AppOpenReply> | AppOpenReply;
+    /** The header the App wants now (`header.set`), with everything it set so far. */
+    onHeader?: (header: HeaderState) => void;
+    /** Shows a system dialog the App asked for (`sysdlg.open`). `params` is untrusted input: validate it. */
+    onSystemDialog?: (path: string, params: unknown) => Promise<SystemDialogReply>;
+}
+/**
+ * `target` and `origin`: the App runs in a frame of this page, opened with `#bfp=<init.nonce>`. `transport`: the
+ * platform connects this host to the App's view; the App picks the nonce and the host answers with it.
+ */
+export type AppFrameHostOptions = AppFrameHostCallbacks & ({
+    target: () => Window | null;
+    origin: string;
+    init: FrameInit;
+    transport?: undefined;
+} | {
+    transport: AppFrameTransport;
+    init: Omit<FrameInit, 'nonce'>;
+    target?: undefined;
+    origin?: undefined;
+});
 export declare class AppFrameHost {
-    private options;
     ready: boolean;
     capabilities: string[];
+    header: HeaderState;
+    private init;
+    private readonly framed;
+    private readonly channel;
+    private readonly detach;
+    private readonly callbacks;
     private pending;
-    private listener;
     private opens;
-    constructor(options: {
-        target: () => Window | null;
-        origin: string;
-        init: FrameInit;
-        onReady?: () => void;
-        onTitle?: (title: string, dirty: boolean) => void;
-        onRequestClose?: () => void;
-        onContentOpen?: (request: OpenRequest, target: ContentOpenTarget, options: {
-            newWindow: boolean;
-            hints: ContentHints;
-        }) => void;
-        /** Shows a system dialog the App asked for (`sysdlg.open`). `params` is untrusted input: validate it. */
-        onSystemDialog?: (path: string, params: unknown) => Promise<SystemDialogReply>;
-    });
+    constructor(options: AppFrameHostOptions);
     private focused?;
     private dialogOpen;
+    private limited;
+    private appOpen;
     private systemDialog;
     private receive;
     update(init: Partial<FrameInit>): void;
     /** Reports whether the App's window is the focused one; only a change is sent. */
     setFocused(focused: boolean): void;
+    /** Tells the App what happened in the header the host draws for it. */
+    headerEvent(event: HeaderEvent): void;
     send(type: string, payload: unknown): void;
     request(type: string, payload: unknown, timeout?: number): Promise<unknown>;
     open(request: OpenRequest): Promise<{
@@ -63,11 +142,14 @@ export declare class AppFrameHost {
     }>;
     beforeClose(reason?: 'user' | 'logout' | 'shell'): Promise<CloseDecision>;
     back(): Promise<boolean>;
+    private failPending;
     dispose(): void;
 }
 /**
  * Origin of the window embedding this page, when `accept` admits it. `location.ancestorOrigins` names the real
  * parent even after the frame navigated through other pages (a sign-in round trip); the referrer is the fallback.
+ * In the BuckyOS client the page is the top document and its host is the client itself, reached over the bridge: the
+ * answer is the page's own origin, so that code which connects only when it is embedded connects there too.
  */
 export declare function embedderOrigin(accept: (origin: string) => boolean): string | null;
 export declare const originInZone: (origin: string, zoneHost: string) => boolean;
@@ -78,10 +160,14 @@ export declare class AppFrameClient {
     private focused?;
     private helloTimer?;
     private helloDeadline?;
+    private header;
     private readonly nonce;
-    private readonly origin;
-    private readonly listener;
+    /** The page is a top document of the BuckyOS client: its host is reached over the bridge. */
+    private readonly native;
+    private readonly channel;
+    private readonly detach;
     private dialogs;
+    private appOpens;
     private embedAbort?;
     constructor(options: {
         shellOrigin: string;
@@ -102,15 +188,25 @@ export declare class AppFrameClient {
         onTheme?: (theme: FrameInit['theme']) => void;
         onLocale?: (locale: string) => void;
         onFocus?: (focused: boolean) => void;
+        /** The user used the header this App set with `setHeader`. */
+        onHeaderEvent?: (event: HeaderEvent) => void;
     });
     private receive;
     send(type: string, payload: unknown): void;
     setTitle(title: string, dirty?: boolean): void;
     requestClose(): void;
+    /** Sets what the host shows in the header above this App. It may be called before the handshake. */
+    setHeader(header: HeaderState): void;
+    /**
+     * Opens another App, or a page of one, in this App's Zone (or in `zone`). The host decides between a new window and
+     * an open one. In a standalone tab it opens the Zone's system entry (`systemOrigin`) in a new tab, which only reaches
+     * this App's own Zone. Never rejects.
+     */
+    openApp(request: AppOpenRequest): Promise<AppOpenReply>;
     /**
      * Asks the system to open content: with its default app, in Preview, or by letting the user choose (`chooser`).
-     * Embedded in the shell the request goes over the frame; in a standalone tab it opens the Zone's system entry
-     * (`systemOrigin`) in a new tab. Returns false when neither is available.
+     * Inside the shell or the BuckyOS client the request goes to the host; in a standalone tab it opens the Zone's system
+     * entry (`systemOrigin`) in a new tab. Returns false when neither is available.
      */
     openContent(request: Omit<OpenRequest, 'requestId'>, target?: ContentOpenTarget, options?: {
         newWindow?: boolean;
@@ -119,8 +215,9 @@ export declare class AppFrameClient {
     /**
      * Shows the system file picker (`sysdlg/select`) and resolves with what the user chose; cancelling resolves with
      * `{ action: 'cancelled' }`. Embedded in the shell the shell draws the dialog over this App's window; in a
-     * standalone tab the picker page of the Zone's system entry (`systemOrigin`) is framed over this page. Rejects
-     * with a `SystemDialogError` when no picker is available or the request did not complete.
+     * standalone tab, and in the BuckyOS client unless it lists the dialog, the picker page of the Zone's system entry
+     * (`systemOrigin`) is framed over this page. Rejects with a `SystemDialogError` when no picker is available or the
+     * request did not complete.
      */
     selectContent(params?: SelectDialogParams, options?: {
         signal?: AbortSignal;

@@ -764,6 +764,31 @@ describe('System Notify', () => {
     expect(isNotifyClosed(view.status)).toBe(true)
   })
 
+  it('notifySummary returns the counts and refuses a malformed answer', async () => {
+    const wire = { notify: { open: 3, todo: 1, agent: 0, app: 2 }, messages: { unread: 7 } }
+    const fetcher = jest.fn()
+      .mockResolvedValueOnce(makeResponse({ ...wire, later: 1 }, 1))
+      .mockResolvedValueOnce(makeResponse({ ...wire, messages: {} }, 2))
+    const client = new MsgCenterClient(new kRPCClient('/kapi/msg-center/', null, 1, { fetcher }))
+
+    expect(await client.notifySummary()).toEqual(wire)
+    expect(bodyOf(fetcher)).toEqual({ method: 'notify.summary', params: {}, sys: [1] })
+    await expect(client.notifySummary()).rejects.toThrow('Invalid NotifySummary')
+  })
+
+  it('lists and switches the Apps that may notify', async () => {
+    const app = { app_instance_id: 'notes.example.bns.did@alice', app_id: 'notes.example.bns.did', owner_user_id: 'alice', installed: true, declared: true, enabled: true }
+    const fetcher = jest.fn()
+      .mockResolvedValueOnce(makeResponse({ apps: [app] }, 1))
+      .mockResolvedValueOnce(makeResponse({ ...app, enabled: false }, 2))
+    const client = new MsgCenterClient(new kRPCClient('/kapi/msg-center/', null, 1, { fetcher }))
+
+    expect(await client.notifyListApps()).toEqual([app])
+    expect((await client.notifySetApp(app.app_instance_id, false)).enabled).toBe(false)
+    expect(bodyOf(fetcher, 0)).toEqual({ method: 'notify.list_apps', params: {}, sys: [1] })
+    expect(bodyOf(fetcher, 1)).toEqual({ method: 'notify.set_app', params: { app_instance_id: app.app_instance_id, enabled: false }, sys: [2] })
+  })
+
   it('notify get/list/ack/dismiss/cancel send the Rust request shapes', async () => {
     const open = { ...VIEW_WIRE, status: 'open', result: undefined }
     const fetcher = jest.fn()

@@ -44,6 +44,7 @@ import {
   rejectUnknown,
   stableJsonDigest,
   validateAppPresentation,
+  validateAppWindow,
   validateContentHandlers,
   validatePermissions,
   validateServiceConfigTips,
@@ -116,6 +117,7 @@ interface AppMeta {
   categories: string[]
   permissions: unknown[]
   content_handlers?: unknown[]
+  window?: Record<string, unknown>
   selector_type: string
   service_config_tips: Record<string, unknown>
 }
@@ -1203,6 +1205,7 @@ async function buildCommand(
       ...(appMeta.presentation ? { presentation: appMeta.presentation } : {}),
       ...(appMeta.permissions.length ? { permissions: appMeta.permissions } : {}),
       ...(appMeta.content_handlers?.length ? { content_handlers: appMeta.content_handlers } : {}),
+      ...(appMeta.window ? { window: appMeta.window } : {}),
       selector_type: appMeta.selector_type,
       service_config_tips: appMeta.service_config_tips,
     }
@@ -1380,6 +1383,7 @@ function parseAppMeta(value: Record<string, unknown>): AppMeta {
       'categories',
       'permissions',
       'content_handlers',
+      'window',
       'selector_type',
       'service_config_tips',
     ],
@@ -1433,6 +1437,9 @@ function parseAppMeta(value: Record<string, unknown>): AppMeta {
       content_handlers: developmentValidation(() =>
         validateContentHandlers(value.content_handlers, permissions)
       ),
+    }),
+    ...(value.window === undefined ? {} : {
+      window: developmentValidation(() => validateAppWindow(value.window, 'app.json.window')),
     }),
     selector_type: developmentString(value.selector_type, 'app.json.selector_type'),
     service_config_tips: serviceConfig,

@@ -1294,6 +1294,7 @@ export function validateAppDocShape(appDoc: Record<string, unknown>): void {
       'req_capbilities',
       'permissions',
       'content_handlers',
+      'window',
       'selector_type',
       'service_config_tips',
     ],
@@ -1366,6 +1367,7 @@ export function validateAppDocShape(appDoc: Record<string, unknown>): void {
   if (appDoc.content_handlers !== undefined && !Array.isArray(appDoc.content_handlers)) {
     throw invalid('appdoc', 'APPDOC.content_handlers must be an array')
   }
+  if (appDoc.window !== undefined) validateAppWindow(appDoc.window, 'APPDOC.window')
   validateServiceConfigTips(appDoc.service_config_tips, 'APPDOC.service_config_tips')
   const pkgList = expectObject(appDoc.pkg_list, 'APPDOC.pkg_list')
   if (Object.keys(pkgList).length === 0) {
@@ -1617,6 +1619,41 @@ function invalid(stage: string, message: string, entry?: string): ToolError {
 
 export function stableJsonDigest(value: unknown): string {
   return sha256Bytes(new TextEncoder().encode(ndn.toCanonicalJsonString(value)))
+}
+
+const APP_WINDOW_CHOICES: Record<string, readonly string[]> = {
+  instance: ['single', 'multi'],
+  default_mode: ['windowed', 'maximized'],
+  mobile_header: ['standard', 'compact'],
+}
+const APP_WINDOW_SIZES = ['width', 'height', 'min_width', 'min_height']
+const APP_WINDOW_FLAGS = ['resizable', 'allow_minimize', 'allow_maximize']
+const APP_WINDOW_MAX_SIZE = 16384
+
+/** A field left out is the default and stays out: the declaration is part of the AppDoc ObjectId. */
+export function validateAppWindow(value: unknown, label: string): Record<string, unknown> {
+  const window = expectObject(value, label)
+  assertKnownFields(window, [...Object.keys(APP_WINDOW_CHOICES), ...APP_WINDOW_SIZES, ...APP_WINDOW_FLAGS], label)
+  for (const [key, choices] of Object.entries(APP_WINDOW_CHOICES)) {
+    if (window[key] !== undefined && !choices.includes(window[key] as string)) {
+      throw invalid('appdoc', `${label}.${key} must be one of ${choices.join(', ')}`)
+    }
+  }
+  for (const key of APP_WINDOW_SIZES) {
+    const size = window[key]
+    if (size !== undefined && (!Number.isSafeInteger(size) || Number(size) < 1 || Number(size) > APP_WINDOW_MAX_SIZE)) {
+      throw invalid('appdoc', `${label}.${key} must be 1..=${APP_WINDOW_MAX_SIZE}`)
+    }
+  }
+  for (const [min, size] of [['min_width', 'width'], ['min_height', 'height']]) {
+    if (window[min] !== undefined && window[size] !== undefined && Number(window[min]) > Number(window[size])) {
+      throw invalid('appdoc', `${label}.${min} is larger than ${label}.${size}`)
+    }
+  }
+  for (const key of APP_WINDOW_FLAGS) {
+    if (window[key] !== undefined && typeof window[key] !== 'boolean') throw invalid('appdoc', `${label}.${key} must be a boolean`)
+  }
+  return window
 }
 
 export function validateContentHandlers(value: unknown, permissions: unknown[]): unknown[] {

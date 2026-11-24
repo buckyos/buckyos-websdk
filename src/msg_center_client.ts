@@ -618,6 +618,11 @@ export type NotifyCategory = 'todo' | 'agent' | 'app'
 export type NotifyLevel = 'quiet' | 'normal' | 'timely' | 'urgent'
 export type NotifyStatus = 'open' | 'read' | 'answered' | 'dismissed' | 'expired' | 'canceled'
 
+/** `RPCError.code` of `notify.send`: the AppDoc of the calling App does not declare notifications. */
+export const NOTIFY_ERR_NOT_DECLARED = 'NOTIFY_NOT_DECLARED'
+/** `RPCError.code` of `notify.send`: the user turned the notifications of the calling App off. */
+export const NOTIFY_ERR_DISABLED = 'NOTIFY_DISABLED'
+
 /** Nothing can change any more (everything but `open` and `read`). */
 export function isNotifyClosed(status: NotifyStatus): boolean {
   return status !== 'open' && status !== 'read'
@@ -744,6 +749,29 @@ export interface NotifyListReq {
 export interface NotifyListResult {
   items: NotifyView[]
   next_cursor?: string
+}
+
+/** What waits for the user: open notifications (in all and by category) and unread messages. */
+export interface NotifySummary {
+  notify: { open: number; todo: number; agent: number; app: number }
+  /** Muted conversations and the notification sessions do not count. */
+  messages: { unread: number }
+}
+
+/** An App as the user's notification settings show it. */
+export interface NotifyApp {
+  app_instance_id: string
+  app_id: string
+  owner_user_id: string
+  /** Absent when the App is not installed any more. */
+  show_name?: string
+  app_icon_url?: string
+  installed: boolean
+  /** Its AppDoc declares that it notifies. */
+  declared: boolean
+  /** Declared and not turned off: what the App sends is accepted. */
+  enabled: boolean
+  last_sent_at_ms?: number
 }
 
 /** `content.machine.data` of a notification message (intent `buckyos.notify`). */
@@ -1289,6 +1317,33 @@ export class MsgCenterClient {
       ...result,
       items: asArrayOf<unknown>(result.items, 'Vec<NotifyView>').map(asNotifyView),
     } as NotifyListResult
+  }
+
+  /** Counts for badges, for the caller. */
+  async notifySummary(): Promise<NotifySummary> {
+    const result = asRecord(await this.call('notify.summary', {}), 'NotifySummary')
+    const notify = asRecord(result.notify, 'NotifySummary.notify')
+    const messages = asRecord(result.messages, 'NotifySummary.messages')
+    const count = (value: unknown): number => {
+      if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+        throw new RPCError('Invalid NotifySummary')
+      }
+      return value
+    }
+    return {
+      notify: { open: count(notify.open), todo: count(notify.todo), agent: count(notify.agent), app: count(notify.app) },
+      messages: { unread: count(messages.unread) },
+    }
+  }
+
+  /** The Apps that may notify the caller or did, with the caller's switches. */
+  async notifyListApps(): Promise<NotifyApp[]> {
+    const result = asRecord(await this.call('notify.list_apps', {}), 'NotifyListAppsResult')
+    return asArrayOf<NotifyApp>(result.apps, 'Vec<NotifyApp>')
+  }
+
+  async notifySetApp(appInstanceId: string, enabled: boolean): Promise<NotifyApp> {
+    return asRecord(await this.call('notify.set_app', { app_instance_id: appInstanceId, enabled }), 'NotifyApp') as unknown as NotifyApp
   }
 
   /** Mark a `notice` read; `onBehalf` names who acknowledges for the user. */
