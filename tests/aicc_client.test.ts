@@ -430,3 +430,15 @@ describe('video.generate protocol', () => {
     expect(() => validateVideoGeneration({ prompt: 'a', conditions: [{ type: 'keyframe', id: 'a', position: 'middle', resource: { kind: 'url', url: 'https://example.test/a.png' } } as never] })).toThrow()
   })
 })
+
+it('sends image edit options without using them as routing requirements', async () => {
+  const fetcher = echoingFetcher({ task_id: 'image-task', status: 'running' })
+  const client = new AiccClient(new kRPCClient('/kapi/aicc/', null, 1, { fetcher }))
+  const request = { exact_model: 'image@test', images: [], prompt: 'landscape', aspect_ratio: '16:9', negative_prompt: 'watermark', quality: 'high', seed: 7, output: { size: '2K', media_type: 'image/jpeg' } }
+  await client.imageToImage(request)
+  expect(sent(fetcher).params).toEqual({ ...request, execution_mode: 'immediate' })
+  expect(() => client.imageToImage({ ...request, output: { size: '768x1344' } })).toThrow('conflicts')
+  expect(() => client.imagesGenerate({ exact_model: 'image@test', prompt: 'x', aspect_ratio: '0:9' })).toThrow('aspect_ratio')
+  expect(() => client.imageToImage({ ...request, size: '2K' } as typeof request)).toThrow()
+  expect(fetcher).toHaveBeenCalledTimes(1)
+})

@@ -31,7 +31,7 @@ export const REFUSED_ATTRIBUTION_UNAVAILABLE = 'attribution_unavailable'
 /** The service refused the caller's credentials: sign in again, then resume. */
 export const REFUSED_CREDENTIALS = 'credentials'
 
-const REFUSAL_CODES = [REFUSED_QUOTA_EXHAUSTED, REFUSED_QUOTA_BUDGET_EXCEEDED, REFUSED_RESOURCE_NOT_PERMITTED, REFUSED_ATTRIBUTION_UNAVAILABLE]
+const REFUSAL_CODES = [REFUSED_QUOTA_EXHAUSTED, REFUSED_QUOTA_BUDGET_EXCEEDED, REFUSED_RESOURCE_NOT_PERMITTED, REFUSED_ATTRIBUTION_UNAVAILABLE, 'unsupported_operation']
 
 /** `force_json` without a schema: any JSON object (a bare `{"type":"object"}` gets `{}` from Gemini). */
 export function anyJsonObjectSchema(): JsonValue {

@@ -250,7 +250,7 @@ export interface RerankDocument { id: string; text?: string; resource?: Resource
 export interface RerankResult { index: number; id: string; score: number; document?: RerankDocument }
 export interface RerankRequest extends InferenceRequest { query: string; documents: RerankDocument[]; n?: number; return_documents?: boolean }
 export interface RerankResponse extends InferenceResponse { results?: RerankResult[] }
-export interface ImageToImageRequest extends InferenceRequest { images: ResourceRef[]; prompt: string; strength?: number; output?: AiOutputOptions }
+export interface ImageToImageRequest extends InferenceRequest { images: ResourceRef[]; prompt: string; strength?: number; aspect_ratio?: string; negative_prompt?: string; quality?: string; seed?: number; output?: AiOutputOptions }
 export interface ImageInpaintRequest extends InferenceRequest { image: ResourceRef; mask: ResourceRef; prompt: string;
   mask_semantics?: 'white_area_is_edit_area' | 'black_area_is_edit_area' | 'alpha_zero_is_edit_area'; output?: AiOutputOptions }
 export interface ImageUpscaleRequest extends InferenceRequest { image: ResourceRef; scale?: number; target_width?: number;
@@ -548,7 +548,7 @@ const schemas: Partial<Record<AiccMethod, string[]>> = {
   [AICC_AI_METHODS.EMBEDDING_MULTIMODAL]: [...common, 'items', 'dimensions', 'normalize'],
   [AICC_AI_METHODS.DECISION_EVALUATE]: [...common, 'state', 'questions'],
   [AICC_AI_METHODS.RERANK]: [...common, 'query', 'documents', 'n', 'return_documents'],
-  [AICC_AI_METHODS.IMAGE_IMG2IMG]: [...common, 'images', 'prompt', 'strength', 'output'],
+  [AICC_AI_METHODS.IMAGE_IMG2IMG]: [...common, 'images', 'prompt', 'strength', 'aspect_ratio', 'negative_prompt', 'quality', 'seed', 'output'],
   [AICC_AI_METHODS.IMAGE_INPAINT]: [...common, 'image', 'mask', 'prompt', 'mask_semantics', 'output'],
   [AICC_AI_METHODS.IMAGE_UPSCALE]: [...common, 'image', 'scale', 'target_width', 'target_height', 'preserve_faces', 'output'],
   [AICC_AI_METHODS.IMAGE_BG_REMOVE]: [...common, 'image', 'mode', 'output'],
@@ -609,9 +609,9 @@ export class AiccClient {
   }
   routeResolve(r: RouteResolveRequest) { logical(r.logical_model); return this.call<RouteResolveResponse, RouteResolveRequest>(AICC_CORE_METHODS.ROUTE_RESOLVE, r) }
   chatCompletionsCreate(r: LlmChatInvokeRequest) { r.messages.forEach(validateAiccMessage); return this.inference<LlmChatInvokeResponse, LlmChatInvokeRequest>(AICC_AI_METHODS.CHAT_COMPLETIONS_CREATE, r) }
-  imagesGenerate(r: TextToImageInvokeRequest) { return this.inference<TextToImageInvokeResponse, TextToImageInvokeRequest>(AICC_AI_METHODS.IMAGES_GENERATE, r) }
+  imagesGenerate(r: TextToImageInvokeRequest) { validateImageDimensions(r.aspect_ratio, r.size); return this.inference<TextToImageInvokeResponse, TextToImageInvokeRequest>(AICC_AI_METHODS.IMAGES_GENERATE, r) }
   helperLlmChat(r: LlmChatHelperRequest) { logical(r.logical_model); r.messages.forEach(validateAiccMessage); return this.call<LlmChatInvokeResponse, LlmChatHelperRequest>(AICC_CORE_METHODS.HELPER_LLM_CHAT, r) }
-  helperTextToImage(r: TextToImageHelperRequest) { logical(r.logical_model); return this.call<TextToImageInvokeResponse, TextToImageHelperRequest>(AICC_CORE_METHODS.HELPER_TEXT_TO_IMAGE, r) }
+  helperTextToImage(r: TextToImageHelperRequest) { logical(r.logical_model); validateImageDimensions(r.aspect_ratio, r.size); return this.call<TextToImageInvokeResponse, TextToImageHelperRequest>(AICC_CORE_METHODS.HELPER_TEXT_TO_IMAGE, r) }
   embeddingText(r: EmbeddingTextRequest) { return this.inference<EmbeddingTextResponse, EmbeddingTextRequest>(AICC_AI_METHODS.EMBEDDING_TEXT, r) }
   embeddingMultimodal(r: EmbeddingMultimodalRequest) { return this.inference<EmbeddingMultimodalResponse, EmbeddingMultimodalRequest>(AICC_AI_METHODS.EMBEDDING_MULTIMODAL, r) }
   async decisionEvaluate(r: DecisionEvaluateRequest) {
@@ -621,7 +621,7 @@ export class AiccClient {
     return result
   }
   rerank(r: RerankRequest) { return this.inference<RerankResponse, RerankRequest>(AICC_AI_METHODS.RERANK, r) }
-  imageToImage(r: ImageToImageRequest) { return this.inference<ImageToImageResponse, ImageToImageRequest>(AICC_AI_METHODS.IMAGE_IMG2IMG, r) }
+  imageToImage(r: ImageToImageRequest) { validateImageDimensions(r.aspect_ratio, r.output?.size); return this.inference<ImageToImageResponse, ImageToImageRequest>(AICC_AI_METHODS.IMAGE_IMG2IMG, r) }
   imageInpaint(r: ImageInpaintRequest) { return this.inference<ImageInpaintResponse, ImageInpaintRequest>(AICC_AI_METHODS.IMAGE_INPAINT, r) }
   imageUpscale(r: ImageUpscaleRequest) { return this.inference<ImageUpscaleResponse, ImageUpscaleRequest>(AICC_AI_METHODS.IMAGE_UPSCALE, r) }
   imageBackgroundRemove(r: ImageBackgroundRemoveRequest) { return this.inference<ImageBackgroundRemoveResponse, ImageBackgroundRemoveRequest>(AICC_AI_METHODS.IMAGE_BG_REMOVE, r) }
@@ -675,6 +675,16 @@ export class AiccClient {
   previewVisibility(r: VisibilityPreviewRequest = {}) { return this.call<VisibilityPreviewResponse, VisibilityPreviewRequest>(AICC_QUOTA_METHODS.VISIBILITY_PREVIEW, r) }
   getDriverMetadataUpdate() { return this.call<DriverMetadataUpdateView, EmptyRequest>(AICC_MANAGEMENT_METHODS.DRIVER_METADATA_UPDATE_GET, {}) }
   setDriverMetadataUpdate(r: DriverMetadataUpdateSetReq) { return this.call<DriverMetadataUpdateSetResponse, DriverMetadataUpdateSetReq>(AICC_MANAGEMENT_METHODS.DRIVER_METADATA_UPDATE_SET, r) }
+}
+
+function validateImageDimensions(aspect?: string, size?: string): void {
+  const ratio = aspect === undefined ? undefined : /^([1-9]\d{0,2}):([1-9]\d{0,2})$/.exec(aspect)
+  if (aspect !== undefined && (!ratio || Number(ratio[1]) > 100 || Number(ratio[2]) > 100)) throw new Error('aspect_ratio must be W:H with integers in 1..=100')
+  if (size !== undefined && !['auto', '1K', '2K', '4K'].includes(size)) {
+    const dims = /^([1-9]\d*)x([1-9]\d*)$/.exec(size)
+    if (!dims || Number(dims[1]) > 0xffffffff || Number(dims[2]) > 0xffffffff) throw new Error('size/output.size must be positive WxH or a supported preset')
+    if (ratio && BigInt(dims[1]) * BigInt(ratio[2]) !== BigInt(dims[2]) * BigInt(ratio[1])) throw new Error('size/output.size conflicts with aspect_ratio')
+  }
 }
 
 function decisionText(value: unknown, nonempty = true): value is DecisionText {
