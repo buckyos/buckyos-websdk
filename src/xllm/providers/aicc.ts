@@ -5,7 +5,7 @@
 // Error table (same order as Rust `aicc_provider_failure` /
 // `provider_error_from_rpc`, no matching on message text):
 //   quota_exhausted / quota_budget_exceeded / resource_not_permitted /
-//     attribution_unavailable              → refused { code }
+//     attribution_unavailable / unsupported_operation → refused { code }
 //   quota_unavailable                       → transient
 //   context_length_exceeded, http_status 413 → context_limit
 //   timeout, retriable                      → transient
@@ -28,10 +28,11 @@ export const REFUSED_QUOTA_EXHAUSTED = 'quota_exhausted'
 export const REFUSED_QUOTA_BUDGET_EXCEEDED = 'quota_budget_exceeded'
 export const REFUSED_RESOURCE_NOT_PERMITTED = 'resource_not_permitted'
 export const REFUSED_ATTRIBUTION_UNAVAILABLE = 'attribution_unavailable'
+export const REFUSED_UNSUPPORTED_OPERATION = 'unsupported_operation'
 /** The service refused the caller's credentials: sign in again, then resume. */
 export const REFUSED_CREDENTIALS = 'credentials'
 
-const REFUSAL_CODES = [REFUSED_QUOTA_EXHAUSTED, REFUSED_QUOTA_BUDGET_EXCEEDED, REFUSED_RESOURCE_NOT_PERMITTED, REFUSED_ATTRIBUTION_UNAVAILABLE, 'unsupported_operation']
+const REFUSAL_CODES = [REFUSED_QUOTA_EXHAUSTED, REFUSED_QUOTA_BUDGET_EXCEEDED, REFUSED_RESOURCE_NOT_PERMITTED, REFUSED_ATTRIBUTION_UNAVAILABLE, REFUSED_UNSUPPORTED_OPERATION]
 
 /** `force_json` without a schema: any JSON object (a bare `{"type":"object"}` gets `{}` from Gemini). */
 export function anyJsonObjectSchema(): JsonValue {

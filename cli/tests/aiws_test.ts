@@ -1,4 +1,6 @@
 import './setup.ts'
+import { refusalOf } from '../modules/aiws.ts'
+import { providerError, providerErrorFromRpc } from 'buckyos/xllm'
 import { join } from 'node:path'
 import { createRegistry } from '../core/app.ts'
 import { parseCommandArgs } from '../core/argv.ts'
@@ -516,3 +518,14 @@ Deno.test('template export writes one bundle: the template files, the controls i
   }
 })
 
+
+Deno.test('macro refusals keep unsupported operation and never turn unknown refusals into quota exhaustion', () => {
+  const unsupported = refusalOf(providerErrorFromRpc('image', { code: 'unsupported_operation', data: { code: 'unsupported_operation', message: 'quality on selected-model' } })) as Error & { code: string }
+  assertEquals(unsupported.code, 'AI_UNSUPPORTED_OPERATION')
+  const noCandidate = refusalOf(providerError({ refused: { code: 'no_candidate_model' } }, 'no configured model')) as Error & { code: string }
+  assertEquals(noCandidate.code, 'AI_NO_CANDIDATE_MODEL')
+  for (const code of ['future_refusal']) {
+    const unknown = refusalOf(providerError({ refused: { code } }, 'request refused')) as Error & { code: string }
+    assertEquals(unknown.code, 'AI_UNAVAILABLE')
+  }
+})

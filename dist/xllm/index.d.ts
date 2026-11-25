@@ -43,6 +43,6 @@ export type { DidObjectReader, DidObjectResourcesOptions } from './runtime/did_o
 export { DIDObjectClient, DIDObjectError } from '../did_object_client';
 export type { DIDObjectCard, DIDObjectClientOptions } from '../did_object_client';
 export { IndexedDbRunStore, XLLM_RUNS_DB } from './hosts/browser/store';
-export { AiccLlmClient, aiccProviderFailure, anyJsonObjectSchema, providerErrorFromRpc } from './providers/aicc';
+export { AiccLlmClient, aiccProviderFailure, anyJsonObjectSchema, providerErrorFromRpc, REFUSED_UNSUPPORTED_OPERATION } from './providers/aicc';
 export { TimeoutLlmClient } from './providers/timeout';
 //# sourceMappingURL=index.d.ts.map

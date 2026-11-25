@@ -252,7 +252,7 @@ export type AiccErrorCode = 'invalid_request' | 'invalid_method' | 'schema_valid
 /** The AICC user of a delegated run cannot be determined. */
 'attribution_unavailable' | 
 /** The request does not fit the model's context window (Provider refusal or no window holds it): shrink the input; retrying it as is cannot succeed. */
-'context_length_exceeded';
+'context_length_exceeded' | 'unsupported_operation';
 export interface AiccError {
     code: AiccErrorCode;
     message: string;
@@ -483,7 +483,7 @@ interface ImageGenerationFields {
     quality?: string;
     style?: string;
     seed?: number;
-    output?: AiOutputOptions;
+    output?: Omit<AiOutputOptions, 'size'>;
 }
 export interface LlmChatInvokeRequest extends InferenceRequest, ChatFields {
     web_search?: boolean;
@@ -655,6 +655,10 @@ export interface ImageToImageRequest extends InferenceRequest {
     images: ResourceRef[];
     prompt: string;
     strength?: number;
+    aspect_ratio?: string;
+    negative_prompt?: string;
+    quality?: string;
+    seed?: number;
     output?: AiOutputOptions;
 }
 export interface ImageInpaintRequest extends InferenceRequest {

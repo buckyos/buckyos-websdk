@@ -5,6 +5,7 @@ export declare const REFUSED_QUOTA_EXHAUSTED = "quota_exhausted";
 export declare const REFUSED_QUOTA_BUDGET_EXCEEDED = "quota_budget_exceeded";
 export declare const REFUSED_RESOURCE_NOT_PERMITTED = "resource_not_permitted";
 export declare const REFUSED_ATTRIBUTION_UNAVAILABLE = "attribution_unavailable";
+export declare const REFUSED_UNSUPPORTED_OPERATION = "unsupported_operation";
 /** The service refused the caller's credentials: sign in again, then resume. */
 export declare const REFUSED_CREDENTIALS = "credentials";
 /** `force_json` without a schema: any JSON object (a bare `{"type":"object"}` gets `{}` from Gemini). */

@@ -15,7 +15,7 @@ await client.imageToImage({
 
 示例中的 `reference` 为已有资源引用；`exact_model` 应替换为 `models.list` 返回的实际模型与实例。
 
-比例使用两边为 1–100 的 `W:H`。显式像素尺寸与比例冲突时客户端拒绝发送。1K/2K/4K 是渠道相关档位，不能用于任意模型。
+比例使用两边为 1–100 的 `W:H`。像素尺寸接受 `WxH`、`WXH`、`W*H`；与显式比例的相对误差不超过 5%。通用校验也接受正整数分辨率、`auto` 及正数 K 档位（如 `3K`），具体值由选定模型校验。文生图和 Helper 拒绝 `output.size`，图生图拒绝顶层 `size`，不会在两个位置之间猜测或兼容。
 
 参数不参与模型路由。模型选定后，不支持的字段以结构化 `unsupported_operation` 失败，包含渠道、模型及字段；不会静默删除参数或改换模型。`models.list` 的 `capabilities` 包含 `image.img2img.output.size` 等字段映射声明，具体参数值仍需所选模型支持。
 

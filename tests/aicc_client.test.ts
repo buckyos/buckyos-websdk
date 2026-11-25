@@ -1,4 +1,4 @@
-import { kRPCClient } from '../src/krpc_client'
+import { kRPCClient, RPCError } from '../src/krpc_client'
 import {
   AICC_AI_METHODS,
   AICC_CORE_METHODS,
@@ -441,4 +441,42 @@ it('sends image edit options without using them as routing requirements', async 
   expect(() => client.imagesGenerate({ exact_model: 'image@test', prompt: 'x', aspect_ratio: '0:9' })).toThrow('aspect_ratio')
   expect(() => client.imageToImage({ ...request, size: '2K' } as typeof request)).toThrow()
   expect(fetcher).toHaveBeenCalledTimes(1)
+})
+
+
+describe('image dimension contract', () => {
+  for (const method of ['imagesGenerate', 'helperTextToImage', 'imageToImage'] as const) {
+    const base = method === 'helperTextToImage' ? { logical_model: 'image.txt2img', prompt: 'cat' }
+      : { exact_model: 'image@test', prompt: 'cat', ...(method === 'imageToImage' ? { images: [] } : {}) }
+    const sizeAt = (aspect_ratio: string | undefined, size: string) => ({ ...base, aspect_ratio,
+      ...(method === 'imageToImage' ? { output: { size } } : { size }) })
+    it(`${method} accepts approximate sizes and leaves model presets to the selected codec`, async () => {
+      const fetcher = echoingFetcher({ task_id: 't', status: 'running' })
+      const client = new AiccClient(new kRPCClient('/kapi/aicc/', null, 1, { fetcher }))
+      const invoke = client[method].bind(client) as (request: unknown) => Promise<unknown>
+      for (const [aspect, size] of [['16:9', '2848x1600'], ['16:9', '1792x1024'], ['16:9', '1344x768'], ['16:9', '1376x768'], ['16:9', '1664x928'], ['9:16', '1600x2848'], ['4:3', '1184x864'], ['04:03', '1184X864'], ['4:3', '1184*864'], ['1:1', '1049x1000'], ['1:1', '1050x1000'], [undefined, '3K'], [undefined, '512'], [undefined, 'auto']]) {
+        await invoke(sizeAt(aspect, size!))
+      }
+      expect(fetcher).toHaveBeenCalledTimes(14)
+    })
+    it(`${method} rejects malformed and conflicting sizes as RPCError before calling the service`, () => {
+      const fetcher = echoingFetcher({})
+      const client = new AiccClient(new kRPCClient('/kapi/aicc/', null, 1, { fetcher }))
+      const invoke = client[method].bind(client) as (request: unknown) => Promise<unknown>
+      for (const [aspect, size] of [['16:9', '768x1344'], ['1:1', '1051x1000'], [undefined, '0x1024'], [undefined, '4294967296x1'], [undefined, 'nonsense'], [undefined, ''], ['0:9', '1024x1024']]) {
+        expect(() => invoke(sizeAt(aspect, size!))).toThrow(RPCError)
+      }
+      expect(fetcher).not.toHaveBeenCalled()
+    })
+  }
+  it('text-to-image rejects output.size instead of accepting a field its codec does not consume', () => {
+    const client = new AiccClient(new kRPCClient('/kapi/aicc/', null, 1, { fetcher: echoingFetcher({}) }))
+    for (const invoke of [client.imagesGenerate.bind(client), client.helperTextToImage.bind(client)]) {
+      expect(() => (invoke as (request: unknown) => unknown)({ exact_model: 'image@test', logical_model: 'image.txt2img', prompt: 'cat', output: { size: '1024x1024' } })).toThrow('top level')
+    }
+  })
+  it('extracts unsupported operation without losing its structured reason', () => {
+    const error = new RPCError('unsupported', 'unsupported_operation', { code: 'unsupported_operation', message: 'quality on selected-model', details: { field: 'quality' }, retriable: false })
+    expect(aiccRefusalOf(error)).toMatchObject({ code: 'unsupported_operation', message: 'quality on selected-model', details: { field: 'quality' }, retriable: false })
+  })
 })

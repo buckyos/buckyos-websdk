@@ -1,4 +1,4 @@
-import { n as canonicalJson, r as rustTrim, o as jsonEqual, L as LLMComputeException, i as isObject, m as cloneJson, t as textMessage, q as nowMs, u as textContent, c as computeErrorMessage, v as validateResponse, w as toolCalls, a as asComputeError, x as toolObservationMessage, y as mergeUsage, l as llmCorrectable, f as rustTrimEnd, X as XllmError, z as rustTextContent, s as serdeJson, B as compareCodePoints, C as charOffset, D as collapseWhitespace, d as charCount, e as errorSource, E as addRecordUsage, F as refusedCode } from "./aicc-67851c41.mjs";
+import { n as canonicalJson, r as rustTrim, o as jsonEqual, L as LLMComputeException, i as isObject, m as cloneJson, t as textMessage, q as nowMs, u as textContent, c as computeErrorMessage, v as validateResponse, w as toolCalls, a as asComputeError, x as toolObservationMessage, y as mergeUsage, l as llmCorrectable, f as rustTrimEnd, X as XllmError, z as rustTextContent, s as serdeJson, B as compareCodePoints, C as charOffset, D as collapseWhitespace, d as charCount, e as errorSource, E as addRecordUsage, F as refusedCode } from "./aicc-9099c684.mjs";
 function utf8Length(s) {
   let n = 0;
   for (let i = 0; i < s.length; i++) {
@@ -5053,6 +5053,7 @@ const REFUSED_QUOTA_EXHAUSTED = "quota_exhausted";
 const REFUSED_QUOTA_BUDGET_EXCEEDED = "quota_budget_exceeded";
 const REFUSED_RESOURCE_NOT_PERMITTED = "resource_not_permitted";
 const REFUSED_ATTRIBUTION_UNAVAILABLE = "attribution_unavailable";
+const REFUSED_UNSUPPORTED_OPERATION = "unsupported_operation";
 const HOST_PROMPT_SECTIONS_ALL = { capabilities: true, cmd_manual: true, runtime_protocol: true };
 const HOST_PROMPT_SECTIONS_NONE = { capabilities: false, cmd_manual: false, runtime_protocol: false };
 function sectionsOf(deps) {
@@ -6006,7 +6007,7 @@ function classifyError(err) {
       const code = refusedCode(f);
       if (code === REFUSED_CREDENTIALS)
         return rec(true, REFUSED_CREDENTIALS, "fix the credential referenced by the current identity, then resume");
-      const condition = code === REFUSED_QUOTA_EXHAUSTED || code === REFUSED_QUOTA_BUDGET_EXCEEDED ? "the AI token quota does not cover this call; wait for it to reset, lower the output budget, or ask an administrator; do not retry right away" : code === REFUSED_RESOURCE_NOT_PERMITTED ? "the model is not permitted to this user; choose a permitted model or ask an administrator" : code === REFUSED_ATTRIBUTION_UNAVAILABLE ? "the user whose AI resources this run uses cannot be determined" : "the AI service refused this call under its policy; do not retry right away";
+      const condition = code === REFUSED_QUOTA_EXHAUSTED || code === REFUSED_QUOTA_BUDGET_EXCEEDED ? "the AI token quota does not cover this call; wait for it to reset, lower the output budget, or ask an administrator; do not retry right away" : code === REFUSED_UNSUPPORTED_OPERATION ? "the selected model does not support the requested operation or parameters; change the parameters or explicitly select a suitable model before resuming" : code === REFUSED_RESOURCE_NOT_PERMITTED ? "the model is not permitted to this user; choose a permitted model or ask an administrator" : code === REFUSED_ATTRIBUTION_UNAVAILABLE ? "the user whose AI resources this run uses cannot be determined" : "the AI service refused this call under its policy; do not retry right away";
       return rec(false, code, condition);
     }
     case "checkpoint":
@@ -6432,4 +6433,4 @@ export {
   assemblePrompt as y,
   RUNTIME_PROTOCOL_VERSION as z
 };
-//# sourceMappingURL=site_manager-91b4d899.mjs.map
+//# sourceMappingURL=site_manager-fbd03b08.mjs.map

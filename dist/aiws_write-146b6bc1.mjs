@@ -1515,7 +1515,7 @@ const AICC_FEATURES = {
 const AICC_EXECUTION_MODES = { IMMEDIATE: "immediate", STREAM: "stream" };
 const AICC_POLICY_REFUSAL_CODES = ["quota_exhausted", "quota_budget_exceeded", "quota_unavailable", "resource_not_permitted", "attribution_unavailable"];
 function aiccRefusalOf(error) {
-  if (!(error instanceof RPCError) || !AICC_POLICY_REFUSAL_CODES.includes(error.code))
+  if (!(error instanceof RPCError) || !(AICC_POLICY_REFUSAL_CODES.includes(error.code) || error.code === "unsupported_operation"))
     return void 0;
   const data = error.data;
   return { code: error.code, message: (data == null ? void 0 : data.message) ?? error.message, retriable: data == null ? void 0 : data.retriable, details: data == null ? void 0 : data.details };
@@ -1586,7 +1586,7 @@ const schemas = {
   [AICC_AI_METHODS.EMBEDDING_MULTIMODAL]: [...common, "items", "dimensions", "normalize"],
   [AICC_AI_METHODS.DECISION_EVALUATE]: [...common, "state", "questions"],
   [AICC_AI_METHODS.RERANK]: [...common, "query", "documents", "n", "return_documents"],
-  [AICC_AI_METHODS.IMAGE_IMG2IMG]: [...common, "images", "prompt", "strength", "output"],
+  [AICC_AI_METHODS.IMAGE_IMG2IMG]: [...common, "images", "prompt", "strength", "aspect_ratio", "negative_prompt", "quality", "seed", "output"],
   [AICC_AI_METHODS.IMAGE_INPAINT]: [...common, "image", "mask", "prompt", "mask_semantics", "output"],
   [AICC_AI_METHODS.IMAGE_UPSCALE]: [...common, "image", "scale", "target_width", "target_height", "preserve_faces", "output"],
   [AICC_AI_METHODS.IMAGE_BG_REMOVE]: [...common, "image", "mode", "output"],
@@ -1656,6 +1656,7 @@ class AiccClient {
     return this.inference(AICC_AI_METHODS.CHAT_COMPLETIONS_CREATE, r);
   }
   imagesGenerate(r) {
+    validateImageGeneration(r);
     return this.inference(AICC_AI_METHODS.IMAGES_GENERATE, r);
   }
   helperLlmChat(r) {
@@ -1665,6 +1666,7 @@ class AiccClient {
   }
   helperTextToImage(r) {
     logical(r.logical_model);
+    validateImageGeneration(r);
     return this.call(AICC_CORE_METHODS.HELPER_TEXT_TO_IMAGE, r);
   }
   embeddingText(r) {
@@ -1684,6 +1686,8 @@ class AiccClient {
     return this.inference(AICC_AI_METHODS.RERANK, r);
   }
   imageToImage(r) {
+    var _a2;
+    validateImageDimensions(r.aspect_ratio, (_a2 = r.output) == null ? void 0 : _a2.size);
     return this.inference(AICC_AI_METHODS.IMAGE_IMG2IMG, r);
   }
   imageInpaint(r) {
@@ -1843,6 +1847,28 @@ class AiccClient {
   }
   setDriverMetadataUpdate(r) {
     return this.call(AICC_MANAGEMENT_METHODS.DRIVER_METADATA_UPDATE_SET, r);
+  }
+}
+function validateImageGeneration(request) {
+  if (request.output && "size" in request.output)
+    throw new RPCError("text-to-image size must be at the top level, not output.size");
+  validateImageDimensions(request.aspect_ratio, request.size);
+}
+function validateImageDimensions(aspect, size) {
+  const ratio = aspect == null ? void 0 : aspectRatio(aspect);
+  if (aspect != null && !ratio)
+    throw new RPCError("aspect_ratio must be W:H with integers in 1..=100");
+  if (size == null)
+    return;
+  const dims = typeof size === "string" ? /^(\d+)[xX*](\d+)$/.exec(size) : null;
+  if (dims) {
+    const [w, h] = [Number(dims[1]), Number(dims[2])];
+    if (!(w > 0 && h > 0 && w <= 4294967295 && h <= 4294967295))
+      throw new RPCError("size/output.size dimensions must be positive 32-bit integers");
+    if (ratio && Math.abs(w * ratio[1] - h * ratio[0]) * 20 > h * ratio[0])
+      throw new RPCError("size/output.size conflicts with aspect_ratio");
+  } else if (typeof size !== "string" || (!/^(?:auto|[1-9]\d*(?:\.\d+)?[Kk]|[1-9]\d*)$/.test(size) || size !== "auto" && !Number.isFinite(Number(size.replace(/[Kk]$/, ""))))) {
+    throw new RPCError("size/output.size must be positive WxH, a positive resolution, or a model-supported K preset");
   }
 }
 function decisionText(value, nonempty = true) {
@@ -32698,4 +32724,4 @@ export {
   NOTIFY_SESSION_PREFIX as y,
   NOTIFY_CHOICE_CONTROL_ID as z
 };
-//# sourceMappingURL=aiws_write-47c90e76.mjs.map
+//# sourceMappingURL=aiws_write-146b6bc1.mjs.map

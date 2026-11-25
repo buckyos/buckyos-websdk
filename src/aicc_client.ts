@@ -133,13 +133,13 @@ export type AiccErrorCode = 'invalid_request' | 'invalid_method' | 'schema_valid
   /** The AICC user of a delegated run cannot be determined. */
   'attribution_unavailable' |
   /** The request does not fit the model's context window (Provider refusal or no window holds it): shrink the input; retrying it as is cannot succeed. */
-  'context_length_exceeded'
+  'context_length_exceeded' | 'unsupported_operation'
 export interface AiccError { code: AiccErrorCode; message: string; provider_code?: string; retriable?: boolean; details?: JsonValue }
 /** Token quota and resource policy refusals: they reach the client as a detailed kRPC error. */
 export const AICC_POLICY_REFUSAL_CODES: readonly AiccErrorCode[] = ['quota_exhausted', 'quota_budget_exceeded', 'quota_unavailable', 'resource_not_permitted', 'attribution_unavailable']
 /** The AICC error of a refused call (its `code` and `details`), read from the structured kRPC error. */
 export function aiccRefusalOf(error: unknown): AiccError | undefined {
-  if (!(error instanceof RPCError) || !AICC_POLICY_REFUSAL_CODES.includes(error.code as AiccErrorCode)) return undefined
+  if (!(error instanceof RPCError) || !(AICC_POLICY_REFUSAL_CODES.includes(error.code as AiccErrorCode) || error.code === 'unsupported_operation')) return undefined
   const data = error.data as Partial<AiccError> | undefined
   return { code: error.code as AiccErrorCode, message: data?.message ?? error.message, retriable: data?.retriable, details: data?.details }
 }
@@ -208,7 +208,7 @@ export interface InferenceResponse { task_id: string; status: AiMethodStatus; us
 interface ChatFields { messages: AiMessage[]; tools?: AiToolSpec[]; response_format?: LlmResponseFormat; temperature?: number;
   top_p?: number; max_output_tokens?: number; seed?: number; stop?: string[]; output?: AiOutputOptions }
 interface ImageGenerationFields { prompt: string; negative_prompt?: string; n?: number; aspect_ratio?: string; size?: string;
-  quality?: string; style?: string; seed?: number; output?: AiOutputOptions }
+  quality?: string; style?: string; seed?: number; output?: Omit<AiOutputOptions, 'size'> }
 export interface LlmChatInvokeRequest extends InferenceRequest, ChatFields { web_search?: boolean }
 export interface LlmChatHelperRequest extends ChatFields { logical_model: string; requirements?: HelperModelRequirement; disable?: ModelDisable;
   trace_id?: string; execution_mode?: AiccExecutionMode; policy?: RoutePolicy; idempotency_key?: string;
@@ -609,9 +609,9 @@ export class AiccClient {
   }
   routeResolve(r: RouteResolveRequest) { logical(r.logical_model); return this.call<RouteResolveResponse, RouteResolveRequest>(AICC_CORE_METHODS.ROUTE_RESOLVE, r) }
   chatCompletionsCreate(r: LlmChatInvokeRequest) { r.messages.forEach(validateAiccMessage); return this.inference<LlmChatInvokeResponse, LlmChatInvokeRequest>(AICC_AI_METHODS.CHAT_COMPLETIONS_CREATE, r) }
-  imagesGenerate(r: TextToImageInvokeRequest) { validateImageDimensions(r.aspect_ratio, r.size); return this.inference<TextToImageInvokeResponse, TextToImageInvokeRequest>(AICC_AI_METHODS.IMAGES_GENERATE, r) }
+  imagesGenerate(r: TextToImageInvokeRequest) { validateImageGeneration(r); return this.inference<TextToImageInvokeResponse, TextToImageInvokeRequest>(AICC_AI_METHODS.IMAGES_GENERATE, r) }
   helperLlmChat(r: LlmChatHelperRequest) { logical(r.logical_model); r.messages.forEach(validateAiccMessage); return this.call<LlmChatInvokeResponse, LlmChatHelperRequest>(AICC_CORE_METHODS.HELPER_LLM_CHAT, r) }
-  helperTextToImage(r: TextToImageHelperRequest) { logical(r.logical_model); validateImageDimensions(r.aspect_ratio, r.size); return this.call<TextToImageInvokeResponse, TextToImageHelperRequest>(AICC_CORE_METHODS.HELPER_TEXT_TO_IMAGE, r) }
+  helperTextToImage(r: TextToImageHelperRequest) { logical(r.logical_model); validateImageGeneration(r); return this.call<TextToImageInvokeResponse, TextToImageHelperRequest>(AICC_CORE_METHODS.HELPER_TEXT_TO_IMAGE, r) }
   embeddingText(r: EmbeddingTextRequest) { return this.inference<EmbeddingTextResponse, EmbeddingTextRequest>(AICC_AI_METHODS.EMBEDDING_TEXT, r) }
   embeddingMultimodal(r: EmbeddingMultimodalRequest) { return this.inference<EmbeddingMultimodalResponse, EmbeddingMultimodalRequest>(AICC_AI_METHODS.EMBEDDING_MULTIMODAL, r) }
   async decisionEvaluate(r: DecisionEvaluateRequest) {
@@ -677,13 +677,22 @@ export class AiccClient {
   setDriverMetadataUpdate(r: DriverMetadataUpdateSetReq) { return this.call<DriverMetadataUpdateSetResponse, DriverMetadataUpdateSetReq>(AICC_MANAGEMENT_METHODS.DRIVER_METADATA_UPDATE_SET, r) }
 }
 
+function validateImageGeneration(request: ImageGenerationFields): void {
+  if (request.output && 'size' in request.output) throw new RPCError('text-to-image size must be at the top level, not output.size')
+  validateImageDimensions(request.aspect_ratio, request.size)
+}
+
 function validateImageDimensions(aspect?: string, size?: string): void {
-  const ratio = aspect === undefined ? undefined : /^([1-9]\d{0,2}):([1-9]\d{0,2})$/.exec(aspect)
-  if (aspect !== undefined && (!ratio || Number(ratio[1]) > 100 || Number(ratio[2]) > 100)) throw new Error('aspect_ratio must be W:H with integers in 1..=100')
-  if (size !== undefined && !['auto', '1K', '2K', '4K'].includes(size)) {
-    const dims = /^([1-9]\d*)x([1-9]\d*)$/.exec(size)
-    if (!dims || Number(dims[1]) > 0xffffffff || Number(dims[2]) > 0xffffffff) throw new Error('size/output.size must be positive WxH or a supported preset')
-    if (ratio && BigInt(dims[1]) * BigInt(ratio[2]) !== BigInt(dims[2]) * BigInt(ratio[1])) throw new Error('size/output.size conflicts with aspect_ratio')
+  const ratio = aspect == null ? undefined : aspectRatio(aspect)
+  if (aspect != null && !ratio) throw new RPCError('aspect_ratio must be W:H with integers in 1..=100')
+  if (size == null) return
+  const dims = typeof size === 'string' ? /^(\d+)[xX*](\d+)$/.exec(size) : null
+  if (dims) {
+    const [w, h] = [Number(dims[1]), Number(dims[2])]
+    if (!(w > 0 && h > 0 && w <= 0xffffffff && h <= 0xffffffff)) throw new RPCError('size/output.size dimensions must be positive 32-bit integers')
+    if (ratio && Math.abs(w * ratio[1] - h * ratio[0]) * 20 > h * ratio[0]) throw new RPCError('size/output.size conflicts with aspect_ratio')
+  } else if (typeof size !== 'string' || (!/^(?:auto|[1-9]\d*(?:\.\d+)?[Kk]|[1-9]\d*)$/.test(size) || (size !== 'auto' && !Number.isFinite(Number(size.replace(/[Kk]$/, '')))))) {
+    throw new RPCError('size/output.size must be positive WxH, a positive resolution, or a model-supported K preset')
   }
 }
 
