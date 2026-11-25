@@ -375,6 +375,9 @@ export abstract class KEventReader {
   protected abstract closeTransport(): Promise<void>
 }
 
+/** Keepalive periods without any data after which a stream counts as dead. */
+const SILENT_PERIODS = 3
+
 class BrowserKEventReader extends KEventReader {
   private readonly controller: AbortController
   private readonly readyPromise: Promise<void>
@@ -499,6 +502,16 @@ class BrowserKEventReader extends KEventReader {
     const reader = body.getReader()
     const decoder = new TextDecoder()
     let buffer = ''
+    // A connection that broke without notice never ends by itself. Periods are counted instead of
+    // measured, so a page that was frozen does not give up a working stream when it wakes up.
+    let silentPeriods = 0
+    const watchdog = setInterval(() => {
+      silentPeriods += 1
+      if (silentPeriods >= SILENT_PERIODS) {
+        this.controller.abort()
+        void reader.cancel().catch(() => undefined)
+      }
+    }, this.keepaliveMs)
 
     try {
       while (!this.controller.signal.aborted) {
@@ -506,6 +519,7 @@ class BrowserKEventReader extends KEventReader {
         if (done) {
           break
         }
+        silentPeriods = 0
 
         buffer += decoder.decode(value, { stream: true })
         buffer = this.processFrameBuffer(buffer, onFrame)
@@ -517,6 +531,7 @@ class BrowserKEventReader extends KEventReader {
         this.handleFrameLine(buffer, onFrame)
       }
     } finally {
+      clearInterval(watchdog)
       try {
         await reader.cancel()
       } catch {

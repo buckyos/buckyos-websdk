@@ -90,6 +90,57 @@ describe('KEventClient', () => {
     await reader.close()
   })
 
+  function streamClient(start: (send: (frame: unknown) => void) => void) {
+    const encoder = new TextEncoder()
+    const signals: AbortSignal[] = []
+    const client = new KEventClient({
+      mode: 'browser',
+      streamUrl: '/kapi/kevent',
+      fetcher: async (_input, init) => {
+        signals.push(init!.signal as AbortSignal)
+        return new Response(new ReadableStream<Uint8Array>({
+          start(controller) {
+            start((frame) => controller.enqueue(encoder.encode(`${JSON.stringify(frame)}\n`)))
+          },
+        }), { status: 200 })
+      },
+      sessionTokenProvider: async () => null,
+    })
+    return { client, signals }
+  }
+
+  it('gives up a browser stream that stays silent past its keepalives', async () => {
+    const { client, signals } = streamClient((send) => send({ type: 'ack', connection_id: 'c1' }))
+    const reader = await client.create_event_reader(['/system/**'], { keepaliveMs: 30 })
+    const openedAt = Date.now()
+    await expect(reader.pull_event()).resolves.toBeNull()
+    expect(Date.now() - openedAt).toBeGreaterThanOrEqual(60)
+    expect(signals[0].aborted).toBe(true)
+    await reader.close()
+  })
+
+  it('gives up a browser stream that never acknowledges', async () => {
+    const { client, signals } = streamClient(() => undefined)
+    await expect(client.create_event_reader(['/system/**'], { keepaliveMs: 30 })).rejects.toThrow()
+    expect(signals[0].aborted).toBe(true)
+  })
+
+  it('keeps a browser stream whose only traffic is keepalives', async () => {
+    const event = makeEvent()
+    const { client, signals } = streamClient((send) => {
+      send({ type: 'ack', connection_id: 'c1' })
+      const keepalives = setInterval(() => send({ type: 'keepalive', at_ms: Date.now() }), 40)
+      setTimeout(() => {
+        clearInterval(keepalives)
+        send({ type: 'event', event })
+      }, 500)
+    })
+    const reader = await client.create_event_reader(['/system/**'], { keepaliveMs: 50 })
+    await expect(reader.pull_event()).resolves.toEqual(event)
+    expect(signals[0].aborted).toBe(false)
+    await reader.close()
+  })
+
   it('creates a native reader over the tcp framed protocol', async () => {
     const requests: any[] = []
     const server = net.createServer((socket) => {
