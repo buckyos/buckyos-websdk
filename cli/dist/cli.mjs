@@ -5352,6 +5352,7 @@ function validateAppDocShape(appDoc) {
       "req_capbilities",
       "permissions",
       "content_handlers",
+      "window",
       "selector_type",
       "service_config_tips"
     ],
@@ -5421,6 +5422,8 @@ function validateAppDocShape(appDoc) {
   if (appDoc.content_handlers !== void 0 && !Array.isArray(appDoc.content_handlers)) {
     throw invalid("appdoc", "APPDOC.content_handlers must be an array");
   }
+  if (appDoc.window !== void 0)
+    validateAppWindow(appDoc.window, "APPDOC.window");
   validateServiceConfigTips(appDoc.service_config_tips, "APPDOC.service_config_tips");
   const pkgList = expectObject$3(appDoc.pkg_list, "APPDOC.pkg_list");
   if (Object.keys(pkgList).length === 0) {
@@ -5644,6 +5647,39 @@ function invalid(stage, message2, entry) {
 }
 function stableJsonDigest(value) {
   return sha256Bytes(new TextEncoder().encode(ndn.toCanonicalJsonString(value)));
+}
+const APP_WINDOW_CHOICES = {
+  instance: ["single", "multi"],
+  default_mode: ["windowed", "maximized"],
+  mobile_header: ["standard", "compact"]
+};
+const APP_WINDOW_SIZES = ["width", "height", "min_width", "min_height"];
+const APP_WINDOW_FLAGS = ["resizable", "allow_minimize", "allow_maximize"];
+const APP_WINDOW_MAX_SIZE = 16384;
+function validateAppWindow(value, label) {
+  const window = expectObject$3(value, label);
+  assertKnownFields(window, [...Object.keys(APP_WINDOW_CHOICES), ...APP_WINDOW_SIZES, ...APP_WINDOW_FLAGS], label);
+  for (const [key, choices] of Object.entries(APP_WINDOW_CHOICES)) {
+    if (window[key] !== void 0 && !choices.includes(window[key])) {
+      throw invalid("appdoc", `${label}.${key} must be one of ${choices.join(", ")}`);
+    }
+  }
+  for (const key of APP_WINDOW_SIZES) {
+    const size = window[key];
+    if (size !== void 0 && (!Number.isSafeInteger(size) || Number(size) < 1 || Number(size) > APP_WINDOW_MAX_SIZE)) {
+      throw invalid("appdoc", `${label}.${key} must be 1..=${APP_WINDOW_MAX_SIZE}`);
+    }
+  }
+  for (const [min, size] of [["min_width", "width"], ["min_height", "height"]]) {
+    if (window[min] !== void 0 && window[size] !== void 0 && Number(window[min]) > Number(window[size])) {
+      throw invalid("appdoc", `${label}.${min} is larger than ${label}.${size}`);
+    }
+  }
+  for (const key of APP_WINDOW_FLAGS) {
+    if (window[key] !== void 0 && typeof window[key] !== "boolean")
+      throw invalid("appdoc", `${label}.${key} must be a boolean`);
+  }
+  return window;
 }
 function validateContentHandlers(value, permissions) {
   if (!Array.isArray(value))
@@ -6231,7 +6267,7 @@ async function readSkillDirectory(root, limit) {
   await walk(realRoot, "");
   return { files, ignored };
 }
-const PACKAGE_VERSION = "0.7.199";
+const PACKAGE_VERSION = "0.7.204";
 const TOOL_VERSION = PACKAGE_VERSION;
 const SDK_VERSION = PACKAGE_VERSION;
 const PROTOCOL_VERSION = "1";
@@ -7227,6 +7263,7 @@ async function buildCommand$1(ctx, input, docker, now) {
       ...appMeta.presentation ? { presentation: appMeta.presentation } : {},
       ...appMeta.permissions.length ? { permissions: appMeta.permissions } : {},
       ...appMeta.content_handlers?.length ? { content_handlers: appMeta.content_handlers } : {},
+      ...appMeta.window ? { window: appMeta.window } : {},
       selector_type: appMeta.selector_type,
       service_config_tips: appMeta.service_config_tips
     };
@@ -7392,6 +7429,7 @@ function parseAppMeta(value) {
       "categories",
       "permissions",
       "content_handlers",
+      "window",
       "selector_type",
       "service_config_tips"
     ],
@@ -7442,6 +7480,9 @@ function parseAppMeta(value) {
       content_handlers: developmentValidation(
         () => validateContentHandlers(value.content_handlers, permissions)
       )
+    },
+    ...value.window === void 0 ? {} : {
+      window: developmentValidation(() => validateAppWindow(value.window, "app.json.window"))
     },
     selector_type: developmentString(value.selector_type, "app.json.selector_type"),
     service_config_tips: serviceConfig

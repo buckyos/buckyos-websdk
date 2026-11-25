@@ -1,6 +1,7 @@
 import { hashPassword } from './account';
 export declare const buckyos: {
     hashPassword: typeof hashPassword;
+    getRuntimeEnvironment: typeof import("./runtime_env").getRuntimeEnvironment;
     initBuckyOS: (appid?: string, config?: import("./runtime").BuckyOSConfig | null) => Promise<void>;
     getBuckyOSConfig: () => import("./runtime").BuckyOSConfig | null;
     getRuntimeType: () => import("./runtime").RuntimeType;
@@ -88,6 +89,10 @@ export * as sn from './sn_client';
 export * as ndn from './ndn';
 export * as ndm from './ndm_client';
 export * as ndm_proxy from './ndm_proxy';
+export * from './open_app';
+export * from './runtime_env';
+export * from './audio';
+export { createZoneClients, type ZoneClients, type ZoneClientsOptions } from './zone_clients';
 export * as bucket from './bucket_client';
 export * as objectUrl from './object_url';
 export * from './executor_client';

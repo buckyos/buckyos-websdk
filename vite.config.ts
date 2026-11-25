@@ -14,6 +14,7 @@ export default defineConfig({
         content: resolve(__dirname, "src/content.ts"),
         aiws_ext: resolve(__dirname, "src/aiws_ext.ts"),
         "app-frame": resolve(__dirname, "src/app-frame.ts"),
+        "open-app": resolve(__dirname, "src/open_app.ts"),
         provision: resolve(__dirname, "src/provision.ts"),
         xllm: resolve(__dirname, "src/xllm/index.ts"),
         xllm_dev: resolve(__dirname, "src/xllm/dev.ts"),

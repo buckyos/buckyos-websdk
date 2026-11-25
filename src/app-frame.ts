@@ -1,4 +1,6 @@
 import { isOpenRequest, isTransferableRef, isTransferableSession, readContentHints, readSelectDialogResult, systemOpenUrl, SELECT_DIALOG_PATH, SystemDialogError, SYSTEM_DIALOG_ERROR_CODES, type ContentHints, type ContentOpenTarget, type OpenRequest, type SelectDialogParams, type SelectDialogResult, type SystemDialogErrorCode, type TransferableContentRef, type TransferableSessionContext } from './content'
+import { readAppOpenRequest, systemOpenAppUrl, type AppOpenRequest } from './open_app'
+import { getBuckyApi, type BuckyApi, type RuntimeContainer } from './runtime_env'
 export type SystemDialogReply = { ok: true; result: unknown } | { ok: false; code: SystemDialogErrorCode }
 const dialogErrorCode = (value: unknown): SystemDialogErrorCode =>
   SYSTEM_DIALOG_ERROR_CODES.includes(value as SystemDialogErrorCode) ? value as SystemDialogErrorCode : 'protocol'
@@ -13,8 +15,82 @@ export interface FrameInit {
   locale: string
   launch?: OpenRequest
   shellCapabilities: string[]
+  /** `tab`: the App fills a tab of the host, which has its own navigation, so the App leaves out its outer one. */
+  presentation?: 'window' | 'tab'
+  container?: RuntimeContainer
 }
 export type CloseDecision = 'allow' | 'deny' | 'pending'
+export type AppOpenErrorCode = 'not_found' | 'denied' | 'unsupported'
+export type AppOpenReply = { ok: true } | { ok: false; code: AppOpenErrorCode }
+export interface HeaderItem { id: string; label: string; active?: boolean }
+/** `icon`: the name of an icon, or the address of an image. */
+export interface HeaderMenuItem { id: string; label: string; icon?: string; danger?: boolean }
+/**
+ * What an App puts into the header the host draws above it (mobile containers; elsewhere it is ignored). A field left
+ * out keeps its value; an empty list, or `null` for the search, removes it.
+ */
+export interface HeaderState {
+  title?: string
+  /** A second row below the title, such as tabs. Only a `standard` header has room for it. */
+  second_row?: HeaderItem[]
+  search?: { placeholder?: string; value?: string } | null
+  menu?: HeaderMenuItem[]
+  /** Whether the back button applies inside the App; pressing it arrives as `frame.back`. */
+  back?: boolean
+}
+/** `search`: `value` is the text; `item` and `menu`: `id` is the entry that was chosen. */
+export interface HeaderEvent { kind: 'search' | 'item' | 'menu'; id?: string; value?: string }
+const text = (value: unknown, max: number): string | undefined => typeof value === 'string' ? value.slice(0, max) : undefined
+function readHeaderList<T extends HeaderMenuItem | HeaderItem>(value: unknown, read: (v: Record<string, unknown>, base: { id: string; label: string }) => T): T[] {
+  if (!Array.isArray(value)) return []
+  return value.slice(0, 32).flatMap((entry: unknown) => {
+    const v = entry as Record<string, unknown> | null
+    if (!v || typeof v !== 'object' || typeof v.id !== 'string' || !v.id || v.id.length > 128 || typeof v.label !== 'string') return []
+    return [read(v, { id: v.id, label: v.label.slice(0, 128) })]
+  })
+}
+/** Reads the header an App asks for; only the fields it gave are in the result. */
+function readHeader(p: Record<string, unknown>): HeaderState {
+  const header: HeaderState = {}
+  const title = text(p.title, 256)
+  if (title !== undefined) header.title = title
+  if (Array.isArray(p.second_row)) header.second_row = readHeaderList<HeaderItem>(p.second_row, (v, base) => ({ ...base, ...(v.active === true ? { active: true } : {}) }))
+  if (Array.isArray(p.menu)) header.menu = readHeaderList<HeaderMenuItem>(p.menu, (v, base) => ({ ...base, ...(typeof v.icon === 'string' ? { icon: v.icon.slice(0, 2048) } : {}), ...(v.danger === true ? { danger: true } : {}) }))
+  if (p.search === null) header.search = null
+  else if (p.search && typeof p.search === 'object') {
+    const search = p.search as Record<string, unknown>
+    const placeholder = text(search.placeholder, 128), value = text(search.value, 1024)
+    header.search = { ...(placeholder !== undefined ? { placeholder } : {}), ...(value !== undefined ? { value } : {}) }
+  }
+  if (typeof p.back === 'boolean') header.back = p.back
+  return header
+}
+/**
+ * A channel to one peer that the platform has already identified. The native client's bridge is one: it knows which
+ * view a message comes from, so there is no origin to check.
+ */
+export interface AppFrameTransport {
+  post(message: AppFrameMessage): void
+  onMessage(cb: (message: unknown) => void): () => void
+}
+/** The channel to another window: messages count only when they come from that window and that origin. */
+function windowTransport(peer: () => Window | null, origin: string): AppFrameTransport {
+  return {
+    post: message => peer()?.postMessage(message, origin),
+    onMessage: cb => {
+      const own = window
+      const listener = (event: MessageEvent) => { if (event.source === peer() && event.origin === origin) cb(event.data) }
+      own.addEventListener('message', listener)
+      return () => own.removeEventListener('message', listener)
+    },
+  }
+}
+function bridgeTransport(api: BuckyApi): AppFrameTransport {
+  return {
+    post: message => { void Promise.resolve(api.call('frame.post', message)).catch(() => {}) },
+    onMessage: cb => api.on('frame.message', cb),
+  }
+}
 const envelope = (type: string, payload: unknown, extra: { id?: string; replyTo?: string } = {}): AppFrameMessage =>
   ({ protocol: 'buckyos.app-frame', version: 1, type, payload, ...extra })
 const isMessage = (value: unknown): value is AppFrameMessage => {
@@ -22,43 +98,94 @@ const isMessage = (value: unknown): value is AppFrameMessage => {
   const v = value as AppFrameMessage
   return v.protocol === 'buckyos.app-frame' && v.version === 1 && typeof v.type === 'string' && !!v.payload && typeof v.payload === 'object'
 }
+export interface AppFrameHostCallbacks {
+  onReady?: () => void
+  onTitle?: (title: string, dirty: boolean) => void
+  onRequestClose?: () => void
+  onContentOpen?: (request: OpenRequest, target: ContentOpenTarget, options: { newWindow: boolean; hints: ContentHints }) => void
+  /** Opens another App, or a page of one (`app.open`). Without a `zone` the request is for the App's own Zone. */
+  onAppOpen?: (request: AppOpenRequest) => Promise<AppOpenReply> | AppOpenReply
+  /** The header the App wants now (`header.set`), with everything it set so far. */
+  onHeader?: (header: HeaderState) => void
+  /** Shows a system dialog the App asked for (`sysdlg.open`). `params` is untrusted input: validate it. */
+  onSystemDialog?: (path: string, params: unknown) => Promise<SystemDialogReply>
+}
+const FRAME_NAME_PREFIX = 'buckyos.app-frame:'
+
+/** The iframe name the host sets so an App can use its own URL fragment. */
+export function appFrameName(nonce: string): string { return FRAME_NAME_PREFIX + nonce }
+
+/**
+ * `target` and `origin`: the App runs in an iframe named with `appFrameName(init.nonce)` or opened with `#bfp=<init.nonce>`. `transport`: the
+ * platform connects this host to the App's view; the App picks the nonce and the host answers with it.
+ */
+export type AppFrameHostOptions = AppFrameHostCallbacks & (
+  | { target: () => Window | null; origin: string; init: FrameInit; transport?: undefined }
+  | { transport: AppFrameTransport; init: Omit<FrameInit, 'nonce'>; target?: undefined; origin?: undefined })
+/** Opening requests an App may send in ten seconds, for each kind. */
+const OPEN_LIMIT = 5
 export class AppFrameHost {
   ready = false
   capabilities: string[] = []
+  header: HeaderState = {}
+  private init: FrameInit
+  private readonly framed: boolean
+  private readonly channel: AppFrameTransport
+  private readonly detach: () => void
+  private readonly callbacks: AppFrameHostCallbacks
   private pending = new Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout>; type: string }>()
-  private listener = (event: MessageEvent) => this.receive(event)
-  private opens: number[] = []
-  constructor(private options: {
-    target: () => Window | null; origin: string; init: FrameInit
-    onReady?: () => void
-    onTitle?: (title: string, dirty: boolean) => void
-    onRequestClose?: () => void
-    onContentOpen?: (request: OpenRequest, target: ContentOpenTarget, options: { newWindow: boolean; hints: ContentHints }) => void
-    /** Shows a system dialog the App asked for (`sysdlg.open`). `params` is untrusted input: validate it. */
-    onSystemDialog?: (path: string, params: unknown) => Promise<SystemDialogReply>
-  }) { window.addEventListener('message', this.listener) }
+  private opens = new Map<string, number[]>()
+  constructor(options: AppFrameHostOptions) {
+    this.callbacks = options
+    this.framed = !options.transport
+    this.init = options.transport ? { ...options.init, nonce: '' } : options.init
+    this.channel = options.transport ?? windowTransport(options.target, options.origin)
+    this.detach = this.channel.onMessage(message => this.receive(message))
+  }
   private focused?: boolean
   private dialogOpen = false
+  private limited(type: string): boolean {
+    const recent = (this.opens.get(type) ?? []).filter(t => t > Date.now() - 10000)
+    this.opens.set(type, recent)
+    if (recent.length >= OPEN_LIMIT) return true
+    recent.push(Date.now())
+    return false
+  }
+  private async appOpen(id: string, payload: unknown): Promise<void> {
+    const reply = (result: AppOpenReply) => { if (this.ready) this.channel.post(envelope('app.openResult', result, { replyTo: id })) }
+    if (!this.callbacks.onAppOpen) return reply({ ok: false, code: 'unsupported' })
+    const request = readAppOpenRequest(payload)
+    if (!request || this.limited('app.open')) return reply({ ok: false, code: 'denied' })
+    try { reply(await this.callbacks.onAppOpen(request)) }
+    catch { reply({ ok: false, code: 'denied' }) }
+  }
   private async systemDialog(id: string, path: unknown, params: unknown): Promise<void> {
-    const reply = (payload: SystemDialogReply) => { if (this.ready) this.options.target()?.postMessage(envelope('sysdlg.openResult', payload, { replyTo: id }), this.options.origin) }
-    if (!this.options.onSystemDialog || typeof path !== 'string') return reply({ ok: false, code: 'unsupported' })
+    const reply = (payload: SystemDialogReply) => { if (this.ready) this.channel.post(envelope('sysdlg.openResult', payload, { replyTo: id })) }
+    if (!this.callbacks.onSystemDialog || typeof path !== 'string') return reply({ ok: false, code: 'unsupported' })
     if (this.dialogOpen) return reply({ ok: false, code: 'busy' })
     this.dialogOpen = true
-    try { reply(await this.options.onSystemDialog(path, params)) }
+    try { reply(await this.callbacks.onSystemDialog(path, params)) }
     catch (error) { reply({ ok: false, code: error instanceof SystemDialogError ? error.code : 'closed' }) }
     finally { this.dialogOpen = false }
   }
-  private receive(event: MessageEvent): void {
-    if (event.source !== this.options.target() || event.origin !== this.options.origin || !isMessage(event.data)) return
-    const m = event.data
+  private receive(m: unknown): void {
+    if (!isMessage(m)) return
     const p = m.payload as Record<string, unknown>
     if (m.type === 'frame.hello') {
-      if (p.nonce !== this.options.init.nonce || !Array.isArray(p.appCapabilities)) return
+      if (!Array.isArray(p.appCapabilities)) return
+      if (this.framed) { if (p.nonce !== this.init.nonce) return }
+      else {
+        if (typeof p.nonce !== 'string' || !p.nonce || p.nonce.length > 128) return
+        // Another document took the view over: the one before it will not answer any more.
+        if (p.nonce !== this.init.nonce) this.failPending('App frame reloaded')
+        this.init = { ...this.init, nonce: p.nonce }
+      }
       this.ready = true
       this.capabilities = p.appCapabilities.filter((c): c is string => typeof c === 'string')
-      this.send('frame.init', this.options.init)
+      this.send('frame.init', this.init)
       if (this.focused !== undefined) this.send('frame.focusChanged', { focused: this.focused })
-      this.options.onReady?.()
+      if (Object.keys(this.header).length) { this.header = {}; this.callbacks.onHeader?.({}) }
+      this.callbacks.onReady?.()
       return
     }
     if (!this.ready) return
@@ -69,27 +196,28 @@ export class AppFrameHost {
       }
       return
     }
-    if (m.type === 'window.setTitle' && typeof p.title === 'string') this.options.onTitle?.(p.title.slice(0, 256), p.dirty === true)
-    if (m.type === 'window.requestClose') this.options.onRequestClose?.()
+    if (m.type === 'window.setTitle' && typeof p.title === 'string') this.callbacks.onTitle?.(p.title.slice(0, 256), p.dirty === true)
+    if (m.type === 'window.requestClose') this.callbacks.onRequestClose?.()
+    if (m.type === 'header.set') { this.header = { ...this.header, ...readHeader(p) }; this.callbacks.onHeader?.(this.header) }
+    if (m.type === 'app.open' && typeof m.id === 'string') void this.appOpen(m.id, p)
     if (m.type === 'sysdlg.open' && typeof m.id === 'string') void this.systemDialog(m.id, p.path, p.params)
     if (m.type === 'content.open' && (p.target === 'default' || p.target === 'preview' || p.target === 'chooser')) {
       const request = { ...(p.request as object), requestId: crypto.randomUUID() }
-      if (!isOpenRequest(request)) return
-      this.opens = this.opens.filter(t => t > Date.now() - 10000)
-      if (this.opens.length >= 5) return
-      this.opens.push(Date.now())
-      this.options.onContentOpen?.(request, p.target, { newWindow: p.newWindow === true, hints: readContentHints(p.hints) })
+      if (!isOpenRequest(request) || this.limited('content.open')) return
+      this.callbacks.onContentOpen?.(request, p.target, { newWindow: p.newWindow === true, hints: readContentHints(p.hints) })
     }
   }
-  update(init: Partial<FrameInit>): void { this.options.init = { ...this.options.init, ...init } }
+  update(init: Partial<FrameInit>): void { this.init = { ...this.init, ...init } }
   /** Reports whether the App's window is the focused one; only a change is sent. */
   setFocused(focused: boolean): void {
     if (this.focused === focused) return
     this.focused = focused
     this.send('frame.focusChanged', { focused })
   }
+  /** Tells the App what happened in the header the host draws for it. */
+  headerEvent(event: HeaderEvent): void { this.send('header.event', event) }
   send(type: string, payload: unknown): void {
-    if (this.ready) this.options.target()?.postMessage(envelope(type, payload), this.options.origin)
+    if (this.ready) this.channel.post(envelope(type, payload))
   }
   request(type: string, payload: unknown, timeout = 3000): Promise<unknown> {
     if (!this.ready) return Promise.reject(new Error('App frame is not ready'))
@@ -97,7 +225,7 @@ export class AppFrameHost {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => { this.pending.delete(id); reject(new Error('App frame timed out')) }, timeout)
       this.pending.set(id, { resolve, reject, timer, type })
-      this.options.target()?.postMessage(envelope(type, payload, { id }), this.options.origin)
+      this.channel.post(envelope(type, payload, { id }))
     })
   }
   async open(request: OpenRequest): Promise<{ accepted: boolean; fallback?: 'preview' }> {
@@ -113,18 +241,24 @@ export class AppFrameHost {
     if (!this.capabilities.includes('back')) return false
     return (await this.request('frame.back', {}) as { handled?: boolean }).handled === true
   }
+  private failPending(reason: string): void {
+    this.pending.forEach(p => { clearTimeout(p.timer); p.reject(new Error(reason)) })
+    this.pending.clear()
+  }
   dispose(): void {
-    window.removeEventListener('message', this.listener)
-    this.pending.forEach(p => { clearTimeout(p.timer); p.reject(new Error('App frame disposed')) })
-    this.pending.clear(); this.ready = false
+    this.detach()
+    this.failPending('App frame disposed')
+    this.ready = false
   }
 }
 /**
  * Origin of the window embedding this page, when `accept` admits it. `location.ancestorOrigins` names the real
  * parent even after the frame navigated through other pages (a sign-in round trip); the referrer is the fallback.
+ * In the BuckyOS client the page is the top document and its host is the client itself, reached over the bridge: the
+ * answer is the page's own origin, so that code which connects only when it is embedded connects there too.
  */
 export function embedderOrigin(accept: (origin: string) => boolean): string | null {
-  if (window.parent === window) return null
+  if (window.parent === window) return getBuckyApi() && accept(window.location.origin) ? window.location.origin : null
   const candidates = [window.location.ancestorOrigins?.[0], document.referrer]
   for (const candidate of candidates) {
     if (!candidate) continue
@@ -147,10 +281,14 @@ export class AppFrameClient {
   private focused?: boolean
   private helloTimer?: ReturnType<typeof setInterval>
   private helloDeadline?: ReturnType<typeof setTimeout>
+  private header: HeaderState = {}
   private readonly nonce: string | null
-  private readonly origin: string
-  private readonly listener = (event: MessageEvent) => { void this.receive(event) }
+  /** The page is a top document of the BuckyOS client: its host is reached over the bridge. */
+  private readonly native: boolean
+  private readonly channel: AppFrameTransport
+  private readonly detach: () => void
   private dialogs = new Map<string, { resolve: (result: SelectDialogResult) => void; reject: (error: Error) => void; allowLocal: boolean }>()
+  private appOpens = new Map<string, (reply: AppOpenReply) => void>()
   private embedAbort?: AbortController
   constructor(private options: {
     shellOrigin: string
@@ -165,28 +303,36 @@ export class AppFrameClient {
     onTheme?: (theme: FrameInit['theme']) => void
     onLocale?: (locale: string) => void
     onFocus?: (focused: boolean) => void
+    /** The user used the header this App set with `setHeader`. */
+    onHeaderEvent?: (event: HeaderEvent) => void
   }) {
-    this.origin = new URL(options.shellOrigin).origin
-    this.nonce = new URLSearchParams(window.location.hash.slice(1)).get('bfp')
-    window.addEventListener('message', this.listener)
-    if (window.parent !== window && this.nonce) {
-      const hello = () => window.parent.postMessage(envelope('frame.hello', { nonce: this.nonce, appCapabilities: [
+    const origin = new URL(options.shellOrigin).origin
+    const bridge = window.parent === window ? getBuckyApi() : undefined
+    this.native = !!bridge
+    const name = window.parent !== window ? window.name : ''
+    this.nonce = name?.startsWith(FRAME_NAME_PREFIX) ? name.slice(FRAME_NAME_PREFIX.length)
+      : new URLSearchParams(window.location.hash.slice(1)).get('bfp') ?? (bridge ? crypto.randomUUID() : null)
+    this.channel = bridge ? bridgeTransport(bridge) : windowTransport(() => window.parent, origin)
+    this.detach = this.channel.onMessage(message => { void this.receive(message) })
+    if ((bridge || window.parent !== window) && this.nonce) {
+      const hello = () => this.channel.post(envelope('frame.hello', { nonce: this.nonce, appCapabilities: [
         ...options.onOpen ? ['open'] : [], ...options.onBeforeClose ? ['beforeClose'] : [], ...options.onBack ? ['back'] : [],
-      ] }), this.origin)
+      ] }))
       hello()
       this.helloTimer = setInterval(hello, 250)
-      this.helloDeadline = setTimeout(() => clearInterval(this.helloTimer), 1500)
+      // A native host may only be set up after the view has loaded.
+      this.helloDeadline = setTimeout(() => clearInterval(this.helloTimer), bridge ? 10000 : 1500)
     }
   }
-  private async receive(event: MessageEvent): Promise<void> {
-    if (event.source !== window.parent || event.origin !== this.origin || !isMessage(event.data)) return
-    const m = event.data
+  private async receive(m: unknown): Promise<void> {
+    if (!isMessage(m)) return
     const p = m.payload as Record<string, unknown>
     if (m.type === 'frame.init') {
       if (!this.nonce || p.nonce !== this.nonce || typeof p.locale !== 'string' || !p.theme || typeof p.windowId !== 'string' || p.launch && !isOpenRequest(p.launch)) return
       clearInterval(this.helloTimer); clearTimeout(this.helloDeadline)
       this.init = p as unknown as FrameInit
       this.title = undefined; this.focused = undefined
+      if (Object.keys(this.header).length) this.send('header.set', this.header)
       this.options.onInit?.(this.init)
       return
     }
@@ -201,7 +347,17 @@ export class AppFrameClient {
       else pending.reject(new SystemDialogError('protocol'))
       return
     }
-    const reply = (payload: unknown) => window.parent.postMessage(envelope(m.type + 'Result', payload, { replyTo: m.id }), this.origin)
+    if (m.type === 'app.openResult') {
+      const code = p.code === 'not_found' || p.code === 'denied' ? p.code : 'unsupported'
+      if (m.replyTo) this.appOpens.get(m.replyTo)?.(p.ok === true ? { ok: true } : { ok: false, code })
+      return
+    }
+    if (m.type === 'header.event') {
+      if (p.kind !== 'search' && p.kind !== 'item' && p.kind !== 'menu') return
+      this.options.onHeaderEvent?.({ kind: p.kind, ...(typeof p.id === 'string' ? { id: p.id } : {}), ...(typeof p.value === 'string' ? { value: p.value } : {}) })
+      return
+    }
+    const reply = (payload: unknown) => this.channel.post(envelope(m.type + 'Result', payload, { replyTo: m.id }))
     try {
       if (m.type === 'frame.open' && isOpenRequest(p.request)) reply(await this.options.onOpen?.(p.request) ?? { accepted: false })
       if (m.type === 'frame.beforeClose') reply({ decision: await this.options.onBeforeClose?.(p.reason as 'user') ?? 'allow' })
@@ -215,7 +371,7 @@ export class AppFrameClient {
     }
   }
   send(type: string, payload: unknown): void {
-    if (this.init) window.parent.postMessage(envelope(type, payload), this.origin)
+    if (this.init) this.channel.post(envelope(type, payload))
   }
   setTitle(title: string, dirty = false): void {
     const key = JSON.stringify([title, dirty])
@@ -224,10 +380,37 @@ export class AppFrameClient {
     this.send('window.setTitle', { title, dirty })
   }
   requestClose(): void { this.send('window.requestClose', {}) }
+  /** Sets what the host shows in the header above this App. It may be called before the handshake. */
+  setHeader(header: HeaderState): void {
+    this.header = { ...this.header, ...header }
+    this.send('header.set', header)
+  }
+  /**
+   * Opens another App, or a page of one, in this App's Zone (or in `zone`). The host decides between a new window and
+   * an open one. In a standalone tab it opens the Zone's system entry (`systemOrigin`) in a new tab, which only reaches
+   * this App's own Zone. Never rejects.
+   */
+  openApp(request: AppOpenRequest): Promise<AppOpenReply> {
+    const clean = readAppOpenRequest(request)
+    if (!clean) return Promise.resolve({ ok: false, code: 'denied' })
+    if (this.init) {
+      if (!this.init.shellCapabilities.includes('app.open')) return Promise.resolve({ ok: false, code: 'unsupported' })
+      const id = crypto.randomUUID()
+      return new Promise(resolve => {
+        const settle = (reply: AppOpenReply) => { clearTimeout(timer); this.appOpens.delete(id); resolve(reply) }
+        const timer = setTimeout(() => settle({ ok: false, code: 'unsupported' }), 30000)
+        this.appOpens.set(id, settle)
+        this.channel.post(envelope('app.open', clean, { id }))
+      })
+    }
+    if (!this.options.systemOrigin || clean.zone) return Promise.resolve({ ok: false, code: 'unsupported' })
+    window.open(systemOpenAppUrl(this.options.systemOrigin, clean), '_blank', 'noopener')
+    return Promise.resolve({ ok: true })
+  }
   /**
    * Asks the system to open content: with its default app, in Preview, or by letting the user choose (`chooser`).
-   * Embedded in the shell the request goes over the frame; in a standalone tab it opens the Zone's system entry
-   * (`systemOrigin`) in a new tab. Returns false when neither is available.
+   * Inside the shell or the BuckyOS client the request goes to the host; in a standalone tab it opens the Zone's system
+   * entry (`systemOrigin`) in a new tab. Returns false when neither is available.
    */
   openContent(request: Omit<OpenRequest, 'requestId'>, target: ContentOpenTarget = 'default', options: { newWindow?: boolean; hints?: ContentHints } = {}): boolean {
     const hints = options.hints ?? {}
@@ -239,17 +422,19 @@ export class AppFrameClient {
   /**
    * Shows the system file picker (`sysdlg/select`) and resolves with what the user chose; cancelling resolves with
    * `{ action: 'cancelled' }`. Embedded in the shell the shell draws the dialog over this App's window; in a
-   * standalone tab the picker page of the Zone's system entry (`systemOrigin`) is framed over this page. Rejects
-   * with a `SystemDialogError` when no picker is available or the request did not complete.
+   * standalone tab, and in the BuckyOS client unless it lists the dialog, the picker page of the Zone's system entry
+   * (`systemOrigin`) is framed over this page. Rejects with a `SystemDialogError` when no picker is available or the
+   * request did not complete.
    */
   selectContent(params: SelectDialogParams = {}, options: { signal?: AbortSignal; theme?: 'light' | 'dark'; locale?: string } = {}): Promise<SelectDialogResult> {
-    if (this.init) {
-      if (!this.init.shellCapabilities.includes(SELECT_DIALOG_PATH)) return Promise.reject(new SystemDialogError('unsupported'))
+    const offered = this.init?.shellCapabilities.includes(SELECT_DIALOG_PATH)
+    if (this.init && (offered || !this.native)) {
+      if (!offered) return Promise.reject(new SystemDialogError('unsupported'))
       if (this.dialogs.size) return Promise.reject(new SystemDialogError('busy'))
       const id = crypto.randomUUID()
       return new Promise((resolve, reject) => {
         this.dialogs.set(id, { resolve, reject, allowLocal: params.allowLocal === true })
-        window.parent.postMessage(envelope('sysdlg.open', { path: SELECT_DIALOG_PATH, params }, { id }), this.origin)
+        this.channel.post(envelope('sysdlg.open', { path: SELECT_DIALOG_PATH, params }, { id }))
       })
     }
     if (!this.options.systemOrigin) return Promise.reject(new SystemDialogError('unsupported'))
@@ -259,7 +444,8 @@ export class AppFrameClient {
     return openSelectEmbed(this.options.systemOrigin, params, { ...options, signal: abort.signal })
   }
   dispose(): void {
-    clearInterval(this.helloTimer); clearTimeout(this.helloDeadline); window.removeEventListener('message', this.listener)
+    clearInterval(this.helloTimer); clearTimeout(this.helloDeadline); this.detach()
+    this.appOpens.forEach(settle => settle({ ok: false, code: 'unsupported' }))
     this.dialogs.forEach(pending => pending.reject(new SystemDialogError('closed')))
     this.dialogs.clear(); this.embedAbort?.abort()
   }
@@ -559,10 +745,17 @@ const CONVERSATION_EMBED = 'buckyos.conversation-embed'
 export const CONVERSATION_EMBED_PATH = '/embed/conversation'
 /**
  * `agent`: the conversation with this Agent (the owner's default Agent when `agentDid` is left out) that this App
- * started; without one, the first message starts it. `session`: an existing conversation, when the system allows
- * this App to open it.
+ * started; without one, the first message starts it. With a `memoryMode`, only a conversation in that mode counts, and
+ * the one the first message starts has it (`normal` when left out). `session`: an existing conversation, when the
+ * system allows this App to open it.
  */
-export type ConversationEmbedTarget = { kind: 'agent'; agentDid?: string } | { kind: 'session'; sessionId: string }
+export type ConversationEmbedTarget = { kind: 'agent'; agentDid?: string; memoryMode?: ConversationMemoryMode } | { kind: 'session'; sessionId: string }
+/**
+ * Whether what is said in a conversation with an Agent, and what the work it starts finds, reaches the Agent's
+ * long-term memory (`no_write`: it does not), and whether that memory reaches the conversation (`no_read_write`:
+ * neither way).
+ */
+export type ConversationMemoryMode = 'normal' | 'no_write' | 'no_read_write'
 export interface ConversationEmbedInit {
   nonce: string
   target: ConversationEmbedTarget

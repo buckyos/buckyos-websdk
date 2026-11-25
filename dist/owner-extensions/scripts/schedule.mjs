@@ -1364,7 +1364,7 @@ function todoFields(locale = "zh") {
   const l = (k) => scheduleLabel(locale, k);
   return [
     { field_id: "title", name: l("title"), type: "text", required: true },
-    { field_id: "status", name: l("status"), type: "select", required: true, options: ["todo", "doing", "done"].map((id) => ({ option_id: id, label: l(id) })) },
+    { field_id: "status", name: l("status"), type: "select", required: true, default: "todo", options: ["todo", "doing", "done"].map((id) => ({ option_id: id, label: l(id) })) },
     { field_id: "due", name: l("due"), type: "date", nullable: true },
     { field_id: "order", name: l("order"), type: "text", nullable: true },
     { field_id: "done_at", name: l("done_at"), type: "datetime", nullable: true },
@@ -1523,7 +1523,7 @@ function todoAddOps(sourceId, input, place = {}) {
       order = orderKeyBetween(last, null);
     }
   }
-  const status = input.status ?? "todo";
+  const status = input.status;
   const values = {
     title: input.title,
     status,

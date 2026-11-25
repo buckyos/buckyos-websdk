@@ -1,8 +1,66 @@
 import { SystemDialogError, isOpenRequest, readContentHints, readSelectDialogResult, systemOpenUrl, SELECT_DIALOG_PATH, isTransferableRef, isTransferableSession, SYSTEM_DIALOG_ERROR_CODES } from "./content.mjs";
-import "./content_mime-e42d5f8d.mjs";
+import { readAppOpenRequest, systemOpenAppUrl } from "./open-app.mjs";
+import { g as getBuckyApi } from "./runtime_env-39e4df98.mjs";
 import "./object_url-20e94b67.mjs";
 import "./ndn_types-0fac2499.mjs";
 const dialogErrorCode = (value) => SYSTEM_DIALOG_ERROR_CODES.includes(value) ? value : "protocol";
+const text = (value, max) => typeof value === "string" ? value.slice(0, max) : void 0;
+function readHeaderList(value, read) {
+  if (!Array.isArray(value))
+    return [];
+  return value.slice(0, 32).flatMap((entry) => {
+    const v = entry;
+    if (!v || typeof v !== "object" || typeof v.id !== "string" || !v.id || v.id.length > 128 || typeof v.label !== "string")
+      return [];
+    return [read(v, { id: v.id, label: v.label.slice(0, 128) })];
+  });
+}
+function readHeader(p) {
+  const header = {};
+  const title = text(p.title, 256);
+  if (title !== void 0)
+    header.title = title;
+  if (Array.isArray(p.second_row))
+    header.second_row = readHeaderList(p.second_row, (v, base) => ({ ...base, ...v.active === true ? { active: true } : {} }));
+  if (Array.isArray(p.menu))
+    header.menu = readHeaderList(p.menu, (v, base) => ({ ...base, ...typeof v.icon === "string" ? { icon: v.icon.slice(0, 2048) } : {}, ...v.danger === true ? { danger: true } : {} }));
+  if (p.search === null)
+    header.search = null;
+  else if (p.search && typeof p.search === "object") {
+    const search = p.search;
+    const placeholder = text(search.placeholder, 128), value = text(search.value, 1024);
+    header.search = { ...placeholder !== void 0 ? { placeholder } : {}, ...value !== void 0 ? { value } : {} };
+  }
+  if (typeof p.back === "boolean")
+    header.back = p.back;
+  return header;
+}
+function windowTransport(peer, origin) {
+  return {
+    post: (message) => {
+      var _a;
+      return (_a = peer()) == null ? void 0 : _a.postMessage(message, origin);
+    },
+    onMessage: (cb) => {
+      const own = window;
+      const listener = (event) => {
+        if (event.source === peer() && event.origin === origin)
+          cb(event.data);
+      };
+      own.addEventListener("message", listener);
+      return () => own.removeEventListener("message", listener);
+    }
+  };
+}
+function bridgeTransport(api) {
+  return {
+    post: (message) => {
+      void Promise.resolve(api.call("frame.post", message)).catch(() => {
+      });
+    },
+    onMessage: (cb) => api.on("frame.message", cb)
+  };
+}
 const envelope = (type, payload, extra = {}) => ({ protocol: "buckyos.app-frame", version: 1, type, payload, ...extra });
 const isMessage = (value) => {
   if (!value || typeof value !== "object")
@@ -10,51 +68,95 @@ const isMessage = (value) => {
   const v = value;
   return v.protocol === "buckyos.app-frame" && v.version === 1 && typeof v.type === "string" && !!v.payload && typeof v.payload === "object";
 };
+const FRAME_NAME_PREFIX = "buckyos.app-frame:";
+function appFrameName(nonce) {
+  return FRAME_NAME_PREFIX + nonce;
+}
+const OPEN_LIMIT = 5;
 class AppFrameHost {
   constructor(options) {
-    this.options = options;
     this.ready = false;
     this.capabilities = [];
+    this.header = {};
     this.pending = /* @__PURE__ */ new Map();
-    this.listener = (event) => this.receive(event);
-    this.opens = [];
+    this.opens = /* @__PURE__ */ new Map();
     this.dialogOpen = false;
-    window.addEventListener("message", this.listener);
+    this.callbacks = options;
+    this.framed = !options.transport;
+    this.init = options.transport ? { ...options.init, nonce: "" } : options.init;
+    this.channel = options.transport ?? windowTransport(options.target, options.origin);
+    this.detach = this.channel.onMessage((message) => this.receive(message));
+  }
+  limited(type) {
+    const recent = (this.opens.get(type) ?? []).filter((t) => t > Date.now() - 1e4);
+    this.opens.set(type, recent);
+    if (recent.length >= OPEN_LIMIT)
+      return true;
+    recent.push(Date.now());
+    return false;
+  }
+  async appOpen(id, payload) {
+    const reply = (result) => {
+      if (this.ready)
+        this.channel.post(envelope("app.openResult", result, { replyTo: id }));
+    };
+    if (!this.callbacks.onAppOpen)
+      return reply({ ok: false, code: "unsupported" });
+    const request = readAppOpenRequest(payload);
+    if (!request || this.limited("app.open"))
+      return reply({ ok: false, code: "denied" });
+    try {
+      reply(await this.callbacks.onAppOpen(request));
+    } catch {
+      reply({ ok: false, code: "denied" });
+    }
   }
   async systemDialog(id, path, params) {
     const reply = (payload) => {
-      var _a;
       if (this.ready)
-        (_a = this.options.target()) == null ? void 0 : _a.postMessage(envelope("sysdlg.openResult", payload, { replyTo: id }), this.options.origin);
+        this.channel.post(envelope("sysdlg.openResult", payload, { replyTo: id }));
     };
-    if (!this.options.onSystemDialog || typeof path !== "string")
+    if (!this.callbacks.onSystemDialog || typeof path !== "string")
       return reply({ ok: false, code: "unsupported" });
     if (this.dialogOpen)
       return reply({ ok: false, code: "busy" });
     this.dialogOpen = true;
     try {
-      reply(await this.options.onSystemDialog(path, params));
+      reply(await this.callbacks.onSystemDialog(path, params));
     } catch (error) {
       reply({ ok: false, code: error instanceof SystemDialogError ? error.code : "closed" });
     } finally {
       this.dialogOpen = false;
     }
   }
-  receive(event) {
-    var _a, _b, _c, _d, _e, _f, _g, _h;
-    if (event.source !== this.options.target() || event.origin !== this.options.origin || !isMessage(event.data))
+  receive(m) {
+    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l;
+    if (!isMessage(m))
       return;
-    const m = event.data;
     const p = m.payload;
     if (m.type === "frame.hello") {
-      if (p.nonce !== this.options.init.nonce || !Array.isArray(p.appCapabilities))
+      if (!Array.isArray(p.appCapabilities))
         return;
+      if (this.framed) {
+        if (p.nonce !== this.init.nonce)
+          return;
+      } else {
+        if (typeof p.nonce !== "string" || !p.nonce || p.nonce.length > 128)
+          return;
+        if (p.nonce !== this.init.nonce)
+          this.failPending("App frame reloaded");
+        this.init = { ...this.init, nonce: p.nonce };
+      }
       this.ready = true;
       this.capabilities = p.appCapabilities.filter((c) => typeof c === "string");
-      this.send("frame.init", this.options.init);
+      this.send("frame.init", this.init);
       if (this.focused !== void 0)
         this.send("frame.focusChanged", { focused: this.focused });
-      (_b = (_a = this.options).onReady) == null ? void 0 : _b.call(_a);
+      if (Object.keys(this.header).length) {
+        this.header = {};
+        (_b = (_a = this.callbacks).onHeader) == null ? void 0 : _b.call(_a, {});
+      }
+      (_d = (_c = this.callbacks).onReady) == null ? void 0 : _d.call(_c);
       return;
     }
     if (!this.ready)
@@ -69,24 +171,26 @@ class AppFrameHost {
       return;
     }
     if (m.type === "window.setTitle" && typeof p.title === "string")
-      (_d = (_c = this.options).onTitle) == null ? void 0 : _d.call(_c, p.title.slice(0, 256), p.dirty === true);
+      (_f = (_e = this.callbacks).onTitle) == null ? void 0 : _f.call(_e, p.title.slice(0, 256), p.dirty === true);
     if (m.type === "window.requestClose")
-      (_f = (_e = this.options).onRequestClose) == null ? void 0 : _f.call(_e);
+      (_h = (_g = this.callbacks).onRequestClose) == null ? void 0 : _h.call(_g);
+    if (m.type === "header.set") {
+      this.header = { ...this.header, ...readHeader(p) };
+      (_j = (_i = this.callbacks).onHeader) == null ? void 0 : _j.call(_i, this.header);
+    }
+    if (m.type === "app.open" && typeof m.id === "string")
+      void this.appOpen(m.id, p);
     if (m.type === "sysdlg.open" && typeof m.id === "string")
       void this.systemDialog(m.id, p.path, p.params);
     if (m.type === "content.open" && (p.target === "default" || p.target === "preview" || p.target === "chooser")) {
       const request = { ...p.request, requestId: crypto.randomUUID() };
-      if (!isOpenRequest(request))
+      if (!isOpenRequest(request) || this.limited("content.open"))
         return;
-      this.opens = this.opens.filter((t) => t > Date.now() - 1e4);
-      if (this.opens.length >= 5)
-        return;
-      this.opens.push(Date.now());
-      (_h = (_g = this.options).onContentOpen) == null ? void 0 : _h.call(_g, request, p.target, { newWindow: p.newWindow === true, hints: readContentHints(p.hints) });
+      (_l = (_k = this.callbacks).onContentOpen) == null ? void 0 : _l.call(_k, request, p.target, { newWindow: p.newWindow === true, hints: readContentHints(p.hints) });
     }
   }
   update(init) {
-    this.options.init = { ...this.options.init, ...init };
+    this.init = { ...this.init, ...init };
   }
   /** Reports whether the App's window is the focused one; only a change is sent. */
   setFocused(focused) {
@@ -95,23 +199,25 @@ class AppFrameHost {
     this.focused = focused;
     this.send("frame.focusChanged", { focused });
   }
+  /** Tells the App what happened in the header the host draws for it. */
+  headerEvent(event) {
+    this.send("header.event", event);
+  }
   send(type, payload) {
-    var _a;
     if (this.ready)
-      (_a = this.options.target()) == null ? void 0 : _a.postMessage(envelope(type, payload), this.options.origin);
+      this.channel.post(envelope(type, payload));
   }
   request(type, payload, timeout = 3e3) {
     if (!this.ready)
       return Promise.reject(new Error("App frame is not ready"));
     const id = crypto.randomUUID();
     return new Promise((resolve, reject) => {
-      var _a;
       const timer = setTimeout(() => {
         this.pending.delete(id);
         reject(new Error("App frame timed out"));
       }, timeout);
       this.pending.set(id, { resolve, reject, timer, type });
-      (_a = this.options.target()) == null ? void 0 : _a.postMessage(envelope(type, payload, { id }), this.options.origin);
+      this.channel.post(envelope(type, payload, { id }));
     });
   }
   async open(request) {
@@ -130,20 +236,23 @@ class AppFrameHost {
       return false;
     return (await this.request("frame.back", {})).handled === true;
   }
-  dispose() {
-    window.removeEventListener("message", this.listener);
+  failPending(reason) {
     this.pending.forEach((p) => {
       clearTimeout(p.timer);
-      p.reject(new Error("App frame disposed"));
+      p.reject(new Error(reason));
     });
     this.pending.clear();
+  }
+  dispose() {
+    this.detach();
+    this.failPending("App frame disposed");
     this.ready = false;
   }
 }
 function embedderOrigin(accept) {
   var _a;
   if (window.parent === window)
-    return null;
+    return getBuckyApi() && accept(window.location.origin) ? window.location.origin : null;
   const candidates = [(_a = window.location.ancestorOrigins) == null ? void 0 : _a[0], document.referrer];
   for (const candidate of candidates) {
     if (!candidate)
@@ -168,29 +277,33 @@ const originInZone = (origin, zoneHost) => {
 class AppFrameClient {
   constructor(options) {
     this.options = options;
-    this.listener = (event) => {
-      void this.receive(event);
-    };
+    this.header = {};
     this.dialogs = /* @__PURE__ */ new Map();
-    this.origin = new URL(options.shellOrigin).origin;
-    this.nonce = new URLSearchParams(window.location.hash.slice(1)).get("bfp");
-    window.addEventListener("message", this.listener);
-    if (window.parent !== window && this.nonce) {
-      const hello = () => window.parent.postMessage(envelope("frame.hello", { nonce: this.nonce, appCapabilities: [
+    this.appOpens = /* @__PURE__ */ new Map();
+    const origin = new URL(options.shellOrigin).origin;
+    const bridge = window.parent === window ? getBuckyApi() : void 0;
+    this.native = !!bridge;
+    const name = window.parent !== window ? window.name : "";
+    this.nonce = (name == null ? void 0 : name.startsWith(FRAME_NAME_PREFIX)) ? name.slice(FRAME_NAME_PREFIX.length) : new URLSearchParams(window.location.hash.slice(1)).get("bfp") ?? (bridge ? crypto.randomUUID() : null);
+    this.channel = bridge ? bridgeTransport(bridge) : windowTransport(() => window.parent, origin);
+    this.detach = this.channel.onMessage((message) => {
+      void this.receive(message);
+    });
+    if ((bridge || window.parent !== window) && this.nonce) {
+      const hello = () => this.channel.post(envelope("frame.hello", { nonce: this.nonce, appCapabilities: [
         ...options.onOpen ? ["open"] : [],
         ...options.onBeforeClose ? ["beforeClose"] : [],
         ...options.onBack ? ["back"] : []
-      ] }), this.origin);
+      ] }));
       hello();
       this.helloTimer = setInterval(hello, 250);
-      this.helloDeadline = setTimeout(() => clearInterval(this.helloTimer), 1500);
+      this.helloDeadline = setTimeout(() => clearInterval(this.helloTimer), bridge ? 1e4 : 1500);
     }
   }
-  async receive(event) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n;
-    if (event.source !== window.parent || event.origin !== this.origin || !isMessage(event.data))
+  async receive(m) {
+    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q;
+    if (!isMessage(m))
       return;
-    const m = event.data;
     const p = m.payload;
     if (m.type === "frame.init") {
       if (!this.nonce || p.nonce !== this.nonce || typeof p.locale !== "string" || !p.theme || typeof p.windowId !== "string" || p.launch && !isOpenRequest(p.launch))
@@ -200,6 +313,8 @@ class AppFrameClient {
       this.init = p;
       this.title = void 0;
       this.focused = void 0;
+      if (Object.keys(this.header).length)
+        this.send("header.set", this.header);
       (_b = (_a = this.options).onInit) == null ? void 0 : _b.call(_a, this.init);
       return;
     }
@@ -219,21 +334,33 @@ class AppFrameClient {
         pending.reject(new SystemDialogError("protocol"));
       return;
     }
-    const reply = (payload) => window.parent.postMessage(envelope(m.type + "Result", payload, { replyTo: m.id }), this.origin);
+    if (m.type === "app.openResult") {
+      const code = p.code === "not_found" || p.code === "denied" ? p.code : "unsupported";
+      if (m.replyTo)
+        (_c = this.appOpens.get(m.replyTo)) == null ? void 0 : _c(p.ok === true ? { ok: true } : { ok: false, code });
+      return;
+    }
+    if (m.type === "header.event") {
+      if (p.kind !== "search" && p.kind !== "item" && p.kind !== "menu")
+        return;
+      (_e = (_d = this.options).onHeaderEvent) == null ? void 0 : _e.call(_d, { kind: p.kind, ...typeof p.id === "string" ? { id: p.id } : {}, ...typeof p.value === "string" ? { value: p.value } : {} });
+      return;
+    }
+    const reply = (payload) => this.channel.post(envelope(m.type + "Result", payload, { replyTo: m.id }));
     try {
       if (m.type === "frame.open" && isOpenRequest(p.request))
-        reply(await ((_d = (_c = this.options).onOpen) == null ? void 0 : _d.call(_c, p.request)) ?? { accepted: false });
+        reply(await ((_g = (_f = this.options).onOpen) == null ? void 0 : _g.call(_f, p.request)) ?? { accepted: false });
       if (m.type === "frame.beforeClose")
-        reply({ decision: await ((_f = (_e = this.options).onBeforeClose) == null ? void 0 : _f.call(_e, p.reason)) ?? "allow" });
+        reply({ decision: await ((_i = (_h = this.options).onBeforeClose) == null ? void 0 : _i.call(_h, p.reason)) ?? "allow" });
       if (m.type === "frame.back")
-        reply({ handled: await ((_h = (_g = this.options).onBack) == null ? void 0 : _h.call(_g)) ?? false });
+        reply({ handled: await ((_k = (_j = this.options).onBack) == null ? void 0 : _k.call(_j)) ?? false });
       if (m.type === "frame.themeChanged" && (p.mode === "dark" || p.mode === "light"))
-        (_j = (_i = this.options).onTheme) == null ? void 0 : _j.call(_i, p);
+        (_m = (_l = this.options).onTheme) == null ? void 0 : _m.call(_l, p);
       if (m.type === "frame.localeChanged" && typeof p.locale === "string")
-        (_l = (_k = this.options).onLocale) == null ? void 0 : _l.call(_k, p.locale);
+        (_o = (_n = this.options).onLocale) == null ? void 0 : _o.call(_n, p.locale);
       if (m.type === "frame.focusChanged" && this.focused !== (p.focused === true)) {
         this.focused = p.focused === true;
-        (_n = (_m = this.options).onFocus) == null ? void 0 : _n.call(_m, this.focused);
+        (_q = (_p = this.options).onFocus) == null ? void 0 : _q.call(_p, this.focused);
       }
     } catch {
       if (m.type === "frame.open")
@@ -244,7 +371,7 @@ class AppFrameClient {
   }
   send(type, payload) {
     if (this.init)
-      window.parent.postMessage(envelope(type, payload), this.origin);
+      this.channel.post(envelope(type, payload));
   }
   setTitle(title, dirty = false) {
     const key = JSON.stringify([title, dirty]);
@@ -256,10 +383,44 @@ class AppFrameClient {
   requestClose() {
     this.send("window.requestClose", {});
   }
+  /** Sets what the host shows in the header above this App. It may be called before the handshake. */
+  setHeader(header) {
+    this.header = { ...this.header, ...header };
+    this.send("header.set", header);
+  }
+  /**
+   * Opens another App, or a page of one, in this App's Zone (or in `zone`). The host decides between a new window and
+   * an open one. In a standalone tab it opens the Zone's system entry (`systemOrigin`) in a new tab, which only reaches
+   * this App's own Zone. Never rejects.
+   */
+  openApp(request) {
+    const clean = readAppOpenRequest(request);
+    if (!clean)
+      return Promise.resolve({ ok: false, code: "denied" });
+    if (this.init) {
+      if (!this.init.shellCapabilities.includes("app.open"))
+        return Promise.resolve({ ok: false, code: "unsupported" });
+      const id = crypto.randomUUID();
+      return new Promise((resolve) => {
+        const settle = (reply) => {
+          clearTimeout(timer);
+          this.appOpens.delete(id);
+          resolve(reply);
+        };
+        const timer = setTimeout(() => settle({ ok: false, code: "unsupported" }), 3e4);
+        this.appOpens.set(id, settle);
+        this.channel.post(envelope("app.open", clean, { id }));
+      });
+    }
+    if (!this.options.systemOrigin || clean.zone)
+      return Promise.resolve({ ok: false, code: "unsupported" });
+    window.open(systemOpenAppUrl(this.options.systemOrigin, clean), "_blank", "noopener");
+    return Promise.resolve({ ok: true });
+  }
   /**
    * Asks the system to open content: with its default app, in Preview, or by letting the user choose (`chooser`).
-   * Embedded in the shell the request goes over the frame; in a standalone tab it opens the Zone's system entry
-   * (`systemOrigin`) in a new tab. Returns false when neither is available.
+   * Inside the shell or the BuckyOS client the request goes to the host; in a standalone tab it opens the Zone's system
+   * entry (`systemOrigin`) in a new tab. Returns false when neither is available.
    */
   openContent(request, target = "default", options = {}) {
     const hints = options.hints ?? {};
@@ -275,27 +436,29 @@ class AppFrameClient {
   /**
    * Shows the system file picker (`sysdlg/select`) and resolves with what the user chose; cancelling resolves with
    * `{ action: 'cancelled' }`. Embedded in the shell the shell draws the dialog over this App's window; in a
-   * standalone tab the picker page of the Zone's system entry (`systemOrigin`) is framed over this page. Rejects
-   * with a `SystemDialogError` when no picker is available or the request did not complete.
+   * standalone tab, and in the BuckyOS client unless it lists the dialog, the picker page of the Zone's system entry
+   * (`systemOrigin`) is framed over this page. Rejects with a `SystemDialogError` when no picker is available or the
+   * request did not complete.
    */
   selectContent(params = {}, options = {}) {
-    var _a, _b;
-    if (this.init) {
-      if (!this.init.shellCapabilities.includes(SELECT_DIALOG_PATH))
+    var _a, _b, _c;
+    const offered = (_a = this.init) == null ? void 0 : _a.shellCapabilities.includes(SELECT_DIALOG_PATH);
+    if (this.init && (offered || !this.native)) {
+      if (!offered)
         return Promise.reject(new SystemDialogError("unsupported"));
       if (this.dialogs.size)
         return Promise.reject(new SystemDialogError("busy"));
       const id = crypto.randomUUID();
       return new Promise((resolve, reject) => {
         this.dialogs.set(id, { resolve, reject, allowLocal: params.allowLocal === true });
-        window.parent.postMessage(envelope("sysdlg.open", { path: SELECT_DIALOG_PATH, params }, { id }), this.origin);
+        this.channel.post(envelope("sysdlg.open", { path: SELECT_DIALOG_PATH, params }, { id }));
       });
     }
     if (!this.options.systemOrigin)
       return Promise.reject(new SystemDialogError("unsupported"));
     const abort = this.embedAbort = new AbortController();
-    (_a = options.signal) == null ? void 0 : _a.addEventListener("abort", () => abort.abort(), { once: true });
-    if ((_b = options.signal) == null ? void 0 : _b.aborted)
+    (_b = options.signal) == null ? void 0 : _b.addEventListener("abort", () => abort.abort(), { once: true });
+    if ((_c = options.signal) == null ? void 0 : _c.aborted)
       abort.abort();
     return openSelectEmbed(this.options.systemOrigin, params, { ...options, signal: abort.signal });
   }
@@ -303,7 +466,8 @@ class AppFrameClient {
     var _a;
     clearInterval(this.helloTimer);
     clearTimeout(this.helloDeadline);
-    window.removeEventListener("message", this.listener);
+    this.detach();
+    this.appOpens.forEach((settle) => settle({ ok: false, code: "unsupported" }));
     this.dialogs.forEach((pending) => pending.reject(new SystemDialogError("closed")));
     this.dialogs.clear();
     (_a = this.embedAbort) == null ? void 0 : _a.abort();
@@ -519,9 +683,9 @@ function openSelectEmbed(systemOrigin, params, options = {}) {
       const panel = document.createElement("div");
       panel.setAttribute("role", "alert");
       panel.style.cssText = `max-width:22rem;margin:1rem;padding:1.25rem;border-radius:16px;font:14px/1.6 system-ui,sans-serif;background:${theme === "dark" ? "#1f2329" : "#fff"};color:${theme === "dark" ? "#f2f3f5" : "#1f2329"};box-shadow:0 24px 64px rgba(0,0,0,.24)`;
-      const text = document.createElement("p");
-      text.style.margin = "0 0 1rem";
-      text.textContent = zh ? "无法加载文件选择器" : "Unable to load the file picker";
+      const text2 = document.createElement("p");
+      text2.style.margin = "0 0 1rem";
+      text2.textContent = zh ? "无法加载文件选择器" : "Unable to load the file picker";
       const actions = document.createElement("div");
       actions.style.cssText = "display:flex;gap:.5rem;justify-content:flex-end";
       const button = (label, action) => {
@@ -538,7 +702,7 @@ function openSelectEmbed(systemOrigin, params, options = {}) {
         panel.remove();
         load();
       });
-      panel.append(text, actions);
+      panel.append(text2, actions);
       root.append(panel);
       retry.focus();
     };
@@ -810,6 +974,7 @@ export {
   PreviewEmbedHost,
   SELECT_EMBED_PATH,
   SelectEmbedHost,
+  appFrameName,
   embedderOrigin,
   openSelectEmbed,
   originInZone

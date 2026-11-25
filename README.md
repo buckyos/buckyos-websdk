@@ -36,6 +36,8 @@ npx buckyos --allow-read ../shared-assets --allow-read /opt/app-source pikg buil
 遇到本地构建或目标配置问题，先运行 `npx buckyos pikg doctor`。`--version --verbose` 会打印 实际
 executable、Node/Deno host、distribution、Tool/SDK/协议版本和本地 policy。
 
+应用页面要用的接口（运行环境与能力清单、打开应用、移动端 Header、后台播放与录音）见 [SDK 说明](SDK.md#运行环境与能力清单)。
+
 ## 身份验证
 
 然后在浏览器中允许的,属于dApp的页面，都应使用BuckyOS SDK提供的登陆功能来获得一个有效身份。

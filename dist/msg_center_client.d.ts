@@ -499,6 +499,10 @@ export type NotifyKind = 'notice' | 'input';
 export type NotifyCategory = 'todo' | 'agent' | 'app';
 export type NotifyLevel = 'quiet' | 'normal' | 'timely' | 'urgent';
 export type NotifyStatus = 'open' | 'read' | 'answered' | 'dismissed' | 'expired' | 'canceled';
+/** `RPCError.code` of `notify.send`: the AppDoc of the calling App does not declare notifications. */
+export declare const NOTIFY_ERR_NOT_DECLARED = "NOTIFY_NOT_DECLARED";
+/** `RPCError.code` of `notify.send`: the user turned the notifications of the calling App off. */
+export declare const NOTIFY_ERR_DISABLED = "NOTIFY_DISABLED";
 /** Nothing can change any more (everything but `open` and `read`). */
 export declare function isNotifyClosed(status: NotifyStatus): boolean;
 export declare function notifyCategorySessionId(category: NotifyCategory): string;
@@ -607,6 +611,34 @@ export interface NotifyListResult {
     items: NotifyView[];
     next_cursor?: string;
 }
+/** What waits for the user: open notifications (in all and by category) and unread messages. */
+export interface NotifySummary {
+    notify: {
+        open: number;
+        todo: number;
+        agent: number;
+        app: number;
+    };
+    /** Muted conversations and the notification sessions do not count. */
+    messages: {
+        unread: number;
+    };
+}
+/** An App as the user's notification settings show it. */
+export interface NotifyApp {
+    app_instance_id: string;
+    app_id: string;
+    owner_user_id: string;
+    /** Absent when the App is not installed any more. */
+    show_name?: string;
+    app_icon_url?: string;
+    installed: boolean;
+    /** Its AppDoc declares that it notifies. */
+    declared: boolean;
+    /** Declared and not turned off: what the App sends is accepted. */
+    enabled: boolean;
+    last_sent_at_ms?: number;
+}
 /** `content.machine.data` of a notification message (intent `buckyos.notify`). */
 export interface NotifyMessageData {
     version: number;
@@ -706,6 +738,11 @@ export declare class MsgCenterClient {
     notifySend(req: NotifySendReq): Promise<NotifyView>;
     notifyGet(notifyId: string): Promise<NotifyView>;
     notifyList(req?: NotifyListReq): Promise<NotifyListResult>;
+    /** Counts for badges, for the caller. */
+    notifySummary(): Promise<NotifySummary>;
+    /** The Apps that may notify the caller or did, with the caller's switches. */
+    notifyListApps(): Promise<NotifyApp[]>;
+    notifySetApp(appInstanceId: string, enabled: boolean): Promise<NotifyApp>;
     /** Mark a `notice` read; `onBehalf` names who acknowledges for the user. */
     notifyAck(notifyId: string, onBehalf?: string): Promise<NotifyView>;
     notifyDismiss(notifyId: string): Promise<NotifyView>;

@@ -37,9 +37,10 @@ var __privateMethod = (obj, member, method) => {
 var _listener, _listeners, _cancelled, _allowInsecure, _gzip, _headers, _method, _timeout, _url, _body, _bodyType, _creds, _preflight, _process, _retry, _signal, _throttle, _getUrlFunc, _send, send_fn, _statusCode, _statusMessage, _headers2, _body2, _request, _error, _names, _data, _dataLength, _writeData, writeData_fn, _data2, _offset, _bytesRead, _parent, _maxInflation, _incrementBytesRead, incrementBytesRead_fn, _peekBytes, peekBytes_fn, _a, _r, _s, _v, _networkV, _privateKey, _options, _type, _to, _data3, _nonce, _gasLimit, _gasPrice, _maxPriorityFeePerGas, _maxFeePerGas, _value, _chainId, _sig, _accessList, _maxFeePerBlobGas, _blobVersionedHashes, _kzg, _blobs, _auths, _blobWrapperVersion, _getSerialized, getSerialized_fn, _types, _fullTypes, _encoderCache, _getEncoder, getEncoder_fn, _offset2, _tokens, _subTokenString, subTokenString_fn, _walkAsync, walkAsync_fn, _getCoder, getCoder_fn, _errors, _events, _functions, _abiCoder, _getFunction, getFunction_fn, _getEvent, getEvent_fn, _transactions, _logs, _startBlock, _iface, _iface2, _filter, _b, _supports2544, _resolver, _fetch, fetch_fn, _getResolver, getResolver_fn, _url2, _processFunc, _name, _chainId2, _plugins, _provider, _poller, _interval, _blockNumber, _poll, poll_fn, _provider2, _poll2, _running, _tag, _lastBlock, _filter2, _hash, _provider3, _filter3, _poller2, _running2, _blockNumber2, _poll3, poll_fn2, _subs, _plugins2, _pausedState, _destroyed, _networkPromise, _anyNetwork, _performCache, _lastBlockNumber, _nextTimer, _timers, _disableCcipRead, _requestRate, _requestTimes, _options2, _getDelay, getDelay_fn, _perform, perform_fn, _call, call_fn, _checkNetwork, checkNetwork_fn, _getAccountValue, getAccountValue_fn, _getBlock, getBlock_fn, _hasSub, hasSub_fn, _getSub, getSub_fn, _throwUnsupported, throwUnsupported_fn, _provider4, _filterIdPromise, _poller3, _running3, _network, _hault, _poll4, poll_fn3, _teardown, teardown_fn, _event, _options3, _nextId, _payloads, _drainTimer, _notReady, _network2, _pendingDetectNetwork, _scheduleDrain, scheduleDrain_fn, _pollingInterval, _connect, _signingKey, _data4, _checksum, _words, _loadWords, loadWords_fn, _account, account_fn, _fromSeed, fromSeed_fn, _fromAccount, fromAccount_fn;
 import { R as RPCError, k as kRPCClient } from "./krpc_client-673448e5.mjs";
 import { s as DID, N as NODE_IDENTITY_SCHEMA_V2, e as isBuckyOSLocalNodeIdentityConfig, l as parseBuckyOSOwnerDocument, t as canonicalize, u as signJwtEdDSA, F as FileObject, A as ACTION_TYPE_DOWNLOAD, v as ACTION_TYPE_INSTALLED, w as ACTION_TYPE_LIKED, x as ACTION_TYPE_PURCHASED, y as ACTION_TYPE_SHARED, z as ACTION_TYPE_UNLIKED, B as ACTION_TYPE_VIEWED, C as BaseContentObject, E as CYFS_CONTENT_TYPE_NAMED_OBJECT_JSON, G as CYFS_CONTENT_TYPE_NAMED_OBJECT_JWT, H as ChunkId, I as ChunkType, J as DEFAULT_HASH_METHOD, K as DirObject, L as HashMethod, M as InclusionProof, O as KnownStandardObject, P as MSG_OBJECT_RESERVED_KEYS, Q as MSG_REACTION_KEY_MAX_BYTES, R as MSG_SESSION_ID_MAX_CHARS, S as NamedObjectBase, T as NdnError, U as OBJ_TYPE_ACTION, V as OBJ_TYPE_CHUNK_LIST, W as OBJ_TYPE_DIR, X as OBJ_TYPE_FILE, Y as OBJ_TYPE_INCLUSION_PROOF, Z as OBJ_TYPE_LIST, _ as OBJ_TYPE_MSG, $ as OBJ_TYPE_OBJMAP, a0 as OBJ_TYPE_PACK, a1 as OBJ_TYPE_PATH, a2 as OBJ_TYPE_PKG, a3 as OBJ_TYPE_RECEIPT, a4 as OBJ_TYPE_RELATION, a5 as ObjId, a6 as PathObject, a7 as RELATION_TYPE_PART_OF, a8 as RELATION_TYPE_SAME, a9 as RelationObject, aa as SimpleChunkList, ab as SimpleMapItem, ac as SimpleObjectMap, ad as actionObjectFromJson, ae as base32Decode, af as base32Encode, ag as buildNamedObjectByJson, ah as buildNamedObjectByJwt, ai as buildObjId, aj as bytesToHex$2, ak as calcPkgMetaObjId, al as canonicalizeJson, am as decodeMsgObjectJwt, an as extractObjIdByPath, ao as hexToBytes$1, ap as isCyfsNamedObjectContentType, aq as isValidMsgSessionId, ar as loadNamedObj, as as loadNamedObjAndVerify, at as loadNamedObjectFromObjStr, au as msgJwtKidDid, av as msgObjectFromJsonChecked, aw as namedObjectEncodingFromContentType, ax as normalizePackageMetaForObjId, ay as randomMsgNonce, az as receiptObjFromJson, aA as sha256Bytes, aB as sha256Utf8, aC as toCanonicalJsonString, aD as validateMsgObject, aE as varintDecode, aF as varintEncode, aG as verifyMsgObjectJwt, aH as verifyNamedObject, aI as verifyNamedObjectFromJwt, aJ as verifyNamedObjectFromStr } from "./ndn_types-0fac2499.mjs";
-import { s as sniffMagic, m as mediaTypeFromExtension, e as extensionOf, a as stripMediaTypeParams, h as heifImageSize, i as isoBoxes } from "./content_mime-e42d5f8d.mjs";
+import { sniffMagic, mediaTypeFromExtension, extensionOf, stripMediaTypeParams, heifImageSize, isoBoxes, ContentRegistryClient } from "./content.mjs";
 import { g as getBrowserIdentityRaw, c as clearBrowserUserInfo, s as saveBrowserIdentity, a as saveBrowserUserInfo, b as getBrowserUserInfo, d as clearBrowserIdentity, h as hashPassword, e as saveLocalAccountInfo, f as cleanLocalAccountInfo } from "./account-7a7bde6f.mjs";
-import { i as AiWorkspaceClient, A as AIWORKSPACE_SERVICE_NAME, Y as newRecordId, _ as insertRecordOp, Z as setValuesOps, $ as deleteRecordsOp, V as orderKeyBetween, g as commitOverLimit, M as AIWS_PROTOCOL_VERSION, a as AiwsFailure, h as commitWithParts } from "./aiws_bind-a96cb506.mjs";
+import { i as AiWorkspaceClient, A as AIWORKSPACE_SERVICE_NAME, Y as newRecordId, _ as insertRecordOp, Z as setValuesOps, $ as deleteRecordsOp, V as orderKeyBetween, g as commitOverLimit, M as AIWS_PROTOCOL_VERSION, a as AiwsFailure, h as commitWithParts } from "./aiws_bind-b851d4db.mjs";
+import { a as getRuntimeEnvironment, g as getBuckyApi } from "./runtime_env-39e4df98.mjs";
 import { a as objEventKey } from "./object_url-20e94b67.mjs";
 function ensureSSOEnvironment() {
   if (typeof window === "undefined" || typeof window.location === "undefined") {
@@ -714,11 +715,11 @@ function asRecord$4(value, what) {
   return value;
 }
 function requiredField$1(value, field, what) {
-  const record = asRecord$4(value, what);
-  if (!(field in record)) {
+  const record2 = asRecord$4(value, what);
+  if (!(field in record2)) {
     throw new RPCError(`Expected ${field} in TaskMgr response`);
   }
-  return record[field];
+  return record2[field];
 }
 function parseTaskResult(value) {
   const task = requiredField$1(value, "task", "task result");
@@ -1127,11 +1128,11 @@ function asRecord$3(value) {
   }
   return value;
 }
-function requiredField(record, field) {
-  if (!(field in record)) {
+function requiredField(record2, field) {
+  if (!(field in record2)) {
     throw new RPCError(`Expected ${field} in workflow response`);
   }
-  return record[field];
+  return record2[field];
 }
 class WorkflowClient {
   constructor(rpcClient) {
@@ -2194,12 +2195,12 @@ function asMessageList(value) {
     if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
       throw new RPCError(`message[${idx}] is not an object`);
     }
-    const record = entry;
+    const record2 = entry;
     return {
-      index: asNumber$2(record.index, `message[${idx}].index`),
-      created_at: asNumber$2(record.created_at, `message[${idx}].created_at`),
-      payload: Array.isArray(record.payload) ? record.payload : [],
-      headers: record.headers && typeof record.headers === "object" && !Array.isArray(record.headers) ? record.headers : {}
+      index: asNumber$2(record2.index, `message[${idx}].index`),
+      created_at: asNumber$2(record2.created_at, `message[${idx}].created_at`),
+      payload: Array.isArray(record2.payload) ? record2.payload : [],
+      headers: record2.headers && typeof record2.headers === "object" && !Array.isArray(record2.headers) ? record2.headers : {}
     };
   });
 }
@@ -2231,12 +2232,12 @@ class MsgQueueClient {
     if (!result || typeof result !== "object") {
       throw new RPCError("invalid get_queue_stats response");
     }
-    const record = result;
+    const record2 = result;
     return {
-      message_count: asNumber$2(record.message_count, "message_count"),
-      first_index: asNumber$2(record.first_index, "first_index"),
-      last_index: asNumber$2(record.last_index, "last_index"),
-      size_bytes: asNumber$2(record.size_bytes, "size_bytes")
+      message_count: asNumber$2(record2.message_count, "message_count"),
+      first_index: asNumber$2(record2.first_index, "first_index"),
+      last_index: asNumber$2(record2.last_index, "last_index"),
+      size_bytes: asNumber$2(record2.size_bytes, "size_bytes")
     };
   }
   async updateQueueConfig(queueUrn, config) {
@@ -2344,6 +2345,8 @@ const NOTIFY_TEXT_CONTROL_ID = "text";
 const NOTIFY_ACTION_ANSWER = "answer";
 const NOTIFY_ACTION_DISMISS = "dismiss";
 const NOTIFY_LINK_PATH = "/messagehub";
+const NOTIFY_ERR_NOT_DECLARED = "NOTIFY_NOT_DECLARED";
+const NOTIFY_ERR_DISABLED = "NOTIFY_DISABLED";
 function isNotifyClosed(status) {
   return status !== "open" && status !== "read";
 }
@@ -2441,26 +2444,26 @@ class MsgCenterClient {
   }
   async listBoxByTime(req) {
     const result = await this.call("msg.list_box_by_time", compact$1({ ...req }));
-    const page = asRecord$2(result, "MailboxRecordPage");
+    const page2 = asRecord$2(result, "MailboxRecordPage");
     return {
-      ...page,
-      items: Array.isArray(page.items) ? page.items : []
+      ...page2,
+      items: Array.isArray(page2.items) ? page2.items : []
     };
   }
   async listSessions(req) {
     const result = await this.call("msg.list_sessions", compact$1({ ...req }));
-    const page = asRecord$2(result, "SessionSummaryPage");
+    const page2 = asRecord$2(result, "SessionSummaryPage");
     return {
-      ...page,
-      items: Array.isArray(page.items) ? page.items : []
+      ...page2,
+      items: Array.isArray(page2.items) ? page2.items : []
     };
   }
   async listSession(req) {
     const result = await this.call("msg.list_session", compact$1({ ...req }));
-    const page = asRecord$2(result, "SessionMessagePage");
+    const page2 = asRecord$2(result, "SessionMessagePage");
     return {
-      ...page,
-      items: Array.isArray(page.items) ? page.items : []
+      ...page2,
+      items: Array.isArray(page2.items) ? page2.items : []
     };
   }
   async updateRecordState(recordId, newState) {
@@ -2654,13 +2657,13 @@ class MsgCenterClient {
       subscribers,
       contact_mgr_owner: contactMgrOwner
     }));
-    const record = asRecord$2(result, "SetGroupSubscribersResult");
-    if (typeof record.group_id !== "string" || typeof record.subscriber_count !== "number") {
+    const record2 = asRecord$2(result, "SetGroupSubscribersResult");
+    if (typeof record2.group_id !== "string" || typeof record2.subscriber_count !== "number") {
       throw new RPCError("Invalid SetGroupSubscribersResult");
     }
     return {
-      group_id: record.group_id,
-      subscriber_count: record.subscriber_count
+      group_id: record2.group_id,
+      subscriber_count: record2.subscriber_count
     };
   }
   /** Find people and groups for raw input: name, DID, BNS name or group invite link. */
@@ -2741,6 +2744,30 @@ class MsgCenterClient {
       ...result,
       items: asArrayOf(result.items, "Vec<NotifyView>").map(asNotifyView)
     };
+  }
+  /** Counts for badges, for the caller. */
+  async notifySummary() {
+    const result = asRecord$2(await this.call("notify.summary", {}), "NotifySummary");
+    const notify = asRecord$2(result.notify, "NotifySummary.notify");
+    const messages = asRecord$2(result.messages, "NotifySummary.messages");
+    const count = (value) => {
+      if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+        throw new RPCError("Invalid NotifySummary");
+      }
+      return value;
+    };
+    return {
+      notify: { open: count(notify.open), todo: count(notify.todo), agent: count(notify.agent), app: count(notify.app) },
+      messages: { unread: count(messages.unread) }
+    };
+  }
+  /** The Apps that may notify the caller or did, with the caller's switches. */
+  async notifyListApps() {
+    const result = asRecord$2(await this.call("notify.list_apps", {}), "NotifyListAppsResult");
+    return asArrayOf(result.apps, "Vec<NotifyApp>");
+  }
+  async notifySetApp(appInstanceId, enabled) {
+    return asRecord$2(await this.call("notify.set_app", { app_instance_id: appInstanceId, enabled }), "NotifyApp");
   }
   /** Mark a `notice` read; `onBehalf` names who acknowledges for the user. */
   async notifyAck(notifyId, onBehalf) {
@@ -3029,11 +3056,11 @@ class RepoClient {
     );
     const arr = asArray$1(result, "Vec<RepoProof>");
     return arr.map((entry, idx) => {
-      const record = asRecord$1(entry, `RepoProof[${idx}]`);
-      if (record.kind !== "Action" && record.kind !== "Collection") {
-        throw new RPCError(`RepoProof[${idx}] has unknown kind: ${String(record.kind)}`);
+      const record2 = asRecord$1(entry, `RepoProof[${idx}]`);
+      if (record2.kind !== "Action" && record2.kind !== "Collection") {
+        throw new RPCError(`RepoProof[${idx}] has unknown kind: ${String(record2.kind)}`);
       }
-      return record;
+      return record2;
     });
   }
   async resolve(contentName) {
@@ -3050,46 +3077,46 @@ class RepoClient {
     );
     const arr = asArray$1(result, "Vec<RepoRecord>");
     return arr.map((entry, idx) => {
-      const record = asRecord$1(entry, `RepoRecord[${idx}]`);
+      const record2 = asRecord$1(entry, `RepoRecord[${idx}]`);
       return {
-        content_id: asString$1(record.content_id, `RepoRecord[${idx}].content_id`),
-        content_name: typeof record.content_name === "string" ? record.content_name : void 0,
-        status: asString$1(record.status, `RepoRecord[${idx}].status`),
-        origin: asString$1(record.origin, `RepoRecord[${idx}].origin`),
-        meta: record.meta,
-        owner_did: typeof record.owner_did === "string" ? record.owner_did : void 0,
-        author: typeof record.author === "string" ? record.author : void 0,
-        access_policy: asString$1(record.access_policy, `RepoRecord[${idx}].access_policy`),
-        price: typeof record.price === "string" ? record.price : void 0,
-        content_size: typeof record.content_size === "number" ? record.content_size : void 0,
-        collected_at: typeof record.collected_at === "number" ? record.collected_at : void 0,
-        pinned_at: typeof record.pinned_at === "number" ? record.pinned_at : void 0,
-        updated_at: typeof record.updated_at === "number" ? record.updated_at : void 0
+        content_id: asString$1(record2.content_id, `RepoRecord[${idx}].content_id`),
+        content_name: typeof record2.content_name === "string" ? record2.content_name : void 0,
+        status: asString$1(record2.status, `RepoRecord[${idx}].status`),
+        origin: asString$1(record2.origin, `RepoRecord[${idx}].origin`),
+        meta: record2.meta,
+        owner_did: typeof record2.owner_did === "string" ? record2.owner_did : void 0,
+        author: typeof record2.author === "string" ? record2.author : void 0,
+        access_policy: asString$1(record2.access_policy, `RepoRecord[${idx}].access_policy`),
+        price: typeof record2.price === "string" ? record2.price : void 0,
+        content_size: typeof record2.content_size === "number" ? record2.content_size : void 0,
+        collected_at: typeof record2.collected_at === "number" ? record2.collected_at : void 0,
+        pinned_at: typeof record2.pinned_at === "number" ? record2.pinned_at : void 0,
+        updated_at: typeof record2.updated_at === "number" ? record2.updated_at : void 0
       };
     });
   }
   async stat() {
     const result = await this.rpcClient.call("stat", {});
-    const record = asRecord$1(result, "RepoStat");
+    const record2 = asRecord$1(result, "RepoStat");
     return {
-      total_objects: asNumber$1(record.total_objects, "RepoStat.total_objects"),
-      collected_objects: asNumber$1(record.collected_objects, "RepoStat.collected_objects"),
-      pinned_objects: asNumber$1(record.pinned_objects, "RepoStat.pinned_objects"),
-      local_objects: asNumber$1(record.local_objects, "RepoStat.local_objects"),
-      remote_objects: asNumber$1(record.remote_objects, "RepoStat.remote_objects"),
-      total_content_bytes: asNumber$1(record.total_content_bytes, "RepoStat.total_content_bytes"),
-      total_proofs: asNumber$1(record.total_proofs, "RepoStat.total_proofs")
+      total_objects: asNumber$1(record2.total_objects, "RepoStat.total_objects"),
+      collected_objects: asNumber$1(record2.collected_objects, "RepoStat.collected_objects"),
+      pinned_objects: asNumber$1(record2.pinned_objects, "RepoStat.pinned_objects"),
+      local_objects: asNumber$1(record2.local_objects, "RepoStat.local_objects"),
+      remote_objects: asNumber$1(record2.remote_objects, "RepoStat.remote_objects"),
+      total_content_bytes: asNumber$1(record2.total_content_bytes, "RepoStat.total_content_bytes"),
+      total_proofs: asNumber$1(record2.total_proofs, "RepoStat.total_proofs")
     };
   }
   async serve(contentId, requestContext) {
     const result = await this.rpcClient.call("serve", { content_id: contentId, request_context: requestContext });
-    const record = asRecord$1(result, "RepoServeResult");
+    const record2 = asRecord$1(result, "RepoServeResult");
     return {
-      status: asString$1(record.status, "RepoServeResult.status"),
-      content_ref: record.content_ref && typeof record.content_ref === "object" ? record.content_ref : void 0,
-      download_proof: record.download_proof && typeof record.download_proof === "object" ? record.download_proof : void 0,
-      reject_code: typeof record.reject_code === "string" ? record.reject_code : void 0,
-      reject_reason: typeof record.reject_reason === "string" ? record.reject_reason : void 0
+      status: asString$1(record2.status, "RepoServeResult.status"),
+      content_ref: record2.content_ref && typeof record2.content_ref === "object" ? record2.content_ref : void 0,
+      download_proof: record2.download_proof && typeof record2.download_proof === "object" ? record2.download_proof : void 0,
+      reject_code: typeof record2.reject_code === "string" ? record2.reject_code : void 0,
+      reject_reason: typeof record2.reject_reason === "string" ? record2.reject_reason : void 0
     };
   }
   async announce(contentId) {
@@ -5778,7 +5805,8 @@ function createSDKModule(target) {
       kRPCClient,
       AuthClient,
       ...api,
-      hashPassword
+      hashPassword,
+      getRuntimeEnvironment
     }
   };
 }
@@ -6396,9 +6424,9 @@ class BnsClient {
   async *iterNamesByAddress(address, pageSize = 100) {
     let cursor = null;
     do {
-      const page = await this.queryNamesByAddress(address, cursor, pageSize);
-      yield* page.names;
-      cursor = page.next_cursor;
+      const page2 = await this.queryNamesByAddress(address, cursor, pageSize);
+      yield* page2.names;
+      cursor = page2.next_cursor;
     } while (cursor !== null);
   }
   // Execution state of a submitted TX. `not_found` only means the upstream
@@ -26371,11 +26399,11 @@ function decodeUtf8$1(bytes2) {
     return value;
   }
 }
-function validateDnsTxtRecord(record, path) {
-  if (!record || typeof record !== "object" || Array.isArray(record)) {
+function validateDnsTxtRecord(record2, path) {
+  if (!record2 || typeof record2 !== "object" || Array.isArray(record2)) {
     throw new BnsEvmTxError("INVALID_DOCUMENT", `${path} must be an object`);
   }
-  const source = record;
+  const source = record2;
   if (!Number.isInteger(source.ttl) || source.ttl < 0 || source.ttl > MAX_U32) {
     throw new BnsEvmTxError("INVALID_DOCUMENT", `${path}.ttl must be a u32`);
   }
@@ -26481,7 +26509,7 @@ class BnsEvmTxBuilder {
       if (!Array.isArray(parsed)) {
         throw new BnsEvmTxError("INVALID_DOCUMENT", "current dns_txt document must be an array");
       }
-      records = parsed.map((record, index) => validateDnsTxtRecord(record, `dns_txt[${index}]`));
+      records = parsed.map((record2, index) => validateDnsTxtRecord(record2, `dns_txt[${index}]`));
     }
     switch (request.mode) {
       case "add": {
@@ -26492,7 +26520,7 @@ class BnsEvmTxBuilder {
           ttl: request.ttl ?? BNS_DNS_TXT_DEFAULT_TTL,
           value: request.value
         }, "dns_txt");
-        if (!records.some((record) => record.value === next.value)) {
+        if (!records.some((record2) => record2.value === next.value)) {
           records.push(next);
         }
         break;
@@ -26501,15 +26529,15 @@ class BnsEvmTxBuilder {
         if (!request.value) {
           throw new BnsEvmTxError("INVALID_OPERATION", "publish_dns_txt mode=remove requires value");
         }
-        records = records.filter((record) => record.value !== request.value);
+        records = records.filter((record2) => record2.value !== request.value);
         break;
       case "replace":
         if (!request.records) {
           throw new BnsEvmTxError("INVALID_OPERATION", "publish_dns_txt mode=replace requires records");
         }
-        records = request.records.map((record, index) => validateDnsTxtRecord({
-          ttl: record.ttl ?? BNS_DNS_TXT_DEFAULT_TTL,
-          value: record.value
+        records = request.records.map((record2, index) => validateDnsTxtRecord({
+          ttl: record2.ttl ?? BNS_DNS_TXT_DEFAULT_TTL,
+          value: record2.value
         }, `dns_txt[${index}]`));
         break;
       default:
@@ -27605,12 +27633,12 @@ function sanitizeInitialDocuments(docs) {
     out.boot = docs.boot;
   }
   if (docs.dns_txt !== void 0) {
-    out.dns_txt = docs.dns_txt.map((record) => ({ ttl: record.ttl, value: record.value }));
+    out.dns_txt = docs.dns_txt.map((record2) => ({ ttl: record2.ttl, value: record2.value }));
   }
   return out;
 }
-function sanitizeDnsTxtRecord(record) {
-  return record.ttl !== void 0 ? { ttl: record.ttl, value: record.value } : { value: record.value };
+function sanitizeDnsTxtRecord(record2) {
+  return record2.ttl !== void 0 ? { ttl: record2.ttl, value: record2.value } : { value: record2.value };
 }
 function dnsRecordParams(req) {
   const params = {
@@ -31039,6 +31067,379 @@ const ndm_proxy = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.definePro
   unpin,
   unpinOwner
 }, Symbol.toStringTag, { value: "Module" }));
+function audioCapabilities() {
+  const { container, capabilities } = getRuntimeEnvironment();
+  return {
+    background: container !== "browser" && capabilities.includes("audio.background") ? "native" : capabilities.includes("media.session") ? "media-session" : "none",
+    record: !capabilities.includes("audio.record") ? "none" : container === "browser" ? "browser" : "native"
+  };
+}
+const ERROR_CODES = ["unsupported", "denied", "busy", "not_found", "invalid_state", "failed"];
+class AudioError extends Error {
+  constructor(code, message) {
+    super(message ?? `Audio: ${code}`);
+    this.code = code;
+    this.name = "AudioError";
+  }
+}
+async function callNative(api, name, payload) {
+  try {
+    return await api.call(name, payload);
+  } catch (error) {
+    const code = error == null ? void 0 : error.code;
+    throw new AudioError(typeof code === "string" && ERROR_CODES.includes(code) ? code : "failed", error instanceof Error ? error.message : void 0);
+  }
+}
+const COMMANDS = { play: "play", pause: "pause", stop: "stop", next: "nexttrack", previous: "previoustrack" };
+const nativeTarget = (api) => ({
+  acquire: async (state) => {
+    await callNative(api, "audio.background.acquire", state);
+  },
+  update: async (state) => {
+    await callNative(api, "audio.background.update", state);
+  },
+  release: async () => {
+    await callNative(api, "audio.background.release", {});
+  },
+  listen: (emit2) => api.on("audio.background.command", (payload) => {
+    const command = payload == null ? void 0 : payload.command;
+    if (typeof command === "string" && command in COMMANDS)
+      emit2(command);
+  })
+});
+function mediaSessionTarget(session) {
+  const show = async (state) => {
+    if (typeof MediaMetadata !== "undefined") {
+      session.metadata = new MediaMetadata({ title: state.title, artist: state.artist ?? "", artwork: state.artwork ? [{ src: state.artwork }] : [] });
+    }
+    session.playbackState = state.playing ? "playing" : "paused";
+  };
+  const handle = (action, handler) => {
+    try {
+      session.setActionHandler(action, handler);
+    } catch {
+    }
+  };
+  const commands = Object.entries(COMMANDS);
+  return {
+    acquire: show,
+    update: show,
+    release: async () => {
+      session.metadata = null;
+      session.playbackState = "none";
+    },
+    listen: (emit2) => {
+      commands.forEach(([command, action]) => handle(action, () => emit2(command)));
+      return () => commands.forEach(([, action]) => handle(action, null));
+    }
+  };
+}
+const noTarget = { acquire: async () => {
+}, update: async () => {
+}, release: async () => {
+}, listen: () => () => {
+} };
+let holder;
+let queue = Promise.resolve();
+const inOrder = (run) => {
+  const next = queue.then(run);
+  queue = next.catch(() => {
+  });
+  return next;
+};
+class BackgroundAudio {
+  constructor(target, state) {
+    this.target = target;
+    this.state = state;
+    this.handlers = /* @__PURE__ */ new Set();
+  }
+  /** Another handle took over: this one no longer has any effect. */
+  detach() {
+    var _a2;
+    (_a2 = this.unlisten) == null ? void 0 : _a2.call(this);
+    this.unlisten = void 0;
+    this.handlers.clear();
+  }
+  update(patch) {
+    this.state = readState({ ...this.state, ...patch });
+    return inOrder(async () => {
+      if (holder === this)
+        await this.target.update(this.state);
+    });
+  }
+  release() {
+    return inOrder(async () => {
+      if (holder !== this)
+        return;
+      holder = void 0;
+      this.detach();
+      await this.target.release();
+    });
+  }
+  onCommand(handler) {
+    if (holder !== this)
+      return () => {
+      };
+    this.handlers.add(handler);
+    this.unlisten ?? (this.unlisten = this.target.listen((command) => this.handlers.forEach((h) => h(command))));
+    return () => {
+      var _a2;
+      this.handlers.delete(handler);
+      if (!this.handlers.size) {
+        (_a2 = this.unlisten) == null ? void 0 : _a2.call(this);
+        this.unlisten = void 0;
+      }
+    };
+  }
+}
+function readState(info) {
+  const state = { title: info.title, playing: info.playing !== false };
+  if (info.artist)
+    state.artist = info.artist;
+  if (info.artwork) {
+    try {
+      state.artwork = new URL(info.artwork, window.location.href).href;
+    } catch {
+    }
+  }
+  return state;
+}
+function acquireBackgroundAudio(info) {
+  const { background } = audioCapabilities();
+  const target = background === "native" ? nativeTarget(getBuckyApi()) : background === "media-session" ? mediaSessionTarget(navigator.mediaSession) : noTarget;
+  const state = readState(info);
+  return inOrder(async () => {
+    await target.acquire(state);
+    holder == null ? void 0 : holder.detach();
+    holder = new BackgroundAudio(target, state);
+    return holder;
+  });
+}
+const isCount = (value) => typeof value === "number" && Number.isFinite(value) && value >= 0;
+const record = (value) => value && typeof value === "object" ? value : {};
+function readRecording(value) {
+  const v = record(value);
+  if (typeof v.id !== "string" || !v.id || typeof v.mime !== "string" || !isCount(v.size) || !isCount(v.createdAt))
+    throw new AudioError("failed", "Invalid recording");
+  return { id: v.id, mime: v.mime, size: v.size, createdAt: v.createdAt, ...typeof v.title === "string" ? { title: v.title } : {}, ...isCount(v.durationMs) ? { durationMs: v.durationMs } : {} };
+}
+function readStatus(value) {
+  const v = record(value);
+  if (v.state !== "idle" && v.state !== "recording" && v.state !== "paused" && v.state !== "interrupted")
+    throw new AudioError("failed", "Invalid recording status");
+  return {
+    state: v.state,
+    elapsedMs: isCount(v.elapsedMs) ? v.elapsedMs : 0,
+    ...typeof v.id === "string" ? { id: v.id } : {},
+    ...isCount(v.startedAt) ? { startedAt: v.startedAt } : {},
+    ...typeof v.error === "string" ? { error: ERROR_CODES.includes(v.error) ? v.error : "failed" } : {}
+  };
+}
+const READ_CHUNK = 512 * 1024;
+const nativeRecorder = (api) => {
+  const call = (name, payload = {}) => callNative(api, `audio.record.${name}`, payload);
+  return {
+    start: async (options) => readStatus(await call("start", options)),
+    pause: async () => readStatus(await call("pause")),
+    resume: async () => readStatus(await call("resume")),
+    stop: async () => readRecording(await call("stop")),
+    status: async () => readStatus(await call("status")),
+    list: async () => {
+      const { recordings } = record(await call("list"));
+      return Array.isArray(recordings) ? recordings.map(readRecording) : [];
+    },
+    get: async (id2) => {
+      const parts = [];
+      for (let offset = 0; ; ) {
+        const chunk = record(await call("get", { id: id2, offset, length: READ_CHUNK }));
+        if (typeof chunk.data !== "string")
+          throw new AudioError("failed", "Invalid recording data");
+        const bytes2 = Uint8Array.from(atob(chunk.data), (c) => c.charCodeAt(0));
+        parts.push(bytes2);
+        offset += bytes2.length;
+        if (chunk.eof === true || !bytes2.length) {
+          const recording = readRecording(chunk.recording);
+          return { ...recording, blob: new Blob(parts, { type: recording.mime }) };
+        }
+      }
+    },
+    delete: async (id2) => {
+      await call("delete", { id: id2 });
+    },
+    listen: (handler) => api.on("audio.record.state", (payload) => {
+      let status;
+      try {
+        status = readStatus(payload);
+      } catch {
+        return;
+      }
+      handler(status);
+    })
+  };
+};
+const RECORDER_TYPES = ["audio/mp4;codecs=mp4a.40.2", "audio/webm;codecs=opus", "audio/mp4"];
+function pageRecorder() {
+  const recordings = /* @__PURE__ */ new Map();
+  const listeners = /* @__PURE__ */ new Set();
+  let active;
+  let starting = false;
+  const elapsed = (r) => r.recorded + (r.since === void 0 ? 0 : Date.now() - r.since);
+  const status = () => active ? { state: active.recorder.state === "paused" ? "paused" : "recording", id: active.id, startedAt: active.startedAt, elapsedMs: elapsed(active) } : { state: "idle", elapsedMs: 0 };
+  const emit2 = (value) => {
+    listeners.forEach((l) => l(value));
+    return value;
+  };
+  const current = (...states) => {
+    if (!active || !states.includes(active.recorder.state))
+      throw new AudioError("invalid_state");
+    return active;
+  };
+  return {
+    start: async (options) => {
+      if (active || starting)
+        throw new AudioError("busy");
+      starting = true;
+      let stream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: {
+          ...options.sampleRate ? { sampleRate: options.sampleRate } : {},
+          ...options.channels ? { channelCount: options.channels } : {}
+        } });
+        const mimeType = RECORDER_TYPES.find((type) => MediaRecorder.isTypeSupported(type));
+        const recorder2 = new MediaRecorder(stream, { ...mimeType ? { mimeType } : {}, ...options.bitRate ? { audioBitsPerSecond: options.bitRate } : {} });
+        const tracks = stream.getTracks();
+        const chunks = [];
+        const finished = new Promise((resolve) => {
+          recorder2.ondataavailable = (event) => {
+            if (event.data.size)
+              chunks.push(event.data);
+          };
+          recorder2.onstop = () => {
+            tracks.forEach((track) => track.stop());
+            const mime = (recorder2.mimeType || mimeType || "audio/webm").split(";")[0];
+            const blob = new Blob(chunks, { type: mime });
+            const recording = { id: id2, mime, size: blob.size, durationMs: elapsed(own), createdAt: own.startedAt, ...options.title ? { title: options.title } : {} };
+            recordings.set(id2, { ...recording, blob });
+            const byItself = active === own;
+            active = void 0;
+            emit2(byItself ? { state: "idle", id: id2, elapsedMs: elapsed(own), error: "failed" } : { state: "idle", elapsedMs: 0 });
+            resolve(recording);
+          };
+        });
+        const id2 = crypto.randomUUID();
+        const own = { id: id2, startedAt: Date.now(), recorded: 0, since: Date.now(), recorder: recorder2, finished };
+        recorder2.start(1e3);
+        active = own;
+        return emit2(status());
+      } catch (error) {
+        stream == null ? void 0 : stream.getTracks().forEach((track) => track.stop());
+        if (error instanceof AudioError)
+          throw error;
+        const name = error == null ? void 0 : error.name;
+        throw new AudioError(name === "NotAllowedError" || name === "SecurityError" ? "denied" : name === "NotFoundError" ? "not_found" : "failed", error instanceof Error ? error.message : void 0);
+      } finally {
+        starting = false;
+      }
+    },
+    pause: async () => {
+      const own = current("recording");
+      own.recorder.pause();
+      own.recorded = elapsed(own);
+      own.since = void 0;
+      return emit2(status());
+    },
+    resume: async () => {
+      const own = current("paused");
+      own.recorder.resume();
+      own.since = Date.now();
+      return emit2(status());
+    },
+    stop: async () => {
+      const own = current("recording", "paused");
+      own.recorded = elapsed(own);
+      own.since = void 0;
+      active = void 0;
+      own.recorder.stop();
+      return own.finished;
+    },
+    status: async () => status(),
+    list: async () => [...recordings.values()].map(({ blob: _blob, ...recording }) => recording).sort((a, b2) => b2.createdAt - a.createdAt),
+    get: async (id2) => {
+      const found = recordings.get(id2);
+      if (!found)
+        throw new AudioError("not_found");
+      return { ...found };
+    },
+    delete: async (id2) => {
+      if (!recordings.delete(id2))
+        throw new AudioError("not_found");
+    },
+    listen: (handler) => {
+      listeners.add(handler);
+      return () => {
+        listeners.delete(handler);
+      };
+    }
+  };
+}
+let page;
+function recorder() {
+  const { record: kind } = audioCapabilities();
+  if (kind === "none")
+    throw new AudioError("unsupported");
+  return kind === "native" ? nativeRecorder(getBuckyApi()) : page ?? (page = pageRecorder());
+}
+async function startRecording(options = {}) {
+  return recorder().start(options);
+}
+async function pauseRecording() {
+  return recorder().pause();
+}
+async function resumeRecording() {
+  return recorder().resume();
+}
+async function stopRecording() {
+  return recorder().stop();
+}
+async function getRecordingStatus() {
+  return recorder().status();
+}
+async function listRecordings() {
+  return recorder().list();
+}
+async function getRecording(id2) {
+  return recorder().get(id2);
+}
+async function deleteRecording(id2) {
+  return recorder().delete(id2);
+}
+function onRecordingState(handler) {
+  return audioCapabilities().record === "none" ? () => {
+  } : recorder().listen(handler);
+}
+function createZoneClients(options) {
+  const { zoneHost, userId, ownerDid, fetcher, sessionTokenProvider } = options;
+  const url = (service) => `https://${zoneHost}/kapi/${service}`;
+  const rpcOptions = { fetcher, sessionTokenProvider };
+  const rpc = (service) => new kRPCClient(url(service), null, null, rpcOptions);
+  const systemConfig = new SystemConfigClient(url("system_config"), null, rpcOptions);
+  return {
+    zoneHost,
+    userId,
+    ownerDid,
+    rpc,
+    systemConfig,
+    msgCenter: new MsgCenterClient(rpc("msg-center")),
+    taskManager: new TaskManagerClient(rpc("task-manager")),
+    // Signing in and renewing carry their own credential: a session token from the provider does not belong there.
+    verifyHub: new VerifyHubClient(new kRPCClient(url("verify-hub"), null, null, { fetcher })),
+    contentRegistry: (user = userId) => {
+      if (!user)
+        throw new Error("contentRegistry requires a user id");
+      return new ContentRegistryClient(systemConfig, user);
+    }
+  };
+}
 const COMPUTER_SEMANTIC_FORMAT = "outline-v1";
 const COMPUTER_ROLES = [
   "window",
@@ -32041,234 +32442,249 @@ function markdownToBlocks(markdown, prefix) {
   return blocks.length ? blocks : [b2.empty()];
 }
 export {
-  CONTACT_TAG_ZONE_AGENT as $,
-  NOTIFY_ACTION_ANSWER as A,
+  waitNotify as $,
+  NOTIFY_TEXT_CONTROL_ID as A,
   BS_SERVICE_VERIFY_HUB as B,
-  NOTIFY_ACTION_DISMISS as C,
-  NOTIFY_LINK_PATH as D,
+  NOTIFY_ACTION_ANSWER as C,
+  NOTIFY_ACTION_DISMISS as D,
   EXTERNAL_PRINCIPAL_CLAIM as E,
-  isNotifyClosed as F,
-  notifyCategorySessionId as G,
-  notifyCategoryFromSessionId as H,
-  inputPrompt as I,
-  promptOptions as J,
-  notifyAnswerToTaskResult as K,
-  validateNotifyAnswer as L,
+  NOTIFY_LINK_PATH as F,
+  NOTIFY_ERR_NOT_DECLARED as G,
+  NOTIFY_ERR_DISABLED as H,
+  isNotifyClosed as I,
+  notifyCategorySessionId as J,
+  notifyCategoryFromSessionId as K,
+  inputPrompt as L,
   MsgQueueClient as M,
   NOTIFY_INTENT as N,
-  notifyUrl as O,
-  msgMachineData as P,
-  notifyMessageData as Q,
+  promptOptions as O,
+  notifyAnswerToTaskResult as P,
+  validateNotifyAnswer as Q,
   RuntimeType as R,
   SystemConfigClient as S,
-  commitNotifyAnswer as T,
-  answerNotify as U,
+  notifyUrl as T,
+  msgMachineData as U,
   VerifyHubClient as V,
   WEB3_BRIDGE_HOST as W,
-  waitNotify as X,
-  FRIEND_INTENT as Y,
+  notifyMessageData as X,
+  commitNotifyAnswer as Y,
   ZONE_USER_TYPES as Z,
-  CONTACT_TAG_ZONE_USER as _,
+  answerNotify as _,
   ndm_client as a,
-  TASK_ERR_CONTROL_NOT_AVAILABLE as a$,
-  CONTACT_TAG_HOMESTATION_FOLLOWING as a0,
-  CONTACT_CHANGED_EVENT_PATTERN as a1,
-  WELL_KNOWN_CONTACT_TAGS as a2,
-  USER_TYPE_GROUP_REF_PREFIX as a3,
-  USER_GROUP_REF_PREFIX as a4,
-  contactTagApp as a5,
-  contactTagKind as a6,
-  isUserGroupRefTag as a7,
-  DENY_REASONS as a8,
-  ACCESS_DENIED_ERROR_CODE as a9,
-  HUMAN_APPROVAL_SCHEMA_ID as aA,
-  DOWNLOAD_TASK_SCHEMA_ID as aB,
-  SCHEDULER_DISPATCH_THUNK_TASK_SCHEMA_ID as aC,
-  WORKFLOW_RUN_TREE_TASK_SCHEMA_ID as aD,
-  WORKFLOW_STEP_TASK_SCHEMA_ID as aE,
-  WORKFLOW_MAP_SHARD_TASK_SCHEMA_ID as aF,
-  WORKFLOW_THUNK_TASK_SCHEMA_ID as aG,
-  WORKFLOW_SCHEDULE_TASK_SCHEMA_ID as aH,
-  WORKFLOW_SEND_MESSAGE_TASK_SCHEMA_ID as aI,
-  WORKFLOW_EXECUTE_RPC_TASK_SCHEMA_ID as aJ,
-  WORKFLOW_RUN_TARGET_TASK_SCHEMA_ID as aK,
-  AGENT_DELEGATE_TASK_SCHEMA_ID as aL,
-  HUMAN_INPUT_TASK_SCHEMA_ID as aM,
-  OPENDAN_ASYNC_TOOL_TASK_SCHEMA_ID as aN,
-  OPENDAN_COMMAND_TASK_SCHEMA_ID as aO,
-  TOOL_EXEC_BASH_TASK_SCHEMA_ID as aP,
-  AICC_COMPUTE_TASK_SCHEMA_ID as aQ,
-  APP_INSTALL_TASK_SCHEMA_ID as aR,
-  APP_UNINSTALL_TASK_SCHEMA_ID as aS,
-  APP_START_TASK_SCHEMA_ID as aT,
-  APP_UPDATE_TASK_SCHEMA_ID as aU,
-  APP_UPDATE_BATCH_TASK_SCHEMA_ID as aV,
-  TASK_ERR_NOT_FOUND as aW,
-  TASK_ERR_PERMISSION_DENIED as aX,
-  TASK_ERR_REVISION_CONFLICT as aY,
-  TASK_ERR_STALE_RUNNER_EPOCH as aZ,
-  TASK_ERR_INVALID_PHASE as a_,
-  parseAccessDenial as aa,
-  accessDenialOf as ab,
-  ANONYMOUS_IDENTITY as ac,
-  parseCurrentIdentity as ad,
-  identityKey as ae,
-  identityAllows as af,
-  DEFAULT_JUMP_BASE_URL as ag,
-  JUMP_ACTION_PATHS as ah,
-  normalizeZoneHostname as ai,
-  zoneActionUrl as aj,
-  buildJumpUrl as ak,
-  APP_LOGIN_ISSUE_METHOD as al,
-  APP_LOGIN_EXCHANGE_METHOD as am,
-  APP_LOGIN_SETTINGS_GET_METHOD as an,
-  APP_LOGIN_SETTINGS_SET_METHOD as ao,
-  issueAppLoginCode as ap,
-  issueAppCustomerLink as aq,
-  parseAppLoginExchangeResult as ar,
-  randomAppLoginNonce as as,
-  loginByAppAccessToken as at,
-  completeAppAccessTokenLogin as au,
-  TASK_MANAGER_SERVICE_UNIQUE_ID as av,
-  TASK_MANAGER_SERVICE_NAME as aw,
-  TASK_MANAGER_SERVICE_PORT as ax,
-  TASK_POLICY_PRESET_COLLABORATIVE_TREE_V1 as ay,
-  RAW_TASK_SCHEMA_ID as az,
+  TASK_ERR_REVISION_CONFLICT as a$,
+  FRIEND_INTENT as a0,
+  CONTACT_TAG_ZONE_USER as a1,
+  CONTACT_TAG_ZONE_AGENT as a2,
+  CONTACT_TAG_HOMESTATION_FOLLOWING as a3,
+  CONTACT_CHANGED_EVENT_PATTERN as a4,
+  WELL_KNOWN_CONTACT_TAGS as a5,
+  USER_TYPE_GROUP_REF_PREFIX as a6,
+  USER_GROUP_REF_PREFIX as a7,
+  contactTagApp as a8,
+  contactTagKind as a9,
+  TASK_MANAGER_SERVICE_PORT as aA,
+  TASK_POLICY_PRESET_COLLABORATIVE_TREE_V1 as aB,
+  RAW_TASK_SCHEMA_ID as aC,
+  HUMAN_APPROVAL_SCHEMA_ID as aD,
+  DOWNLOAD_TASK_SCHEMA_ID as aE,
+  SCHEDULER_DISPATCH_THUNK_TASK_SCHEMA_ID as aF,
+  WORKFLOW_RUN_TREE_TASK_SCHEMA_ID as aG,
+  WORKFLOW_STEP_TASK_SCHEMA_ID as aH,
+  WORKFLOW_MAP_SHARD_TASK_SCHEMA_ID as aI,
+  WORKFLOW_THUNK_TASK_SCHEMA_ID as aJ,
+  WORKFLOW_SCHEDULE_TASK_SCHEMA_ID as aK,
+  WORKFLOW_SEND_MESSAGE_TASK_SCHEMA_ID as aL,
+  WORKFLOW_EXECUTE_RPC_TASK_SCHEMA_ID as aM,
+  WORKFLOW_RUN_TARGET_TASK_SCHEMA_ID as aN,
+  AGENT_DELEGATE_TASK_SCHEMA_ID as aO,
+  HUMAN_INPUT_TASK_SCHEMA_ID as aP,
+  OPENDAN_ASYNC_TOOL_TASK_SCHEMA_ID as aQ,
+  OPENDAN_COMMAND_TASK_SCHEMA_ID as aR,
+  TOOL_EXEC_BASH_TASK_SCHEMA_ID as aS,
+  AICC_COMPUTE_TASK_SCHEMA_ID as aT,
+  APP_INSTALL_TASK_SCHEMA_ID as aU,
+  APP_UNINSTALL_TASK_SCHEMA_ID as aV,
+  APP_START_TASK_SCHEMA_ID as aW,
+  APP_UPDATE_TASK_SCHEMA_ID as aX,
+  APP_UPDATE_BATCH_TASK_SCHEMA_ID as aY,
+  TASK_ERR_NOT_FOUND as aZ,
+  TASK_ERR_PERMISSION_DENIED as a_,
+  isUserGroupRefTag as aa,
+  DENY_REASONS as ab,
+  ACCESS_DENIED_ERROR_CODE as ac,
+  parseAccessDenial as ad,
+  accessDenialOf as ae,
+  ANONYMOUS_IDENTITY as af,
+  parseCurrentIdentity as ag,
+  identityKey as ah,
+  identityAllows as ai,
+  DEFAULT_JUMP_BASE_URL as aj,
+  JUMP_ACTION_PATHS as ak,
+  normalizeZoneHostname as al,
+  zoneActionUrl as am,
+  buildJumpUrl as an,
+  APP_LOGIN_ISSUE_METHOD as ao,
+  APP_LOGIN_EXCHANGE_METHOD as ap,
+  APP_LOGIN_SETTINGS_GET_METHOD as aq,
+  APP_LOGIN_SETTINGS_SET_METHOD as ar,
+  issueAppLoginCode as as,
+  issueAppCustomerLink as at,
+  parseAppLoginExchangeResult as au,
+  randomAppLoginNonce as av,
+  loginByAppAccessToken as aw,
+  completeAppAccessTokenLogin as ax,
+  TASK_MANAGER_SERVICE_UNIQUE_ID as ay,
+  TASK_MANAGER_SERVICE_NAME as az,
   bns_client as b,
-  validateVideoEdit as b$,
-  TASK_ERR_CONTROL_ALREADY_PENDING as b0,
-  TASK_ERR_ALREADY_COMPLETED as b1,
-  TASK_ERR_INPUT_SCHEMA_MISMATCH as b2,
-  TASK_ERR_RESULT_SCHEMA_MISMATCH as b3,
-  TASK_ERR_IDEMPOTENCY_CONFLICT as b4,
-  TASK_ERR_SCHEMA_NOT_FOUND as b5,
-  TASK_MGR_ERROR_CODES as b6,
-  taskMgrTaskEventPath as b7,
-  taskMgrTreeEventPath as b8,
-  taskMgrErrorCode as b9,
-  WorkflowScheduledTaskMisfirePolicy as bA,
-  WorkflowScheduledTaskFireStatus as bB,
-  WorkflowClient as bC,
-  AICC_SERVICE_UNIQUE_ID as bD,
-  AICC_SERVICE_SERVICE_NAME as bE,
-  AICC_SERVICE_SERVICE_PORT as bF,
-  AICC_AI_METHODS as bG,
-  AICC_CORE_METHODS as bH,
-  AICC_MANAGEMENT_METHODS as bI,
-  AICC_QUOTA_METHODS as bJ,
-  AICC_METHODS as bK,
-  AICC_FEATURES as bL,
-  AICC_EXECUTION_MODES as bM,
-  AICC_POLICY_REFUSAL_CODES as bN,
-  aiccRefusalOf as bO,
-  isAiccAiMethod as bP,
-  aiccTextMessage as bQ,
-  aiccMessageTextContent as bR,
-  aiccMessageFirstText as bS,
-  validateAiccMessage as bT,
-  AiccClient as bU,
-  decisionRequirements as bV,
-  validateDecisionRequest as bW,
-  validateDecisionAnswers as bX,
-  parseVideoPrompt as bY,
-  validateVideoOutput as bZ,
-  validateVideoGeneration as b_,
-  TaskExecutorKind as ba,
-  TaskPhase as bb,
-  isTerminalTaskPhase as bc,
-  TaskWaitReasonKind as bd,
-  TaskOutcome as be,
-  TaskControlAction as bf,
-  baselineTaskControlProfile as bg,
-  DEFAULT_CHILD_CONTROL_POLICY as bh,
-  TaskAction as bi,
-  TaskGrantScope as bj,
-  TaskDataScope as bk,
-  StorageDomain as bl,
-  TaskEventType as bm,
-  TaskManagerClient as bn,
-  WORKFLOW_SERVICE_NAME as bo,
-  WorkflowErrorCode as bp,
-  WorkflowRequestError as bq,
-  WorkflowStepType as br,
-  WorkflowOutputMode as bs,
-  WorkflowJoinMode as bt,
-  WorkflowRetryFallback as bu,
-  WorkflowDefinitionStatus as bv,
-  WorkflowRunStatus as bw,
-  WorkflowNodeRunState as bx,
-  WorkflowHumanActionKind as by,
-  WorkflowScheduledTaskStatus as bz,
+  parseVideoPrompt as b$,
+  TASK_ERR_STALE_RUNNER_EPOCH as b0,
+  TASK_ERR_INVALID_PHASE as b1,
+  TASK_ERR_CONTROL_NOT_AVAILABLE as b2,
+  TASK_ERR_CONTROL_ALREADY_PENDING as b3,
+  TASK_ERR_ALREADY_COMPLETED as b4,
+  TASK_ERR_INPUT_SCHEMA_MISMATCH as b5,
+  TASK_ERR_RESULT_SCHEMA_MISMATCH as b6,
+  TASK_ERR_IDEMPOTENCY_CONFLICT as b7,
+  TASK_ERR_SCHEMA_NOT_FOUND as b8,
+  TASK_MGR_ERROR_CODES as b9,
+  WorkflowNodeRunState as bA,
+  WorkflowHumanActionKind as bB,
+  WorkflowScheduledTaskStatus as bC,
+  WorkflowScheduledTaskMisfirePolicy as bD,
+  WorkflowScheduledTaskFireStatus as bE,
+  WorkflowClient as bF,
+  AICC_SERVICE_UNIQUE_ID as bG,
+  AICC_SERVICE_SERVICE_NAME as bH,
+  AICC_SERVICE_SERVICE_PORT as bI,
+  AICC_AI_METHODS as bJ,
+  AICC_CORE_METHODS as bK,
+  AICC_MANAGEMENT_METHODS as bL,
+  AICC_QUOTA_METHODS as bM,
+  AICC_METHODS as bN,
+  AICC_FEATURES as bO,
+  AICC_EXECUTION_MODES as bP,
+  AICC_POLICY_REFUSAL_CODES as bQ,
+  aiccRefusalOf as bR,
+  isAiccAiMethod as bS,
+  aiccTextMessage as bT,
+  aiccMessageTextContent as bU,
+  aiccMessageFirstText as bV,
+  validateAiccMessage as bW,
+  AiccClient as bX,
+  decisionRequirements as bY,
+  validateDecisionRequest as bZ,
+  validateDecisionAnswers as b_,
+  taskMgrTaskEventPath as ba,
+  taskMgrTreeEventPath as bb,
+  taskMgrErrorCode as bc,
+  TaskExecutorKind as bd,
+  TaskPhase as be,
+  isTerminalTaskPhase as bf,
+  TaskWaitReasonKind as bg,
+  TaskOutcome as bh,
+  TaskControlAction as bi,
+  baselineTaskControlProfile as bj,
+  DEFAULT_CHILD_CONTROL_POLICY as bk,
+  TaskAction as bl,
+  TaskGrantScope as bm,
+  TaskDataScope as bn,
+  StorageDomain as bo,
+  TaskEventType as bp,
+  TaskManagerClient as bq,
+  WORKFLOW_SERVICE_NAME as br,
+  WorkflowErrorCode as bs,
+  WorkflowRequestError as bt,
+  WorkflowStepType as bu,
+  WorkflowOutputMode as bv,
+  WorkflowJoinMode as bw,
+  WorkflowRetryFallback as bx,
+  WorkflowDefinitionStatus as by,
+  WorkflowRunStatus as bz,
   createSDKModule as c,
-  videoGenerationRequirement as c0,
-  KEventReader as c1,
-  KEventClient as c2,
-  appIdFromDid as c3,
-  parseAppId as c4,
-  appDidFromId as c5,
-  createAppInstanceId as c6,
-  parseAppInstanceId as c7,
-  BNS_EVM_DEFAULT_GAS_LIMIT as c8,
-  BNS_EVM_DEFAULT_MAX_FEE_PER_GAS as c9,
-  textAppend as cA,
-  textReplaceBlock as cB,
-  textDeleteBlocks as cC,
-  rename as cD,
-  move as cE,
-  setProps as cF,
-  commitOps as cG,
-  markdownToBlocks as cH,
-  importFiles as cI,
-  ensureUploaded as cJ,
-  releaseImportSession as cK,
-  BNS_EVM_DEFAULT_MAX_PRIORITY_FEE_PER_GAS as ca,
-  BNS_MAX_INLINE_DOCUMENT_BYTES as cb,
-  BNS_DNS_TXT_DEFAULT_TTL as cc,
-  BNS_DNS_TXT_DOC_TYPE as cd,
-  BNS_PUBLISH_DOCUMENT_ABI as ce,
-  BnsEvmTxError as cf,
-  BnsEvmTxBuilder as cg,
-  decodeBnsPublishDocumentCalldata as ch,
-  BnsTxExecutorError as ci,
-  walletUserHasSnAccount as cj,
-  BnsTxExecutor as ck,
-  COMPUTER_SEMANTIC_FORMAT as cl,
-  COMPUTER_ROLES as cm,
-  COMPUTER_ELEMENT_STATES as cn,
-  COMPUTER_ELEMENT_ACTIONS as co,
-  ExecutorClient as cp,
-  ExecutorStreamError as cq,
-  encodeExecutorControl as cr,
-  ExecutorCommandStream as cs,
-  fieldNamed as ct,
-  cellValue as cu,
-  tableInsert as cv,
-  tableSet as cw,
-  tableDelete as cx,
-  fieldAdd as cy,
-  optionAdd as cz,
+  validateVideoOutput as c0,
+  validateVideoGeneration as c1,
+  validateVideoEdit as c2,
+  videoGenerationRequirement as c3,
+  KEventReader as c4,
+  KEventClient as c5,
+  appIdFromDid as c6,
+  parseAppId as c7,
+  appDidFromId as c8,
+  createAppInstanceId as c9,
+  COMPUTER_SEMANTIC_FORMAT as cA,
+  COMPUTER_ROLES as cB,
+  COMPUTER_ELEMENT_STATES as cC,
+  COMPUTER_ELEMENT_ACTIONS as cD,
+  ExecutorClient as cE,
+  ExecutorStreamError as cF,
+  encodeExecutorControl as cG,
+  ExecutorCommandStream as cH,
+  fieldNamed as cI,
+  cellValue as cJ,
+  tableInsert as cK,
+  tableSet as cL,
+  tableDelete as cM,
+  fieldAdd as cN,
+  optionAdd as cO,
+  textAppend as cP,
+  textReplaceBlock as cQ,
+  textDeleteBlocks as cR,
+  rename as cS,
+  move as cT,
+  setProps as cU,
+  commitOps as cV,
+  markdownToBlocks as cW,
+  importFiles as cX,
+  ensureUploaded as cY,
+  releaseImportSession as cZ,
+  parseAppInstanceId as ca,
+  BNS_EVM_DEFAULT_GAS_LIMIT as cb,
+  BNS_EVM_DEFAULT_MAX_FEE_PER_GAS as cc,
+  BNS_EVM_DEFAULT_MAX_PRIORITY_FEE_PER_GAS as cd,
+  BNS_MAX_INLINE_DOCUMENT_BYTES as ce,
+  BNS_DNS_TXT_DEFAULT_TTL as cf,
+  BNS_DNS_TXT_DOC_TYPE as cg,
+  BNS_PUBLISH_DOCUMENT_ABI as ch,
+  BnsEvmTxError as ci,
+  BnsEvmTxBuilder as cj,
+  decodeBnsPublishDocumentCalldata as ck,
+  BnsTxExecutorError as cl,
+  walletUserHasSnAccount as cm,
+  BnsTxExecutor as cn,
+  audioCapabilities as co,
+  AudioError as cp,
+  acquireBackgroundAudio as cq,
+  startRecording as cr,
+  pauseRecording as cs,
+  resumeRecording as ct,
+  stopRecording as cu,
+  getRecordingStatus as cv,
+  listRecordings as cw,
+  getRecording as cx,
+  deleteRecording as cy,
+  onRecordingState as cz,
   ndm_proxy as d,
-  bucket_client as e,
-  BS_SERVICE_TASK_MANAGER as f,
-  getCurrentWalletUserFromHost as g,
-  getActiveRuntimeType as h,
-  getActiveZoneGatewayOrigin as i,
-  getActiveSessionToken as j,
-  BuckyOSSDK as k,
-  RepoClient as l,
-  parseZoneUserType as m,
+  createZoneClients as e,
+  bucket_client as f,
+  BS_SERVICE_TASK_MANAGER as g,
+  getCurrentWalletUserFromHost as h,
+  getActiveRuntimeType as i,
+  getActiveZoneGatewayOrigin as j,
+  getActiveSessionToken as k,
+  BuckyOSSDK as l,
+  RepoClient as m,
   ndn as n,
-  isExternalPrincipal as o,
+  parseZoneUserType as o,
   parseSessionTokenClaims as p,
-  MsgCenterClient as q,
+  isExternalPrincipal as q,
   resolveDidFromHost as r,
   sn_client as s,
-  mailboxAddress as t,
-  mailboxResource as u,
-  NOTIFY_DELIVERED_INTENT as v,
-  NOTIFY_DATA_VERSION as w,
-  NOTIFY_SESSION_PREFIX as x,
-  NOTIFY_CHOICE_CONTROL_ID as y,
-  NOTIFY_TEXT_CONTROL_ID as z
+  MsgCenterClient as t,
+  mailboxAddress as u,
+  mailboxResource as v,
+  NOTIFY_DELIVERED_INTENT as w,
+  NOTIFY_DATA_VERSION as x,
+  NOTIFY_SESSION_PREFIX as y,
+  NOTIFY_CHOICE_CONTROL_ID as z
 };
-//# sourceMappingURL=aiws_write-7078045b.mjs.map
+//# sourceMappingURL=aiws_write-0606e098.mjs.map

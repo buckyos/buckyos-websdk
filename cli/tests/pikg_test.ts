@@ -110,6 +110,13 @@ Deno.test('pikg path workflow is offline, self-verifying, and safely cleanable',
     assertEquals(await app.run(['pikg', 'build']), 2)
     envelope = io.takeEnvelope()
     assertEquals(envelope.error.code, 'SCHEMA_VALIDATION_FAILED')
+    appMeta.presentation = undefined
+    appMeta.window = { instance: 'many' }
+    await Deno.writeTextFile(appMetaPath, `${JSON.stringify(appMeta, null, 2)}\n`)
+    assertEquals(await app.run(['pikg', 'build']), 2)
+    envelope = io.takeEnvelope()
+    assertEquals(envelope.error.code, 'SCHEMA_VALIDATION_FAILED')
+    appMeta.window = { instance: 'multi', width: 960 }
     appMeta.presentation = {
       title: { en: 'Demo', 'zh-CN': '示例' },
       summary: {},
@@ -143,6 +150,7 @@ Deno.test('pikg path workflow is offline, self-verifying, and safely cleanable',
     assertEquals(appDoc.name, 'demo')
     assertEquals(appDoc.categories, ['web'])
     assertEquals(appDoc.presentation, appMeta.presentation)
+    assertEquals(appDoc.window, { instance: 'multi', width: 960 })
     assertEquals(appDoc.pkg_list.web.pkg_id, 'all.web.demo.root.bns.did#0.1.0')
 
     const packExit = await app.run(['pikg', 'pack'])
@@ -268,6 +276,32 @@ Deno.test('AppDoc accepts BaseContentObject metadata but rejects PackageMeta fie
   assert(appDocObjectId(contentDoc) !== appDocObjectId(appDoc))
   await assertRejects(() => validateAppDocShape({ ...contentDoc, deps: {} }))
   await assertRejects(() => validateAppDocShape({ ...contentDoc, size: 0, content: '' }))
+})
+
+Deno.test('AppDoc window declaration follows the Rust fields and is part of the ObjectId', async () => {
+  const fixture = new URL('../fixtures/appdoc-v1.json', import.meta.url)
+  const appDoc = JSON.parse(await Deno.readTextFile(fixture))
+  for (
+    const window of [
+      {},
+      { width: 960 },
+      {
+        instance: 'multi', default_mode: 'maximized', width: 960, height: 640, min_width: 420, min_height: 280,
+        resizable: false, allow_minimize: true, allow_maximize: false, mobile_header: 'compact',
+      },
+    ]
+  ) {
+    validateAppDocShape({ ...appDoc, window })
+    assert(appDocObjectId({ ...appDoc, window }) !== appDocObjectId(appDoc))
+  }
+  for (
+    const window of [
+      null, 'multi', [], { instance: 'many' }, { default_mode: 'fullscreen' }, { mobile_header: 'none' }, { width: '960' }, { width: 0 },
+      { height: 16385 }, { width: 1.5 }, { resizable: 'no' }, { width: 400, min_width: 500 }, { height: 200, min_height: 300 }, { opacity: 1 },
+    ]
+  ) {
+    await assertRejects(() => validateAppDocShape({ ...appDoc, window }), 'INVALID_PACKAGE')
+  }
 })
 
 Deno.test('AppDoc presentation follows the Rust field types and rejects malformed metadata', async () => {

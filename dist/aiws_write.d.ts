@@ -92,6 +92,7 @@ export interface AiwsFieldInput {
     scale?: number;
     currency?: string;
     max_items?: number;
+    ref_purpose?: "image" | "canvas";
     target_types?: string[];
     /** What a new record holds when its insert does not give this field (display form, like a cell: a select takes its
      * label); not on submitter, unique or object_ref fields. */

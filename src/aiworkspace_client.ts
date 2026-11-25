@@ -218,7 +218,7 @@ export interface AiwsMeta {
   children: number
   capabilities: string[]
   ops: string[]
-  shows?: Record<string, unknown> | null
+  shows?: (Record<string, unknown> & { view_sql?: string; view_params?: unknown[]; view_count_sql?: string; view_group_sql?: string }) | null
   definition?: Record<string, unknown>
   ref: AiwsReference
   head_seq: number

@@ -13,6 +13,7 @@ import { AiccClient } from './aicc_client';
 import { MsgQueueClient } from './msg_queue_client';
 import { MsgCenterClient } from './msg_center_client';
 import { RepoClient } from './repo_client';
+import { getRuntimeEnvironment } from './runtime_env';
 import { KEventClient, KEvent, KEventPatternInput, KEventReader, KEventReaderOptions, KEventSubscribeOptions, KEventSubscription } from './kevent_client';
 import type { DidDocType } from './types';
 import type { EncodedDocument } from './namelib';
@@ -89,6 +90,7 @@ export declare class BuckyOSSDK {
 export declare function createSDKModule(target: SDKTarget): {
     buckyos: {
         hashPassword: typeof hashPassword;
+        getRuntimeEnvironment: typeof getRuntimeEnvironment;
         initBuckyOS: (appid?: string, config?: BuckyOSConfig | null) => Promise<void>;
         getBuckyOSConfig: () => BuckyOSConfig | null;
         getRuntimeType: () => RuntimeType;
@@ -186,8 +188,8 @@ export * from './task_mgr_client';
 export * from './workflow_client';
 export * from './aicc_client';
 export { MsgQueueClient };
-export { MsgCenterClient, mailboxAddress, mailboxResource, NOTIFY_INTENT, NOTIFY_DELIVERED_INTENT, NOTIFY_DATA_VERSION, NOTIFY_SESSION_PREFIX, NOTIFY_CHOICE_CONTROL_ID, NOTIFY_TEXT_CONTROL_ID, NOTIFY_ACTION_ANSWER, NOTIFY_ACTION_DISMISS, NOTIFY_LINK_PATH, isNotifyClosed, notifyCategorySessionId, notifyCategoryFromSessionId, inputPrompt, promptOptions, notifyAnswerToTaskResult, validateNotifyAnswer, notifyUrl, msgMachineData, notifyMessageData, commitNotifyAnswer, answerNotify, waitNotify, FRIEND_INTENT, CONTACT_TAG_ZONE_USER, CONTACT_TAG_ZONE_AGENT, CONTACT_TAG_HOMESTATION_FOLLOWING, CONTACT_CHANGED_EVENT_PATTERN, WELL_KNOWN_CONTACT_TAGS, USER_TYPE_GROUP_REF_PREFIX, USER_GROUP_REF_PREFIX, contactTagApp, contactTagKind, isUserGroupRefTag, } from './msg_center_client';
-export type { AccessGroupLevel, Contact, ContactPatch, ContactQuery, ContactSource, FriendState, ContactTagKind, WellKnownContactTag, FriendRequestDirection, FriendRequestState, FriendRequestDecision, FriendDeliveryState, FriendDelivery, FriendRequest, FriendRequestResult, FriendMessageData, LookupKind, LookupSection, LookupInputKind, ReachabilityState, LookupErrorCode, Reachability, LookupRelation, LookupGroupInfo, LookupCandidate, LookupResult, ContactLookupReq, ListFriendRequestsReq, ContactChangedEvent, MailboxAddress, GetNextParams, PeekBoxParams, ListBoxByTimeParams, NotifyKind, NotifyCategory, NotifyLevel, NotifyStatus, NotifyConversation, NotifySource, NotifySendReq, NotifyRecordRef, NotifyDelivery, NotifyResult, NotifyView, NotifyListReq, NotifyListResult, NotifyMessageData, NotifyDeliveredData, NotifyAnswer, NotifyTaskAccess, NotifyCommit, WaitNotifyOptions, } from './msg_center_client';
+export { MsgCenterClient, mailboxAddress, mailboxResource, NOTIFY_INTENT, NOTIFY_DELIVERED_INTENT, NOTIFY_DATA_VERSION, NOTIFY_SESSION_PREFIX, NOTIFY_CHOICE_CONTROL_ID, NOTIFY_TEXT_CONTROL_ID, NOTIFY_ACTION_ANSWER, NOTIFY_ACTION_DISMISS, NOTIFY_LINK_PATH, NOTIFY_ERR_NOT_DECLARED, NOTIFY_ERR_DISABLED, isNotifyClosed, notifyCategorySessionId, notifyCategoryFromSessionId, inputPrompt, promptOptions, notifyAnswerToTaskResult, validateNotifyAnswer, notifyUrl, msgMachineData, notifyMessageData, commitNotifyAnswer, answerNotify, waitNotify, FRIEND_INTENT, CONTACT_TAG_ZONE_USER, CONTACT_TAG_ZONE_AGENT, CONTACT_TAG_HOMESTATION_FOLLOWING, CONTACT_CHANGED_EVENT_PATTERN, WELL_KNOWN_CONTACT_TAGS, USER_TYPE_GROUP_REF_PREFIX, USER_GROUP_REF_PREFIX, contactTagApp, contactTagKind, isUserGroupRefTag, } from './msg_center_client';
+export type { AccessGroupLevel, Contact, ContactPatch, ContactQuery, ContactSource, FriendState, ContactTagKind, WellKnownContactTag, FriendRequestDirection, FriendRequestState, FriendRequestDecision, FriendDeliveryState, FriendDelivery, FriendRequest, FriendRequestResult, FriendMessageData, LookupKind, LookupSection, LookupInputKind, ReachabilityState, LookupErrorCode, Reachability, LookupRelation, LookupGroupInfo, LookupCandidate, LookupResult, ContactLookupReq, ListFriendRequestsReq, ContactChangedEvent, MailboxAddress, GetNextParams, PeekBoxParams, ListBoxByTimeParams, NotifyKind, NotifyCategory, NotifyLevel, NotifyStatus, NotifyConversation, NotifySource, NotifySendReq, NotifyRecordRef, NotifyDelivery, NotifyResult, NotifyView, NotifyListReq, NotifyListResult, NotifySummary, NotifyApp, NotifyMessageData, NotifyDeliveredData, NotifyAnswer, NotifyTaskAccess, NotifyCommit, WaitNotifyOptions, } from './msg_center_client';
 export { RepoClient };
 export * from './kevent_client';
 //# sourceMappingURL=sdk_core.d.ts.map

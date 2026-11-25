@@ -18,6 +18,7 @@ export interface FieldDef {
     name: string;
     type: string;
     required?: boolean;
+    default?: Json;
     nullable?: boolean;
     options?: {
         option_id: string;
@@ -45,6 +46,7 @@ export declare function orderKeysBetween(a: string | null, b: string | null, cou
 /** A record as `doc.read` (`table_record`) and the SQL `_record` column answer it. */
 export interface RowLike {
     record_id: string;
+    created_seq?: number;
     rev?: number;
     revs?: Record<string, number>;
     values: Record<string, Json | undefined>;
