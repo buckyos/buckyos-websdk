@@ -1665,8 +1665,8 @@ class AiccClient {
     return this.call(AICC_CORE_METHODS.HELPER_LLM_CHAT, r);
   }
   helperTextToImage(r) {
-    logical(r.logical_model);
     validateImageGeneration(r);
+    logical(r.logical_model);
     return this.call(AICC_CORE_METHODS.HELPER_TEXT_TO_IMAGE, r);
   }
   embeddingText(r) {
@@ -1687,6 +1687,7 @@ class AiccClient {
   }
   imageToImage(r) {
     var _a2;
+    validateImageOptions(r);
     validateImageDimensions(r.aspect_ratio, (_a2 = r.output) == null ? void 0 : _a2.size);
     return this.inference(AICC_AI_METHODS.IMAGE_IMG2IMG, r);
   }
@@ -1849,7 +1850,27 @@ class AiccClient {
     return this.call(AICC_MANAGEMENT_METHODS.DRIVER_METADATA_UPDATE_SET, r);
   }
 }
+function validateImageOptions(request) {
+  if (!isObject(request))
+    throw new RPCError("image request must be an object");
+  for (const field of ["negative_prompt", "quality", "style"]) {
+    if (request[field] != null && typeof request[field] !== "string")
+      throw new RPCError(`${field} must be a string`);
+  }
+  if (request.seed != null && (!Number.isSafeInteger(request.seed) || request.seed < 0))
+    throw new RPCError("seed must be a non-negative safe integer");
+  if (request.output != null) {
+    if (!isObject(request.output))
+      throw new RPCError("output must be an object");
+    strict(request.output, ["media_type", "size", "sample_rate", "fps"]);
+    if (request.output.media_type != null && typeof request.output.media_type !== "string")
+      throw new RPCError("output.media_type must be a string");
+  }
+}
 function validateImageGeneration(request) {
+  validateImageOptions(request);
+  if (request.n != null && (!Number.isInteger(request.n) || request.n < 1 || request.n > 4294967295))
+    throw new RPCError("n must be a positive 32-bit integer");
   if (request.output && "size" in request.output)
     throw new RPCError("text-to-image size must be at the top level, not output.size");
   validateImageDimensions(request.aspect_ratio, request.size);
@@ -32724,4 +32745,4 @@ export {
   NOTIFY_SESSION_PREFIX as y,
   NOTIFY_CHOICE_CONTROL_ID as z
 };
-//# sourceMappingURL=aiws_write-146b6bc1.mjs.map
+//# sourceMappingURL=aiws_write-0dd9444d.mjs.map
