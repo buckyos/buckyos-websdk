@@ -3,6 +3,7 @@ import type { AiResponse, JsonValue, LlmClient, LlmInferenceRequest, ProviderFai
 import { LLMComputeException } from '../core/errors';
 export declare const REFUSED_QUOTA_EXHAUSTED = "quota_exhausted";
 export declare const REFUSED_QUOTA_BUDGET_EXCEEDED = "quota_budget_exceeded";
+export declare const REFUSED_NO_CANDIDATE_MODEL = "no_candidate_model";
 export declare const REFUSED_RESOURCE_NOT_PERMITTED = "resource_not_permitted";
 export declare const REFUSED_ATTRIBUTION_UNAVAILABLE = "attribution_unavailable";
 /** The service refused the caller's credentials: sign in again, then resume. */

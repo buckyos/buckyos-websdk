@@ -402,10 +402,11 @@ function addRecordUsage(base, extra) {
 }
 const REFUSED_QUOTA_EXHAUSTED = "quota_exhausted";
 const REFUSED_QUOTA_BUDGET_EXCEEDED = "quota_budget_exceeded";
+const REFUSED_NO_CANDIDATE_MODEL = "no_candidate_model";
 const REFUSED_RESOURCE_NOT_PERMITTED = "resource_not_permitted";
 const REFUSED_ATTRIBUTION_UNAVAILABLE = "attribution_unavailable";
 const REFUSED_CREDENTIALS = "credentials";
-const REFUSAL_CODES = [REFUSED_QUOTA_EXHAUSTED, REFUSED_QUOTA_BUDGET_EXCEEDED, REFUSED_RESOURCE_NOT_PERMITTED, REFUSED_ATTRIBUTION_UNAVAILABLE];
+const REFUSAL_CODES = [REFUSED_NO_CANDIDATE_MODEL, REFUSED_QUOTA_EXHAUSTED, REFUSED_QUOTA_BUDGET_EXCEEDED, REFUSED_RESOURCE_NOT_PERMITTED, REFUSED_ATTRIBUTION_UNAVAILABLE];
 function anyJsonObjectSchema() {
   return { type: "object", additionalProperties: true };
 }
@@ -579,4 +580,4 @@ export {
   mergeUsage as y,
   rustTextContent as z
 };
-//# sourceMappingURL=aicc-67851c41.mjs.map
+//# sourceMappingURL=aicc-732de5a5.mjs.map
