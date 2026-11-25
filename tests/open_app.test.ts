@@ -69,7 +69,7 @@ describe('requests that cross a window boundary', () => {
     for (const path of ['', 'a', '//a', '/\\a', '/\t/a', 'https://a', undefined, `/${'x'.repeat(5000)}`]) expect(isAppPath(path)).toBe(false)
   })
   it('round-trips through the Zone root address', () => {
-    const request = { app: 'messagehub', path: '/messagehub?notify=n1', window: 'a b', mode: 'new' as const }
+    const request = { app: 'messagehub', path: '/?notify=n1', window: 'a b', mode: 'new' as const }
     const url = new URL(systemOpenAppUrl('https://zone.example/ignored', request))
     expect(url.origin + url.pathname).toBe('https://zone.example/')
     expect(parseSystemOpenApp(url.searchParams)).toEqual(request)

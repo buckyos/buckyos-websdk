@@ -68,6 +68,10 @@ const isMessage = (value) => {
   const v = value;
   return v.protocol === "buckyos.app-frame" && v.version === 1 && typeof v.type === "string" && !!v.payload && typeof v.payload === "object";
 };
+const FRAME_NAME_PREFIX = "buckyos.app-frame:";
+function appFrameName(nonce) {
+  return FRAME_NAME_PREFIX + nonce;
+}
 const OPEN_LIMIT = 5;
 class AppFrameHost {
   constructor(options) {
@@ -279,7 +283,8 @@ class AppFrameClient {
     const origin = new URL(options.shellOrigin).origin;
     const bridge = window.parent === window ? getBuckyApi() : void 0;
     this.native = !!bridge;
-    this.nonce = new URLSearchParams(window.location.hash.slice(1)).get("bfp") ?? (bridge ? crypto.randomUUID() : null);
+    const name = window.parent !== window ? window.name : "";
+    this.nonce = (name == null ? void 0 : name.startsWith(FRAME_NAME_PREFIX)) ? name.slice(FRAME_NAME_PREFIX.length) : new URLSearchParams(window.location.hash.slice(1)).get("bfp") ?? (bridge ? crypto.randomUUID() : null);
     this.channel = bridge ? bridgeTransport(bridge) : windowTransport(() => window.parent, origin);
     this.detach = this.channel.onMessage((message) => {
       void this.receive(message);
@@ -969,6 +974,7 @@ export {
   PreviewEmbedHost,
   SELECT_EMBED_PATH,
   SelectEmbedHost,
+  appFrameName,
   embedderOrigin,
   openSelectEmbed,
   originInZone

@@ -356,10 +356,10 @@ describe('App Frame in an iframe', () => {
     setWindow(app)
     const client = new AppFrameClient({ shellOrigin: 'https://zone.example' })
     await flush()
-    expect(await client.openApp({ app: 'messagehub', path: '/messagehub?notify=1' })).toEqual({ ok: true })
+    expect(await client.openApp({ app: 'messagehub', path: '/?notify=1' })).toEqual({ ok: true })
     client.setHeader({ title: 'T' })
     await flush()
-    expect(opens).toEqual([{ app: 'messagehub', path: '/messagehub?notify=1' }])
+    expect(opens).toEqual([{ app: 'messagehub', path: '/?notify=1' }])
     expect(headers).toEqual([{ title: 'T' }])
     // a reply from another origin does not count
     const pending = client.openApp({ app: 'files' })

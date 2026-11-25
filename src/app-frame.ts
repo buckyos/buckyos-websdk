@@ -110,8 +110,13 @@ export interface AppFrameHostCallbacks {
   /** Shows a system dialog the App asked for (`sysdlg.open`). `params` is untrusted input: validate it. */
   onSystemDialog?: (path: string, params: unknown) => Promise<SystemDialogReply>
 }
+const FRAME_NAME_PREFIX = 'buckyos.app-frame:'
+
+/** The iframe name the host sets so an App can use its own URL fragment. */
+export function appFrameName(nonce: string): string { return FRAME_NAME_PREFIX + nonce }
+
 /**
- * `target` and `origin`: the App runs in a frame of this page, opened with `#bfp=<init.nonce>`. `transport`: the
+ * `target` and `origin`: the App runs in an iframe named with `appFrameName(init.nonce)` or opened with `#bfp=<init.nonce>`. `transport`: the
  * platform connects this host to the App's view; the App picks the nonce and the host answers with it.
  */
 export type AppFrameHostOptions = AppFrameHostCallbacks & (
@@ -304,7 +309,9 @@ export class AppFrameClient {
     const origin = new URL(options.shellOrigin).origin
     const bridge = window.parent === window ? getBuckyApi() : undefined
     this.native = !!bridge
-    this.nonce = new URLSearchParams(window.location.hash.slice(1)).get('bfp') ?? (bridge ? crypto.randomUUID() : null)
+    const name = window.parent !== window ? window.name : ''
+    this.nonce = name?.startsWith(FRAME_NAME_PREFIX) ? name.slice(FRAME_NAME_PREFIX.length)
+      : new URLSearchParams(window.location.hash.slice(1)).get('bfp') ?? (bridge ? crypto.randomUUID() : null)
     this.channel = bridge ? bridgeTransport(bridge) : windowTransport(() => window.parent, origin)
     this.detach = this.channel.onMessage(message => { void this.receive(message) })
     if ((bridge || window.parent !== window) && this.nonce) {

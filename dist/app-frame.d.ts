@@ -96,8 +96,10 @@ export interface AppFrameHostCallbacks {
     /** Shows a system dialog the App asked for (`sysdlg.open`). `params` is untrusted input: validate it. */
     onSystemDialog?: (path: string, params: unknown) => Promise<SystemDialogReply>;
 }
+/** The iframe name the host sets so an App can use its own URL fragment. */
+export declare function appFrameName(nonce: string): string;
 /**
- * `target` and `origin`: the App runs in a frame of this page, opened with `#bfp=<init.nonce>`. `transport`: the
+ * `target` and `origin`: the App runs in an iframe named with `appFrameName(init.nonce)` or opened with `#bfp=<init.nonce>`. `transport`: the
  * platform connects this host to the App's view; the App picks the nonce and the host answers with it.
  */
 export type AppFrameHostOptions = AppFrameHostCallbacks & ({

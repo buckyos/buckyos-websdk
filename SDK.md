@@ -164,19 +164,20 @@ const frame = new AppFrameClient({
 
 - `init.presentation` 为 `tab` 时，应用在宿主的一个标签页里，外层导航由宿主画，应用去掉自己的那一层。
 - `init.theme.accent` 是这个 Zone 的主题色，主题变化时 `onTheme` 会再给一次。
+- 在 Web Desktop 中打开带 `#fragment` 的页面时，应用可直接读取原始 `location.hash`。当前 `AppFrameClient` 从 iframe 名称读取握手标识。只从 `#bfp` 读取标识的旧 SDK 需要升级才能在这种入口完成握手。
 - `selectContent()` 选文件：宿主提供选择器就用宿主的，客户端没有时把 Zone 的 `/embed/sysdlg/select` 嵌在应用页面上，所以要给 `systemOrigin`。
 
 ### 打开应用
 
 ```ts
-const reply = await frame.openApp({ app: 'messagehub', path: '/messagehub?notify=n1' })
+const reply = await frame.openApp({ app: 'messagehub', path: '/?notify=n1' })
 if (!reply.ok) { /* reply.code: not_found | denied | unsupported */ }
 ```
 
 | 字段 | 含义 |
 | --- | --- |
 | `app` | app_id。系统应用用系统应用清单里的 id，例如 `files`、`messagehub` |
-| `path` | 应用内的页面地址，以 `/` 开头，可以带查询参数和片段 |
+| `path` | 相对于目标应用入口的页面地址，以 `/` 开头，可以带查询参数和片段。例如 Message Hub 的 `/?notify=n1` 对应 Zone 上的 `/messagehub?notify=n1`。 |
 | `window` | 窗口路径，由应用自己定义，同一路径指同一个窗口；空串指主窗口 |
 | `mode` | `reuse`（缺省）或 `new` |
 | `zone` | 目标 Zone 的 DID，不写就是应用自己的 Zone |

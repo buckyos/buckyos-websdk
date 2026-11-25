@@ -70,7 +70,7 @@
   "app_urls": [
     {"link":{"zoneHost":"alice.web3.buckyos.ai","app":"files"},"url":"buckyos://app.open?v=1&zone=alice.web3.buckyos.ai&app=files"},
     {"link":{"zoneHost":"charlie.me","app":"notes.example.bns.did","path":"/doc/1?a=b&c=d#top","window":"doc/1"},"url":"buckyos://app.open?v=1&zone=charlie.me&app=notes.example.bns.did&path=%2Fdoc%2F1%3Fa%3Db%26c%3Dd%23top&window=doc%2F1"},
-    {"link":{"zoneHost":"charlie.me:8443","app":"messagehub","path":"/messagehub?notify=n 1","window":""},"url":"buckyos://app.open?v=1&zone=charlie.me%3A8443&app=messagehub&path=%2Fmessagehub%3Fnotify%3Dn%201&window="}
+    {"link":{"zoneHost":"charlie.me:8443","app":"messagehub","path":"/?notify=n 1","window":""},"url":"buckyos://app.open?v=1&zone=charlie.me%3A8443&app=messagehub&path=%2F%3Fnotify%3Dn%201&window="}
   ],
   "accepted_app_urls": [
     {"name":"a trailing slash added by the system","url":"buckyos://app.open/?v=1&zone=charlie.me&app=files","link":{"zoneHost":"charlie.me","app":"files"}},
