@@ -480,3 +480,29 @@ describe('image dimension contract', () => {
     expect(aiccRefusalOf(error)).toMatchObject({ code: 'unsupported_operation', message: 'quality on selected-model', details: { field: 'quality' }, retriable: false })
   })
 })
+
+describe('image option validation across entrypoints', () => {
+  for (const method of ['imagesGenerate', 'helperTextToImage', 'imageToImage'] as const) {
+    it(`${method} rejects malformed options as RPCError before sending`, () => {
+      const fetcher = echoingFetcher({})
+      const client = new AiccClient(new kRPCClient('/kapi/aicc/', null, 1, { fetcher }))
+      const invoke = client[method].bind(client) as (request: unknown) => Promise<unknown>
+      const base = method === 'helperTextToImage' ? { logical_model: 'image.txt2img', prompt: 'cat' }
+        : { exact_model: 'image@test', prompt: 'cat', ...(method === 'imageToImage' ? { images: [] } : {}) }
+      for (const malformed of [null, [], 7]) expect(() => invoke(malformed)).toThrow(RPCError)
+      for (const options of [{ output: 7 }, { output: [] }, { output: { typo: 'png' } }, { output: { media_type: 42 } }, { seed: -1 }, { seed: 1.5 }, { seed: Number.MAX_SAFE_INTEGER + 1 }, { quality: false }, { negative_prompt: 7 }]) {
+        expect(() => invoke({ ...base, ...options })).toThrow(RPCError)
+      }
+      if (method !== 'imageToImage') for (const n of [0, -1, 1.5, 4294967296]) expect(() => invoke({ ...base, n })).toThrow(RPCError)
+      expect(fetcher).not.toHaveBeenCalled()
+    })
+    it(`${method} preserves explicit zero seeds and empty strings`, async () => {
+      const fetcher = echoingFetcher({ status: 'running', task_id: 't' })
+      const client = new AiccClient(new kRPCClient('/kapi/aicc/', null, 1, { fetcher }))
+      const base = method === 'helperTextToImage' ? { logical_model: 'image.txt2img', prompt: 'cat' }
+        : { exact_model: 'image@test', prompt: 'cat', ...(method === 'imageToImage' ? { images: [] } : {}) }
+      await (client[method].bind(client) as (request: unknown) => Promise<unknown>)({ ...base, seed: 0, negative_prompt: '', quality: '' })
+      expect(sent(fetcher).params).toMatchObject({ seed: 0, negative_prompt: '', quality: '' })
+    })
+  }
+})

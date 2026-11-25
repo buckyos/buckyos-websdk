@@ -22,3 +22,6 @@ await client.imageToImage({
 OpenAI/SN 将比例映射为模型支持的像素尺寸；Gemini 将档位和比例写入 `response_format`，不接受专用 `quality` / `negative_prompt`。Qwen 将编辑尺寸转换为 `parameters.size` 的 `W*H` 形式，并映射负面提示词和种子。完整渠道矩阵见 BuckyOS 仓库 `doc/aicc/image_parameters.md`。
 
 SDK `providerErrorFromRpc` 保留 `unsupported_operation` 的 refusal code，AIWorkspace CLI 映射为 `AI_UNSUPPORTED_OPERATION`。请求失败后应修改参数或显式选择适合的模型。
+
+
+文生图、Helper 和图生图发送前都校验 `output` 的对象形状、字段类型及 seed 的非负安全整数范围；文生图的 `n` 必须为正整数。显式零 seed 和空字符串不会被当作缺省值丢弃。渠道编码器会将已接受的像素分隔符、等价整数比例和小写 K 档位转换为上游要求的标准形式，具体值仍须由选定模型支持。

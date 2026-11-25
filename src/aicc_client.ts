@@ -611,7 +611,7 @@ export class AiccClient {
   chatCompletionsCreate(r: LlmChatInvokeRequest) { r.messages.forEach(validateAiccMessage); return this.inference<LlmChatInvokeResponse, LlmChatInvokeRequest>(AICC_AI_METHODS.CHAT_COMPLETIONS_CREATE, r) }
   imagesGenerate(r: TextToImageInvokeRequest) { validateImageGeneration(r); return this.inference<TextToImageInvokeResponse, TextToImageInvokeRequest>(AICC_AI_METHODS.IMAGES_GENERATE, r) }
   helperLlmChat(r: LlmChatHelperRequest) { logical(r.logical_model); r.messages.forEach(validateAiccMessage); return this.call<LlmChatInvokeResponse, LlmChatHelperRequest>(AICC_CORE_METHODS.HELPER_LLM_CHAT, r) }
-  helperTextToImage(r: TextToImageHelperRequest) { logical(r.logical_model); validateImageGeneration(r); return this.call<TextToImageInvokeResponse, TextToImageHelperRequest>(AICC_CORE_METHODS.HELPER_TEXT_TO_IMAGE, r) }
+  helperTextToImage(r: TextToImageHelperRequest) { validateImageGeneration(r); logical(r.logical_model); return this.call<TextToImageInvokeResponse, TextToImageHelperRequest>(AICC_CORE_METHODS.HELPER_TEXT_TO_IMAGE, r) }
   embeddingText(r: EmbeddingTextRequest) { return this.inference<EmbeddingTextResponse, EmbeddingTextRequest>(AICC_AI_METHODS.EMBEDDING_TEXT, r) }
   embeddingMultimodal(r: EmbeddingMultimodalRequest) { return this.inference<EmbeddingMultimodalResponse, EmbeddingMultimodalRequest>(AICC_AI_METHODS.EMBEDDING_MULTIMODAL, r) }
   async decisionEvaluate(r: DecisionEvaluateRequest) {
@@ -621,7 +621,7 @@ export class AiccClient {
     return result
   }
   rerank(r: RerankRequest) { return this.inference<RerankResponse, RerankRequest>(AICC_AI_METHODS.RERANK, r) }
-  imageToImage(r: ImageToImageRequest) { validateImageDimensions(r.aspect_ratio, r.output?.size); return this.inference<ImageToImageResponse, ImageToImageRequest>(AICC_AI_METHODS.IMAGE_IMG2IMG, r) }
+  imageToImage(r: ImageToImageRequest) { validateImageOptions(r); validateImageDimensions(r.aspect_ratio, r.output?.size); return this.inference<ImageToImageResponse, ImageToImageRequest>(AICC_AI_METHODS.IMAGE_IMG2IMG, r) }
   imageInpaint(r: ImageInpaintRequest) { return this.inference<ImageInpaintResponse, ImageInpaintRequest>(AICC_AI_METHODS.IMAGE_INPAINT, r) }
   imageUpscale(r: ImageUpscaleRequest) { return this.inference<ImageUpscaleResponse, ImageUpscaleRequest>(AICC_AI_METHODS.IMAGE_UPSCALE, r) }
   imageBackgroundRemove(r: ImageBackgroundRemoveRequest) { return this.inference<ImageBackgroundRemoveResponse, ImageBackgroundRemoveRequest>(AICC_AI_METHODS.IMAGE_BG_REMOVE, r) }
@@ -677,7 +677,22 @@ export class AiccClient {
   setDriverMetadataUpdate(r: DriverMetadataUpdateSetReq) { return this.call<DriverMetadataUpdateSetResponse, DriverMetadataUpdateSetReq>(AICC_MANAGEMENT_METHODS.DRIVER_METADATA_UPDATE_SET, r) }
 }
 
+function validateImageOptions(request: { negative_prompt?: string; quality?: string; style?: string; seed?: number; output?: AiOutputOptions }): void {
+  if (!isObject(request)) throw new RPCError('image request must be an object')
+  for (const field of ['negative_prompt', 'quality', 'style'] as const) {
+    if (request[field] != null && typeof request[field] !== 'string') throw new RPCError(`${field} must be a string`)
+  }
+  if (request.seed != null && (!Number.isSafeInteger(request.seed) || request.seed < 0)) throw new RPCError('seed must be a non-negative safe integer')
+  if (request.output != null) {
+    if (!isObject(request.output)) throw new RPCError('output must be an object')
+    strict(request.output, ['media_type', 'size', 'sample_rate', 'fps'])
+    if (request.output.media_type != null && typeof request.output.media_type !== 'string') throw new RPCError('output.media_type must be a string')
+  }
+}
+
 function validateImageGeneration(request: ImageGenerationFields): void {
+  validateImageOptions(request)
+  if (request.n != null && (!Number.isInteger(request.n) || request.n < 1 || request.n > 0xffffffff)) throw new RPCError('n must be a positive 32-bit integer')
   if (request.output && 'size' in request.output) throw new RPCError('text-to-image size must be at the top level, not output.size')
   validateImageDimensions(request.aspect_ratio, request.size)
 }
