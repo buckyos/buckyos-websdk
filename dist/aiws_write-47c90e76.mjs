@@ -4464,6 +4464,7 @@ class KEventReader {
     return this.closePromise;
   }
 }
+const SILENT_PERIODS = 3;
 class BrowserKEventReader extends KEventReader {
   constructor(streamUrl, patterns, keepaliveMs, fetcher, sessionTokenProvider, signal) {
     super();
@@ -4567,12 +4568,21 @@ class BrowserKEventReader extends KEventReader {
     const reader = body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
+    let silentPeriods = 0;
+    const watchdog = setInterval(() => {
+      silentPeriods += 1;
+      if (silentPeriods >= SILENT_PERIODS) {
+        this.controller.abort();
+        void reader.cancel().catch(() => void 0);
+      }
+    }, this.keepaliveMs);
     try {
       while (!this.controller.signal.aborted) {
         const { value, done } = await reader.read();
         if (done) {
           break;
         }
+        silentPeriods = 0;
         buffer += decoder.decode(value, { stream: true });
         buffer = this.processFrameBuffer(buffer, onFrame);
       }
@@ -4582,6 +4592,7 @@ class BrowserKEventReader extends KEventReader {
         this.handleFrameLine(buffer, onFrame);
       }
     } finally {
+      clearInterval(watchdog);
       try {
         await reader.cancel();
       } catch {
@@ -32687,4 +32698,4 @@ export {
   NOTIFY_SESSION_PREFIX as y,
   NOTIFY_CHOICE_CONTROL_ID as z
 };
-//# sourceMappingURL=aiws_write-0606e098.mjs.map
+//# sourceMappingURL=aiws_write-47c90e76.mjs.map
