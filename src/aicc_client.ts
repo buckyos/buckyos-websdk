@@ -113,8 +113,33 @@ export interface AiMessage { role: AiRole; content: AiContent[] }
 export interface AiToolSpec { type?: string; name: string; description: string; args_json_schema: JsonValue; output_schema?: JsonValue }
 export interface LlmJsonSchema { name?: string; schema: JsonValue; strict?: boolean }
 export interface LlmResponseFormat { type: 'text' | 'json_schema'; json_schema?: LlmJsonSchema }
-export interface AiUsage { input_tokens?: number; output_tokens?: number; total_tokens?: number; request_units?: number;
-  video_seconds?: number; reference_images?: number; reported_cost?: number }
+export interface AiUsage {
+  input_tokens?: number
+  output_tokens?: number
+  total_tokens?: number
+  cache_read_input_tokens?: number
+  cache_write_input_tokens?: number
+  cache_write_1h_input_tokens?: number
+  reasoning_tokens?: number
+  audio_input_tokens?: number
+  audio_output_tokens?: number
+  image_input_tokens?: number
+  image_output_tokens?: number
+  video_input_tokens?: number
+  video_output_tokens?: number
+  image_units?: number
+  audio_seconds?: number
+  video_seconds?: number
+  reference_images?: number
+  characters?: number
+  request_units?: number
+  compute_seconds?: number
+  megapixels?: number
+  reported_cost?: number
+  cost?: AiCost
+  cost_source?: string
+  cost_unknown_reason?: string
+}
 export interface Money { amount: number; currency: string }
 export type AiCost = Money
 export interface AiArtifact { name: string; resource: ResourceRef; mime?: string; metadata?: JsonValue }
@@ -460,11 +485,12 @@ export interface UsageQueryFilters { tenant_ids?: string[]; user_ids?: string[];
   provider_instance_query?: string; capabilities?: string[]; task_ids?: string[]; idempotency_keys?: string[]; methods?: string[] }
 export type UsageQueryGroup = 'provider_model' | 'provider_instance_name' | 'request_model' | 'method' | 'capability' |
   'caller_app_id' | 'user_id' | 'tenant_id'
-export interface QueryUsageRequest { time_range: UsageQueryTimeRange; filters?: UsageQueryFilters; group_by?: UsageQueryGroup[];
-  time_bucket?: 'five_minutes' | 'hour' | 'day'; output_mode?: 'summary' | 'events' | 'summary_and_events'; limit?: number; cursor?: string;
+export interface QueryUsageRequest { time_range: UsageQueryTimeRange; filters?: UsageQueryFilters; group_by?: UsageQueryGroup[]; group_limit?: number; group_offset?: number;
+  time_bucket?: 'five_minutes' | 'hour' | 'day'; output_mode?: 'summary' | 'events' | 'page' | 'groups' | 'summary_and_events'; limit?: number; cursor?: string;
   /** Admins only: every user of the Zone instead of the caller alone. */
   zone_wide?: boolean }
-export interface UsageAggregate { total_requests: number; input_tokens: number; output_tokens: number; total_tokens: number;
+export interface UsageDimensionAggregate { amount: number; reported_events: number }
+export interface UsageAggregate { dimensions: Record<string, UsageDimensionAggregate>; unpriced_requests: number; total_requests: number; input_tokens: number; output_tokens: number; total_tokens: number;
   consumed_request_units: number; finance_totals: Money[]; finance_complete: boolean }
 export interface AiccUsageEvent { event_id: string; tenant_id: string; user_id: string; caller_app_id?: string; task_id: string;
   trace_id?: string; idempotency_key?: string; method: AiccAiMethod; capability: string; request_model: string; provider_instance_name: string;
