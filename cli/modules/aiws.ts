@@ -792,6 +792,7 @@ const runToolCommand: CommandDefinition = {
 
 const BRIDGE_PREFIX = '\x1eaiws '
 const REFUSALS: Record<string, string> = {
+  no_candidate_model: 'AI_NO_CANDIDATE_MODEL',
   quota_exhausted: 'AI_QUOTA_EXHAUSTED', quota_budget_exceeded: 'AI_QUOTA_BUDGET_EXCEEDED', resource_not_permitted: 'AI_RESOURCE_NOT_PERMITTED',
   attribution_unavailable: 'AI_ATTRIBUTION_UNAVAILABLE', credentials: 'AI_UNAVAILABLE',
 }
@@ -799,7 +800,7 @@ const REFUSALS: Record<string, string> = {
 interface MacroRun { source: string; results: unknown; log: string; code: number }
 
 /** An AICC refusal as the run's sub-code (AI_QUOTA_EXHAUSTED…), anything else as it came. */
-function refusalOf(error: unknown): unknown {
+export function refusalOf(error: unknown): unknown {
   if (error instanceof LLMComputeException && error.error.kind === 'provider' && typeof error.error.failure === 'object' && 'refused' in error.error.failure) {
     const e = new Error(error.message) as Error & { code?: string }
     e.code = REFUSALS[error.error.failure.refused.code] ?? 'AI_QUOTA_EXHAUSTED'

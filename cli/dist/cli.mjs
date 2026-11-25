@@ -14674,6 +14674,7 @@ const runToolCommand = {
 };
 const BRIDGE_PREFIX = "aiws ";
 const REFUSALS = {
+  no_candidate_model: "AI_NO_CANDIDATE_MODEL",
   quota_exhausted: "AI_QUOTA_EXHAUSTED",
   quota_budget_exceeded: "AI_QUOTA_BUDGET_EXCEEDED",
   resource_not_permitted: "AI_RESOURCE_NOT_PERMITTED",

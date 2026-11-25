@@ -1,4 +1,6 @@
 import './setup.ts'
+import { refusalOf } from '../modules/aiws.ts'
+import { providerErrorFromRpc } from 'buckyos/xllm'
 import { join } from 'node:path'
 import { createRegistry } from '../core/app.ts'
 import { parseCommandArgs } from '../core/argv.ts'
@@ -516,3 +518,16 @@ Deno.test('template export writes one bundle: the template files, the controls i
   }
 })
 
+
+Deno.test('macro refusals distinguish missing candidate models from permission and quota errors', () => {
+  for (const [code, expected] of [
+    ['no_candidate_model', 'AI_NO_CANDIDATE_MODEL'],
+    ['resource_not_permitted', 'AI_RESOURCE_NOT_PERMITTED'],
+    ['quota_exhausted', 'AI_QUOTA_EXHAUSTED'],
+  ]) {
+    const mapped = refusalOf(providerErrorFromRpc('aicc llm failed', {
+      code, data: { code, message: 'request refused' },
+    })) as Error & { code: string }
+    assertEquals(mapped.code, expected)
+  }
+})
