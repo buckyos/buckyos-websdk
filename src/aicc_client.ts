@@ -133,13 +133,13 @@ export type AiccErrorCode = 'invalid_request' | 'invalid_method' | 'schema_valid
   /** The AICC user of a delegated run cannot be determined. */
   'attribution_unavailable' |
   /** The request does not fit the model's context window (Provider refusal or no window holds it): shrink the input; retrying it as is cannot succeed. */
-  'context_length_exceeded'
+  'context_length_exceeded' | 'unsupported_operation'
 export interface AiccError { code: AiccErrorCode; message: string; provider_code?: string; retriable?: boolean; details?: JsonValue }
 /** Token quota and resource policy refusals: they reach the client as a detailed kRPC error. */
 export const AICC_POLICY_REFUSAL_CODES: readonly AiccErrorCode[] = ['quota_exhausted', 'quota_budget_exceeded', 'quota_unavailable', 'resource_not_permitted', 'attribution_unavailable']
 /** The AICC error of a refused call (its `code` and `details`), read from the structured kRPC error. */
 export function aiccRefusalOf(error: unknown): AiccError | undefined {
-  if (!(error instanceof RPCError) || !AICC_POLICY_REFUSAL_CODES.includes(error.code as AiccErrorCode)) return undefined
+  if (!(error instanceof RPCError) || !(AICC_POLICY_REFUSAL_CODES.includes(error.code as AiccErrorCode) || error.code === 'unsupported_operation')) return undefined
   const data = error.data as Partial<AiccError> | undefined
   return { code: error.code as AiccErrorCode, message: data?.message ?? error.message, retriable: data?.retriable, details: data?.details }
 }
@@ -208,7 +208,7 @@ export interface InferenceResponse { task_id: string; status: AiMethodStatus; us
 interface ChatFields { messages: AiMessage[]; tools?: AiToolSpec[]; response_format?: LlmResponseFormat; temperature?: number;
   top_p?: number; max_output_tokens?: number; seed?: number; stop?: string[]; output?: AiOutputOptions }
 interface ImageGenerationFields { prompt: string; negative_prompt?: string; n?: number; aspect_ratio?: string; size?: string;
-  quality?: string; style?: string; seed?: number; output?: AiOutputOptions }
+  quality?: string; style?: string; seed?: number; output?: Omit<AiOutputOptions, 'size'> }
 export interface LlmChatInvokeRequest extends InferenceRequest, ChatFields { web_search?: boolean }
 export interface LlmChatHelperRequest extends ChatFields { logical_model: string; requirements?: HelperModelRequirement; disable?: ModelDisable;
   trace_id?: string; execution_mode?: AiccExecutionMode; policy?: RoutePolicy; idempotency_key?: string;
@@ -250,7 +250,7 @@ export interface RerankDocument { id: string; text?: string; resource?: Resource
 export interface RerankResult { index: number; id: string; score: number; document?: RerankDocument }
 export interface RerankRequest extends InferenceRequest { query: string; documents: RerankDocument[]; n?: number; return_documents?: boolean }
 export interface RerankResponse extends InferenceResponse { results?: RerankResult[] }
-export interface ImageToImageRequest extends InferenceRequest { images: ResourceRef[]; prompt: string; strength?: number; output?: AiOutputOptions }
+export interface ImageToImageRequest extends InferenceRequest { images: ResourceRef[]; prompt: string; strength?: number; aspect_ratio?: string; negative_prompt?: string; quality?: string; seed?: number; output?: AiOutputOptions }
 export interface ImageInpaintRequest extends InferenceRequest { image: ResourceRef; mask: ResourceRef; prompt: string;
   mask_semantics?: 'white_area_is_edit_area' | 'black_area_is_edit_area' | 'alpha_zero_is_edit_area'; output?: AiOutputOptions }
 export interface ImageUpscaleRequest extends InferenceRequest { image: ResourceRef; scale?: number; target_width?: number;
@@ -548,7 +548,7 @@ const schemas: Partial<Record<AiccMethod, string[]>> = {
   [AICC_AI_METHODS.EMBEDDING_MULTIMODAL]: [...common, 'items', 'dimensions', 'normalize'],
   [AICC_AI_METHODS.DECISION_EVALUATE]: [...common, 'state', 'questions'],
   [AICC_AI_METHODS.RERANK]: [...common, 'query', 'documents', 'n', 'return_documents'],
-  [AICC_AI_METHODS.IMAGE_IMG2IMG]: [...common, 'images', 'prompt', 'strength', 'output'],
+  [AICC_AI_METHODS.IMAGE_IMG2IMG]: [...common, 'images', 'prompt', 'strength', 'aspect_ratio', 'negative_prompt', 'quality', 'seed', 'output'],
   [AICC_AI_METHODS.IMAGE_INPAINT]: [...common, 'image', 'mask', 'prompt', 'mask_semantics', 'output'],
   [AICC_AI_METHODS.IMAGE_UPSCALE]: [...common, 'image', 'scale', 'target_width', 'target_height', 'preserve_faces', 'output'],
   [AICC_AI_METHODS.IMAGE_BG_REMOVE]: [...common, 'image', 'mode', 'output'],
@@ -609,9 +609,9 @@ export class AiccClient {
   }
   routeResolve(r: RouteResolveRequest) { logical(r.logical_model); return this.call<RouteResolveResponse, RouteResolveRequest>(AICC_CORE_METHODS.ROUTE_RESOLVE, r) }
   chatCompletionsCreate(r: LlmChatInvokeRequest) { r.messages.forEach(validateAiccMessage); return this.inference<LlmChatInvokeResponse, LlmChatInvokeRequest>(AICC_AI_METHODS.CHAT_COMPLETIONS_CREATE, r) }
-  imagesGenerate(r: TextToImageInvokeRequest) { return this.inference<TextToImageInvokeResponse, TextToImageInvokeRequest>(AICC_AI_METHODS.IMAGES_GENERATE, r) }
+  imagesGenerate(r: TextToImageInvokeRequest) { validateImageGeneration(r); return this.inference<TextToImageInvokeResponse, TextToImageInvokeRequest>(AICC_AI_METHODS.IMAGES_GENERATE, r) }
   helperLlmChat(r: LlmChatHelperRequest) { logical(r.logical_model); r.messages.forEach(validateAiccMessage); return this.call<LlmChatInvokeResponse, LlmChatHelperRequest>(AICC_CORE_METHODS.HELPER_LLM_CHAT, r) }
-  helperTextToImage(r: TextToImageHelperRequest) { logical(r.logical_model); return this.call<TextToImageInvokeResponse, TextToImageHelperRequest>(AICC_CORE_METHODS.HELPER_TEXT_TO_IMAGE, r) }
+  helperTextToImage(r: TextToImageHelperRequest) { validateImageGeneration(r); logical(r.logical_model); return this.call<TextToImageInvokeResponse, TextToImageHelperRequest>(AICC_CORE_METHODS.HELPER_TEXT_TO_IMAGE, r) }
   embeddingText(r: EmbeddingTextRequest) { return this.inference<EmbeddingTextResponse, EmbeddingTextRequest>(AICC_AI_METHODS.EMBEDDING_TEXT, r) }
   embeddingMultimodal(r: EmbeddingMultimodalRequest) { return this.inference<EmbeddingMultimodalResponse, EmbeddingMultimodalRequest>(AICC_AI_METHODS.EMBEDDING_MULTIMODAL, r) }
   async decisionEvaluate(r: DecisionEvaluateRequest) {
@@ -621,7 +621,7 @@ export class AiccClient {
     return result
   }
   rerank(r: RerankRequest) { return this.inference<RerankResponse, RerankRequest>(AICC_AI_METHODS.RERANK, r) }
-  imageToImage(r: ImageToImageRequest) { return this.inference<ImageToImageResponse, ImageToImageRequest>(AICC_AI_METHODS.IMAGE_IMG2IMG, r) }
+  imageToImage(r: ImageToImageRequest) { validateImageOptions(r); validateImageDimensions(r.aspect_ratio, r.output?.size); return this.inference<ImageToImageResponse, ImageToImageRequest>(AICC_AI_METHODS.IMAGE_IMG2IMG, r) }
   imageInpaint(r: ImageInpaintRequest) { return this.inference<ImageInpaintResponse, ImageInpaintRequest>(AICC_AI_METHODS.IMAGE_INPAINT, r) }
   imageUpscale(r: ImageUpscaleRequest) { return this.inference<ImageUpscaleResponse, ImageUpscaleRequest>(AICC_AI_METHODS.IMAGE_UPSCALE, r) }
   imageBackgroundRemove(r: ImageBackgroundRemoveRequest) { return this.inference<ImageBackgroundRemoveResponse, ImageBackgroundRemoveRequest>(AICC_AI_METHODS.IMAGE_BG_REMOVE, r) }
@@ -675,6 +675,40 @@ export class AiccClient {
   previewVisibility(r: VisibilityPreviewRequest = {}) { return this.call<VisibilityPreviewResponse, VisibilityPreviewRequest>(AICC_QUOTA_METHODS.VISIBILITY_PREVIEW, r) }
   getDriverMetadataUpdate() { return this.call<DriverMetadataUpdateView, EmptyRequest>(AICC_MANAGEMENT_METHODS.DRIVER_METADATA_UPDATE_GET, {}) }
   setDriverMetadataUpdate(r: DriverMetadataUpdateSetReq) { return this.call<DriverMetadataUpdateSetResponse, DriverMetadataUpdateSetReq>(AICC_MANAGEMENT_METHODS.DRIVER_METADATA_UPDATE_SET, r) }
+}
+
+function validateImageOptions(request: { negative_prompt?: string; quality?: string; style?: string; seed?: number; output?: AiOutputOptions }): void {
+  if (!isObject(request)) throw new RPCError('image request must be an object')
+  for (const field of ['negative_prompt', 'quality', 'style'] as const) {
+    if (request[field] != null && typeof request[field] !== 'string') throw new RPCError(`${field} must be a string`)
+  }
+  if (request.seed != null && (!Number.isSafeInteger(request.seed) || request.seed < 0)) throw new RPCError('seed must be a non-negative safe integer')
+  if (request.output != null) {
+    if (!isObject(request.output)) throw new RPCError('output must be an object')
+    strict(request.output, ['media_type', 'size', 'sample_rate', 'fps'])
+    if (request.output.media_type != null && typeof request.output.media_type !== 'string') throw new RPCError('output.media_type must be a string')
+  }
+}
+
+function validateImageGeneration(request: ImageGenerationFields): void {
+  validateImageOptions(request)
+  if (request.n != null && (!Number.isInteger(request.n) || request.n < 1 || request.n > 0xffffffff)) throw new RPCError('n must be a positive 32-bit integer')
+  if (request.output && 'size' in request.output) throw new RPCError('text-to-image size must be at the top level, not output.size')
+  validateImageDimensions(request.aspect_ratio, request.size)
+}
+
+function validateImageDimensions(aspect?: string, size?: string): void {
+  const ratio = aspect == null ? undefined : aspectRatio(aspect)
+  if (aspect != null && !ratio) throw new RPCError('aspect_ratio must be W:H with integers in 1..=100')
+  if (size == null) return
+  const dims = typeof size === 'string' ? /^(\d+)[xX*](\d+)$/.exec(size) : null
+  if (dims) {
+    const [w, h] = [Number(dims[1]), Number(dims[2])]
+    if (!(w > 0 && h > 0 && w <= 0xffffffff && h <= 0xffffffff)) throw new RPCError('size/output.size dimensions must be positive 32-bit integers')
+    if (ratio && Math.abs(w * ratio[1] - h * ratio[0]) * 20 > h * ratio[0]) throw new RPCError('size/output.size conflicts with aspect_ratio')
+  } else if (typeof size !== 'string' || (!/^(?:auto|[1-9]\d*(?:\.\d+)?[Kk]|[1-9]\d*)$/.test(size) || (size !== 'auto' && !Number.isFinite(Number(size.replace(/[Kk]$/, '')))))) {
+    throw new RPCError('size/output.size must be positive WxH, a positive resolution, or a model-supported K preset')
+  }
 }
 
 function decisionText(value: unknown, nonempty = true): value is DecisionText {

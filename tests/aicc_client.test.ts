@@ -1,4 +1,4 @@
-import { kRPCClient } from '../src/krpc_client'
+import { kRPCClient, RPCError } from '../src/krpc_client'
 import {
   AICC_AI_METHODS,
   AICC_CORE_METHODS,
@@ -429,4 +429,80 @@ describe('video.generate protocol', () => {
     expect(Object.values(AICC_METHODS)).not.toContain('video.video2video')
     expect(() => validateVideoGeneration({ prompt: 'a', conditions: [{ type: 'keyframe', id: 'a', position: 'middle', resource: { kind: 'url', url: 'https://example.test/a.png' } } as never] })).toThrow()
   })
+})
+
+it('sends image edit options without using them as routing requirements', async () => {
+  const fetcher = echoingFetcher({ task_id: 'image-task', status: 'running' })
+  const client = new AiccClient(new kRPCClient('/kapi/aicc/', null, 1, { fetcher }))
+  const request = { exact_model: 'image@test', images: [], prompt: 'landscape', aspect_ratio: '16:9', negative_prompt: 'watermark', quality: 'high', seed: 7, output: { size: '2K', media_type: 'image/jpeg' } }
+  await client.imageToImage(request)
+  expect(sent(fetcher).params).toEqual({ ...request, execution_mode: 'immediate' })
+  expect(() => client.imageToImage({ ...request, output: { size: '768x1344' } })).toThrow('conflicts')
+  expect(() => client.imagesGenerate({ exact_model: 'image@test', prompt: 'x', aspect_ratio: '0:9' })).toThrow('aspect_ratio')
+  expect(() => client.imageToImage({ ...request, size: '2K' } as typeof request)).toThrow()
+  expect(fetcher).toHaveBeenCalledTimes(1)
+})
+
+
+describe('image dimension contract', () => {
+  for (const method of ['imagesGenerate', 'helperTextToImage', 'imageToImage'] as const) {
+    const base = method === 'helperTextToImage' ? { logical_model: 'image.txt2img', prompt: 'cat' }
+      : { exact_model: 'image@test', prompt: 'cat', ...(method === 'imageToImage' ? { images: [] } : {}) }
+    const sizeAt = (aspect_ratio: string | undefined, size: string) => ({ ...base, aspect_ratio,
+      ...(method === 'imageToImage' ? { output: { size } } : { size }) })
+    it(`${method} accepts approximate sizes and leaves model presets to the selected codec`, async () => {
+      const fetcher = echoingFetcher({ task_id: 't', status: 'running' })
+      const client = new AiccClient(new kRPCClient('/kapi/aicc/', null, 1, { fetcher }))
+      const invoke = client[method].bind(client) as (request: unknown) => Promise<unknown>
+      for (const [aspect, size] of [['16:9', '2848x1600'], ['16:9', '1792x1024'], ['16:9', '1344x768'], ['16:9', '1376x768'], ['16:9', '1664x928'], ['9:16', '1600x2848'], ['4:3', '1184x864'], ['04:03', '1184X864'], ['4:3', '1184*864'], ['1:1', '1049x1000'], ['1:1', '1050x1000'], [undefined, '3K'], [undefined, '512'], [undefined, 'auto']]) {
+        await invoke(sizeAt(aspect, size!))
+      }
+      expect(fetcher).toHaveBeenCalledTimes(14)
+    })
+    it(`${method} rejects malformed and conflicting sizes as RPCError before calling the service`, () => {
+      const fetcher = echoingFetcher({})
+      const client = new AiccClient(new kRPCClient('/kapi/aicc/', null, 1, { fetcher }))
+      const invoke = client[method].bind(client) as (request: unknown) => Promise<unknown>
+      for (const [aspect, size] of [['16:9', '768x1344'], ['1:1', '1051x1000'], [undefined, '0x1024'], [undefined, '4294967296x1'], [undefined, 'nonsense'], [undefined, ''], ['0:9', '1024x1024']]) {
+        expect(() => invoke(sizeAt(aspect, size!))).toThrow(RPCError)
+      }
+      expect(fetcher).not.toHaveBeenCalled()
+    })
+  }
+  it('text-to-image rejects output.size instead of accepting a field its codec does not consume', () => {
+    const client = new AiccClient(new kRPCClient('/kapi/aicc/', null, 1, { fetcher: echoingFetcher({}) }))
+    for (const invoke of [client.imagesGenerate.bind(client), client.helperTextToImage.bind(client)]) {
+      expect(() => (invoke as (request: unknown) => unknown)({ exact_model: 'image@test', logical_model: 'image.txt2img', prompt: 'cat', output: { size: '1024x1024' } })).toThrow('top level')
+    }
+  })
+  it('extracts unsupported operation without losing its structured reason', () => {
+    const error = new RPCError('unsupported', 'unsupported_operation', { code: 'unsupported_operation', message: 'quality on selected-model', details: { field: 'quality' }, retriable: false })
+    expect(aiccRefusalOf(error)).toMatchObject({ code: 'unsupported_operation', message: 'quality on selected-model', details: { field: 'quality' }, retriable: false })
+  })
+})
+
+describe('image option validation across entrypoints', () => {
+  for (const method of ['imagesGenerate', 'helperTextToImage', 'imageToImage'] as const) {
+    it(`${method} rejects malformed options as RPCError before sending`, () => {
+      const fetcher = echoingFetcher({})
+      const client = new AiccClient(new kRPCClient('/kapi/aicc/', null, 1, { fetcher }))
+      const invoke = client[method].bind(client) as (request: unknown) => Promise<unknown>
+      const base = method === 'helperTextToImage' ? { logical_model: 'image.txt2img', prompt: 'cat' }
+        : { exact_model: 'image@test', prompt: 'cat', ...(method === 'imageToImage' ? { images: [] } : {}) }
+      for (const malformed of [null, [], 7]) expect(() => invoke(malformed)).toThrow(RPCError)
+      for (const options of [{ output: 7 }, { output: [] }, { output: { typo: 'png' } }, { output: { media_type: 42 } }, { seed: -1 }, { seed: 1.5 }, { seed: Number.MAX_SAFE_INTEGER + 1 }, { quality: false }, { negative_prompt: 7 }]) {
+        expect(() => invoke({ ...base, ...options })).toThrow(RPCError)
+      }
+      if (method !== 'imageToImage') for (const n of [0, -1, 1.5, 4294967296]) expect(() => invoke({ ...base, n })).toThrow(RPCError)
+      expect(fetcher).not.toHaveBeenCalled()
+    })
+    it(`${method} preserves explicit zero seeds and empty strings`, async () => {
+      const fetcher = echoingFetcher({ status: 'running', task_id: 't' })
+      const client = new AiccClient(new kRPCClient('/kapi/aicc/', null, 1, { fetcher }))
+      const base = method === 'helperTextToImage' ? { logical_model: 'image.txt2img', prompt: 'cat' }
+        : { exact_model: 'image@test', prompt: 'cat', ...(method === 'imageToImage' ? { images: [] } : {}) }
+      await (client[method].bind(client) as (request: unknown) => Promise<unknown>)({ ...base, seed: 0, negative_prompt: '', quality: '' })
+      expect(sent(fetcher).params).toMatchObject({ seed: 0, negative_prompt: '', quality: '' })
+    })
+  }
 })

@@ -63,6 +63,7 @@ const REFUSED_QUOTA_EXHAUSTED = 'quota_exhausted'
 const REFUSED_QUOTA_BUDGET_EXCEEDED = 'quota_budget_exceeded'
 const REFUSED_RESOURCE_NOT_PERMITTED = 'resource_not_permitted'
 const REFUSED_ATTRIBUTION_UNAVAILABLE = 'attribution_unavailable'
+const REFUSED_UNSUPPORTED_OPERATION = 'unsupported_operation'
 
 export const HOST_PROMPT_SECTIONS_ALL: HostPromptSections = { capabilities: true, cmd_manual: true, runtime_protocol: true }
 export const HOST_PROMPT_SECTIONS_NONE: HostPromptSections = { capabilities: false, cmd_manual: false, runtime_protocol: false }
@@ -1035,6 +1036,7 @@ export function classifyError(err: LLMComputeError): RunErrorRecord {
       if (code === REFUSED_CREDENTIALS) return rec(true, REFUSED_CREDENTIALS, 'fix the credential referenced by the current identity, then resume')
       const condition = code === REFUSED_QUOTA_EXHAUSTED || code === REFUSED_QUOTA_BUDGET_EXCEEDED
         ? 'the AI token quota does not cover this call; wait for it to reset, lower the output budget, or ask an administrator; do not retry right away'
+        : code === REFUSED_UNSUPPORTED_OPERATION ? 'the selected model does not support the requested operation or parameters; change the parameters or explicitly select a suitable model before resuming'
         : code === REFUSED_RESOURCE_NOT_PERMITTED ? 'the model is not permitted to this user; choose a permitted model or ask an administrator'
           : code === REFUSED_ATTRIBUTION_UNAVAILABLE ? 'the user whose AI resources this run uses cannot be determined'
             : 'the AI service refused this call under its policy; do not retry right away'
