@@ -357,14 +357,21 @@ export class SystemDialogError extends Error {
 const isFile = (value: unknown): value is File => typeof File !== 'undefined' && value instanceof File
 const validName = (value: unknown): value is string =>
   typeof value === 'string' && !!value && value.length <= 255 && value !== '.' && value !== '..' && !/[\/\\\0]/.test(value)
+/** Checks a Zone item that crossed a window or App boundary and returns a clean copy, or undefined when it is not valid. */
+export function readZoneContent(value: unknown): ZoneContent | undefined {
+  if (!value || typeof value !== 'object') return undefined
+  const v = value as Record<string, unknown>
+  if (v.origin !== 'zone' || (v.kind !== 'file' && v.kind !== 'folder') || !isTransferableRef(v.source)) return undefined
+  if (v.objId !== undefined && !(typeof v.objId === 'string' && /^[\w.-]+:[\w-]+$/.test(v.objId))) return undefined
+  const source: TransferableContentRef = v.source.kind === 'cyfs-path'
+    ? { kind: 'cyfs-path', path: v.source.path, ...(typeof v.source.version === 'string' ? { version: v.source.version } : {}) }
+    : { kind: 'object-id', objectId: v.source.objectId, ...(v.source.innerPath ? { innerPath: v.source.innerPath } : {}), ...(typeof v.source.version === 'string' ? { version: v.source.version } : {}) }
+  return { origin: 'zone', kind: v.kind, source, ...(v.objId ? { objId: v.objId } : {}), hints: readContentHints(v.hints) }
+}
 function readSelectedContent(value: unknown): SelectedContent | undefined {
   if (!value || typeof value !== 'object') return undefined
   const v = value as Record<string, unknown>
-  if (v.origin === 'zone') {
-    if ((v.kind !== 'file' && v.kind !== 'folder') || !isTransferableRef(v.source)) return undefined
-    if (v.objId !== undefined && !(typeof v.objId === 'string' && /^[\w.-]+:[\w-]+$/.test(v.objId))) return undefined
-    return { origin: 'zone', kind: v.kind, source: v.source, ...(v.objId ? { objId: v.objId } : {}), hints: readContentHints(v.hints) }
-  }
+  if (v.origin === 'zone') return readZoneContent(v)
   if (v.origin !== 'local') return undefined
   if (v.kind === 'file') return isFile(v.file) ? { origin: 'local', kind: 'file', file: v.file, hints: readContentHints(v.hints) } : undefined
   if (v.kind !== 'folder' || !validName(v.name) || !Array.isArray(v.files)) return undefined

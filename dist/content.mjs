@@ -617,17 +617,23 @@ class SystemDialogError extends Error {
 }
 const isFile = (value) => typeof File !== "undefined" && value instanceof File;
 const validName = (value) => typeof value === "string" && !!value && value.length <= 255 && value !== "." && value !== ".." && !/[\/\\\0]/.test(value);
+function readZoneContent(value) {
+  if (!value || typeof value !== "object")
+    return void 0;
+  const v = value;
+  if (v.origin !== "zone" || v.kind !== "file" && v.kind !== "folder" || !isTransferableRef(v.source))
+    return void 0;
+  if (v.objId !== void 0 && !(typeof v.objId === "string" && /^[\w.-]+:[\w-]+$/.test(v.objId)))
+    return void 0;
+  const source = v.source.kind === "cyfs-path" ? { kind: "cyfs-path", path: v.source.path, ...typeof v.source.version === "string" ? { version: v.source.version } : {} } : { kind: "object-id", objectId: v.source.objectId, ...v.source.innerPath ? { innerPath: v.source.innerPath } : {}, ...typeof v.source.version === "string" ? { version: v.source.version } : {} };
+  return { origin: "zone", kind: v.kind, source, ...v.objId ? { objId: v.objId } : {}, hints: readContentHints(v.hints) };
+}
 function readSelectedContent(value) {
   if (!value || typeof value !== "object")
     return void 0;
   const v = value;
-  if (v.origin === "zone") {
-    if (v.kind !== "file" && v.kind !== "folder" || !isTransferableRef(v.source))
-      return void 0;
-    if (v.objId !== void 0 && !(typeof v.objId === "string" && /^[\w.-]+:[\w-]+$/.test(v.objId)))
-      return void 0;
-    return { origin: "zone", kind: v.kind, source: v.source, ...v.objId ? { objId: v.objId } : {}, hints: readContentHints(v.hints) };
-  }
+  if (v.origin === "zone")
+    return readZoneContent(v);
   if (v.origin !== "local")
     return void 0;
   if (v.kind === "file")
@@ -694,6 +700,7 @@ export {
   previewHandler,
   readContentHints,
   readSelectDialogResult,
+  readZoneContent,
   resolveContentHandlers,
   sniffMagic,
   stripMediaTypeParams,

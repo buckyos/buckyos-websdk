@@ -167,6 +167,26 @@ const frame = new AppFrameClient({
 - 在 Web Desktop 中打开带 `#fragment` 的页面时，应用可直接读取原始 `location.hash`。当前 `AppFrameClient` 从 iframe 名称读取握手标识。只从 `#bfp` 读取标识的旧 SDK 需要升级才能在这种入口完成握手。
 - `selectContent()` 选文件：宿主提供选择器就用宿主的，客户端没有时把 Zone 的 `/embed/sysdlg/select` 嵌在应用页面上，所以要给 `systemOrigin`。
 
+### 经 Desktop 与其他应用交付内容（`transfer.v1`）
+
+不同子域的应用之间，浏览器不保证原生拖放能到达对方。给 `AppFrameClient` 传 `transfer` 处理器就声明了 `transfer.v1`；宿主也列出它时，握手后 SDK 自己建一条 `MessageChannel` 交给宿主，之后的传输消息都走这个端口（客户端里走 `BuckyApi`，本机 `File` 过不去）。
+
+```ts
+const frame = new AppFrameClient({ shellOrigin, transfer: {
+  onAvailable: () => offerSelection(),
+  // 只看种类、格式和操作，不读取、不改动任何东西
+  onProbe: probe => ({ targetId: 'cursor', action: '插入到光标处', accept: [{ itemKey: '0', format: 'text/plain', operation: 'copy' }] }),
+  onDeliver: async delivery => { /* 落点按 delivery.at 再核对一次后提交 */ return { status: 'done', items: delivery.items.map(i => ({ itemKey: i.itemKey, status: 'done' })) } },
+  onRead: read => read.items.map(i => ({ ...i, value: selectedText })),
+} })
+const reply = await frame.offerTransfer({ purpose: 'drag', items: [{ kind: 'text', formats: ['text/plain'], operations: ['copy'], inline: { 'text/plain': selectedText } }] })
+// 选区变了或没了：frame.withdrawTransfer(reply.offerId)
+```
+
+- 登记后，用户用 Desktop 在窗口标题栏画的“拖到其他应用”手柄（拖动，或轻触后再轻触目标窗口）或目标窗口菜单里的“粘贴桌面对象…”把它交给另一个应用。应用自己报告的坐标和松手不算数。
+- 格式用剪贴板规范 §2.1 登记的名字。值：文本和 JSON 格式是字符串，`application/vnd.buckyos.content-refs+json` 是该项的 `ZoneContent`，`files` 是 `File`。
+- 同一个 `operationId` 的投递 SDK 只交给 `onDeliver` 一次，重发和 `transfer.status` 都得到第一次的结果。错误码 `unsupported`、`stale`、`denied`（`TransferError`）。
+
 ### 打开应用
 
 ```ts

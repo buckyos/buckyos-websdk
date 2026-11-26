@@ -12,6 +12,7 @@ export default defineConfig({
         node: resolve(__dirname, "src/node.ts"),
         nfsp: resolve(__dirname, "src/nfsp.ts"),
         content: resolve(__dirname, "src/content.ts"),
+        transfer: resolve(__dirname, "src/transfer.ts"),
         aiws_ext: resolve(__dirname, "src/aiws_ext.ts"),
         "app-frame": resolve(__dirname, "src/app-frame.ts"),
         "open-app": resolve(__dirname, "src/open_app.ts"),

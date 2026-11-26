@@ -243,6 +243,8 @@ export declare class SystemDialogError extends Error {
     code: SystemDialogErrorCode;
     constructor(code: SystemDialogErrorCode, message?: string);
 }
+/** Checks a Zone item that crossed a window or App boundary and returns a clean copy, or undefined when it is not valid. */
+export declare function readZoneContent(value: unknown): ZoneContent | undefined;
 /**
  * Checks a result that crossed a window boundary and returns a clean copy, or undefined when its shape is not valid.
  * Items of one result share an origin; items from this device are only valid when the caller asked for `allowLocal`.

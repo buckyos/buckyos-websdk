@@ -1,6 +1,6 @@
 {
   "name": "buckyos",
-  "version": "0.7.205",
+  "version": "0.7.206",
   "description": "BuckyOS WebSDK for browser and Node.js environments",
   "license": "Apache-2.0",
   "repository": {
@@ -79,6 +79,11 @@
       "types": "./dist/content.d.ts",
       "import": "./dist/content.mjs",
       "require": "./dist/content.cjs"
+    },
+    "./transfer": {
+      "types": "./dist/transfer.d.ts",
+      "import": "./dist/transfer.mjs",
+      "require": "./dist/transfer.cjs"
     },
     "./app-frame": {
       "types": "./dist/app-frame.d.ts",
