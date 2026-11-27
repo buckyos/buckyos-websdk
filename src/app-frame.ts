@@ -2,6 +2,7 @@ import { isOpenRequest, isTransferableRef, isTransferableSession, readContentHin
 import { readAppOpenRequest, systemOpenAppUrl, type AppOpenRequest } from './open_app'
 import { getBuckyApi, type BuckyApi, type RuntimeContainer } from './runtime_env'
 import { CONTENT_REFS_FORMAT, MAX_CONTENT_REFS, newOfferId, readContentRefs } from './transfer'
+import { setFrameAppearance, type FrameAppearance } from './user_preferences'
 export type SystemDialogReply = { ok: true; result: unknown } | { ok: false; code: SystemDialogErrorCode }
 const dialogErrorCode = (value: unknown): SystemDialogErrorCode =>
   SYSTEM_DIALOG_ERROR_CODES.includes(value as SystemDialogErrorCode) ? value as SystemDialogErrorCode : 'protocol'
@@ -665,6 +666,8 @@ export const originInZone = (origin: string, zoneHost: string): boolean => {
 }
 export class AppFrameClient {
   init?: FrameInit
+  /** What the host shows the page in: `getUserPreferences` answers with it while the page is in this frame. */
+  private appearance?: FrameAppearance
   private title?: string
   private focused?: boolean
   private helloTimer?: ReturnType<typeof setInterval>
@@ -728,6 +731,7 @@ export class AppFrameClient {
       if (!this.nonce || p.nonce !== this.nonce || typeof p.locale !== 'string' || !p.theme || typeof p.windowId !== 'string' || p.launch && !isOpenRequest(p.launch)) return
       clearInterval(this.helloTimer); clearTimeout(this.helloDeadline)
       this.init = p as unknown as FrameInit
+      this.showAppearance({ theme: this.init.theme.mode === 'dark' ? 'dark' : 'light', accent: this.init.theme.accent ?? null, locale: this.init.locale })
       this.title = undefined; this.focused = undefined
       if (Object.keys(this.header).length) this.send('header.set', this.header)
       this.options.onInit?.(this.init)
@@ -764,8 +768,14 @@ export class AppFrameClient {
       if (m.type === 'frame.open' && isOpenRequest(p.request)) reply(await this.options.onOpen?.(p.request) ?? { accepted: false })
       if (m.type === 'frame.beforeClose') reply({ decision: await this.options.onBeforeClose?.(p.reason as 'user') ?? 'allow' })
       if (m.type === 'frame.back') reply({ handled: await this.options.onBack?.() ?? false })
-      if (m.type === 'frame.themeChanged' && (p.mode === 'dark' || p.mode === 'light')) this.options.onTheme?.(p as FrameInit['theme'])
-      if (m.type === 'frame.localeChanged' && typeof p.locale === 'string') this.options.onLocale?.(p.locale)
+      if (m.type === 'frame.themeChanged' && (p.mode === 'dark' || p.mode === 'light')) {
+        this.showAppearance({ ...this.appearance!, theme: p.mode, accent: typeof p.accent === 'string' ? p.accent : null })
+        this.options.onTheme?.(p as FrameInit['theme'])
+      }
+      if (m.type === 'frame.localeChanged' && typeof p.locale === 'string') {
+        this.showAppearance({ ...this.appearance!, locale: p.locale })
+        this.options.onLocale?.(p.locale)
+      }
       if (m.type === 'frame.focusChanged' && this.focused !== (p.focused === true)) { this.focused = p.focused === true; this.options.onFocus?.(this.focused) }
     } catch {
       if (m.type === 'frame.open') reply({ accepted: false, fallback: 'preview' })
@@ -933,8 +943,13 @@ export class AppFrameClient {
   withdrawTransfer(offerId: string): void {
     if (isTransferId(offerId)) this.transferLink?.post(envelope('transfer.cancel', { offerId }))
   }
+  private showAppearance(appearance: FrameAppearance) {
+    this.appearance = appearance
+    setFrameAppearance(appearance)
+  }
   dispose(): void {
     clearInterval(this.helloTimer); clearTimeout(this.helloDeadline); this.detach()
+    if (this.appearance) setFrameAppearance(null)
     this.transferLink?.close(); this.transferLink = undefined
     this.transferPending.forEach(p => { clearTimeout(p.timer); p.resolve({ ok: false, code: 'stale' }) }); this.transferPending.clear()
     this.appOpens.forEach(settle => settle({ ok: false, code: 'unsupported' }))

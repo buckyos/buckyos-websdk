@@ -25,6 +25,8 @@ export declare const buckyos: {
     setAppSetting: (settingName: string | null | undefined, settingValue: string) => Promise<void>;
     getCurrentWalletUser: () => Promise<any>;
     getCurrentIdentity: () => Promise<import("./hybrid_sso").CurrentIdentity>;
+    getUserPreferences: () => Promise<import("./user_preferences").UserPreferences>;
+    onUserPreferencesChanged: (listener: (preferences: import("./user_preferences").UserPreferences) => void) => () => void;
     resolve_did: (did: string, docType?: import("./types").DidDocType | null) => Promise<import("./namelib").EncodedDocument | null>;
     walletSignWithActiveDid: (payloads: Record<string, unknown>[]) => Promise<import("./sdk_core").WalletSignWithActiveDidResult | null>;
     openExternalUrl: (url: string) => Promise<void>;
@@ -59,6 +61,8 @@ export declare const attachEvent: (eventName: string, callback: Function) => voi
 export declare const removeEvent: (cookieId: string) => void;
 export declare const getAccountInfo: () => Promise<import("./account").AccountInfo | null>;
 export declare const getCurrentIdentity: () => Promise<import("./hybrid_sso").CurrentIdentity>;
+export declare const getUserPreferences: () => Promise<import("./user_preferences").UserPreferences>;
+export declare const onUserPreferencesChanged: (listener: (preferences: import("./user_preferences").UserPreferences) => void) => () => void;
 export declare const loginByPassword: (username: string, password: string, target?: import("./verify-hub-client").AuthTarget | undefined) => Promise<import("./account").AccountInfo | null>;
 export declare const loginByBrowserSSO: () => Promise<void>;
 export declare const loginByRuntimeSession: () => Promise<import("./account").AccountInfo | null>;

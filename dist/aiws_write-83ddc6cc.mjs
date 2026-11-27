@@ -40,7 +40,7 @@ import { s as DID, N as NODE_IDENTITY_SCHEMA_V2, e as isBuckyOSLocalNodeIdentity
 import { sniffMagic, mediaTypeFromExtension, extensionOf, stripMediaTypeParams, heifImageSize, isoBoxes, ContentRegistryClient } from "./content.mjs";
 import { g as getBrowserIdentityRaw, c as clearBrowserUserInfo, s as saveBrowserIdentity, a as saveBrowserUserInfo, b as getBrowserUserInfo, d as clearBrowserIdentity, h as hashPassword, e as saveLocalAccountInfo, f as cleanLocalAccountInfo } from "./account-7a7bde6f.mjs";
 import { i as AiWorkspaceClient, A as AIWORKSPACE_SERVICE_NAME, Y as newRecordId, _ as insertRecordOp, Z as setValuesOps, $ as deleteRecordsOp, V as orderKeyBetween, g as commitOverLimit, M as AIWS_PROTOCOL_VERSION, a as AiwsFailure, h as commitWithParts } from "./aiws_bind-b851d4db.mjs";
-import { a as getRuntimeEnvironment, g as getBuckyApi } from "./runtime_env-39e4df98.mjs";
+import { U as UserPreferencesStore, r as readUserPreferences, a as getRuntimeEnvironment, g as getBuckyApi } from "./user_preferences-1d49850a.mjs";
 import { a as objEventKey } from "./object_url-20e94b67.mjs";
 function ensureSSOEnvironment() {
   if (typeof window === "undefined" || typeof window.location === "undefined") {
@@ -5254,6 +5254,7 @@ class BuckyOSSDK {
     this.currentRuntime = null;
     this.currentAccountInfo = null;
     this.currentKEventClient = null;
+    this.userPreferences = null;
     this.target = target;
   }
   async initBuckyOS(appid = "", config = null) {
@@ -5350,6 +5351,31 @@ class BuckyOSSDK {
       return ANONYMOUS_IDENTITY;
     }
     return this.currentRuntime.getCurrentIdentity();
+  }
+  /**
+   * The signed-in user's settings for this page: theme, colour, language and profile. In a host's frame (a Desktop
+   * window, the BuckyOS client) the appearance is the host's; alone in a tab the Zone answers what this page may see
+   * (an App: the appearance and the public profile; a system service's page: the private profile too). `{}` for a
+   * guest, or when the Zone cannot be reached.
+   */
+  async getUserPreferences() {
+    return this.preferencesStore().get();
+  }
+  /** `listener` hears each change of `getUserPreferences` (the host's, or the Zone's read again whenever the page
+   * comes back to the foreground); the returned function stops it. */
+  onUserPreferencesChanged(listener) {
+    return this.preferencesStore().subscribe(listener);
+  }
+  preferencesStore() {
+    this.userPreferences ?? (this.userPreferences = new UserPreferencesStore(async () => {
+      if (this.currentRuntime == null)
+        return {};
+      const identity = await this.getCurrentIdentity();
+      if (identity.kind !== "account")
+        return {};
+      return readUserPreferences(await this.getServiceRpcClient("control-panel").call("user.preferences.get", {}));
+    }));
+    return this.userPreferences;
   }
   async getAccountInfo() {
     if (this.currentRuntime == null) {
@@ -5793,6 +5819,8 @@ function createSDKModule(target) {
     setAppSetting: sdk.setAppSetting.bind(sdk),
     getCurrentWalletUser: sdk.getCurrentWalletUser.bind(sdk),
     getCurrentIdentity: sdk.getCurrentIdentity.bind(sdk),
+    getUserPreferences: sdk.getUserPreferences.bind(sdk),
+    onUserPreferencesChanged: sdk.onUserPreferencesChanged.bind(sdk),
     resolve_did: sdk.resolve_did.bind(sdk),
     walletSignWithActiveDid: sdk.walletSignWithActiveDid.bind(sdk),
     openExternalUrl: sdk.openExternalUrl.bind(sdk),
@@ -32698,4 +32726,4 @@ export {
   NOTIFY_SESSION_PREFIX as y,
   NOTIFY_CHOICE_CONTROL_ID as z
 };
-//# sourceMappingURL=aiws_write-47c90e76.mjs.map
+//# sourceMappingURL=aiws_write-83ddc6cc.mjs.map

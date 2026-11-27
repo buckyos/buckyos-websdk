@@ -1,5 +1,6 @@
 import { SystemDialogError } from '../src/content'
 import { AppFrameClient, AppFrameHost, embedderOrigin, originInZone, type AppFrameHostCallbacks, type AppFrameMessage, type AppFrameTransport, type FrameInit, type HeaderEvent, type HeaderState } from '../src/app-frame'
+import { UserPreferencesStore } from '../src/user_preferences'
 
 const globals = globalThis as { window?: unknown; document?: unknown }
 const original = { window: globals.window, document: globals.document }
@@ -87,6 +88,19 @@ describe('App Frame over the bridge of the client', () => {
     expect(focus).toEqual([true])
     expect(themes).toEqual([{ mode: 'dark', accent: '#112233' }])
     host.dispose(); client.dispose()
+  })
+
+  it('gives the host appearance to getUserPreferences while the page is in the frame', async () => {
+    const preferences = new UserPreferencesStore(async () => ({ theme: 'light', locale: 'zh-CN', profile: { name: 'Alice' } }), undefined)
+    const { host, client } = native()
+    await flush()
+    expect(await preferences.get()).toEqual({ theme: 'light', accent: '#336699', locale: 'en', profile: { name: 'Alice' } })
+    host.send('frame.themeChanged', { mode: 'dark' })
+    host.send('frame.localeChanged', { locale: 'fr' })
+    await flush()
+    expect(await preferences.get()).toEqual({ theme: 'dark', accent: null, locale: 'fr', profile: { name: 'Alice' } })
+    host.dispose(); client.dispose()
+    expect(await preferences.get()).toEqual({ theme: 'light', locale: 'zh-CN', profile: { name: 'Alice' } })
   })
 
   it('answers a new document and gives up on the one before it', async () => {

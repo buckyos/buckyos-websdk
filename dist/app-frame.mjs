@@ -1,6 +1,6 @@
 import { readZoneContent, SystemDialogError, isOpenRequest, readContentHints, readSelectDialogResult, systemOpenUrl, SELECT_DIALOG_PATH, isTransferableRef, isTransferableSession, SYSTEM_DIALOG_ERROR_CODES } from "./content.mjs";
 import { readAppOpenRequest, systemOpenAppUrl } from "./open-app.mjs";
-import { g as getBuckyApi } from "./runtime_env-39e4df98.mjs";
+import { g as getBuckyApi, s as setFrameAppearance } from "./user_preferences-1d49850a.mjs";
 import { MAX_CONTENT_REFS, CONTENT_REFS_FORMAT, readContentRefs, newOfferId } from "./transfer.mjs";
 import "./object_url-20e94b67.mjs";
 import "./ndn_types-0fac2499.mjs";
@@ -669,6 +669,7 @@ class AppFrameClient {
       clearInterval(this.helloTimer);
       clearTimeout(this.helloDeadline);
       this.init = p;
+      this.showAppearance({ theme: this.init.theme.mode === "dark" ? "dark" : "light", accent: this.init.theme.accent ?? null, locale: this.init.locale });
       this.title = void 0;
       this.focused = void 0;
       if (Object.keys(this.header).length)
@@ -718,10 +719,14 @@ class AppFrameClient {
         reply({ decision: await ((_i = (_h = this.options).onBeforeClose) == null ? void 0 : _i.call(_h, p.reason)) ?? "allow" });
       if (m.type === "frame.back")
         reply({ handled: await ((_k = (_j = this.options).onBack) == null ? void 0 : _k.call(_j)) ?? false });
-      if (m.type === "frame.themeChanged" && (p.mode === "dark" || p.mode === "light"))
+      if (m.type === "frame.themeChanged" && (p.mode === "dark" || p.mode === "light")) {
+        this.showAppearance({ ...this.appearance, theme: p.mode, accent: typeof p.accent === "string" ? p.accent : null });
         (_m = (_l = this.options).onTheme) == null ? void 0 : _m.call(_l, p);
-      if (m.type === "frame.localeChanged" && typeof p.locale === "string")
+      }
+      if (m.type === "frame.localeChanged" && typeof p.locale === "string") {
+        this.showAppearance({ ...this.appearance, locale: p.locale });
         (_o = (_n = this.options).onLocale) == null ? void 0 : _o.call(_n, p.locale);
+      }
       if (m.type === "frame.focusChanged" && this.focused !== (p.focused === true)) {
         this.focused = p.focused === true;
         (_q = (_p = this.options).onFocus) == null ? void 0 : _q.call(_p, this.focused);
@@ -950,11 +955,17 @@ class AppFrameClient {
     if (isTransferId(offerId))
       (_a = this.transferLink) == null ? void 0 : _a.post(envelope("transfer.cancel", { offerId }));
   }
+  showAppearance(appearance) {
+    this.appearance = appearance;
+    setFrameAppearance(appearance);
+  }
   dispose() {
     var _a, _b;
     clearInterval(this.helloTimer);
     clearTimeout(this.helloDeadline);
     this.detach();
+    if (this.appearance)
+      setFrameAppearance(null);
     (_a = this.transferLink) == null ? void 0 : _a.close();
     this.transferLink = void 0;
     this.transferPending.forEach((p) => {

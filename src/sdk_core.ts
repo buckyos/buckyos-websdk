@@ -29,6 +29,7 @@ import { MsgQueueClient } from './msg_queue_client'
 import { MsgCenterClient } from './msg_center_client'
 import { RepoClient } from './repo_client'
 import { getRuntimeEnvironment } from './runtime_env'
+import { readUserPreferences, UserPreferencesStore, type UserPreferences } from './user_preferences'
 import {
   KEventClient,
   KEvent,
@@ -269,6 +270,7 @@ export class BuckyOSSDK {
   private currentRuntime: BuckyOSRuntime | null = null
   private currentAccountInfo: AccountInfo | null = null
   private currentKEventClient: KEventClient | null = null
+  private userPreferences: UserPreferencesStore | null = null
   private readonly target: SDKTarget
 
   constructor(target: SDKTarget) {
@@ -402,6 +404,32 @@ export class BuckyOSSDK {
       return ANONYMOUS_IDENTITY
     }
     return this.currentRuntime.getCurrentIdentity()
+  }
+
+  /**
+   * The signed-in user's settings for this page: theme, colour, language and profile. In a host's frame (a Desktop
+   * window, the BuckyOS client) the appearance is the host's; alone in a tab the Zone answers what this page may see
+   * (an App: the appearance and the public profile; a system service's page: the private profile too). `{}` for a
+   * guest, or when the Zone cannot be reached.
+   */
+  async getUserPreferences(): Promise<UserPreferences> {
+    return this.preferencesStore().get()
+  }
+
+  /** `listener` hears each change of `getUserPreferences` (the host's, or the Zone's read again whenever the page
+   * comes back to the foreground); the returned function stops it. */
+  onUserPreferencesChanged(listener: (preferences: UserPreferences) => void): () => void {
+    return this.preferencesStore().subscribe(listener)
+  }
+
+  private preferencesStore(): UserPreferencesStore {
+    this.userPreferences ??= new UserPreferencesStore(async () => {
+      if (this.currentRuntime == null) return {}
+      const identity = await this.getCurrentIdentity()
+      if (identity.kind !== 'account') return {}
+      return readUserPreferences(await this.getServiceRpcClient('control-panel').call('user.preferences.get', {}))
+    })
+    return this.userPreferences
   }
 
   async getAccountInfo(): Promise<AccountInfo | null> {
@@ -943,6 +971,8 @@ export function createSDKModule(target: SDKTarget) {
     setAppSetting: sdk.setAppSetting.bind(sdk),
     getCurrentWalletUser: sdk.getCurrentWalletUser.bind(sdk),
     getCurrentIdentity: sdk.getCurrentIdentity.bind(sdk),
+    getUserPreferences: sdk.getUserPreferences.bind(sdk),
+    onUserPreferencesChanged: sdk.onUserPreferencesChanged.bind(sdk),
     resolve_did: sdk.resolve_did.bind(sdk),
     walletSignWithActiveDid: sdk.walletSignWithActiveDid.bind(sdk),
     openExternalUrl: sdk.openExternalUrl.bind(sdk),
@@ -986,6 +1016,7 @@ export type { ZoneUserType, TokenPrincipalKind } from './runtime'
 export { VerifyHubClient }
 export { RPCError } from './krpc_client'
 export * from './hybrid_sso'
+export { readUserPreferences, type FrameAppearance, type UserPreferences } from './user_preferences'
 export * from './app_login'
 export type {
   AppAuthTarget,

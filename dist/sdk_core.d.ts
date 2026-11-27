@@ -14,6 +14,7 @@ import { MsgQueueClient } from './msg_queue_client';
 import { MsgCenterClient } from './msg_center_client';
 import { RepoClient } from './repo_client';
 import { getRuntimeEnvironment } from './runtime_env';
+import { type UserPreferences } from './user_preferences';
 import { KEventClient, KEvent, KEventPatternInput, KEventReader, KEventReaderOptions, KEventSubscribeOptions, KEventSubscription } from './kevent_client';
 import type { DidDocType } from './types';
 import type { EncodedDocument } from './namelib';
@@ -34,6 +35,7 @@ export declare class BuckyOSSDK {
     private currentRuntime;
     private currentAccountInfo;
     private currentKEventClient;
+    private userPreferences;
     private readonly target;
     constructor(target: SDKTarget);
     initBuckyOS(appid?: string, config?: BuckyOSConfig | null): Promise<void>;
@@ -55,6 +57,17 @@ export declare class BuckyOSSDK {
      * account-only and returns `null` for External sessions.
      */
     getCurrentIdentity(): Promise<CurrentIdentity>;
+    /**
+     * The signed-in user's settings for this page: theme, colour, language and profile. In a host's frame (a Desktop
+     * window, the BuckyOS client) the appearance is the host's; alone in a tab the Zone answers what this page may see
+     * (an App: the appearance and the public profile; a system service's page: the private profile too). `{}` for a
+     * guest, or when the Zone cannot be reached.
+     */
+    getUserPreferences(): Promise<UserPreferences>;
+    /** `listener` hears each change of `getUserPreferences` (the host's, or the Zone's read again whenever the page
+     * comes back to the foreground); the returned function stops it. */
+    onUserPreferencesChanged(listener: (preferences: UserPreferences) => void): () => void;
+    private preferencesStore;
     getAccountInfo(): Promise<AccountInfo | null>;
     loginByPassword(username: string, password: string, target?: AuthTarget): Promise<AccountInfo | null>;
     loginByRuntimeSession(): Promise<AccountInfo | null>;
@@ -114,6 +127,8 @@ export declare function createSDKModule(target: SDKTarget): {
         setAppSetting: (settingName: string | null | undefined, settingValue: string) => Promise<void>;
         getCurrentWalletUser: () => Promise<any>;
         getCurrentIdentity: () => Promise<CurrentIdentity>;
+        getUserPreferences: () => Promise<UserPreferences>;
+        onUserPreferencesChanged: (listener: (preferences: UserPreferences) => void) => () => void;
         resolve_did: (did: string, docType?: DidDocType | null) => Promise<EncodedDocument | null>;
         walletSignWithActiveDid: (payloads: Record<string, unknown>[]) => Promise<WalletSignWithActiveDidResult | null>;
         openExternalUrl: (url: string) => Promise<void>;
@@ -156,6 +171,8 @@ export declare function createSDKModule(target: SDKTarget): {
     setAppSetting: (settingName: string | null | undefined, settingValue: string) => Promise<void>;
     getCurrentWalletUser: () => Promise<any>;
     getCurrentIdentity: () => Promise<CurrentIdentity>;
+    getUserPreferences: () => Promise<UserPreferences>;
+    onUserPreferencesChanged: (listener: (preferences: UserPreferences) => void) => () => void;
     resolve_did: (did: string, docType?: DidDocType | null) => Promise<EncodedDocument | null>;
     walletSignWithActiveDid: (payloads: Record<string, unknown>[]) => Promise<WalletSignWithActiveDidResult | null>;
     openExternalUrl: (url: string) => Promise<void>;
@@ -181,6 +198,7 @@ export type { ZoneUserType, TokenPrincipalKind } from './runtime';
 export { VerifyHubClient };
 export { RPCError } from './krpc_client';
 export * from './hybrid_sso';
+export { readUserPreferences, type FrameAppearance, type UserPreferences } from './user_preferences';
 export * from './app_login';
 export type { AppAuthTarget, AuthTarget, LoginByJwtParams, LoginByPasswordParams, RefreshTokenParams, SudoByPasswordParams, SudoByPasswordResponse, SystemAuthTarget, TokenPair, VerifyTokenParams, } from './verify-hub-client';
 export { SystemConfigClient };

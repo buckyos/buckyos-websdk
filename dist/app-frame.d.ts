@@ -343,6 +343,8 @@ export declare const originInZone: (origin: string, zoneHost: string) => boolean
 export declare class AppFrameClient {
     private options;
     init?: FrameInit;
+    /** What the host shows the page in: `getUserPreferences` answers with it while the page is in this frame. */
+    private appearance?;
     private title?;
     private focused?;
     private helloTimer?;
@@ -442,6 +444,7 @@ export declare class AppFrameClient {
     }>;
     /** Withdraws a selection offered with `offerTransfer`. */
     withdrawTransfer(offerId: string): void;
+    private showAppearance;
     dispose(): void;
 }
 /**
