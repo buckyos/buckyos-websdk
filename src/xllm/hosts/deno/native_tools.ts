@@ -20,6 +20,8 @@ import type { AgentToolResult } from '../../runtime/tool_result'
 import { deno, errorText, isDir, isNotFound, joinPath, parentDir } from './deno_api'
 import type { DenoChildProcess } from './deno_api'
 import { blake3Hex } from './identity'
+import { observationText } from '../../runtime/tool_result'
+import { RESULT_BUDGET_TOKENS } from '../../runtime/text_budget'
 
 export const TOOL_READ_FILE = 'read_file'
 export const TOOL_WRITE_FILE = 'write_file'
@@ -27,8 +29,8 @@ export const TOOL_EDIT_FILE = 'edit_file'
 export const TOOL_SHELL = 'shell'
 export const BASH_GROUP_TOOLS = [TOOL_READ_FILE, TOOL_WRITE_FILE, TOOL_EDIT_FILE, TOOL_SHELL]
 
-/** `EXEC_MAX_OUTPUT_BYTES`: what one `shell` call keeps of each stream. */
-export const EXEC_MAX_OUTPUT_BYTES = 64 * 1024
+/** `SHELL_OUTPUT_BYTES`: what one `shell` call keeps of stdout and stderr together. */
+export const EXEC_MAX_OUTPUT_BYTES = 60 * 1024
 /** Bytes of output in a progress / cancel / interrupted text (`OUTPUT_TAIL_BYTES`). */
 export const OUTPUT_TAIL_BYTES = 2048
 export const TIMEOUT_EXIT_CODE = 124
@@ -36,6 +38,11 @@ export const ENV_CALL_ID = 'XLLM_CALL_ID'
 export const ENV_RUN_ID = 'XLLM_RUN_ID'
 const LOCAL_ENGINE = 'native'
 const READ_FILE_PREVIEW_MAX_LINES = 200
+/** `READ_FILE_PREVIEW_RESERVE_BYTES` / the default preview bytes (16K tokens × 4 less the reserve). */
+const READ_FILE_PREVIEW_RESERVE_BYTES = 2048
+const READ_FILE_PREVIEW_BYTES = RESULT_BUDGET_TOKENS * 4 - READ_FILE_PREVIEW_RESERVE_BYTES
+export const READ_PAGING_HINT_KEY = 'read.paging'
+const READ_PAGING_HINT = '`range` reads any part: "201-400", "201:+200" (200 lines from 201), "-50:$" (the last 50). Line numbers are those of the whole text.'
 const CMD_PARAM_PREVIEW_KEEP_CHARS = 32
 const HISTORY_COMPACT_CMD_MAX_CHARS = 96
 
@@ -553,43 +560,100 @@ export function readFileTool(cfg: FileToolConfig): NativeTool {
       const count = selected.length
       const startLine = count === 0 ? null : chunkStart + si
       const endLine = startLine === null ? null : startLine + Math.max(count - 1, 0)
-      let preview = ''
-      if (startLine !== null) {
-        preview = selected.slice(0, READ_FILE_PREVIEW_MAX_LINES).map((l, i) => `${startLine + i}: ${trimEndLineBreaks(l)}`).join('\n')
-        if (selected.length > READ_FILE_PREVIEW_MAX_LINES) preview += `${preview ? '\n' : ''}... truncated to ${READ_FILE_PREVIEW_MAX_LINES} lines`
-      }
+      const preview = buildPreview(startLine, selected, READ_FILE_PREVIEW_BYTES)
       const bytes = byteLength(content)
       const cmdLine = readCmdLine(filePath, firstChunk, range)
-      let summary: string
-      if (matched) {
-        const linesText = startLine !== null && endLine !== null
-          ? (startLine === endLine ? `1 line at ${startLine}` : `${count} lines at ${startLine}-${endLine}`) : '0 lines'
-        const base = `succeeded, read ${bytes} bytes across ${linesText}`
-        summary = preview ? `${base}\n\`\`\`content\n${preview}\n\`\`\`` : base
-      } else {
-        summary = 'succeeded, first_chunk was not found, read 0 bytes across 0 lines'
+      const totalLines = splitLinesPreserveEnding(full).length
+      const lastShown = startLine !== null && preview.shown > 0 ? startLine + preview.shown - 1 : null
+      const notShown = (): [number, number] | undefined => {
+        if (endLine === null || startLine === null) return undefined
+        const next = lastShown === null ? startLine : lastShown + 1
+        return next <= endLine ? [next, endLine] : undefined
       }
-      const detail: Record<string, JsonValue> = {}
+      const goesOn = (): number | undefined =>
+        lastShown !== null && notShown() === undefined && preview.cut === undefined && lastShown < totalLines ? lastShown : undefined
+      let summary: string
+      if (!matched) summary = `first_chunk was not found in ${filePath}: nothing read`
+      else if (lastShown === null) summary = `${filePath}: read 0 lines (the file has ${totalLines === 1 ? '1 line' : `${totalLines} lines`})`
+      else {
+        summary = `${filePath}: shown lines ${startLine}–${lastShown} of ${totalLines} (${bytes} bytes read)`
+        if (preview.cut) summary += `; line ${preview.cut[0]} cut at ${preview.cut[1]} of ${preview.cut[2]} bytes`
+        const ns = notShown()
+        if (ns) summary += `; lines ${ns[0]}–${ns[1]} not shown`
+      }
+      const detail: Record<string, JsonValue> = { path: abs }
       const url = cyfsUrl(cfg.dfsRoot, abs)
       if (url !== undefined) detail.cyfs_url = url
       Object.assign(detail, {
-        content, matched, line_range: label, bytes, line_count: count, start_line: startLine, end_line: endLine,
-        preview_truncated: count > READ_FILE_PREVIEW_MAX_LINES,
+        content, matched, line_range: label, bytes, line_count: count, total_lines: totalLines, start_line: startLine, end_line: endLine,
+        preview_truncated: preview.shown < count || preview.cut !== undefined,
       })
       const result = builtinResult(TOOL_READ_FILE, detail, cmdLine, summary)
       result.title = `${cmdLine} => ${matched ? 'success' : 'anchor not found'}`
-      return withReadDedup(result, filePath, canonicalJson(Object.fromEntries(Object.entries(args).filter(([k]) => k !== 'path'))))
+      if (preview.text) {
+        let out = preview.text
+        if (preview.cut) {
+          const [line, shown, all] = preview.cut
+          out += `\n[line ${line} has ${all} bytes, the first ${shown} are shown`
+          if (abs.startsWith('/')) out += `; read the rest with a command such as \`sed -n '${line}p' ${abs} | cut -b ${shown + 1}-${shown + READ_FILE_PREVIEW_BYTES}\``
+          out += ']'
+        }
+        const ns = notShown()
+        const withoutChunk = firstChunk !== undefined ? ' and without first_chunk (these are lines of the whole file)' : ''
+        const page = Math.max(preview.shown, 1)
+        if (ns) {
+          out += `\n[lines ${ns[0]}–${ns[1]} not shown: read again with range=${ns[0]}-${Math.min(ns[1], ns[0] + page - 1)}${withoutChunk}]`
+        } else if (goesOn() !== undefined) {
+          const last = goesOn()!
+          out += `\n[shown lines ${startLine ?? last}–${last} of ${totalLines}; the next lines: range=${last + 1}-${Math.min(totalLines, last + page)}${withoutChunk}]`
+        }
+        withOutput(result, out)
+      }
+      if (notShown() || preview.cut || goesOn() !== undefined) result.hints = [{ text: READ_PAGING_HINT, once: READ_PAGING_HINT_KEY }]
+      return withReadDedup(result, filePath)
     },
   }
 }
 
-/** `with_read_dedup`: the same window of the same content read again answers with one line. */
-function withReadDedup(result: AgentToolResult, what: string, window: string): AgentToolResult {
-  if (result.status !== 'success') return result
-  const text = result.output?.trim() ? result.output : result.summary.trim() ? result.summary : canonicalJson(result.detail)
+/** The numbered lines a read shows (`build_read_file_output_preview`): at most 200 lines and `maxBytes` UTF-8 bytes; a first line longer than that is cut. */
+function buildPreview(startLine: number | null, lines: string[], maxBytes: number): { text: string; shown: number; cut?: [number, number, number] } {
+  const p: { text: string; shown: number; cut?: [number, number, number] } = { text: '', shown: 0 }
+  if (startLine === null) return p
+  let used = 0
+  for (let i = 0; i < Math.min(lines.length, READ_FILE_PREVIEW_MAX_LINES); i++) {
+    const no = startLine + i
+    const body = trimEndLineBreaks(lines[i])
+    const prefix = `${no}: `
+    const sep = i > 0 ? 1 : 0
+    const bodyBytes = byteLength(body)
+    if (used + sep + prefix.length + bodyBytes > maxBytes) {
+      if (i === 0) {
+        const enc = new TextEncoder().encode(body)
+        let keep = Math.min(Math.max(maxBytes - prefix.length, 0), enc.length)
+        while (keep > 0 && keep < enc.length && (enc[keep] & 0xc0) === 0x80) keep--
+        p.text = prefix + new TextDecoder().decode(enc.subarray(0, keep))
+        p.shown = 1
+        p.cut = [no, keep, enc.length]
+      }
+      break
+    }
+    if (sep) p.text += '\n'
+    p.text += prefix + body
+    used += sep + prefix.length + bodyBytes
+    p.shown++
+  }
+  return p
+}
+
+/** `with_read_dedup`: a read of the same file, window and content as one shown in full answers with one line; the file is named by its resolved path. */
+function withReadDedup(result: AgentToolResult, shownAs: string): AgentToolResult {
+  if (result.status !== 'success' || !isObject(result.detail)) return result
+  const d = result.detail
+  const what = typeof d.path === 'string' ? d.path : shownAs
+  const line = (k: string) => (typeof d[k] === 'number' ? String(d[k]) : '')
   result.dedup = {
-    key: `read:${what}#${window}:${blake3Hex(text).slice(0, 16)}`,
-    hint: `\`${what}\` is unchanged since you read it earlier in this run; use that content.`,
+    key: `read:${what}#${line('start_line')}-${line('end_line')}::${blake3Hex(observationText(result)).slice(0, 16)}`,
+    hint: `\`${shownAs}\` is unchanged`,
   }
   return result
 }
@@ -676,10 +740,9 @@ export function editFileTool(cfg: FileToolConfig): NativeTool {
       const url = cyfsUrl(cfg.dfsRoot, abs)
       if (url !== undefined) detail.cyfs_url = url
       Object.assign(detail, { matched: true, changed, mode: 'replace', line, diff, diff_truncated: false })
-      const summary = changed
-        ? (diff.trim() ? `edited ${filePath} with replace at line ${line}\n\`\`\`diff\n${diff}\n\`\`\`` : `edited ${filePath} with replace at line ${line}`)
-        : `edit ${filePath} made no change`
+      const summary = changed ? `edited ${filePath} with replace at line ${line}` : `edit ${filePath} made no change`
       const result = builtinResult(TOOL_EDIT_FILE, detail, cmdLine, summary)
+      if (changed && diff.trim()) withOutput(result, diff)
       result.title = `${TOOL_EDIT_FILE} ${filePath} => ${changed ? `success (line ${line})` : 'no change'}`
       return result
     },
@@ -722,8 +785,8 @@ export function fmtElapsed(ms: number): string {
   return `${Math.floor(s / 3600)}h${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}m`
 }
 
-/** Head 1/4 + tail 3/4 of a stream (`OutputCollector`). */
-function boundedText(bytes: Uint8Array, max: number): [string, boolean] {
+/** Head 1/4 + tail 3/4 of a stream (`OutputCollector`); the marker names the file that holds it all. */
+function boundedText(bytes: Uint8Array, max: number, source?: string): [string, boolean] {
   const headCap = Math.floor(max / 4)
   const tailCap = max - headCap
   const head = bytes.subarray(0, Math.min(headCap, bytes.length))
@@ -731,7 +794,18 @@ function boundedText(bytes: Uint8Array, max: number): [string, boolean] {
   const tail = rest.subarray(Math.max(0, rest.length - tailCap))
   const truncated = bytes.length > head.length + tail.length
   if (!truncated) return [decodeLossy(head) + decodeLossy(tail), false]
-  return [`${decodeLossy(head)}\n…[${bytes.length - head.length - tail.length} bytes omitted]…\n${decodeLossy(tail)}`, true]
+  const omitted = bytes.length - head.length - tail.length
+  const marker = source === undefined ? `…[${omitted} bytes omitted]…` : `…[${omitted} bytes omitted; full ${source.split('/').pop() || 'output'}: ${source}]…`
+  return [`${decodeLossy(head)}\n${marker}\n${decodeLossy(tail)}`, true]
+}
+
+/** `stream_shares`: what stdout and stderr each show of `max` together. */
+function streamShares(stdout: number, stderr: number, max: number): [number, number] {
+  if (stdout + stderr <= max) return [stdout, stderr]
+  const half = Math.floor(max / 2)
+  if (stdout <= half) return [stdout, max - stdout]
+  if (stderr <= half) return [max - stderr, stderr]
+  return [half, max - half]
 }
 
 async function readBytes(path: string): Promise<Uint8Array | undefined> {
@@ -740,12 +814,6 @@ async function readBytes(path: string): Promise<Uint8Array | undefined> {
   } catch {
     return undefined
   }
-}
-
-/** `read_file_bounded`. */
-async function readFileBounded(path: string, max: number): Promise<[string, boolean]> {
-  const bytes = await readBytes(path)
-  return bytes ? boundedText(bytes, Math.max(max, 16)) : ['', false]
 }
 
 /** `read_file_tail`: the last `max` bytes as text. */
@@ -776,9 +844,14 @@ interface ShellOutput {
 }
 
 /** `output_from_exec_dir`. */
-async function outputFromExecDir(dir: string, exitCode: number, timedOut: boolean, elapsedMs: number, max: number, cwd: string): Promise<ShellOutput> {
-  const [stdout, outTrunc] = await readFileBounded(joinPath(dir, 'stdout'), max)
-  const [stderr, errTrunc] = await readFileBounded(joinPath(dir, 'stderr'), max)
+async function outputFromExecDir(dir: string, exitCode: number, timedOut: boolean, elapsedMs: number, max: number, cwd: string, kept: boolean): Promise<ShellOutput> {
+  const outPath = joinPath(dir, 'stdout')
+  const errPath = joinPath(dir, 'stderr')
+  const out = (await readBytes(outPath)) ?? new Uint8Array()
+  const err = (await readBytes(errPath)) ?? new Uint8Array()
+  const [outMax, errMax] = streamShares(out.length, err.length, max)
+  const [stdout, outTrunc] = boundedText(out, Math.max(outMax, 16), kept ? outPath : undefined)
+  const [stderr, errTrunc] = boundedText(err, Math.max(errMax, 16), kept ? errPath : undefined)
   let output = stdout
   if (stderr) {
     if (output && !output.endsWith('\n')) output += '\n'
@@ -980,7 +1053,7 @@ export function shellTool(cfg: ShellToolConfig): NativeTool {
         const t = sleepOrStop(5000)
         await Promise.race([child.status, t.done])
         t.stop()
-        const out = await outputFromExecDir(dir, TIMEOUT_EXIT_CODE, true, performance.now() - started, EXEC_MAX_OUTPUT_BYTES, cwd)
+        const out = await outputFromExecDir(dir, TIMEOUT_EXIT_CODE, true, performance.now() - started, EXEC_MAX_OUTPUT_BYTES, cwd, !temp)
         await cleanup()
         return out
       }
@@ -993,7 +1066,7 @@ export function shellTool(cfg: ShellToolConfig): NativeTool {
       timer.stop()
       let out: ShellOutput
       if ('exited' in first) {
-        out = await outputFromExecDir(dir, exitCodeOf(first.exited), false, performance.now() - started, EXEC_MAX_OUTPUT_BYTES, cwd)
+        out = await outputFromExecDir(dir, exitCodeOf(first.exited), false, performance.now() - started, EXEC_MAX_OUTPUT_BYTES, cwd, !temp)
         await cleanup()
       } else if ('timeout' in first) {
         out = await kill()

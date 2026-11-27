@@ -81,7 +81,7 @@ function prepareStep(ctx: LLMContext, step: StepRecord, startedAtMs: number): St
     ctx.state.next_action_id += 1
     a.call_id = String(ctx.state.next_action_id)
   }
-  step.meta = { step_index: stepIndex, started_at_ms: startedAtMs, compression_level: 'full' }
+  step.meta = { step_index: stepIndex, started_at_ms: startedAtMs }
   if (ctx.request.behavior_name) step.meta.behavior_name = ctx.request.behavior_name
   return step
 }

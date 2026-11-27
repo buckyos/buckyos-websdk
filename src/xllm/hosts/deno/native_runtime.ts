@@ -28,7 +28,7 @@ import { HINT_NS_DEDUP, MemoryHintLedger, applyHints } from '../../runtime/hints
 import type { HintLedger } from '../../runtime/hints'
 import { taskStateObservation } from '../../runtime/task_model'
 import type { RunningTaskResolver } from '../../runtime/task_model'
-import { toHost } from '../../runtime/tool_result'
+import { fitResultBudget, toHost } from '../../runtime/tool_result'
 import { deno, errorText, isDir, joinPath } from './deno_api'
 import { deriveRuntimeId, nativeHostId, nativeTarget } from './identity'
 import {
@@ -249,7 +249,8 @@ export class NativeToolManager implements RunToolManager {
       if (!taskId) return { kind: 'error', call_id: callId, message: `tool \`${call.name}\` returned a pending result without a task_id`, host: toHost(result) }
       return taskStateObservation(callId, taskId, { kind: 'unknown', reason: 'this runtime has no task backend' }, { kind: 'tools' })
     }
-    return envelopeObservation(callId, result, applyHints(result, this.ledger))
+    fitResultBudget(result)
+    return envelopeObservation(callId, result, applyHints(result, this.ledger, callId))
   }
 }
 

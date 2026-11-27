@@ -14,6 +14,8 @@ import type { StepRenderer } from '../core/deps'
 import { cloneJson, isObject } from '../core/json'
 import { textMessage } from '../core/messages'
 import { renderHintBlock } from './hints'
+import { fullText } from './tool_result'
+import { RESULT_BUDGET_TOKENS } from './text_budget'
 
 import { charOffset, collapseWhitespace, compareCodePoints, rustTextContent, rustTrim, rustTrimEnd, serdeJson } from '../core/rust_text'
 
@@ -128,9 +130,10 @@ function commandLineText(r: ToolResultView): string | undefined {
 // ------------------------------------------------------------- renderer
 
 export interface XmlStepRendererOptions {
-  /** Rust's `summary_chars` knob (default 280); no rendering path reads it there either. */
-  summaryChars?: number
-  /** Cap on a current-behavior step's result body (default 4096 chars); `0` disables it. */
+  /**
+   * Backstop on one result body (chars, `0`: none). The dispatcher keeps
+   * results within the per-result budget, so the default never clips.
+   */
   maxResultChars?: number
   /** Render `started_at_ms` / `ended_at_ms` into history records (default true). */
   timestamps?: boolean
@@ -138,19 +141,17 @@ export interface XmlStepRendererOptions {
 
 /** Default renderer of the XML behavior protocol (`XmlStepRenderer`). Stateless; share one across runs. */
 export class XmlStepRenderer implements StepRenderer {
-  readonly summaryChars: number
   readonly maxResultChars: number
   readonly timestamps: boolean
 
   constructor(options: XmlStepRendererOptions = {}) {
-    this.summaryChars = options.summaryChars ?? 280
-    this.maxResultChars = options.maxResultChars ?? 4 * 1024
+    this.maxResultChars = options.maxResultChars ?? RESULT_BUDGET_TOKENS * 4
     this.timestamps = options.timestamps ?? true
   }
 
   /** History records without wall-clock timestamps (a byte-stable prefix; hosted runs use it). */
   withoutTimestamps(): XmlStepRenderer {
-    return new XmlStepRenderer({ summaryChars: this.summaryChars, maxResultChars: this.maxResultChars, timestamps: false })
+    return new XmlStepRenderer({ maxResultChars: this.maxResultChars, timestamps: false })
   }
 
   render(step: StepRecord): [AiMessage, AiMessage] {
@@ -199,14 +200,22 @@ export class XmlStepRenderer implements StepRenderer {
 interface RenderedActionResult {
   title: string
   body: string
-  fence: 'output' | 'json'
   action_id?: string
   /** `<runtime_hints>` of the result, rendered after its output. */
   hints: string[]
 }
 
 function output(title: string, body: string): RenderedActionResult {
-  return { title, body, fence: 'output', hints: [] }
+  return { title, body, hints: [] }
+}
+
+/** `clip_body`: a result body within `maxChars` chars (`0`: no limit), saying how much was left out. */
+function clipBody(input: string, maxChars: number): string {
+  if (maxChars === 0) return input
+  const end = charOffset(input, maxChars)
+  if (end >= input.length) return input
+  const total = [...input].length
+  return `${rustTrimEnd(input.slice(0, end))}\n…[${total - maxChars} characters omitted by the renderer]`
 }
 
 /** Truncate to `maxChars` chars; `0` means no limit. Returns `[clipped, wasClipped]`. */
@@ -248,13 +257,13 @@ function renderOneActionResultFull(action: AiToolCall, obs: Observation, maxBody
   switch (obs.kind) {
     case 'success': {
       const view = toolResultViewFromHost(obs.host)
-      if (view) return withActionTitleId(action, renderToolResultFull(action, view, maxBodyChars, obs.truncated))
-      const [body, bodyTruncated] = clip(stringifyContent(obs.content), maxBodyChars)
-      return withActionTitleId(action, output(`Run ${command}`, formatActionResultBody(body, obs.truncated || bodyTruncated)))
+      if (view) return withActionTitleId(action, renderToolResultFull(action, view, maxBodyChars))
+      const body = clipBody(stringifyContent(obs.content), maxBodyChars)
+      return withActionTitleId(action, output(`Run ${command}`, formatActionResultBody(body)))
     }
     case 'error': {
       const view = toolResultViewFromHost(obs.host)
-      if (view) return withActionTitleId(action, renderToolResultFull(action, view, maxBodyChars, false))
+      if (view) return withActionTitleId(action, renderToolResultFull(action, view, maxBodyChars))
       const [msg] = clip(obs.message, Math.max(maxBodyChars, 1024))
       return withActionTitleId(action, output(`Run ${command}`, `Error: ${msg}`))
     }
@@ -274,15 +283,14 @@ function renderOneActionResultCompact(action: AiToolCall, obs: Observation, maxB
   switch (obs.kind) {
     case 'success': {
       const view = toolResultViewFromHost(obs.host)
-      if (view) return withActionTitleId(action, renderToolResultCompact(action, view, maxBodyChars, obs.truncated))
-      const [clipped, bodyTruncated] = clip(stringifyContent(obs.content), maxBodyChars)
-      const body = rustTrim(clipped)
+      if (view) return withActionTitleId(action, renderToolResultCompact(action, view, maxBodyChars))
+      const body = rustTrim(clipBody(stringifyContent(obs.content), maxBodyChars))
       return withActionTitleId(action,
-        output(`Run ${command}`, body === '' ? 'Success' : formatActionResultBody(body, obs.truncated || bodyTruncated)))
+        output(`Run ${command}`, body === '' ? 'Success' : formatActionResultBody(body)))
     }
     case 'error': {
       const view = toolResultViewFromHost(obs.host)
-      if (view) return withActionTitleId(action, renderToolResultCompact(action, view, maxBodyChars, false))
+      if (view) return withActionTitleId(action, renderToolResultCompact(action, view, maxBodyChars))
       const [msg] = clip(obs.message, maxBodyChars)
       return withActionTitleId(action, output(`Run ${command}`, `Error: ${msg}`))
     }
@@ -302,13 +310,13 @@ function renderUnpairedActionResult(obs: Observation, maxBodyChars: number): Ren
   switch (obs.kind) {
     case 'success': {
       const view = toolResultViewFromHost(obs.host)
-      if (view) return renderToolResultFullPlaceholder(view, maxBodyChars, obs.truncated)
-      const [body, bodyTruncated] = clip(stringifyContent(obs.content), maxBodyChars)
-      return output('Step result', formatActionResultBody(body, obs.truncated || bodyTruncated))
+      if (view) return renderToolResultFullPlaceholder(view, maxBodyChars)
+      const body = clipBody(stringifyContent(obs.content), maxBodyChars)
+      return output('Step result', formatActionResultBody(body))
     }
     case 'error': {
       const view = toolResultViewFromHost(obs.host)
-      if (view) return renderToolResultFullPlaceholder(view, maxBodyChars, false)
+      if (view) return renderToolResultFullPlaceholder(view, maxBodyChars)
       const [msg] = clip(obs.message, Math.max(maxBodyChars, 1024))
       return output('Step error', `Error: ${msg}`)
     }
@@ -328,32 +336,27 @@ function unresolvedBody(effectUnknown: boolean, body: string): string {
   return body === '' ? label : `${label}: ${body}`
 }
 
-function renderToolResultFull(action: AiToolCall, result: ToolResultView, maxBodyChars: number,
-  fallbackTruncated: boolean): RenderedActionResult {
-  const rendered = renderToolResultFullPlaceholder(result, maxBodyChars, fallbackTruncated)
+function renderToolResultFull(action: AiToolCall, result: ToolResultView, maxBodyChars: number): RenderedActionResult {
+  const rendered = renderToolResultFullPlaceholder(result, maxBodyChars)
   rendered.title = toolResultTitle(action, result)
   rendered.hints = hintTexts(result)
   return rendered
 }
 
-function renderToolResultFullPlaceholder(result: ToolResultView, maxBodyChars: number,
-  fallbackTruncated: boolean): RenderedActionResult {
-  const [body, fence] = result.status === 'error'
-    ? toolResultFullBody(result, 'Error')
-    : result.status === 'pending' ? [toolResultPendingBody(result), 'output' as const] : toolResultFullBody(result, 'Success')
-  const [clipped, wasClipped] = clip(body, maxBodyChars)
-  return { title: toolResultTitle(undefined, result), body: formatActionResultBody(clipped, fallbackTruncated || wasClipped), fence, hints: [] }
+function renderToolResultFullPlaceholder(result: ToolResultView, maxBodyChars: number): RenderedActionResult {
+  const body = result.status === 'pending'
+    ? toolResultPendingBody(result)
+    : fullText(result.status === 'error', result.output, result.detail, result.summary, result.title)
+  return { title: toolResultTitle(undefined, result), body: formatActionResultBody(clipBody(body, maxBodyChars)), hints: [] }
 }
 
-function renderToolResultCompact(action: AiToolCall, result: ToolResultView, maxBodyChars: number,
-  fallbackTruncated: boolean): RenderedActionResult {
+function renderToolResultCompact(action: AiToolCall, result: ToolResultView, maxBodyChars: number): RenderedActionResult {
   const title = toolResultTitle(action, result)
   let body: string
   if (result.status === 'pending') body = toolResultPendingBody(result)
   else if (result.status === 'error') body = toolResultErrorBody(result)
   else body = rustTrim(result.summary) || rustTrim(result.title) || 'Success'
-  const [clipped, wasClipped] = clip(body, maxBodyChars)
-  return output(title, formatActionResultBody(clipped, fallbackTruncated || wasClipped))
+  return output(title, formatActionResultBody(clipBody(body, maxBodyChars)))
 }
 
 function toolResultTitle(action: AiToolCall | undefined, result: ToolResultView): string {
@@ -362,22 +365,6 @@ function toolResultTitle(action: AiToolCall | undefined, result: ToolResultView)
   const command = commandLineText(result)
   if (command !== undefined && rustTrim(command) !== '') return rustTrim(command)
   return action ? `Run ${actionCommandText(action)}` : 'Step result'
-}
-
-function toolResultFullBody(result: ToolResultView, emptyFallback: string): [string, 'output' | 'json'] {
-  if (result.output !== undefined) {
-    const out = rustTrimEnd(result.output)
-    if (out !== '') return [out, 'output']
-  }
-  if (result.detail !== undefined) {
-    if (typeof result.detail === 'string') return [rustTrimEnd(result.detail), 'output']
-    return [serdeJson(result.detail, true), 'json']
-  }
-  const summary = rustTrim(result.summary)
-  if (summary !== '') return [summary, 'output']
-  const title = rustTrim(result.title)
-  if (title !== '') return [title, 'output']
-  return [emptyFallback, 'output']
 }
 
 function toolResultErrorBody(result: ToolResultView): string {
@@ -397,10 +384,8 @@ function toolResultPendingBody(result: ToolResultView): string {
   return lines.join('\n')
 }
 
-function formatActionResultBody(body: string, truncated: boolean): string {
-  let s = rustTrimEnd(body) || 'Success'
-  if (truncated) s += '\n[truncated]'
-  return s
+function formatActionResultBody(body: string): string {
+  return rustTrimEnd(body) || 'Success'
 }
 
 function cancelledLabel(effectUnknown: boolean): string {
@@ -480,7 +465,7 @@ function renderInheritedStepRecord(step: StepRecord, timestamps: boolean): strin
   const outcome = step.report_outcome === undefined ? '' : ` outcome="${escapeXmlText(step.report_outcome).replace(/"/g, '&quot;')}"`
   const report = reportText === '' ? '' : `<report end="${step.report_end}"${outcome}>${escapeXmlText(reportText)}</report>\n`
   const times = timestamps ? ` started_at_ms="${step.meta.started_at_ms}" ended_at_ms="${step.meta.ended_at_ms ?? ''}"` : ''
-  return `<step_record behavior="${step.meta.behavior_name ?? ''}" index="${step.meta.step_index}"${times} compression="${step.meta.compression_level}">\n` +
+  return `<step_record behavior="${step.meta.behavior_name ?? ''}" index="${step.meta.step_index}"${times}>\n` +
     `<observation>${observation}</observation>\n<intent>${thought}</intent>\n${report}<actions>\n${actions}\n</actions>\n</step_record>`
 }
 
@@ -491,7 +476,7 @@ function renderHistoryActionsCompact(step: StepRecord, maxBodyChars: number): st
   const parts: string[] = []
   for (let i = 0; i < n; i++) {
     const part = renderOneActionResultCompact(actions[i], results[i], maxBodyChars)
-    parts.push(`- ${part.title}\n\n\`\`\`${part.fence}\n${part.body}\n\`\`\``)
+    parts.push(`- ${part.title}\n\n\`\`\`output\n${part.body}\n\`\`\``)
   }
   return parts.length === 0 ? 'No action.' : parts.join('\n\n')
 }

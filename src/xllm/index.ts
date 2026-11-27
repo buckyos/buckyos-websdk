@@ -42,7 +42,8 @@ export type {
   AgentRuntime, OpenedTools, RunBinding, RunToolManager, RuntimeOpenCtx, SiteTool, SiteToolCtx, SiteToolSpec,
 } from './runtime/types'
 export { SiteToolManager, envelopeObservation, isIdempotent } from './runtime/site_manager'
-export { AGENT_TOOL_PROTOCOL_VERSION, asToolResult, observationText, toHost } from './runtime/tool_result'
+export { AGENT_TOOL_PROTOCOL_VERSION, asToolResult, fitResultBudget, fullText, observationText, toHost } from './runtime/tool_result'
+export { RESULT_BUDGET_TOKENS, clipToBudget, clipToDefaultBudget } from './runtime/text_budget'
 export type { AgentToolResult, AgentToolStatus, ResultDedup, ResultHint } from './runtime/tool_result'
 export { XmlStepRenderer, toolResultViewFromHost } from './runtime/step_renderer'
 export type { HintView, ToolResultStatusView, ToolResultView, XmlStepRendererOptions } from './runtime/step_renderer'
@@ -51,7 +52,7 @@ export {
   parseSummaryMessage, summaryMessage, summaryModel,
 } from './runtime/compress'
 export type { CompressDeps, CompressOptions, CompressOutcome, CompressReport, CompressStrategy, CompressedSummary } from './runtime/compress'
-export { HINT_NS_DEDUP, HINT_NS_ONCE, MemoryHintLedger, applyHints, renderHintBlock, renderWithHints } from './runtime/hints'
+export { HINT_NS_DEDUP, HINT_NS_ONCE, MemoryHintLedger, applyHints, dedupText, renderHintBlock, renderWithHints } from './runtime/hints'
 export type { HintLedger } from './runtime/hints'
 export {
   followupGeneralHint, followupHint, inCallWaitMs, resultView, taskStateObservation, waitUntilMs,

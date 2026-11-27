@@ -31,7 +31,7 @@ export function behaviorDecision(r: LLMBehaviorResult): StepDecision | undefined
 
 export function stepFromResult(r: LLMBehaviorResult): StepRecord {
   const step: StepRecord = {
-    meta: { step_index: 0, started_at_ms: 0, compression_level: 'full' },
+    meta: { step_index: 0, started_at_ms: 0 },
     assistant_text: r.assistant_text,
     report_end: r.report_end,
   }
@@ -59,7 +59,7 @@ export function resultFromStep(step: StepRecord): LLMBehaviorResult {
 
 export function syntheticErrorStep(message: string): StepRecord {
   return {
-    meta: { step_index: 0, started_at_ms: 0, compression_level: 'full' },
+    meta: { step_index: 0, started_at_ms: 0 },
     assistant_text: '',
     report_end: false,
     action_results: [{ kind: 'error', call_id: '', message }],

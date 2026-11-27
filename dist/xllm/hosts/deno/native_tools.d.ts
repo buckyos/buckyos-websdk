@@ -6,13 +6,14 @@ export declare const TOOL_WRITE_FILE = "write_file";
 export declare const TOOL_EDIT_FILE = "edit_file";
 export declare const TOOL_SHELL = "shell";
 export declare const BASH_GROUP_TOOLS: string[];
-/** `EXEC_MAX_OUTPUT_BYTES`: what one `shell` call keeps of each stream. */
+/** `SHELL_OUTPUT_BYTES`: what one `shell` call keeps of stdout and stderr together. */
 export declare const EXEC_MAX_OUTPUT_BYTES: number;
 /** Bytes of output in a progress / cancel / interrupted text (`OUTPUT_TAIL_BYTES`). */
 export declare const OUTPUT_TAIL_BYTES = 2048;
 export declare const TIMEOUT_EXIT_CODE = 124;
 export declare const ENV_CALL_ID = "XLLM_CALL_ID";
 export declare const ENV_RUN_ID = "XLLM_RUN_ID";
+export declare const READ_PAGING_HINT_KEY = "read.paging";
 export type ToolErrorKind = 'invalid_args' | 'exec_failed' | 'timeout' | 'transport' | 'cancelled';
 /** `AgentToolError`: the message is its Display text. */
 export declare class NativeToolError extends Error {

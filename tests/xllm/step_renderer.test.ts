@@ -8,7 +8,7 @@ import type { StepRenderer } from '../../src/xllm/core/deps'
 import type { AiMessage, AiToolCall, JsonValue, Observation, StepRecord } from '../../src/xllm/core/types'
 
 function stepRecord(patch: Partial<StepRecord> = {}): StepRecord {
-  return { meta: { step_index: 0, started_at_ms: 0, compression_level: 'full' }, assistant_text: '', report_end: false, ...patch }
+  return { meta: { step_index: 0, started_at_ms: 0 }, assistant_text: '', report_end: false, ...patch }
 }
 
 function withMeta(step: StepRecord, behavior: string, index: number): StepRecord {
@@ -185,20 +185,22 @@ describe('XmlStepRenderer (step_record.rs)', () => {
     expect(text).not.toContain('legacy fallback should not render')
   })
 
-  test('protocol_tool_result_full_renders_structured_detail_as_json', () => {
-    const step = stepRecord({
+  test('protocol_tool_result_full_shows_structured_detail_only_without_text', () => {
+    const render = (view: JsonValue) => userTextOf(new XmlStepRenderer().render(stepRecord({
       actions: [toolCall('read_file', '2')],
-      action_results: [success('2', 'legacy fallback should not render', resultView({
-        status: 'success', cmd_name: 'read_file', cmd_args: 'HUGE_CMD_ARGS_SHOULD_NOT_RENDER', title: 'read completed',
-        summary: 'Read 20 lines from demo.txt.', detail: { path: 'demo.txt', content: 'line 1' },
-      }))],
-    })
-    const text = userTextOf(new XmlStepRenderer().render(step)[1])
-    expect(text).toContain('- #2 read completed')
-    expect(text).toContain('```output\n{')
-    expect(text).toContain('"content": "line 1"')
-    expect(text).not.toContain('HUGE_CMD_ARGS_SHOULD_NOT_RENDER')
-    expect(text).not.toContain('legacy fallback should not render')
+      action_results: [success('2', 'legacy fallback should not render', view)],
+    }))[1])
+    const withSummary = render(resultView({
+      status: 'success', cmd_name: 'read_file', cmd_args: 'HUGE_CMD_ARGS_SHOULD_NOT_RENDER', title: 'read completed',
+      summary: 'Read 20 lines from demo.txt.', detail: { path: 'demo.txt', content: 'line 1' },
+    }))
+    expect(withSummary).toContain('- #2 read completed')
+    expect(withSummary).toContain('```output\nRead 20 lines from demo.txt.\n```')
+    expect(withSummary).not.toContain('line 1')
+    expect(withSummary).not.toContain('HUGE_CMD_ARGS_SHOULD_NOT_RENDER')
+    expect(withSummary).not.toContain('legacy fallback should not render')
+    const detailOnly = render(resultView({ status: 'success', title: '', summary: '', detail: { path: 'demo.txt', content: 'line 1' } }))
+    expect(detailOnly).toContain('```output\n{"content":"line 1","path":"demo.txt"}\n```')
   })
 
   test('inherited_protocol_tool_result_uses_summary_not_detail', () => {
@@ -240,7 +242,7 @@ describe('XmlStepRenderer (step_record.rs)', () => {
   })
 
   test('render_history_keeps_current_behavior_steps_full_when_older', () => {
-    const renderer = new XmlStepRenderer({ summaryChars: 20, maxResultChars: 0, timestamps: true })
+    const renderer = new XmlStepRenderer({ maxResultChars: 0, timestamps: true })
     const makeStep = (idx: number, body: string) => stepRecord({
       assistant_text: `<intent>thought-${idx}</intent><actions><shell>t</shell></actions>`,
       thought: `thought-${idx}`,
@@ -283,7 +285,7 @@ describe('XmlStepRenderer (step_record.rs)', () => {
   })
 
   test('inherited_behavior_steps_render_as_single_history_records', () => {
-    const renderer = new XmlStepRenderer({ summaryChars: 20, maxResultChars: 0, timestamps: true })
+    const renderer = new XmlStepRenderer({ maxResultChars: 0, timestamps: true })
     const makeStep = (behavior: string, idx: number) => withMeta(stepRecord({
       assistant_text: `<intent>${behavior}-${idx}</intent>`,
       observation: `observed-${behavior}-${idx} <raw>`,
@@ -355,9 +357,8 @@ describe('XmlStepRenderer exact text', () => {
       ],
     }), 'plan', 4)
     step.meta.started_at_ms = 1700000000000
-    step.meta.compression_level = 'compact'
     expect(plainText(new XmlStepRenderer().renderInherited(step))).toBe(
-      '<step_record behavior="plan" index="4" started_at_ms="1700000000000" ended_at_ms="" compression="compact">\n' +
+      '<step_record behavior="plan" index="4" started_at_ms="1700000000000" ended_at_ms="">\n' +
       '<observation>saw <x></observation>\n<intent>fallback intent</intent>\n' +
       '<report end="true">half done &amp; &lt;ok&gt;</report>\n' +
       '<actions>\n- read notes.md\n\n```output\nSuccess\n```\n\n' +
@@ -376,7 +377,7 @@ describe('XmlStepRenderer exact text', () => {
     expect(plainText(msgs[0])).toBe(
       '<<step_history>>\n' +
       '<history_summary steps="0..2" count="3" behaviors="plan,o&apos;k">did &lt;a&gt; &amp; &quot;b&quot;</history_summary>\n' +
-      '<step_record behavior="plan" index="3" compression="full">\n<observation></observation>\n<intent>think</intent>\n' +
+      '<step_record behavior="plan" index="3">\n<observation></observation>\n<intent>think</intent>\n' +
       '<actions>\nNo action.\n</actions>\n</step_record>\n<</step_history>>')
     expect(plainText(new XmlStepRenderer().renderSummary(summary))).toBe(
       '<history_summary steps="0..2" count="3" started_at_ms="10" ended_at_ms="20" behaviors="plan,o&apos;k">did &lt;a&gt; &amp; &quot;b&quot;</history_summary>')
@@ -405,7 +406,7 @@ describe('XmlStepRenderer exact text', () => {
     })
     expect(userTextOf(renderer.render(step)[1])).toBe(
       '<<last_step_action_results behavior="" step="0">>\n' +
-      '- #1 Run shell\n\n```output\n😀😀😀😀...\n[truncated]\n```\n' +
+      '- #1 Run shell\n\n```output\n😀😀😀😀\n…[2 characters omitted by the renderer]\n```\n' +
       '- #2 Run shell\n\n```output\nab﻿\n```\n' +
       '\n<</last_step_action_results>>')
   })

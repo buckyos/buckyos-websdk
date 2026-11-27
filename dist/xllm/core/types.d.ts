@@ -169,13 +169,11 @@ export interface LLMContextRequest {
     error_policy: ErrorPolicy;
     forbid_next_behavior: boolean;
 }
-export type StepCompressionLevel = 'full' | 'compact' | 'summary';
 export interface StepMeta {
     behavior_name?: string;
     step_index: number;
     started_at_ms: number;
     ended_at_ms?: number;
-    compression_level: StepCompressionLevel;
 }
 export interface HistorySummaryRecord {
     step_count: number;

@@ -486,7 +486,7 @@ export class XllmRun {
         throw XllmError.runtimeMismatch('saved runtime target or workdir changed')
       }
       const manager = await rebuildToolset(record, runtime, deps.tasks, store.runDir(runId))
-      for (const key of record.hints_once ?? []) manager.hintLedger().mark(HINT_NS_ONCE, key)
+      for (const key of record.hints_once ?? []) manager.hintLedger().mark(HINT_NS_ONCE, key, '')
       if (limits.max_tokens !== undefined) record.config.limits.max_tokens = limits.max_tokens
       if (limits.timeout_secs !== undefined) record.config.limits.timeout_secs = limits.timeout_secs
       if (limits.llm_timeout_secs !== undefined) record.config.limits.llm_timeout_secs = limits.llm_timeout_secs

@@ -1,4 +1,4 @@
-import { n as canonicalJson, r as rustTrim, o as jsonEqual, L as LLMComputeException, i as isObject, m as cloneJson, t as textMessage, q as nowMs, u as textContent, c as computeErrorMessage, v as validateResponse, w as toolCalls, a as asComputeError, x as toolObservationMessage, y as mergeUsage, l as llmCorrectable, f as rustTrimEnd, X as XllmError, z as rustTextContent, s as serdeJson, B as compareCodePoints, C as charOffset, D as collapseWhitespace, d as charCount, e as errorSource, E as addRecordUsage, F as refusedCode } from "./aicc-67851c41.mjs";
+import { n as canonicalJson, r as rustTrim, o as jsonEqual, L as LLMComputeException, i as isObject, m as cloneJson, t as textMessage, q as nowMs, u as textContent, c as computeErrorMessage, v as validateResponse, w as toolCalls, a as asComputeError, x as toolObservationMessage, y as mergeUsage, l as llmCorrectable, f as rustTrimEnd, X as XllmError, z as rustTextContent, B as compareCodePoints, s as serdeJson, C as charOffset, D as collapseWhitespace, d as charCount, e as errorSource, E as addRecordUsage, F as refusedCode } from "./aicc-67851c41.mjs";
 function utf8Length(s) {
   let n = 0;
   for (let i = 0; i < s.length; i++) {
@@ -237,7 +237,7 @@ function behaviorDecision(r) {
 function stepFromResult(r) {
   var _a;
   const step = {
-    meta: { step_index: 0, started_at_ms: 0, compression_level: "full" },
+    meta: { step_index: 0, started_at_ms: 0 },
     assistant_text: r.assistant_text,
     report_end: r.report_end
   };
@@ -278,7 +278,7 @@ function resultFromStep(step) {
 }
 function syntheticErrorStep(message) {
   return {
-    meta: { step_index: 0, started_at_ms: 0, compression_level: "full" },
+    meta: { step_index: 0, started_at_ms: 0 },
     assistant_text: "",
     report_end: false,
     action_results: [{ kind: "error", call_id: "", message }]
@@ -650,7 +650,7 @@ function prepareStep(ctx, step, startedAtMs) {
     ctx.state.next_action_id += 1;
     a.call_id = String(ctx.state.next_action_id);
   }
-  step.meta = { step_index: stepIndex, started_at_ms: startedAtMs, compression_level: "full" };
+  step.meta = { step_index: stepIndex, started_at_ms: startedAtMs };
   if (ctx.request.behavior_name)
     step.meta.behavior_name = ctx.request.behavior_name;
   return step;
@@ -1367,8 +1367,7 @@ class LLMContext {
         behavior_name: snapshot.request.behavior_name || void 0,
         step_index: snapshot.state.next_step_index,
         started_at_ms: nowMs(),
-        ended_at_ms: nowMs(),
-        compression_level: "full"
+        ended_at_ms: nowMs()
       },
       assistant_text: result.assistant_text,
       observation: result.observation,
@@ -4080,35 +4079,45 @@ class MemoryHintLedger {
   static seeded(ns, keys) {
     const l = new MemoryHintLedger();
     for (const k of keys)
-      l.mark(ns, k);
+      l.mark(ns, k, "");
     return l;
   }
-  seen(ns, key) {
+  origin(ns, key) {
     var _a;
-    return ((_a = this.inner.get(ns)) == null ? void 0 : _a.has(key)) ?? false;
+    return (_a = this.inner.get(ns)) == null ? void 0 : _a.get(key);
   }
-  mark(ns, key) {
+  seen(ns, key) {
+    return this.origin(ns, key) !== void 0;
+  }
+  mark(ns, key, origin) {
     let s = this.inner.get(ns);
     if (!s)
-      this.inner.set(ns, s = /* @__PURE__ */ new Set());
-    s.add(key);
+      this.inner.set(ns, s = /* @__PURE__ */ new Map());
+    s.set(key, origin);
   }
   clear(ns) {
     this.inner.delete(ns);
   }
   keys(ns) {
-    return [...this.inner.get(ns) ?? []].sort();
+    var _a;
+    return [...((_a = this.inner.get(ns)) == null ? void 0 : _a.keys()) ?? []].sort();
   }
 }
-function applyHints(result, ledger) {
+function dedupText(hint, origin) {
+  const h = rustTrim(hint).replace(/\.+$/, "");
+  return origin === "" ? `${h}; it is shown in full above.` : `${h}; same as the result of call ${origin} above.`;
+}
+function applyHints(result, ledger, callId) {
   if (result.dedup) {
-    if (ledger.seen(HINT_NS_DEDUP, result.dedup.key)) {
-      result.output = result.dedup.hint;
-      result.summary = result.dedup.hint;
-      result.detail = { dedup: result.dedup.key };
+    const origin = ledger.origin(HINT_NS_DEDUP, result.dedup.key);
+    if (origin !== void 0) {
+      const text = dedupText(result.dedup.hint, origin);
+      result.output = text;
+      result.summary = text;
+      result.detail = origin === "" ? { dedup: result.dedup.key } : { dedup: result.dedup.key, dedup_of: origin };
       delete result.partial_output;
     } else {
-      ledger.mark(HINT_NS_DEDUP, result.dedup.key);
+      ledger.mark(HINT_NS_DEDUP, result.dedup.key, callId);
     }
   }
   const kept = [];
@@ -4119,7 +4128,7 @@ function applyHints(result, ledger) {
     if (key !== void 0) {
       if (ledger.seen(HINT_NS_ONCE, key))
         continue;
-      ledger.mark(HINT_NS_ONCE, key);
+      ledger.mark(HINT_NS_ONCE, key, callId);
     }
     kept.push(h);
   }
@@ -4141,6 +4150,107 @@ function renderWithHints(text, hints) {
 ${rustTrimEnd(text)}
 </output>
 ${renderHintBlock(hints)}`;
+}
+const RESULT_BUDGET_TOKENS = 16 * 1024;
+const encoder = new TextEncoder();
+const decoder = new TextDecoder();
+function tokensOf$1(bytes) {
+  return Math.ceil(bytes / 4);
+}
+function floorBoundary(b, i) {
+  i = Math.min(i, b.length);
+  while (i > 0 && i < b.length && (b[i] & 192) === 128)
+    i--;
+  return i;
+}
+function ceilBoundary(b, i) {
+  i = Math.min(i, b.length);
+  while (i < b.length && (b[i] & 192) === 128)
+    i++;
+  return i;
+}
+function clipToBudget(text, budget, more) {
+  const b = encoder.encode(text);
+  const tokens = tokensOf$1(b.length);
+  if (tokens <= budget)
+    return [text, false];
+  const markerRoom = 96 + (more === void 0 ? 0 : encoder.encode(more).length);
+  const keep = Math.max(0, Math.floor(b.length * budget / Math.max(tokens, 1)) - markerRoom);
+  const headEnd = floorBoundary(b, Math.floor(keep / 2));
+  const tailStart = Math.max(ceilBoundary(b, b.length - (keep - Math.floor(keep / 2))), headEnd);
+  const omitted = tailStart - headEnd;
+  const marker = more === void 0 ? `
+…[${omitted} bytes omitted]…
+` : `
+…[${omitted} bytes omitted; ${more}]…
+`;
+  return [`${decoder.decode(b.slice(0, headEnd))}${marker}${decoder.decode(b.slice(tailStart))}`, true];
+}
+function clipToDefaultBudget(text, more) {
+  return clipToBudget(text, RESULT_BUDGET_TOKENS, more);
+}
+const AGENT_TOOL_PROTOCOL_VERSION = "1";
+function asToolResult(value) {
+  if (!isObject(value) || value.agent_tool_protocol !== AGENT_TOOL_PROTOCOL_VERSION)
+    return void 0;
+  const status = value.status ?? "success";
+  if (status !== "success" && status !== "error" && status !== "pending")
+    return void 0;
+  return {
+    ...value,
+    status,
+    summary: typeof value.summary === "string" ? value.summary : "",
+    detail: value.detail === void 0 ? {} : value.detail
+  };
+}
+function fullText(isError, output2, detail, summary, title) {
+  const out = output2 !== void 0 && rustTrim(output2) !== "" ? output2 : void 0;
+  const summaryT = rustTrim(summary);
+  const titleT = rustTrim(title);
+  const detailText = typeof detail === "string" && rustTrim(detail) !== "" ? detail : void 0;
+  const detailJson = () => {
+    if (detail === void 0 || detail === null)
+      return void 0;
+    if (isObject(detail) && Object.keys(detail).length === 0)
+      return void 0;
+    return clipToDefaultBudget(canonicalJson(detail))[0];
+  };
+  if (isError) {
+    if (summaryT && out !== void 0)
+      return `${summaryT}
+${rustTrim(out)}`;
+    if (summaryT)
+      return summaryT;
+    if (out !== void 0)
+      return rustTrim(out);
+    return detailText ?? (titleT || void 0) ?? detailJson() ?? "tool error";
+  }
+  if (out !== void 0)
+    return out;
+  return detailText ?? (summaryT ? summary : void 0) ?? (titleT || void 0) ?? detailJson() ?? "Success";
+}
+function observationText(r) {
+  return fullText(r.status === "error", r.output, r.detail, r.summary, r.title ?? "");
+}
+const RESULT_BUDGET_MORE = "narrow the call (a range, a filter, less output) to see the rest";
+const tokensOf = (s) => Math.ceil(new TextEncoder().encode(s).length / 4);
+function fitResultBudget(r, budget = RESULT_BUDGET_TOKENS) {
+  if (tokensOf(observationText(r)) <= budget)
+    return;
+  const summaryBudget = Math.floor(budget / 4);
+  if (tokensOf(r.summary) > summaryBudget)
+    r.summary = clipToBudget(r.summary, summaryBudget)[0];
+  if (r.status === "error") {
+    const rest = Math.max(0, budget - (tokensOf(rustTrim(r.summary)) + 1));
+    if (r.output !== void 0)
+      r.output = clipToBudget(r.output, rest, RESULT_BUDGET_MORE)[0];
+  } else {
+    r.output = clipToBudget(observationText(r), budget, RESULT_BUDGET_MORE)[0];
+  }
+  delete r.dedup;
+}
+function toHost(r) {
+  return JSON.parse(JSON.stringify(r));
 }
 function xmlEscape(s) {
   return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" })[c]);
@@ -4216,13 +4326,12 @@ function commandLineText(r) {
 }
 class XmlStepRenderer {
   constructor(options = {}) {
-    this.summaryChars = options.summaryChars ?? 280;
-    this.maxResultChars = options.maxResultChars ?? 4 * 1024;
+    this.maxResultChars = options.maxResultChars ?? RESULT_BUDGET_TOKENS * 4;
     this.timestamps = options.timestamps ?? true;
   }
   /** History records without wall-clock timestamps (a byte-stable prefix; hosted runs use it). */
   withoutTimestamps() {
-    return new XmlStepRenderer({ summaryChars: this.summaryChars, maxResultChars: this.maxResultChars, timestamps: false });
+    return new XmlStepRenderer({ maxResultChars: this.maxResultChars, timestamps: false });
   }
   render(step) {
     return this.renderFull(step);
@@ -4263,7 +4372,17 @@ ${records.join("\n")}
   }
 }
 function output(title, body) {
-  return { title, body, fence: "output", hints: [] };
+  return { title, body, hints: [] };
+}
+function clipBody(input, maxChars) {
+  if (maxChars === 0)
+    return input;
+  const end = charOffset(input, maxChars);
+  if (end >= input.length)
+    return input;
+  const total = [...input].length;
+  return `${rustTrimEnd(input.slice(0, end))}
+…[${total - maxChars} characters omitted by the renderer]`;
 }
 function clip(input, maxChars) {
   if (maxChars === 0)
@@ -4316,14 +4435,14 @@ function renderOneActionResultFull(action, obs, maxBodyChars) {
     case "success": {
       const view = toolResultViewFromHost(obs.host);
       if (view)
-        return withActionTitleId(action, renderToolResultFull(action, view, maxBodyChars, obs.truncated));
-      const [body, bodyTruncated] = clip(stringifyContent(obs.content), maxBodyChars);
-      return withActionTitleId(action, output(`Run ${command}`, formatActionResultBody(body, obs.truncated || bodyTruncated)));
+        return withActionTitleId(action, renderToolResultFull(action, view, maxBodyChars));
+      const body = clipBody(stringifyContent(obs.content), maxBodyChars);
+      return withActionTitleId(action, output(`Run ${command}`, formatActionResultBody(body)));
     }
     case "error": {
       const view = toolResultViewFromHost(obs.host);
       if (view)
-        return withActionTitleId(action, renderToolResultFull(action, view, maxBodyChars, false));
+        return withActionTitleId(action, renderToolResultFull(action, view, maxBodyChars));
       const [msg] = clip(obs.message, Math.max(maxBodyChars, 1024));
       return withActionTitleId(action, output(`Run ${command}`, `Error: ${msg}`));
     }
@@ -4343,18 +4462,17 @@ function renderOneActionResultCompact(action, obs, maxBodyChars) {
     case "success": {
       const view = toolResultViewFromHost(obs.host);
       if (view)
-        return withActionTitleId(action, renderToolResultCompact(action, view, maxBodyChars, obs.truncated));
-      const [clipped, bodyTruncated] = clip(stringifyContent(obs.content), maxBodyChars);
-      const body = rustTrim(clipped);
+        return withActionTitleId(action, renderToolResultCompact(action, view, maxBodyChars));
+      const body = rustTrim(clipBody(stringifyContent(obs.content), maxBodyChars));
       return withActionTitleId(
         action,
-        output(`Run ${command}`, body === "" ? "Success" : formatActionResultBody(body, obs.truncated || bodyTruncated))
+        output(`Run ${command}`, body === "" ? "Success" : formatActionResultBody(body))
       );
     }
     case "error": {
       const view = toolResultViewFromHost(obs.host);
       if (view)
-        return withActionTitleId(action, renderToolResultCompact(action, view, maxBodyChars, false));
+        return withActionTitleId(action, renderToolResultCompact(action, view, maxBodyChars));
       const [msg] = clip(obs.message, maxBodyChars);
       return withActionTitleId(action, output(`Run ${command}`, `Error: ${msg}`));
     }
@@ -4374,14 +4492,14 @@ function renderUnpairedActionResult(obs, maxBodyChars) {
     case "success": {
       const view = toolResultViewFromHost(obs.host);
       if (view)
-        return renderToolResultFullPlaceholder(view, maxBodyChars, obs.truncated);
-      const [body, bodyTruncated] = clip(stringifyContent(obs.content), maxBodyChars);
-      return output("Step result", formatActionResultBody(body, obs.truncated || bodyTruncated));
+        return renderToolResultFullPlaceholder(view, maxBodyChars);
+      const body = clipBody(stringifyContent(obs.content), maxBodyChars);
+      return output("Step result", formatActionResultBody(body));
     }
     case "error": {
       const view = toolResultViewFromHost(obs.host);
       if (view)
-        return renderToolResultFullPlaceholder(view, maxBodyChars, false);
+        return renderToolResultFullPlaceholder(view, maxBodyChars);
       const [msg] = clip(obs.message, Math.max(maxBodyChars, 1024));
       return output("Step error", `Error: ${msg}`);
     }
@@ -4399,18 +4517,17 @@ function unresolvedBody(effectUnknown, body) {
   const label = effectUnknown ? "Unresolved (result unknown, side effects unconfirmed)" : "Not executed";
   return body === "" ? label : `${label}: ${body}`;
 }
-function renderToolResultFull(action, result, maxBodyChars, fallbackTruncated) {
-  const rendered = renderToolResultFullPlaceholder(result, maxBodyChars, fallbackTruncated);
+function renderToolResultFull(action, result, maxBodyChars) {
+  const rendered = renderToolResultFullPlaceholder(result, maxBodyChars);
   rendered.title = toolResultTitle(action, result);
   rendered.hints = hintTexts(result);
   return rendered;
 }
-function renderToolResultFullPlaceholder(result, maxBodyChars, fallbackTruncated) {
-  const [body, fence] = result.status === "error" ? toolResultFullBody(result, "Error") : result.status === "pending" ? [toolResultPendingBody(result), "output"] : toolResultFullBody(result, "Success");
-  const [clipped, wasClipped] = clip(body, maxBodyChars);
-  return { title: toolResultTitle(void 0, result), body: formatActionResultBody(clipped, fallbackTruncated || wasClipped), fence, hints: [] };
+function renderToolResultFullPlaceholder(result, maxBodyChars) {
+  const body = result.status === "pending" ? toolResultPendingBody(result) : fullText(result.status === "error", result.output, result.detail, result.summary, result.title);
+  return { title: toolResultTitle(void 0, result), body: formatActionResultBody(clipBody(body, maxBodyChars)), hints: [] };
 }
-function renderToolResultCompact(action, result, maxBodyChars, fallbackTruncated) {
+function renderToolResultCompact(action, result, maxBodyChars) {
   const title = toolResultTitle(action, result);
   let body;
   if (result.status === "pending")
@@ -4419,8 +4536,7 @@ function renderToolResultCompact(action, result, maxBodyChars, fallbackTruncated
     body = toolResultErrorBody(result);
   else
     body = rustTrim(result.summary) || rustTrim(result.title) || "Success";
-  const [clipped, wasClipped] = clip(body, maxBodyChars);
-  return output(title, formatActionResultBody(clipped, fallbackTruncated || wasClipped));
+  return output(title, formatActionResultBody(clipBody(body, maxBodyChars)));
 }
 function toolResultTitle(action, result) {
   const title = rustTrim(result.title);
@@ -4430,25 +4546,6 @@ function toolResultTitle(action, result) {
   if (command !== void 0 && rustTrim(command) !== "")
     return rustTrim(command);
   return action ? `Run ${actionCommandText(action)}` : "Step result";
-}
-function toolResultFullBody(result, emptyFallback) {
-  if (result.output !== void 0) {
-    const out = rustTrimEnd(result.output);
-    if (out !== "")
-      return [out, "output"];
-  }
-  if (result.detail !== void 0) {
-    if (typeof result.detail === "string")
-      return [rustTrimEnd(result.detail), "output"];
-    return [serdeJson(result.detail, true), "json"];
-  }
-  const summary = rustTrim(result.summary);
-  if (summary !== "")
-    return [summary, "output"];
-  const title = rustTrim(result.title);
-  if (title !== "")
-    return [title, "output"];
-  return [emptyFallback, "output"];
 }
 function toolResultErrorBody(result) {
   const output2 = result.output === void 0 ? "" : rustTrim(result.output);
@@ -4471,11 +4568,8 @@ function toolResultPendingBody(result) {
 ${partial}`);
   return lines2.join("\n");
 }
-function formatActionResultBody(body, truncated) {
-  let s = rustTrimEnd(body) || "Success";
-  if (truncated)
-    s += "\n[truncated]";
-  return s;
+function formatActionResultBody(body) {
+  return rustTrimEnd(body) || "Success";
 }
 function cancelledLabel(effectUnknown) {
   return effectUnknown ? "Cancelled (result unknown)" : "Cancelled";
@@ -4546,7 +4640,7 @@ function renderInheritedStepRecord(step, timestamps) {
   const report = reportText === "" ? "" : `<report end="${step.report_end}"${outcome}>${escapeXmlText(reportText)}</report>
 `;
   const times = timestamps ? ` started_at_ms="${step.meta.started_at_ms}" ended_at_ms="${step.meta.ended_at_ms ?? ""}"` : "";
-  return `<step_record behavior="${step.meta.behavior_name ?? ""}" index="${step.meta.step_index}"${times} compression="${step.meta.compression_level}">
+  return `<step_record behavior="${step.meta.behavior_name ?? ""}" index="${step.meta.step_index}"${times}>
 <observation>${observation}</observation>
 <intent>${thought}</intent>
 ${report}<actions>
@@ -4563,7 +4657,7 @@ function renderHistoryActionsCompact(step, maxBodyChars) {
     const part = renderOneActionResultCompact(actions[i], results[i], maxBodyChars);
     parts.push(`- ${part.title}
 
-\`\`\`${part.fence}
+\`\`\`output
 ${part.body}
 \`\`\``);
   }
@@ -5406,7 +5500,7 @@ class XllmRun {
       }
       const manager = await rebuildToolset(record, runtime, deps.tasks, store.runDir(runId));
       for (const key of record.hints_once ?? [])
-        manager.hintLedger().mark(HINT_NS_ONCE, key);
+        manager.hintLedger().mark(HINT_NS_ONCE, key, "");
       if (limits.max_tokens !== void 0)
         record.config.limits.max_tokens = limits.max_tokens;
       if (limits.timeout_secs !== void 0)
@@ -6027,40 +6121,6 @@ function classifyError(err) {
 function unresolvedReason(tool) {
   return `the \`${tool}\` call was dispatched before the previous executor stopped; its effect is unknown. Do not assume it succeeded or failed — check the actual state before repeating it.`;
 }
-const AGENT_TOOL_PROTOCOL_VERSION = "1";
-function asToolResult(value) {
-  if (!isObject(value) || value.agent_tool_protocol !== AGENT_TOOL_PROTOCOL_VERSION)
-    return void 0;
-  const status = value.status ?? "success";
-  if (status !== "success" && status !== "error" && status !== "pending")
-    return void 0;
-  return {
-    ...value,
-    status,
-    summary: typeof value.summary === "string" ? value.summary : "",
-    detail: value.detail === void 0 ? {} : value.detail
-  };
-}
-function observationText(r) {
-  if (r.status === "error") {
-    const summary = rustTrim(r.summary);
-    const output2 = rustTrim(r.output ?? "") || void 0;
-    if (summary && output2)
-      return `${summary}
-${output2}`;
-    if (summary)
-      return summary;
-    if (output2)
-      return output2;
-    return "tool error";
-  }
-  if (r.output !== void 0 && rustTrim(r.output))
-    return r.output;
-  return rustTrim(r.summary) ? r.summary : canonicalJson(r.detail);
-}
-function toHost(r) {
-  return JSON.parse(JSON.stringify(r));
-}
 const MAX_IN_TOOL_WAIT_MS = 30 * 6e4;
 const DEFAULT_TASK_WAIT_MS = 25e3;
 function followupHint(f, taskId, cancellable) {
@@ -6297,7 +6357,7 @@ class SiteToolManager {
       const text = resultText(settled.ok);
       return { kind: "success", call_id: callId, content: text, bytes: utf8Length(text), truncated: false };
     }
-    const observation = envelope.status === "pending" ? await this.waitPending(call.name, callId, envelope, ctx) : envelopeObservation(callId, envelope, applyHints(envelope, this.ledger));
+    const observation = envelope.status === "pending" ? await this.waitPending(call.name, callId, envelope, ctx) : (fitResultBudget(envelope), envelopeObservation(callId, envelope, applyHints(envelope, this.ledger, callId)));
     const host = observation.kind === "success" || observation.kind === "error" ? observation.host : void 0;
     const taskId = isObject(host) && typeof host.task_id === "string" ? rustTrim(host.task_id) : "";
     if (taskId)
@@ -6374,38 +6434,44 @@ export {
   isIdempotent as a7,
   AGENT_TOOL_PROTOCOL_VERSION as a8,
   asToolResult as a9,
-  TimeoutLlmClient as aA,
-  normalizePath as aB,
-  PLANNED_RUNTIME_KINDS as aC,
-  BUILTIN_TOOL_GROUP_BASH as aD,
-  BUILTIN_TOOL_GROUP_BASH_CORE as aE,
-  resolveConfigPath as aF,
-  observationText as aa,
-  toHost as ab,
-  XmlStepRenderer as ac,
-  toolResultViewFromHost as ad,
-  LlmSummarizeCompressor as ae,
-  SUMMARIZE_MODEL_ALIAS as af,
-  compactionTargetTokens as ag,
-  compress as ah,
-  compressHistory as ai,
-  compressOptions as aj,
-  isSummaryMessage as ak,
-  parseSummaryMessage as al,
-  summaryMessage as am,
-  summaryModel as an,
-  HINT_NS_DEDUP as ao,
-  HINT_NS_ONCE as ap,
-  MemoryHintLedger as aq,
-  applyHints as ar,
-  renderHintBlock as as,
-  renderWithHints as at,
-  followupGeneralHint as au,
-  followupHint as av,
-  inCallWaitMs as aw,
-  resultView as ax,
-  taskStateObservation as ay,
-  waitUntilMs as az,
+  followupGeneralHint as aA,
+  followupHint as aB,
+  inCallWaitMs as aC,
+  resultView as aD,
+  taskStateObservation as aE,
+  waitUntilMs as aF,
+  TimeoutLlmClient as aG,
+  normalizePath as aH,
+  PLANNED_RUNTIME_KINDS as aI,
+  BUILTIN_TOOL_GROUP_BASH as aJ,
+  BUILTIN_TOOL_GROUP_BASH_CORE as aK,
+  resolveConfigPath as aL,
+  fitResultBudget as aa,
+  fullText as ab,
+  observationText as ac,
+  toHost as ad,
+  RESULT_BUDGET_TOKENS as ae,
+  clipToBudget as af,
+  clipToDefaultBudget as ag,
+  XmlStepRenderer as ah,
+  toolResultViewFromHost as ai,
+  LlmSummarizeCompressor as aj,
+  SUMMARIZE_MODEL_ALIAS as ak,
+  compactionTargetTokens as al,
+  compress as am,
+  compressHistory as an,
+  compressOptions as ao,
+  isSummaryMessage as ap,
+  parseSummaryMessage as aq,
+  summaryMessage as ar,
+  summaryModel as as,
+  HINT_NS_DEDUP as at,
+  HINT_NS_ONCE as au,
+  MemoryHintLedger as av,
+  applyHints as aw,
+  dedupText as ax,
+  renderHintBlock as ay,
+  renderWithHints as az,
   SNAPSHOT_FORMAT_VERSION as b,
   stateFromRequest as c,
   describeToolSource as d,
@@ -6432,4 +6498,4 @@ export {
   assemblePrompt as y,
   RUNTIME_PROTOCOL_VERSION as z
 };
-//# sourceMappingURL=site_manager-91b4d899.mjs.map
+//# sourceMappingURL=site_manager-604ee369.mjs.map

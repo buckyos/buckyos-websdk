@@ -11,7 +11,7 @@ import { canonicalJson, isObject } from '../core/json'
 import { utf8Length } from '../core/tokenizer'
 import { nowMs } from '../core/messages'
 import type { RunBinding, RunToolManager, SiteTool, SiteToolCtx } from './types'
-import { asToolResult, observationText, toHost } from './tool_result'
+import { asToolResult, fitResultBudget, observationText, toHost } from './tool_result'
 import type { AgentToolResult } from './tool_result'
 import { HINT_NS_DEDUP, MemoryHintLedger, applyHints, renderWithHints } from './hints'
 import type { HintLedger } from './hints'
@@ -157,7 +157,7 @@ export class SiteToolManager implements RunToolManager {
     }
     const observation = envelope.status === 'pending'
       ? await this.waitPending(call.name, callId, envelope, ctx)
-      : envelopeObservation(callId, envelope, applyHints(envelope, this.ledger))
+      : (fitResultBudget(envelope), envelopeObservation(callId, envelope, applyHints(envelope, this.ledger, callId)))
     const host = observation.kind === 'success' || observation.kind === 'error' ? observation.host : undefined
     const taskId = isObject(host) && typeof host.task_id === 'string' ? rustTrim(host.task_id) : ''
     if (taskId) this.options.tasks?.watch?.(taskId)

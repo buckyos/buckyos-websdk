@@ -347,7 +347,6 @@ export class LLMContext {
         step_index: snapshot.state.next_step_index,
         started_at_ms: nowMs(),
         ended_at_ms: nowMs(),
-        compression_level: 'full',
       },
       assistant_text: result.assistant_text,
       observation: result.observation,

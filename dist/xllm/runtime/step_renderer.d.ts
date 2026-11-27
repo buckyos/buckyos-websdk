@@ -30,16 +30,16 @@ export interface ToolResultView {
  */
 export declare function toolResultViewFromHost(host: JsonValue | undefined): ToolResultView | undefined;
 export interface XmlStepRendererOptions {
-    /** Rust's `summary_chars` knob (default 280); no rendering path reads it there either. */
-    summaryChars?: number;
-    /** Cap on a current-behavior step's result body (default 4096 chars); `0` disables it. */
+    /**
+     * Backstop on one result body (chars, `0`: none). The dispatcher keeps
+     * results within the per-result budget, so the default never clips.
+     */
     maxResultChars?: number;
     /** Render `started_at_ms` / `ended_at_ms` into history records (default true). */
     timestamps?: boolean;
 }
 /** Default renderer of the XML behavior protocol (`XmlStepRenderer`). Stateless; share one across runs. */
 export declare class XmlStepRenderer implements StepRenderer {
-    readonly summaryChars: number;
     readonly maxResultChars: number;
     readonly timestamps: boolean;
     constructor(options?: XmlStepRendererOptions);

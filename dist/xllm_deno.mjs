@@ -5,7 +5,7 @@ var __publicField = (obj, key, value) => {
   return value;
 };
 import { n as canonicalJson, i as isObject, X as XllmError, m as cloneJson, p as providerError, A as AiccLlmClient } from "./aicc-67851c41.mjs";
-import { aB as normalizePath, aq as MemoryHintLedger, ao as HINT_NS_DEDUP, T as ToolDispatchException, ab as toHost, ay as taskStateObservation, a6 as envelopeObservation, ar as applyHints, aC as PLANNED_RUNTIME_KINDS, s as shellSettings, aD as BUILTIN_TOOL_GROUP_BASH, u as unresolvedReason, d as describeToolSource, aE as BUILTIN_TOOL_GROUP_BASH_CORE, aF as resolveConfigPath, g as generateRunId, R as RUN_RECORD_VERSION, Y as REFUSED_CREDENTIALS, q as mergeConfigLayers, w as parseLlmContextJson, G as MemoryRunStore, $ as XllmTask, a2 as isTerminal, _ as XllmRun } from "./site_manager-91b4d899.mjs";
+import { ac as observationText, aH as normalizePath, ae as RESULT_BUDGET_TOKENS, av as MemoryHintLedger, at as HINT_NS_DEDUP, T as ToolDispatchException, ad as toHost, aE as taskStateObservation, aa as fitResultBudget, a6 as envelopeObservation, aw as applyHints, aI as PLANNED_RUNTIME_KINDS, s as shellSettings, aJ as BUILTIN_TOOL_GROUP_BASH, u as unresolvedReason, d as describeToolSource, aK as BUILTIN_TOOL_GROUP_BASH_CORE, aL as resolveConfigPath, g as generateRunId, R as RUN_RECORD_VERSION, Y as REFUSED_CREDENTIALS, q as mergeConfigLayers, w as parseLlmContextJson, G as MemoryRunStore, $ as XllmTask, a2 as isTerminal, _ as XllmRun } from "./site_manager-604ee369.mjs";
 import { O as OpenAiLlmClient } from "./openai-ae2978de.mjs";
 import "./krpc_client-673448e5.mjs";
 function deno() {
@@ -622,13 +622,17 @@ const TOOL_WRITE_FILE = "write_file";
 const TOOL_EDIT_FILE = "edit_file";
 const TOOL_SHELL = "shell";
 const BASH_GROUP_TOOLS = [TOOL_READ_FILE, TOOL_WRITE_FILE, TOOL_EDIT_FILE, TOOL_SHELL];
-const EXEC_MAX_OUTPUT_BYTES = 64 * 1024;
+const EXEC_MAX_OUTPUT_BYTES = 60 * 1024;
 const OUTPUT_TAIL_BYTES = 2048;
 const TIMEOUT_EXIT_CODE = 124;
 const ENV_CALL_ID = "XLLM_CALL_ID";
 const ENV_RUN_ID = "XLLM_RUN_ID";
 const LOCAL_ENGINE = "native";
 const READ_FILE_PREVIEW_MAX_LINES = 200;
+const READ_FILE_PREVIEW_RESERVE_BYTES = 2048;
+const READ_FILE_PREVIEW_BYTES = RESULT_BUDGET_TOKENS * 4 - READ_FILE_PREVIEW_RESERVE_BYTES;
+const READ_PAGING_HINT_KEY = "read.paging";
+const READ_PAGING_HINT = '`range` reads any part: "201-400", "201:+200" (200 lines from 201), "-50:$" (the last 50). Line numbers are those of the whole text.';
 const CMD_PARAM_PREVIEW_KEEP_CHARS = 32;
 const HISTORY_COMPACT_CMD_MAX_CHARS = 96;
 class NativeToolError extends Error {
@@ -1109,26 +1113,32 @@ function readFileTool(cfg) {
       const count = selected.length;
       const startLine = count === 0 ? null : chunkStart + si;
       const endLine = startLine === null ? null : startLine + Math.max(count - 1, 0);
-      let preview = "";
-      if (startLine !== null) {
-        preview = selected.slice(0, READ_FILE_PREVIEW_MAX_LINES).map((l, i) => `${startLine + i}: ${trimEndLineBreaks(l)}`).join("\n");
-        if (selected.length > READ_FILE_PREVIEW_MAX_LINES)
-          preview += `${preview ? "\n" : ""}... truncated to ${READ_FILE_PREVIEW_MAX_LINES} lines`;
-      }
+      const preview = buildPreview(startLine, selected, READ_FILE_PREVIEW_BYTES);
       const bytes = byteLength(content);
       const cmdLine = readCmdLine(filePath, firstChunk, range);
+      const totalLines = splitLinesPreserveEnding(full).length;
+      const lastShown = startLine !== null && preview.shown > 0 ? startLine + preview.shown - 1 : null;
+      const notShown = () => {
+        if (endLine === null || startLine === null)
+          return void 0;
+        const next = lastShown === null ? startLine : lastShown + 1;
+        return next <= endLine ? [next, endLine] : void 0;
+      };
+      const goesOn = () => lastShown !== null && notShown() === void 0 && preview.cut === void 0 && lastShown < totalLines ? lastShown : void 0;
       let summary;
-      if (matched) {
-        const linesText = startLine !== null && endLine !== null ? startLine === endLine ? `1 line at ${startLine}` : `${count} lines at ${startLine}-${endLine}` : "0 lines";
-        const base = `succeeded, read ${bytes} bytes across ${linesText}`;
-        summary = preview ? `${base}
-\`\`\`content
-${preview}
-\`\`\`` : base;
-      } else {
-        summary = "succeeded, first_chunk was not found, read 0 bytes across 0 lines";
+      if (!matched)
+        summary = `first_chunk was not found in ${filePath}: nothing read`;
+      else if (lastShown === null)
+        summary = `${filePath}: read 0 lines (the file has ${totalLines === 1 ? "1 line" : `${totalLines} lines`})`;
+      else {
+        summary = `${filePath}: shown lines ${startLine}–${lastShown} of ${totalLines} (${bytes} bytes read)`;
+        if (preview.cut)
+          summary += `; line ${preview.cut[0]} cut at ${preview.cut[1]} of ${preview.cut[2]} bytes`;
+        const ns = notShown();
+        if (ns)
+          summary += `; lines ${ns[0]}–${ns[1]} not shown`;
       }
-      const detail = {};
+      const detail = { path: abs };
       const url = cyfsUrl(cfg.dfsRoot, abs);
       if (url !== void 0)
         detail.cyfs_url = url;
@@ -1138,24 +1148,82 @@ ${preview}
         line_range: label,
         bytes,
         line_count: count,
+        total_lines: totalLines,
         start_line: startLine,
         end_line: endLine,
-        preview_truncated: count > READ_FILE_PREVIEW_MAX_LINES
+        preview_truncated: preview.shown < count || preview.cut !== void 0
       });
       const result = builtinResult(TOOL_READ_FILE, detail, cmdLine, summary);
       result.title = `${cmdLine} => ${matched ? "success" : "anchor not found"}`;
-      return withReadDedup(result, filePath, canonicalJson(Object.fromEntries(Object.entries(args).filter(([k]) => k !== "path"))));
+      if (preview.text) {
+        let out = preview.text;
+        if (preview.cut) {
+          const [line, shown, all] = preview.cut;
+          out += `
+[line ${line} has ${all} bytes, the first ${shown} are shown`;
+          if (abs.startsWith("/"))
+            out += `; read the rest with a command such as \`sed -n '${line}p' ${abs} | cut -b ${shown + 1}-${shown + READ_FILE_PREVIEW_BYTES}\``;
+          out += "]";
+        }
+        const ns = notShown();
+        const withoutChunk = firstChunk !== void 0 ? " and without first_chunk (these are lines of the whole file)" : "";
+        const page = Math.max(preview.shown, 1);
+        if (ns) {
+          out += `
+[lines ${ns[0]}–${ns[1]} not shown: read again with range=${ns[0]}-${Math.min(ns[1], ns[0] + page - 1)}${withoutChunk}]`;
+        } else if (goesOn() !== void 0) {
+          const last = goesOn();
+          out += `
+[shown lines ${startLine ?? last}–${last} of ${totalLines}; the next lines: range=${last + 1}-${Math.min(totalLines, last + page)}${withoutChunk}]`;
+        }
+        withOutput(result, out);
+      }
+      if (notShown() || preview.cut || goesOn() !== void 0)
+        result.hints = [{ text: READ_PAGING_HINT, once: READ_PAGING_HINT_KEY }];
+      return withReadDedup(result, filePath);
     }
   };
 }
-function withReadDedup(result, what, window) {
-  var _a;
-  if (result.status !== "success")
+function buildPreview(startLine, lines, maxBytes) {
+  const p = { text: "", shown: 0 };
+  if (startLine === null)
+    return p;
+  let used = 0;
+  for (let i = 0; i < Math.min(lines.length, READ_FILE_PREVIEW_MAX_LINES); i++) {
+    const no = startLine + i;
+    const body = trimEndLineBreaks(lines[i]);
+    const prefix = `${no}: `;
+    const sep = i > 0 ? 1 : 0;
+    const bodyBytes = byteLength(body);
+    if (used + sep + prefix.length + bodyBytes > maxBytes) {
+      if (i === 0) {
+        const enc = new TextEncoder().encode(body);
+        let keep = Math.min(Math.max(maxBytes - prefix.length, 0), enc.length);
+        while (keep > 0 && keep < enc.length && (enc[keep] & 192) === 128)
+          keep--;
+        p.text = prefix + new TextDecoder().decode(enc.subarray(0, keep));
+        p.shown = 1;
+        p.cut = [no, keep, enc.length];
+      }
+      break;
+    }
+    if (sep)
+      p.text += "\n";
+    p.text += prefix + body;
+    used += sep + prefix.length + bodyBytes;
+    p.shown++;
+  }
+  return p;
+}
+function withReadDedup(result, shownAs) {
+  if (result.status !== "success" || !isObject(result.detail))
     return result;
-  const text = ((_a = result.output) == null ? void 0 : _a.trim()) ? result.output : result.summary.trim() ? result.summary : canonicalJson(result.detail);
+  const d = result.detail;
+  const what = typeof d.path === "string" ? d.path : shownAs;
+  const line = (k) => typeof d[k] === "number" ? String(d[k]) : "";
   result.dedup = {
-    key: `read:${what}#${window}:${blake3Hex(text).slice(0, 16)}`,
-    hint: `\`${what}\` is unchanged since you read it earlier in this run; use that content.`
+    key: `read:${what}#${line("start_line")}-${line("end_line")}::${blake3Hex(observationText(result)).slice(0, 16)}`,
+    hint: `\`${shownAs}\` is unchanged`
   };
   return result;
 }
@@ -1251,11 +1319,10 @@ function editFileTool(cfg) {
       if (url !== void 0)
         detail.cyfs_url = url;
       Object.assign(detail, { matched: true, changed, mode: "replace", line, diff, diff_truncated: false });
-      const summary = changed ? diff.trim() ? `edited ${filePath} with replace at line ${line}
-\`\`\`diff
-${diff}
-\`\`\`` : `edited ${filePath} with replace at line ${line}` : `edit ${filePath} made no change`;
+      const summary = changed ? `edited ${filePath} with replace at line ${line}` : `edit ${filePath} made no change`;
       const result = builtinResult(TOOL_EDIT_FILE, detail, cmdLine, summary);
+      if (changed && diff.trim())
+        withOutput(result, diff);
       result.title = `${TOOL_EDIT_FILE} ${filePath} => ${changed ? `success (line ${line})` : "no change"}`;
       return result;
     }
@@ -1285,7 +1352,7 @@ function fmtElapsed(ms) {
     return `${Math.floor(s / 60)}m${String(s % 60).padStart(2, "0")}s`;
   return `${Math.floor(s / 3600)}h${String(Math.floor(s % 3600 / 60)).padStart(2, "0")}m`;
 }
-function boundedText(bytes, max) {
+function boundedText(bytes, max, source) {
   const headCap = Math.floor(max / 4);
   const tailCap = max - headCap;
   const head = bytes.subarray(0, Math.min(headCap, bytes.length));
@@ -1294,9 +1361,21 @@ function boundedText(bytes, max) {
   const truncated = bytes.length > head.length + tail.length;
   if (!truncated)
     return [decodeLossy(head) + decodeLossy(tail), false];
+  const omitted = bytes.length - head.length - tail.length;
+  const marker = source === void 0 ? `…[${omitted} bytes omitted]…` : `…[${omitted} bytes omitted; full ${source.split("/").pop() || "output"}: ${source}]…`;
   return [`${decodeLossy(head)}
-…[${bytes.length - head.length - tail.length} bytes omitted]…
+${marker}
 ${decodeLossy(tail)}`, true];
+}
+function streamShares(stdout, stderr, max) {
+  if (stdout + stderr <= max)
+    return [stdout, stderr];
+  const half = Math.floor(max / 2);
+  if (stdout <= half)
+    return [stdout, max - stdout];
+  if (stderr <= half)
+    return [max - stderr, stderr];
+  return [half, max - half];
 }
 async function readBytes(path) {
   try {
@@ -1304,10 +1383,6 @@ async function readBytes(path) {
   } catch {
     return void 0;
   }
-}
-async function readFileBounded(path, max) {
-  const bytes = await readBytes(path);
-  return bytes ? boundedText(bytes, Math.max(max, 16)) : ["", false];
 }
 async function readFileTail(path, max) {
   const bytes = await readBytes(path);
@@ -1321,9 +1396,14 @@ async function readExitFile(dir) {
     return void 0;
   }
 }
-async function outputFromExecDir(dir, exitCode, timedOut, elapsedMs, max, cwd) {
-  const [stdout, outTrunc] = await readFileBounded(joinPath(dir, "stdout"), max);
-  const [stderr, errTrunc] = await readFileBounded(joinPath(dir, "stderr"), max);
+async function outputFromExecDir(dir, exitCode, timedOut, elapsedMs, max, cwd, kept) {
+  const outPath = joinPath(dir, "stdout");
+  const errPath = joinPath(dir, "stderr");
+  const out = await readBytes(outPath) ?? new Uint8Array();
+  const err = await readBytes(errPath) ?? new Uint8Array();
+  const [outMax, errMax] = streamShares(out.length, err.length, max);
+  const [stdout, outTrunc] = boundedText(out, Math.max(outMax, 16), kept ? outPath : void 0);
+  const [stderr, errTrunc] = boundedText(err, Math.max(errMax, 16), kept ? errPath : void 0);
   let output = stdout;
   if (stderr) {
     if (output && !output.endsWith("\n"))
@@ -1546,7 +1626,7 @@ function shellTool(cfg) {
         const t = sleepOrStop(5e3);
         await Promise.race([child.status, t.done]);
         t.stop();
-        const out2 = await outputFromExecDir(dir, TIMEOUT_EXIT_CODE, true, performance.now() - started, EXEC_MAX_OUTPUT_BYTES, cwd);
+        const out2 = await outputFromExecDir(dir, TIMEOUT_EXIT_CODE, true, performance.now() - started, EXEC_MAX_OUTPUT_BYTES, cwd, !temp);
         await cleanup();
         return out2;
       };
@@ -1559,7 +1639,7 @@ function shellTool(cfg) {
       timer.stop();
       let out;
       if ("exited" in first) {
-        out = await outputFromExecDir(dir, exitCodeOf(first.exited), false, performance.now() - started, EXEC_MAX_OUTPUT_BYTES, cwd);
+        out = await outputFromExecDir(dir, exitCodeOf(first.exited), false, performance.now() - started, EXEC_MAX_OUTPUT_BYTES, cwd, !temp);
         await cleanup();
       } else if ("timeout" in first) {
         out = await kill();
@@ -1815,7 +1895,8 @@ class NativeToolManager {
         return { kind: "error", call_id: callId, message: `tool \`${call.name}\` returned a pending result without a task_id`, host: toHost(result) };
       return taskStateObservation(callId, taskId, { kind: "unknown", reason: "this runtime has no task backend" }, { kind: "tools" });
     }
-    return envelopeObservation(callId, result, applyHints(result, this.ledger));
+    fitResultBudget(result);
+    return envelopeObservation(callId, result, applyHints(result, this.ledger, callId));
   }
 }
 function nativeDescriptor(runtimeId, target, probe) {

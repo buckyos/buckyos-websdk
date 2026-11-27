@@ -334,13 +334,13 @@ describe('vectors: hints', () => {
   for (const c of load('hints')) {
     test(c.name, () => {
       const ledger = new MemoryHintLedger()
-      for (const step of c.steps) {
+      for (const [i, step] of c.steps.entries()) {
         if (step.clear_dedup) {
           ledger.clear(HINT_NS_DEDUP)
           continue
         }
         const result = asToolResult(step.result)!
-        const obs = envelopeObservation('c', result, applyHints(result, ledger))
+        const obs = envelopeObservation(`c${i}`, result, applyHints(result, ledger, `c${i}`))
         same({ kind: obs.kind, text: obs.kind === 'success' ? obs.content : obs.kind === 'error' ? obs.message : '' }, step.expect)
       }
       expect(ledger.keys(HINT_NS_ONCE)).toEqual(c.expect_once)
