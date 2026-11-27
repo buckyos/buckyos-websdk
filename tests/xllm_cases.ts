@@ -145,7 +145,11 @@ function rpcError(message: string, code?: string, data?: unknown) {
 /** A task backend whose single task `t1` finishes `finishAfterMs` after creation. */
 function fakeTasks(finishAfterMs: number) {
   const started = Date.now()
-  const done = () => Date.now() - started >= finishAfterMs
+  const finishAt = started + finishAfterMs
+  // A wait that reaches the finish time ends with the task finished. Not re-read from the clock after the sleep:
+  // a timer may fire a millisecond before `Date.now()` gets there, and the task would still look running.
+  let finished = false
+  const done = () => finished || Date.now() >= finishAt
   const waits: number[] = []
   return {
     waits,
@@ -155,7 +159,8 @@ function fakeTasks(finishAfterMs: number) {
     },
     async wait(_id: string, until: number) {
       waits.push(until - Date.now())
-      await sleep(Math.max(0, Math.min(started + finishAfterMs, until) - Date.now()))
+      await sleep(Math.max(0, Math.min(finishAt, until) - Date.now()))
+      if (until >= finishAt) finished = true
       return this.state()
     },
     async active() {

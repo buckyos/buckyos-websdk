@@ -3,7 +3,19 @@ import { CONTENT_REFS_FORMAT } from '../src/transfer'
 
 const globals = globalThis as { window?: unknown }
 const original = globals.window
-afterEach(() => { globals.window = original })
+// Every host and client a test makes is disposed here too: a test that fails before its own `dispose()` would leave
+// a MessagePort open, and Jest would then never exit (CI hangs until the job's time limit).
+const opened: Array<{ dispose(): void }> = []
+const track = <T extends { dispose(): void }>(value: T): T => { opened.push(value); return value }
+afterEach(() => {
+  opened.splice(0).forEach(value => value.dispose())
+  globals.window = original
+})
+/**
+ * Whether a `File` posted over a MessagePort is still a `File` on the other side. Browsers keep it; Node before 23
+ * (CI runs 22.13) clones it into a plain `Blob` without its name.
+ */
+const fileSurvivesClone = (() => { try { return structuredClone(new File(['x'], 'x.txt')) instanceof File } catch { return false } })()
 const flush = async () => { for (let i = 0; i < 6; i++) await new Promise(resolve => setTimeout(resolve, 0)) }
 const envelope = (type: string, payload: unknown, extra: object = {}) => ({ protocol: 'buckyos.app-frame', version: 1, type, payload, ...extra })
 const init = (shellCapabilities = ['transfer.v1']): FrameInit => ({ nonce: 'nonce-1', windowId: 'w1', formFactor: 'desktop', theme: { mode: 'light' }, locale: 'en', shellCapabilities })
@@ -34,7 +46,7 @@ function framed(options: { host?: AppFrameHostCallbacks; transfer?: AppFrameTran
   const events: string[] = []
   const offers = new Map<string, TransferOfferMessage>()
   globals.window = shell
-  const host = new AppFrameHost({
+  const host = track(new AppFrameHost({
     target: () => app as unknown as Window, origin: app.origin, init: init(options.shellCapabilities),
     onTransferConnect: id => events.push(`connect:${id}`), onTransferDisconnect: id => events.push(`disconnect:${id}`),
     onTransferOffer: offer => {
@@ -44,10 +56,10 @@ function framed(options: { host?: AppFrameHostCallbacks; transfer?: AppFrameTran
     },
     onTransferWithdraw: offerId => { offers.delete(offerId); events.push(`withdraw:${offerId}`) },
     ...options.host,
-  })
+  }))
   const connect = (transfer: AppFrameTransferHandlers = options.transfer ?? {}) => {
     globals.window = app
-    const client = new AppFrameClient({ shellOrigin: 'https://zone.example', transfer })
+    const client = track(new AppFrameClient({ shellOrigin: 'https://zone.example', transfer }))
     globals.window = shell
     return client
   }
@@ -88,7 +100,7 @@ describe('transfer.v1 over an App frame', () => {
     off.host.dispose(); client.dispose()
     const plain = framed()
     globals.window = plain.app
-    const legacy = new AppFrameClient({ shellOrigin: 'https://zone.example' })
+    const legacy = track(new AppFrameClient({ shellOrigin: 'https://zone.example' }))
     globals.window = plain.shell
     await flush()
     expect(plain.host.ready).toBe(true)
@@ -156,8 +168,13 @@ describe('transfer.v1 over an App frame', () => {
     expect(probes).toEqual([{ operationId: opId(1), seq: 1, items, at: { x: 10, y: 20 } }])
     const values = await host.transferRead({ operationId: opId(1), offerId: 'o'.repeat(22), generation: 1, items: [{ itemKey: '0', format: 'text/plain' }, { itemKey: '1', format: 'files' }, { itemKey: '2', format: 'text/plain' }] })
     expect(values[0]).toEqual({ itemKey: '0', format: 'text/plain', value: 'Hello' })
-    expect((values[1] as { value: File }).value).toBeInstanceOf(File)
-    expect((values[1] as { value: File }).value.name).toBe('hello.txt')
+    if (fileSurvivesClone) {
+      expect((values[1] as { value: File }).value).toBeInstanceOf(File)
+      expect((values[1] as { value: File }).value.name).toBe('hello.txt')
+    } else {
+      // The port handed the Shell a nameless Blob for `files`: it does not fit the format and is refused.
+      expect(values[1]).toEqual({ itemKey: '1', format: 'files', error: 'failed' })
+    }
     expect(values[2]).toEqual({ itemKey: '2', format: 'text/plain', error: 'failed' })
     const result = await host.transferDeliver({ operationId: opId(1), targetId: 'cursor', operation: 'copy', at: { x: 10, y: 20 }, items: [
       { itemKey: '0', format: 'text/plain', value: 'Hello' }, { itemKey: '1', format: CONTENT_REFS_FORMAT, value: ref },
@@ -254,10 +271,10 @@ describe('transfer.v1 over the bridge of the client', () => {
     view.parent = view
     globals.window = view
     const connected: string[] = []
-    const host = new AppFrameHost({ transport, init: { windowId: 'w1', formFactor: 'desktop', theme: { mode: 'light' }, locale: 'en', shellCapabilities: ['transfer.v1'] }, onTransferConnect: id => connected.push(id), onTransferOffer: () => ({ ok: true }) })
-    const client = new AppFrameClient({ shellOrigin: 'https://zone.example', transfer: {
+    const host = track(new AppFrameHost({ transport, init: { windowId: 'w1', formFactor: 'desktop', theme: { mode: 'light' }, locale: 'en', shellCapabilities: ['transfer.v1'] }, onTransferConnect: id => connected.push(id), onTransferOffer: () => ({ ok: true }) }))
+    const client = track(new AppFrameClient({ shellOrigin: 'https://zone.example', transfer: {
       onRead: () => [{ itemKey: '0', format: 'files', value: new File(['x'], 'x.txt') }, { itemKey: '1', format: 'text/plain', value: 'text' }],
-    } })
+    } }))
     await flush()
     expect(connected).toHaveLength(1)
     expect(client.transferAvailable).toBe(true)
