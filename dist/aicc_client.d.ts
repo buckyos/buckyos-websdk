@@ -1274,6 +1274,8 @@ export interface ProviderCatalogEntry {
     display_name: string;
     base_url: string;
     protocol_adapter_id: string;
+    extra_protocol_adapters?: string[];
+    state_namespace?: string;
     provider_rules_id?: string;
     rules_catalog?: JsonValue;
     model_driver_overrides?: Record<string, string>;

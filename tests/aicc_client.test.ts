@@ -15,6 +15,7 @@ import {
   Capability,
   InferenceResponse,
   Money,
+  ProviderCatalogEntry,
   ProviderInstanceView,
   QueryUsageRequest,
   RouteResolveResponse,
@@ -299,9 +300,11 @@ describe('canonical AICC contract', () => {
       provider_profile_id: 'openai', protocol_adapter_id: 'openai-responses', base_url: 'https://example.test', enabled: true,
       auth: { mode: 'api_key', configured: true }, inventory: { state: 'loaded', model_count: 1, filtered_capabilities: [] },
       health: { state: 'healthy' } }
+    const catalogEntry: ProviderCatalogEntry = { provider_profile_id: 'glm', display_name: 'GLM', base_url: 'https://example.test',
+      protocol_adapter_id: 'glm-chat', extra_protocol_adapters: ['openai-embeddings', 'glm-video'], state_namespace: 'glm' }
     const trace: AiccRouteTraceEvent = { trace_id: 'trace-1', tenant_id: 'tenant-1', task_id: 'task-1',
       request_model: 'llm.chat', api_type: 'llm', route_trace_json: { attempts: [] }, created_at_ms: 1 }
-    for (const value of [resource, money, query, overlay, route, inference, error, provider, trace]) {
+    for (const value of [resource, money, query, overlay, route, inference, error, provider, catalogEntry, trace]) {
       expect(JSON.parse(JSON.stringify(value))).toEqual(value)
     }
   })

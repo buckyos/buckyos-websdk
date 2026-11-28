@@ -405,7 +405,7 @@ export interface VisibilityPreviewResponse { user_id: string;
   grants: { provider_instance_name: string; exact_model?: string; sources: string[] }[];
   added?: string[]; removed?: string[]; affected_users?: string[]; caller_loses?: string[] }
 export interface ProviderCatalogEntry { provider_profile_id: string; display_name: string; base_url: string;
-  protocol_adapter_id: string; provider_rules_id?: string; rules_catalog?: JsonValue; model_driver_overrides?: Record<string, string>; ui_hints?: Record<string, JsonValue> }
+  protocol_adapter_id: string; extra_protocol_adapters?: string[]; state_namespace?: string; provider_rules_id?: string; rules_catalog?: JsonValue; model_driver_overrides?: Record<string, string>; ui_hints?: Record<string, JsonValue> }
 export interface ProviderRulesPreviewRequest { provider_instance_name: string; rules_catalog: JsonValue; model_ids: string[] }
 export interface ProviderRulesPreviewResponse { resolved_model_rules: Record<string, JsonValue> }
 export interface ProviderCatalogResponse { catalog_revision: number; providers: ProviderCatalogEntry[] }
