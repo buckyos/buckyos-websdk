@@ -1467,7 +1467,6 @@ const AICC_CORE_METHODS = {
 };
 const AICC_MANAGEMENT_METHODS = {
   SERVICE_RELOAD_SETTINGS: "service.reload_settings",
-  QUOTA_QUERY: "quota.query",
   USAGE_QUERY: "usage.query",
   TRACE_QUERY: "trace.query",
   ROUTING_GET: "routing.get",
@@ -1487,21 +1486,23 @@ const AICC_MANAGEMENT_METHODS = {
   DRIVER_METADATA_UPDATE_GET: "driver_metadata_update.get",
   DRIVER_METADATA_UPDATE_SET: "driver_metadata_update.set"
 };
-const AICC_QUOTA_METHODS = {
-  RULE_LIST: "quota.rule.list",
-  RULE_GET: "quota.rule.get",
-  RULE_PREVIEW: "quota.rule.preview",
-  RULE_CREATE: "quota.rule.create",
-  RULE_UPDATE: "quota.rule.update",
-  RULE_DELETE: "quota.rule.delete",
-  ACCOUNT_GET: "quota.account.get",
-  ACCOUNT_RECHARGE: "quota.account.recharge",
-  RECHARGE_GET: "quota.recharge.get",
-  VISIBILITY_GET: "visibility.get",
-  VISIBILITY_UPDATE: "visibility.update",
-  VISIBILITY_PREVIEW: "visibility.preview"
+const AICC_POLICY_METHODS = {
+  POLICY_LIST: "policy.list",
+  POLICY_GET: "policy.get",
+  POLICY_UPSERT: "policy.upsert",
+  POLICY_DELETE: "policy.delete",
+  POLICY_EFFECTIVE: "policy.effective",
+  POLICY_STATUS: "policy.status",
+  PRICE_GET: "price.get",
+  PRICE_UPDATE: "price.update",
+  CREDIT_ACCOUNT_GET: "credit.account.get",
+  CREDIT_ACCOUNT_LIST: "credit.account.list",
+  CREDIT_LEDGER_LIST: "credit.ledger.list",
+  CREDIT_RECHARGE: "credit.recharge",
+  CREDIT_RECHARGE_GET: "credit.recharge.get",
+  CREDIT_ADJUST: "credit.adjust"
 };
-const AICC_METHODS = { ...AICC_AI_METHODS, ...AICC_CORE_METHODS, ...AICC_MANAGEMENT_METHODS, ...AICC_QUOTA_METHODS };
+const AICC_METHODS = { ...AICC_AI_METHODS, ...AICC_CORE_METHODS, ...AICC_MANAGEMENT_METHODS, ...AICC_POLICY_METHODS };
 const AICC_FEATURES = {
   PLAN: "plan",
   TOOL_CALL: "tool_call",
@@ -1513,7 +1514,7 @@ const AICC_FEATURES = {
   VIDEO_UNDERSTAND: "video_understand"
 };
 const AICC_EXECUTION_MODES = { IMMEDIATE: "immediate", STREAM: "stream" };
-const AICC_POLICY_REFUSAL_CODES = ["quota_exhausted", "quota_budget_exceeded", "quota_unavailable", "resource_not_permitted", "attribution_unavailable"];
+const AICC_POLICY_REFUSAL_CODES = ["quota_exhausted", "credit_insufficient", "quota_unavailable", "resource_not_permitted", "attribution_unavailable"];
 function aiccRefusalOf(error) {
   if (!(error instanceof RPCError) || !AICC_POLICY_REFUSAL_CODES.includes(error.code))
     return void 0;
@@ -1609,7 +1610,6 @@ const schemas = {
   [AICC_CORE_METHODS.HELPER_VIDEO_GENERATE]: ["logical_model", "trace_id", "execution_mode", "requirements", "disable", "policy", "prompt", "negative_prompt", "conditions", "output", "seed", "idempotency_key", "task_options", "session_overlay", "session_id"],
   [AICC_CORE_METHODS.CANCEL]: ["task_id"],
   [AICC_MANAGEMENT_METHODS.SERVICE_RELOAD_SETTINGS]: [],
-  [AICC_MANAGEMENT_METHODS.QUOTA_QUERY]: ["app_id"],
   [AICC_MANAGEMENT_METHODS.USAGE_QUERY]: ["time_range", "filters", "group_by", "time_bucket", "output_mode", "limit", "cursor", "zone_wide"],
   [AICC_MANAGEMENT_METHODS.TRACE_QUERY]: ["limit", "cursor", "start_time_ms", "end_time_ms", "task_ids", "request_ids", "api_types", "provider_instance_names", "selected_exact_models", "scheduler_profiles", "query", "outcome"],
   [AICC_MANAGEMENT_METHODS.ROUTING_GET]: [],
@@ -1750,9 +1750,6 @@ class AiccClient {
   reloadSettings() {
     return this.call(AICC_MANAGEMENT_METHODS.SERVICE_RELOAD_SETTINGS, {});
   }
-  queryQuota(r = {}) {
-    return this.call(AICC_MANAGEMENT_METHODS.QUOTA_QUERY, r);
-  }
   queryUsage(r) {
     return this.call(AICC_MANAGEMENT_METHODS.USAGE_QUERY, r);
   }
@@ -1802,41 +1799,47 @@ class AiccClient {
   listModels(r = {}) {
     return this.call(AICC_MANAGEMENT_METHODS.MODELS_LIST, r);
   }
-  listQuotaRules(r = {}) {
-    return this.call(AICC_QUOTA_METHODS.RULE_LIST, r);
+  listPolicies(r = {}) {
+    return this.call(AICC_POLICY_METHODS.POLICY_LIST, r);
   }
-  getQuotaRule(ruleId) {
-    return this.call(AICC_QUOTA_METHODS.RULE_GET, { rule_id: ruleId });
+  getPolicy(policyId) {
+    return this.call(AICC_POLICY_METHODS.POLICY_GET, { policy_id: policyId });
   }
-  previewQuotaRule(draft) {
-    return this.call(AICC_QUOTA_METHODS.RULE_PREVIEW, { draft });
+  upsertPolicy(r) {
+    return this.call(AICC_POLICY_METHODS.POLICY_UPSERT, r);
   }
-  createQuotaRule(draft) {
-    return this.call(AICC_QUOTA_METHODS.RULE_CREATE, { draft });
+  deletePolicy(policyId, expectedVersion) {
+    return this.call(AICC_POLICY_METHODS.POLICY_DELETE, { policy_id: policyId, expected_version: expectedVersion });
   }
-  updateQuotaRule(r) {
-    return this.call(AICC_QUOTA_METHODS.RULE_UPDATE, r);
+  effectivePolicy(r = {}) {
+    return this.call(AICC_POLICY_METHODS.POLICY_EFFECTIVE, r);
   }
-  deleteQuotaRule(ruleId, expectedVersion) {
-    return this.call(AICC_QUOTA_METHODS.RULE_DELETE, { rule_id: ruleId, expected_version: expectedVersion });
+  policyStatus(r = {}) {
+    return this.call(AICC_POLICY_METHODS.POLICY_STATUS, r);
   }
-  getQuotaAccount(accountId) {
-    return this.call(AICC_QUOTA_METHODS.ACCOUNT_GET, { account_id: accountId });
+  getPrices() {
+    return this.call(AICC_POLICY_METHODS.PRICE_GET, {});
   }
-  rechargeQuotaAccount(r) {
-    return this.call(AICC_QUOTA_METHODS.ACCOUNT_RECHARGE, r);
+  updatePrices(r) {
+    return this.call(AICC_POLICY_METHODS.PRICE_UPDATE, r);
   }
-  getQuotaRecharge(rechargeId) {
-    return this.call(AICC_QUOTA_METHODS.RECHARGE_GET, { recharge_id: rechargeId });
+  getCreditAccount(userId) {
+    return this.call(AICC_POLICY_METHODS.CREDIT_ACCOUNT_GET, userId ? { user_id: userId } : {});
   }
-  getVisibility() {
-    return this.call(AICC_QUOTA_METHODS.VISIBILITY_GET, {});
+  listCreditAccounts(group) {
+    return this.call(AICC_POLICY_METHODS.CREDIT_ACCOUNT_LIST, group ? { group } : {});
   }
-  updateVisibility(r) {
-    return this.call(AICC_QUOTA_METHODS.VISIBILITY_UPDATE, r);
+  listCreditLedger(r = {}) {
+    return this.call(AICC_POLICY_METHODS.CREDIT_LEDGER_LIST, r);
   }
-  previewVisibility(r = {}) {
-    return this.call(AICC_QUOTA_METHODS.VISIBILITY_PREVIEW, r);
+  rechargeCredit(r) {
+    return this.call(AICC_POLICY_METHODS.CREDIT_RECHARGE, r);
+  }
+  getCreditRecharge(rechargeId) {
+    return this.call(AICC_POLICY_METHODS.CREDIT_RECHARGE_GET, { recharge_id: rechargeId });
+  }
+  adjustCredit(r) {
+    return this.call(AICC_POLICY_METHODS.CREDIT_ADJUST, r);
   }
   getDriverMetadataUpdate() {
     return this.call(AICC_MANAGEMENT_METHODS.DRIVER_METADATA_UPDATE_GET, {});
@@ -32598,7 +32601,7 @@ export {
   AICC_AI_METHODS as bJ,
   AICC_CORE_METHODS as bK,
   AICC_MANAGEMENT_METHODS as bL,
-  AICC_QUOTA_METHODS as bM,
+  AICC_POLICY_METHODS as bM,
   AICC_METHODS as bN,
   AICC_FEATURES as bO,
   AICC_EXECUTION_MODES as bP,
@@ -32726,4 +32729,4 @@ export {
   NOTIFY_SESSION_PREFIX as y,
   NOTIFY_CHOICE_CONTROL_ID as z
 };
-//# sourceMappingURL=aiws_write-83ddc6cc.mjs.map
+//# sourceMappingURL=aiws_write-53a27025.mjs.map

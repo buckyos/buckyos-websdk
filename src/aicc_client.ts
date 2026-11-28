@@ -40,7 +40,6 @@ export const AICC_CORE_METHODS = {
 
 export const AICC_MANAGEMENT_METHODS = {
   SERVICE_RELOAD_SETTINGS: 'service.reload_settings',
-  QUOTA_QUERY: 'quota.query',
   USAGE_QUERY: 'usage.query',
   TRACE_QUERY: 'trace.query',
   ROUTING_GET: 'routing.get',
@@ -61,23 +60,25 @@ export const AICC_MANAGEMENT_METHODS = {
   DRIVER_METADATA_UPDATE_SET: 'driver_metadata_update.set',
 } as const
 
-/** Token quota and resource visibility (product/ai_center/AI_Center_Quota_PRD.md). */
-export const AICC_QUOTA_METHODS = {
-  RULE_LIST: 'quota.rule.list',
-  RULE_GET: 'quota.rule.get',
-  RULE_PREVIEW: 'quota.rule.preview',
-  RULE_CREATE: 'quota.rule.create',
-  RULE_UPDATE: 'quota.rule.update',
-  RULE_DELETE: 'quota.rule.delete',
-  ACCOUNT_GET: 'quota.account.get',
-  ACCOUNT_RECHARGE: 'quota.account.recharge',
-  RECHARGE_GET: 'quota.recharge.get',
-  VISIBILITY_GET: 'visibility.get',
-  VISIBILITY_UPDATE: 'visibility.update',
-  VISIBILITY_PREVIEW: 'visibility.preview',
+/** User policy, Credit price list and Credit accounts (buckyos doc/aicc/aicc_user_policy.md). */
+export const AICC_POLICY_METHODS = {
+  POLICY_LIST: 'policy.list',
+  POLICY_GET: 'policy.get',
+  POLICY_UPSERT: 'policy.upsert',
+  POLICY_DELETE: 'policy.delete',
+  POLICY_EFFECTIVE: 'policy.effective',
+  POLICY_STATUS: 'policy.status',
+  PRICE_GET: 'price.get',
+  PRICE_UPDATE: 'price.update',
+  CREDIT_ACCOUNT_GET: 'credit.account.get',
+  CREDIT_ACCOUNT_LIST: 'credit.account.list',
+  CREDIT_LEDGER_LIST: 'credit.ledger.list',
+  CREDIT_RECHARGE: 'credit.recharge',
+  CREDIT_RECHARGE_GET: 'credit.recharge.get',
+  CREDIT_ADJUST: 'credit.adjust',
 } as const
 
-export const AICC_METHODS = { ...AICC_AI_METHODS, ...AICC_CORE_METHODS, ...AICC_MANAGEMENT_METHODS, ...AICC_QUOTA_METHODS } as const
+export const AICC_METHODS = { ...AICC_AI_METHODS, ...AICC_CORE_METHODS, ...AICC_MANAGEMENT_METHODS, ...AICC_POLICY_METHODS } as const
 export type AiccAiMethod = typeof AICC_AI_METHODS[keyof typeof AICC_AI_METHODS]
 export type AiccMethod = typeof AICC_METHODS[keyof typeof AICC_METHODS]
 export type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue }
@@ -122,21 +123,23 @@ export type AiccErrorCode = 'invalid_request' | 'invalid_method' | 'schema_valid
   'resource_invalid' | 'no_provider_available' | 'no_candidate_model' | 'fallback_not_allowed' | 'provider_start_failed' |
   'provider_error' | 'unsupported_execution_mode' | 'timeout' | 'budget_exceeded' | 'policy_denied' | 'idempotency_conflict' |
   'settings_revision_conflict' | 'cancelled' | 'internal_error' |
-  /** An enabled token quota rule has nothing left (`details`: QuotaDenialDetails). */
+  /** A time window limit that applies to the call is used up (`details`: QuotaDenialDetails). */
   'quota_exhausted' |
-  /** Tokens are left but fewer than the call reserves; lower the budget (`details`: QuotaDenialDetails). */
-  'quota_budget_exceeded' |
-  /** A configured rule could not be read or reserved; retry later, never treat it as unlimited. */
+  /** The model is priced for the caller and their AI Credit balance is not above zero
+   * (`details`: CreditInsufficientDetails). Not a Provider account running out of credits. */
+  'credit_insufficient' |
+  /** Policies, the balance or a limit counter could not be read; retry later, never treat it as unlimited. */
   'quota_unavailable' |
-  /** The Provider / model is not permitted to the caller (hidden identities are not disclosed). */
+  /** The Provider / model is not permitted to the caller (hidden identities are not disclosed), or it has no
+   * price for a caller who pays (`details.reason === 'unpriced'`). */
   'resource_not_permitted' |
   /** The AICC user of a delegated run cannot be determined. */
   'attribution_unavailable' |
   /** The request does not fit the model's context window (Provider refusal or no window holds it): shrink the input; retrying it as is cannot succeed. */
   'context_length_exceeded'
 export interface AiccError { code: AiccErrorCode; message: string; provider_code?: string; retriable?: boolean; details?: JsonValue }
-/** Token quota and resource policy refusals: they reach the client as a detailed kRPC error. */
-export const AICC_POLICY_REFUSAL_CODES: readonly AiccErrorCode[] = ['quota_exhausted', 'quota_budget_exceeded', 'quota_unavailable', 'resource_not_permitted', 'attribution_unavailable']
+/** User policy refusals: they reach the client as a detailed kRPC error. */
+export const AICC_POLICY_REFUSAL_CODES: readonly AiccErrorCode[] = ['quota_exhausted', 'credit_insufficient', 'quota_unavailable', 'resource_not_permitted', 'attribution_unavailable']
 /** The AICC error of a refused call (its `code` and `details`), read from the structured kRPC error. */
 export function aiccRefusalOf(error: unknown): AiccError | undefined {
   if (!(error instanceof RPCError) || !AICC_POLICY_REFUSAL_CODES.includes(error.code as AiccErrorCode)) return undefined
@@ -352,58 +355,81 @@ export type ProtocolAdapterListRequest = EmptyRequest
 export type DriverMetadataUpdateGetReq = EmptyRequest
 export interface CancelRequest { task_id: string }
 export interface ServiceReloadSettingsResponse { ok: boolean; settings_revision: number }
-export type QuotaRuleSource = 'admin' | 'user'
-export type QuotaObject = { type: 'user'; user_id: string } | { type: 'app'; app_id: string } |
-  { type: 'user_app'; user_id: string; app_id: string }
-export type QuotaResource = { type: 'all' } | { type: 'provider'; provider_instance_name: string } |
-  { type: 'model'; exact_model: string } | { type: 'hidden' }
-export type QuotaPeriod = '4h' | '24h' | '72h' | 'week'
-export type QuotaKind = 'periodic' | 'total'
-export type QuotaStatus = 'normal' | 'near_limit' | 'exhausted' | 'forbidden' | 'disabled' | 'resource_unavailable'
-export interface QuotaPendingPeriod { period: QuotaPeriod; effective_at_ms: number; conflict?: boolean }
-export interface QuotaRule { rule_id: string; source: QuotaRuleSource; object: QuotaObject; resource: QuotaResource; kind: QuotaKind;
-  period?: QuotaPeriod; limit_tokens?: number; account_id?: string; enabled: boolean; deleted?: boolean;
-  pending_period?: QuotaPendingPeriod; version: number; created_by: string; created_at_ms: number; updated_by: string; updated_at_ms: number }
-export interface QuotaUsageState { status: QuotaStatus; window_start_ms?: number; window_end_ms?: number; reset_at_ms: number | null;
-  limit_tokens?: number; granted_tokens?: number; account_start_ms?: number; settled_tokens: number; reserved_tokens: number;
-  pending_tokens: number; available_tokens: number; debt_tokens: number; updated_at_ms: number }
-export interface QuotaRuleView { rule: QuotaRule; state: QuotaUsageState; editable: boolean }
-export interface QuotaQueryRequest { app_id?: string }
-export interface QuotaQueryResponse { user_id: string; rules: QuotaRuleView[]; near_limit_count: number; exhausted_count: number }
-export interface QuotaRuleListRequest { scope?: 'mine' | 'manage'; include_deleted?: boolean }
-export interface QuotaRuleListResponse { rules: QuotaRuleView[] }
-export interface QuotaAuditRecord { audit_id: string; target_type: string; target_id: string; action: string; operator: string;
+export type PolicySource = 'admin' | 'user'
+/** `type:admin|user|limited`, `group:<id>`, `user:<id>` (user side: the more specific overrides), `app:<id>`,
+ * `user_app:<user>/<app>` (App side: only narrows). */
+export type PolicySubject = string
+export type LimitPeriod = '5h' | '24h' | '7d'
+export type LimitUnit = 'credit' | 'token'
+/** `amount`: a decimal string (Credit, up to six decimals) or a whole number of tokens; `'0'` forbids use. */
+export interface PolicyLimit { period: LimitPeriod; unit: LimitUnit; amount: string }
+export type ProviderVisibility = 'all_models' | 'selected_models' | 'hidden'
+export interface ProviderPolicy { visible?: ProviderVisibility; price_coefficient?: number; limits?: PolicyLimit[] }
+export interface ModelPolicy { visible?: boolean; price_coefficient?: number; limits?: PolicyLimit[] }
+/** Every field is optional: an absent field has no opinion. */
+export interface PolicyBody { all_providers?: boolean; price_coefficient?: number; limits?: PolicyLimit[];
+  providers?: Record<string, ProviderPolicy>; models?: Record<string, ModelPolicy> }
+export interface AiccPolicy { policy_id: string; source: PolicySource; subject: PolicySubject; enabled: boolean; body: PolicyBody;
+  version: number; created_by: string; created_at_ms: number; updated_by: string; updated_at_ms: number }
+export interface AiccPolicyView { policy: AiccPolicy; editable: boolean; unavailable_resources?: string[] }
+export interface PolicyDraft { source?: PolicySource; subject: PolicySubject; enabled?: boolean; body?: PolicyBody }
+export interface PolicyListRequest { scope?: 'mine' | 'manage' }
+export interface PolicyListResponse { policies: AiccPolicyView[] }
+export interface PolicyAuditRecord { audit_id: string; target_type: string; target_id: string; action: string; operator: string;
   before?: JsonValue; after?: JsonValue; created_at_ms: number }
-export interface QuotaGrantRecord { grant_id: string; account_id: string; kind: 'initial' | 'recharge'; amount_tokens: number;
-  operator: string; note?: string; created_at_ms: number }
-export interface QuotaAccountView { account_id: string; object: QuotaObject; resource: QuotaResource; granted_tokens: number;
-  settled_tokens: number; reserved_tokens: number; pending_tokens: number; available_tokens: number; debt_tokens: number;
-  start_at_ms: number; version: number; updated_at_ms: number; enforced: boolean }
-export interface QuotaRuleDetail { rule: QuotaRuleView; constraints: QuotaRuleView[]; blocking_rule_ids: string[];
-  account?: QuotaAccountView; grants?: QuotaGrantRecord[]; audit?: QuotaAuditRecord[] }
-export interface QuotaRuleDraft { source?: QuotaRuleSource; object: QuotaObject; resource: QuotaResource; kind: QuotaKind;
-  period?: QuotaPeriod; limit_tokens?: number; initial_tokens?: number }
-export interface QuotaRulePreviewResponse { state: QuotaUsageState; existing_account?: QuotaAccountView; conflict_rule_id?: string;
-  other_constraints: QuotaRuleView[] }
-export interface QuotaRuleUpdateRequest { rule_id: string; expected_version: number; limit_tokens?: number; period?: QuotaPeriod;
-  enabled?: boolean; cancel_pending_period?: boolean }
-export interface QuotaRechargeRequest { account_id: string; recharge_id: string; amount_tokens: number; note?: string }
-export interface QuotaRechargeResponse { recharge: QuotaGrantRecord; account: QuotaAccountView; replayed: boolean }
-export interface QuotaBlockingRule { rule_id: string; source: QuotaRuleSource; object: QuotaObject; resource: QuotaResource;
-  kind: QuotaKind; period?: QuotaPeriod; state: QuotaUsageState; recoverable: boolean }
-/** `details` of `quota_exhausted` / `quota_budget_exceeded`. */
-export interface QuotaDenialDetails { required_tokens: number; max_allowed_tokens: number; provider_instance_name: string;
-  exact_model: string; blocking: QuotaBlockingRule[]; reset_at_ms: number | null }
-export type VisibilityEntry = { type: 'all_providers' } | { type: 'provider_all_models'; provider_instance_name: string } |
-  { type: 'provider_models'; provider_instance_name: string; exact_models: string[] }
-export interface VisibilitySubjectPolicy { subject: string; entries: VisibilityEntry[]; updated_by: string; updated_at_ms: number }
-export interface VisibilityGetResponse { revision: number; subjects: VisibilitySubjectPolicy[];
-  providers: { provider_instance_name: string; enabled: boolean; exact_models: string[] }[]; unexposed_models: string[] }
-export interface VisibilityUpdateRequest { expected_revision: number; subject: string; entries: VisibilityEntry[] }
-export interface VisibilityPreviewRequest { user_id?: string; draft?: { subject: string; entries: VisibilityEntry[] } }
-export interface VisibilityPreviewResponse { user_id: string;
-  grants: { provider_instance_name: string; exact_model?: string; sources: string[] }[];
-  added?: string[]; removed?: string[]; affected_users?: string[]; caller_loses?: string[] }
+export interface PolicyGetResponse { policy: AiccPolicyView; audit?: PolicyAuditRecord[] }
+export interface PolicyUpsertRequest { draft: PolicyDraft; expected_version?: number }
+export type LimitCounter = { type: 'user'; user_id: string } | { type: 'app'; app_id: string } |
+  { type: 'user_app'; user_id: string; app_id: string }
+export type LimitResource = { type: 'all' } | { type: 'provider'; provider_instance_name: string } |
+  { type: 'model'; exact_model: string } | { type: 'hidden' }
+export type LimitStatus = 'normal' | 'near_limit' | 'exhausted' | 'forbidden'
+export interface EffectiveLimit { policy_id: string; source: PolicySource; subject: PolicySubject; counter: LimitCounter;
+  resource: LimitResource; period: LimitPeriod; unit: LimitUnit; amount: string; used: string; window_start_ms?: number;
+  /** End of the current window; absent when no window is open (it starts at the next use). */
+  reset_at_ms?: number; status: LimitStatus }
+export type CreditPriceSource = 'exact' | 'model' | 'provider_cost'
+export type CreditPriceState = 'free' | 'priced' | 'unpriced'
+/** A model's price for one caller. `pricing` token rates are per million tokens. */
+export interface ModelCreditPrice { state: CreditPriceState; source?: CreditPriceSource; entry_key?: string; pricing?: JsonValue;
+  provider_cost_currency?: string; credit_rate?: number; provider_coefficient: number; model_coefficient: number }
+export interface EffectiveModel { exact_model: string; provider_instance_name: string; visible_from: string[];
+  coefficient_from?: string[]; price: ModelCreditPrice; usable: boolean }
+export interface PolicyEffectiveRequest { user_id?: string; app_id?: string; draft?: PolicyDraft }
+export interface PolicyEffectiveResponse { user_id: string; app_id?: string; balance: string; models: EffectiveModel[];
+  limits: EffectiveLimit[]; unpriced_models?: string[]; added?: string[]; removed?: string[]; affected_users?: string[];
+  caller_loses?: string[] }
+export interface PolicyStatusRequest { app_id?: string }
+export interface PolicyStatusResponse { user_id: string; balance: string; limits: EffectiveLimit[]; near_limit_count: number;
+  exhausted_count: number }
+/** `entry_key`: `model:<model_driver_id>:<origin_model_id>` or `exact:<provider_model_id>[:variant]@<instance>`;
+ * `pricing` has the shape of a Provider price (`currency` CREDIT, token rates per million tokens). */
+export interface PriceEntry { entry_key: string; pricing: JsonValue; note?: string; updated_by: string; updated_at_ms: number }
+export interface PriceEntryInput { entry_key: string; pricing: JsonValue; note?: string }
+export interface PriceGetResponse { revision: number; entries: PriceEntry[]; credit_rates?: Record<string, number>; unpriced_models?: string[] }
+export interface PriceUpdateRequest { expected_revision: number; upserts?: PriceEntryInput[]; deletes?: string[];
+  credit_rates?: Record<string, number> }
+export interface CreditAccount { user_id: string; balance: string; updated_at_ms: number }
+export interface CreditEntry { entry_id: string; user_id: string; kind: 'recharge' | 'adjust'; amount: string; balance_after: string;
+  recharge_id?: string; external_ref?: JsonValue; operator: string; note?: string; created_at_ms: number }
+export type CreditChargeStatus = 'charged' | 'free' | 'unpriced' | 'unknown_usage'
+export interface CreditCharge { attempt_id: string; task_id: string; user_id: string; app_id?: string; operator_id?: string;
+  provider_instance_name: string; exact_model: string; admitted_at_ms: number; tokens: number; amount: string;
+  status: CreditChargeStatus; settled_at_ms: number }
+export type CreditLedgerItem = ({ type: 'entry' } & CreditEntry) | ({ type: 'charge' } & CreditCharge)
+export interface CreditLedgerListRequest { user_id?: string; start_time_ms?: number; end_time_ms?: number; cursor?: string; limit?: number }
+export interface CreditLedgerListResponse { user_id: string; balance: string; items: CreditLedgerItem[]; next_cursor?: string }
+/** `recharge_id` is the idempotency key (a payment order id); `external_ref` is kept, never interpreted. */
+export interface CreditRechargeRequest { user_id: string; recharge_id: string; amount: string; note?: string; external_ref?: JsonValue }
+export interface CreditAdjustRequest { user_id: string; adjust_id: string; amount: string; note: string; external_ref?: JsonValue }
+export interface CreditEntryResponse { entry: CreditEntry; account: CreditAccount; replayed: boolean }
+export interface QuotaBlockingLimit { policy_id: string; source: PolicySource; subject: PolicySubject; resource: LimitResource;
+  period: LimitPeriod; unit: LimitUnit; used: string; amount: string; reset_at_ms?: number }
+/** `details` of `quota_exhausted`. */
+export interface QuotaDenialDetails { provider_instance_name: string; exact_model: string; blocking: QuotaBlockingLimit[];
+  reset_at_ms: number | null }
+/** `details` of `credit_insufficient`. */
+export interface CreditInsufficientDetails { balance: string; provider_instance_name: string; exact_model: string }
 export interface ProviderCatalogEntry { provider_profile_id: string; display_name: string; base_url: string;
   protocol_adapter_id: string; extra_protocol_adapters?: string[]; state_namespace?: string; provider_rules_id?: string; rules_catalog?: JsonValue; model_driver_overrides?: Record<string, string>; ui_hints?: Record<string, JsonValue> }
 export interface ProviderRulesPreviewRequest { provider_instance_name: string; rules_catalog: JsonValue; model_ids: string[] }
@@ -457,19 +483,25 @@ export interface CancelResponse { task_id: string; accepted: boolean }
 export type UsageQueryTimeRange = { kind: 'last1d' | 'last7d' | 'last30d' } | { kind: 'explicit'; start_time_ms: number; end_time_ms: number }
 export interface UsageQueryFilters { tenant_ids?: string[]; user_ids?: string[]; caller_app_ids?: string[]; caller_app_query?: string;
   request_models?: string[]; provider_models?: string[]; provider_model_query?: string; provider_instance_names?: string[];
-  provider_instance_query?: string; capabilities?: string[]; task_ids?: string[]; idempotency_keys?: string[]; methods?: string[] }
+  provider_instance_query?: string; capabilities?: string[]; task_ids?: string[]; idempotency_keys?: string[]; methods?: string[];
+  /** `type:*` / `group:*` of the charged user at the time of the call (administrators only). */
+  user_groups?: string[] }
+/** `user_group` counts an event once per `type:*` / `group:*` subject (administrators only). */
 export type UsageQueryGroup = 'provider_model' | 'provider_instance_name' | 'request_model' | 'method' | 'capability' |
-  'caller_app_id' | 'user_id' | 'tenant_id'
+  'caller_app_id' | 'user_id' | 'tenant_id' | 'user_group'
 export interface QueryUsageRequest { time_range: UsageQueryTimeRange; filters?: UsageQueryFilters; group_by?: UsageQueryGroup[];
   time_bucket?: 'five_minutes' | 'hour' | 'day'; output_mode?: 'summary' | 'events' | 'summary_and_events'; limit?: number; cursor?: string;
   /** Admins only: every user of the Zone instead of the caller alone. */
   zone_wide?: boolean }
 export interface UsageAggregate { total_requests: number; input_tokens: number; output_tokens: number; total_tokens: number;
-  consumed_request_units: number; finance_totals: Money[]; finance_complete: boolean }
+  consumed_request_units: number; finance_totals: Money[]; finance_complete: boolean;
+  /** Credit charged (decimal string); `credit_complete` is false when a charge is `unpriced` or `unknown_usage`. */
+  credit_total: string; credit_complete: boolean }
 export interface AiccUsageEvent { event_id: string; tenant_id: string; user_id: string; caller_app_id?: string; task_id: string;
   trace_id?: string; idempotency_key?: string; method: AiccAiMethod; capability: string; request_model: string; provider_instance_name: string;
   provider_model: string; input_tokens?: number; output_tokens?: number; total_tokens?: number; request_units?: number;
-  usage_json: AiUsage; finance_snapshot_json?: JsonValue; operator_id?: string; attribution?: JsonValue; created_at_ms: number }
+  usage_json: AiUsage; finance_snapshot_json?: JsonValue; operator_id?: string; attribution?: JsonValue;
+  credit?: string; credit_status?: CreditChargeStatus; subjects?: string[]; created_at_ms: number }
 export interface UsageGroupedRow { group: Record<string, string>; aggregate: UsageAggregate }
 export interface UsageBucketedRow { bucket_start_ms: number; group?: Record<string, string>; aggregate: UsageAggregate }
 export interface QueryUsageResponse { total: UsageAggregate; grouped?: UsageGroupedRow[];
@@ -571,7 +603,6 @@ const schemas: Partial<Record<AiccMethod, string[]>> = {
   [AICC_CORE_METHODS.HELPER_VIDEO_GENERATE]: ['logical_model', 'trace_id', 'execution_mode', 'requirements', 'disable', 'policy', 'prompt', 'negative_prompt', 'conditions', 'output', 'seed', 'idempotency_key', 'task_options', 'session_overlay', 'session_id'],
   [AICC_CORE_METHODS.CANCEL]: ['task_id'],
   [AICC_MANAGEMENT_METHODS.SERVICE_RELOAD_SETTINGS]: [],
-  [AICC_MANAGEMENT_METHODS.QUOTA_QUERY]: ['app_id'],
   [AICC_MANAGEMENT_METHODS.USAGE_QUERY]: ['time_range', 'filters', 'group_by', 'time_bucket', 'output_mode', 'limit', 'cursor', 'zone_wide'],
   [AICC_MANAGEMENT_METHODS.TRACE_QUERY]: ['limit', 'cursor', 'start_time_ms', 'end_time_ms', 'task_ids', 'request_ids', 'api_types', 'provider_instance_names', 'selected_exact_models', 'scheduler_profiles', 'query', 'outcome'],
   [AICC_MANAGEMENT_METHODS.ROUTING_GET]: [],
@@ -644,7 +675,6 @@ export class AiccClient {
   computerUse(r: ComputerUseRequest) { return this.inference<ComputerUseResponse, ComputerUseRequest>(AICC_AI_METHODS.AGENT_COMPUTER_USE, r) }
   cancel(taskId: string) { if (!taskId) throw new RPCError('cancel requires non-empty task_id'); return this.call<CancelResponse, { task_id: string }>(AICC_CORE_METHODS.CANCEL, { task_id: taskId }) }
   reloadSettings() { return this.call<ServiceReloadSettingsResponse, EmptyRequest>(AICC_MANAGEMENT_METHODS.SERVICE_RELOAD_SETTINGS, {}) }
-  queryQuota(r: QuotaQueryRequest = {}) { return this.call<QuotaQueryResponse, QuotaQueryRequest>(AICC_MANAGEMENT_METHODS.QUOTA_QUERY, r) }
   queryUsage(r: QueryUsageRequest) { return this.call<QueryUsageResponse, QueryUsageRequest>(AICC_MANAGEMENT_METHODS.USAGE_QUERY, r) }
   queryTrace(r: QueryRouteTraceRequest = {}) { return this.call<QueryRouteTraceResponse, QueryRouteTraceRequest>(AICC_MANAGEMENT_METHODS.TRACE_QUERY, r) }
   previewRouting(r: RoutingPreviewRequest = {}) { return this.call<RoutingPreviewResponse, RoutingPreviewRequest>(AICC_MANAGEMENT_METHODS.ROUTING_PREVIEW, r) }
@@ -661,18 +691,20 @@ export class AiccClient {
   deleteProvider(r: ProviderDeleteRequest) { return this.call<ProviderDeleteResponse, ProviderDeleteRequest>(AICC_MANAGEMENT_METHODS.PROVIDER_DELETE, r) }
   refreshProviderModels(r: ProviderRefreshModelsRequest) { return this.call<ProviderRefreshModelsResponse, ProviderRefreshModelsRequest>(AICC_MANAGEMENT_METHODS.PROVIDER_REFRESH_MODELS, r) }
   listModels(r: ListModelsRequest = {}) { return this.call<JsonValue, ListModelsRequest>(AICC_MANAGEMENT_METHODS.MODELS_LIST, r) }
-  listQuotaRules(r: QuotaRuleListRequest = {}) { return this.call<QuotaRuleListResponse, QuotaRuleListRequest>(AICC_QUOTA_METHODS.RULE_LIST, r) }
-  getQuotaRule(ruleId: string) { return this.call<QuotaRuleDetail, { rule_id: string }>(AICC_QUOTA_METHODS.RULE_GET, { rule_id: ruleId }) }
-  previewQuotaRule(draft: QuotaRuleDraft) { return this.call<QuotaRulePreviewResponse, { draft: QuotaRuleDraft }>(AICC_QUOTA_METHODS.RULE_PREVIEW, { draft }) }
-  createQuotaRule(draft: QuotaRuleDraft) { return this.call<QuotaRuleView, { draft: QuotaRuleDraft }>(AICC_QUOTA_METHODS.RULE_CREATE, { draft }) }
-  updateQuotaRule(r: QuotaRuleUpdateRequest) { return this.call<QuotaRuleView, QuotaRuleUpdateRequest>(AICC_QUOTA_METHODS.RULE_UPDATE, r) }
-  deleteQuotaRule(ruleId: string, expectedVersion: number) { return this.call<{ ok: boolean; rule_id: string }, { rule_id: string; expected_version: number }>(AICC_QUOTA_METHODS.RULE_DELETE, { rule_id: ruleId, expected_version: expectedVersion }) }
-  getQuotaAccount(accountId: string) { return this.call<{ account: QuotaAccountView; grants: QuotaGrantRecord[] }, { account_id: string }>(AICC_QUOTA_METHODS.ACCOUNT_GET, { account_id: accountId }) }
-  rechargeQuotaAccount(r: QuotaRechargeRequest) { return this.call<QuotaRechargeResponse, QuotaRechargeRequest>(AICC_QUOTA_METHODS.ACCOUNT_RECHARGE, r) }
-  getQuotaRecharge(rechargeId: string) { return this.call<{ recharge?: QuotaGrantRecord; account?: QuotaAccountView }, { recharge_id: string }>(AICC_QUOTA_METHODS.RECHARGE_GET, { recharge_id: rechargeId }) }
-  getVisibility() { return this.call<VisibilityGetResponse, EmptyRequest>(AICC_QUOTA_METHODS.VISIBILITY_GET, {}) }
-  updateVisibility(r: VisibilityUpdateRequest) { return this.call<VisibilityGetResponse, VisibilityUpdateRequest>(AICC_QUOTA_METHODS.VISIBILITY_UPDATE, r) }
-  previewVisibility(r: VisibilityPreviewRequest = {}) { return this.call<VisibilityPreviewResponse, VisibilityPreviewRequest>(AICC_QUOTA_METHODS.VISIBILITY_PREVIEW, r) }
+  listPolicies(r: PolicyListRequest = {}) { return this.call<PolicyListResponse, PolicyListRequest>(AICC_POLICY_METHODS.POLICY_LIST, r) }
+  getPolicy(policyId: string) { return this.call<PolicyGetResponse, { policy_id: string }>(AICC_POLICY_METHODS.POLICY_GET, { policy_id: policyId }) }
+  upsertPolicy(r: PolicyUpsertRequest) { return this.call<AiccPolicyView, PolicyUpsertRequest>(AICC_POLICY_METHODS.POLICY_UPSERT, r) }
+  deletePolicy(policyId: string, expectedVersion: number) { return this.call<{ ok: boolean; policy_id: string }, { policy_id: string; expected_version: number }>(AICC_POLICY_METHODS.POLICY_DELETE, { policy_id: policyId, expected_version: expectedVersion }) }
+  effectivePolicy(r: PolicyEffectiveRequest = {}) { return this.call<PolicyEffectiveResponse, PolicyEffectiveRequest>(AICC_POLICY_METHODS.POLICY_EFFECTIVE, r) }
+  policyStatus(r: PolicyStatusRequest = {}) { return this.call<PolicyStatusResponse, PolicyStatusRequest>(AICC_POLICY_METHODS.POLICY_STATUS, r) }
+  getPrices() { return this.call<PriceGetResponse, EmptyRequest>(AICC_POLICY_METHODS.PRICE_GET, {}) }
+  updatePrices(r: PriceUpdateRequest) { return this.call<PriceGetResponse, PriceUpdateRequest>(AICC_POLICY_METHODS.PRICE_UPDATE, r) }
+  getCreditAccount(userId?: string) { return this.call<CreditAccount, { user_id?: string }>(AICC_POLICY_METHODS.CREDIT_ACCOUNT_GET, userId ? { user_id: userId } : {}) }
+  listCreditAccounts(group?: string) { return this.call<{ accounts: CreditAccount[] }, { group?: string }>(AICC_POLICY_METHODS.CREDIT_ACCOUNT_LIST, group ? { group } : {}) }
+  listCreditLedger(r: CreditLedgerListRequest = {}) { return this.call<CreditLedgerListResponse, CreditLedgerListRequest>(AICC_POLICY_METHODS.CREDIT_LEDGER_LIST, r) }
+  rechargeCredit(r: CreditRechargeRequest) { return this.call<CreditEntryResponse, CreditRechargeRequest>(AICC_POLICY_METHODS.CREDIT_RECHARGE, r) }
+  getCreditRecharge(rechargeId: string) { return this.call<{ entry?: CreditEntry; account?: CreditAccount }, { recharge_id: string }>(AICC_POLICY_METHODS.CREDIT_RECHARGE_GET, { recharge_id: rechargeId }) }
+  adjustCredit(r: CreditAdjustRequest) { return this.call<CreditEntryResponse, CreditAdjustRequest>(AICC_POLICY_METHODS.CREDIT_ADJUST, r) }
   getDriverMetadataUpdate() { return this.call<DriverMetadataUpdateView, EmptyRequest>(AICC_MANAGEMENT_METHODS.DRIVER_METADATA_UPDATE_GET, {}) }
   setDriverMetadataUpdate(r: DriverMetadataUpdateSetReq) { return this.call<DriverMetadataUpdateSetResponse, DriverMetadataUpdateSetReq>(AICC_MANAGEMENT_METHODS.DRIVER_METADATA_UPDATE_SET, r) }
 }

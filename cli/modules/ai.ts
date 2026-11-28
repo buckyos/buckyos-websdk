@@ -1,10 +1,12 @@
 import type { CommandDefinition, CommandModule, JsonSchema } from '../core/command.ts'
 import { UsageError } from '../core/errors.ts'
+import type { AccessLevel, OptionDefinition } from '../core/command.ts'
 import {
   callService,
   expectObject,
   inputString,
   parseTimestamp,
+  requiredInputString,
   splitServices,
 } from '../core/service.ts'
 
@@ -21,13 +23,14 @@ const GROUPS = [
   'caller_app_id',
   'user_id',
   'tenant_id',
+  'user_group',
 ]
 
 // Read views of the AICC service (/kapi/aicc); provider and routing changes stay in Control Panel.
 export function createAiModule(): CommandModule {
   return {
     name: 'ai',
-    summary: 'Read AI provider, routing, usage and token quota state of the AICC service',
+    summary: 'Read AI providers, routing and usage; read AI policies and Credit; recharge Credit',
     commands: [
       readCommand({
         verb: 'providers',
@@ -43,37 +46,170 @@ export function createAiModule(): CommandModule {
         description: 'An empty routing object means the default routing of the model catalog.',
       }),
       usageCommand(),
-      quotaCommand(),
+      ...policyCommands(),
     ],
   }
 }
 
-function quotaCommand(): CommandDefinition {
+interface AiccCommand {
+  verb: string
+  summary: string
+  description: string
+  method: string
+  level: AccessLevel
+  options?: (OptionDefinition & { key: string; required?: boolean; json?: boolean })[]
+  examples: string[]
+}
+
+function aiccCommand(command: AiccCommand): CommandDefinition {
+  const options = command.options ?? []
   return {
-    verb: 'quota',
-    summary: "Show the token quota rules that limit the caller's AI calls and what is left",
-    description:
-      'Admin rules on the caller and the caller\'s Apps, shared App rules, and the caller\'s own App limits, each with its current window or total account. A refused call returns quota_exhausted / quota_budget_exceeded with the blocking rules.',
-    options: [
-      { name: 'app', description: 'Only the rules that apply to calls of this App (an AppId or AgentId)', type: 'string' },
-    ],
+    verb: command.verb,
+    summary: command.summary,
+    description: command.description,
+    options: options.map(({ key: _key, required: _required, json: _json, ...option }) => option),
     inputSchema: {
       type: 'object',
-      properties: { app: { type: 'string', minLength: 1 } },
+      properties: Object.fromEntries(options.map((option) => [
+        option.name.replaceAll('-', '_'),
+        option.type === 'integer' ? { type: 'integer', minimum: 1 } : option.type === 'boolean' ? { type: 'boolean' } : { type: 'string', minLength: 1 },
+      ])),
+      required: options.filter((option) => option.required).map((option) => option.name.replaceAll('-', '_')),
       additionalProperties: false,
     },
     outputSchema: OBJECT_OUTPUT,
     resultSchemaVersion: 1,
-    access: { mode: 'fixed', level: 'read' },
+    access: { mode: 'fixed', level: command.level },
     asyncMode: 'sync',
     requiresSession: true,
-    examples: ['buckyos ai quota', 'buckyos ai quota --app aiworkspace'],
-    handler: async (ctx, input) =>
-      expectObject(
-        await callService(ctx, AICC, 'quota.query', inputString(input, 'app') ? { app_id: inputString(input, 'app') } : {}),
-        'quota.query',
-      ),
+    examples: command.examples,
+    handler: async (ctx, input) => {
+      const params: Record<string, unknown> = {}
+      for (const option of options) {
+        const name = option.name.replaceAll('-', '_')
+        if (option.type === 'boolean' || option.type === 'integer') {
+          if (input[name] !== undefined) params[option.key] = input[name]
+          continue
+        }
+        const value = option.required ? requiredInputString(input, name) : inputString(input, name)
+        if (value === undefined) continue
+        if (option.json) {
+          try {
+            params[option.key] = JSON.parse(value)
+          } catch {
+            throw new UsageError('INVALID_ARGUMENT', `--${option.name} must be JSON`)
+          }
+        } else {
+          params[option.key] = value
+        }
+      }
+      if (params.scope !== undefined) params.scope = params.scope ? 'manage' : 'mine'
+      return expectObject(await callService(ctx, AICC, command.method, params), command.method)
+    },
   }
+}
+
+const USER_OPTION = { name: 'user', key: 'user_id', description: 'Another user (administrators only); defaults to the caller', type: 'string' } as const
+const APP_OPTION = { name: 'app', key: 'app_id', description: 'Calls through this App or Agent (its App policies apply)', type: 'string' } as const
+
+// AI user policy, price list and Credit (buckyos doc/aicc/aicc_user_policy.md).
+function policyCommands(): CommandDefinition[] {
+  return [
+    aiccCommand({
+      verb: 'policy',
+      summary: "Show the caller's AI Credit balance and the usage limits that apply, with their windows",
+      description:
+        'A refused call returns quota_exhausted (a limit is used up), credit_insufficient (the Credit balance is used up) or resource_not_permitted (hidden, or unpriced for a caller who pays: details.reason = "unpriced").',
+      method: 'policy.status',
+      level: 'read',
+      options: [APP_OPTION],
+      examples: ['buckyos ai policy', 'buckyos ai policy --app aiworkspace'],
+    }),
+    aiccCommand({
+      verb: 'policy-effective',
+      summary: 'Show every model a user can see with its Credit price and source, and every limit that applies',
+      description: 'Without --user it is the caller. Each model says which policy makes it visible and whether it is free, priced or unpriced (not usable for a caller who pays).',
+      method: 'policy.effective',
+      level: 'read',
+      options: [USER_OPTION, APP_OPTION],
+      examples: ['buckyos ai policy-effective', 'buckyos ai policy-effective --user bob --app writer.example.zone'],
+    }),
+    aiccCommand({
+      verb: 'policies',
+      summary: 'List the AI policies that apply to the caller, or with --manage every policy of the Zone',
+      description: 'Subjects: type:admin|user|limited, group:<id>, user:<id> (more specific overrides), app:<id>, user_app:<user>/<app> (only narrows). Change them in Desktop AI Center › Policies or with policy.upsert.',
+      method: 'policy.list',
+      level: 'read',
+      options: [{ name: 'manage', key: 'scope', description: 'Every policy of the Zone (administrators only)', type: 'boolean' }],
+      examples: ['buckyos ai policies', 'buckyos ai policies --manage'],
+    }),
+    aiccCommand({
+      verb: 'prices',
+      summary: 'Show the Credit price list (token rates per million tokens) and, for administrators, Credit rates and unpriced models',
+      description: 'Keys: model:<model_driver_id>:<origin_model_id> (every Provider of the model) and exact:<model>@<provider> (one channel).',
+      method: 'price.get',
+      level: 'read',
+      examples: ['buckyos ai prices'],
+    }),
+    aiccCommand({
+      verb: 'credit',
+      summary: 'Show the AI Credit balance of the caller (or of a user, for administrators)',
+      description: 'Credit is the Zone\'s unit for AI use, unrelated to a Provider account balance; it may be negative after a large call.',
+      method: 'credit.account.get',
+      level: 'read',
+      options: [USER_OPTION],
+      examples: ['buckyos ai credit', 'buckyos ai credit --user bob'],
+    }),
+    aiccCommand({
+      verb: 'credit-ledger',
+      summary: 'List recharges, adjustments and charges of a Credit account, newest first',
+      description: 'Charges with status unpriced or unknown_usage were not charged; an administrator can charge them with credit-adjust.',
+      method: 'credit.ledger.list',
+      level: 'read',
+      options: [USER_OPTION, { name: 'limit', key: 'limit', description: 'Page size', type: 'integer' },
+        { name: 'cursor', key: 'cursor', description: 'Opaque page cursor', type: 'string' }],
+      examples: ['buckyos ai credit-ledger', 'buckyos ai credit-ledger --user bob --limit 20'],
+    }),
+    aiccCommand({
+      verb: 'credit-recharge',
+      summary: 'Recharge a user\'s AI Credit once per id (administrators and granted payment gateways)',
+      description:
+        'Needs write on obj://aicc/credit/recharge. The same --id with the same amount is credited once and returns the original entry; with different parameters it fails. Use the payment order id as --id.',
+      method: 'credit.recharge',
+      level: 'privileged',
+      options: [
+        { name: 'user', key: 'user_id', description: 'User to recharge', type: 'string', required: true },
+        { name: 'amount', key: 'amount', description: 'Positive Credit amount, up to six decimals', type: 'string', required: true },
+        { name: 'id', key: 'recharge_id', description: 'Idempotency id (payment order id)', type: 'string', required: true },
+        { name: 'note', key: 'note', description: 'Note kept with the entry', type: 'string' },
+        { name: 'external-ref', key: 'external_ref', description: 'JSON a payment gateway keeps with the entry', type: 'string', json: true },
+      ],
+      examples: ["buckyos ai credit-recharge --user bob --amount 100 --id order-1001 --external-ref '{\"gateway\":\"stripe\"}'"],
+    }),
+    aiccCommand({
+      verb: 'credit-recharge-get',
+      summary: 'Look up a recharge or adjustment by its id (after a timeout, before retrying)',
+      description: 'Needs write on obj://aicc/credit/recharge.',
+      method: 'credit.recharge.get',
+      level: 'read',
+      options: [{ name: 'id', key: 'recharge_id', description: 'Recharge or adjustment id', type: 'string', required: true }],
+      examples: ['buckyos ai credit-recharge-get --id order-1001'],
+    }),
+    aiccCommand({
+      verb: 'credit-adjust',
+      summary: 'Add or remove AI Credit with a note: refunds, corrections, charging unpriced usage',
+      description: 'Needs write on obj://aicc/credit/recharge. A negative amount removes Credit; the same --id is applied once.',
+      method: 'credit.adjust',
+      level: 'privileged',
+      options: [
+        { name: 'user', key: 'user_id', description: 'User whose balance changes', type: 'string', required: true },
+        { name: 'amount', key: 'amount', description: 'Signed Credit amount, not zero', type: 'string', required: true },
+        { name: 'id', key: 'adjust_id', description: 'Idempotency id', type: 'string', required: true },
+        { name: 'note', key: 'note', description: 'Why (required)', type: 'string', required: true },
+      ],
+      examples: ["buckyos ai credit-adjust --user bob --amount=-2.5 --id refund-1001 --note 'refund order 1001'"],
+    }),
+  ]
 }
 
 function readCommand(options: {

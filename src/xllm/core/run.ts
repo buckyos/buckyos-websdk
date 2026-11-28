@@ -60,7 +60,7 @@ function stepRenderer(hosted: boolean): XmlStepRenderer {
   return hosted ? new XmlStepRenderer().withoutTimestamps() : new XmlStepRenderer()
 }
 const REFUSED_QUOTA_EXHAUSTED = 'quota_exhausted'
-const REFUSED_QUOTA_BUDGET_EXCEEDED = 'quota_budget_exceeded'
+const REFUSED_CREDIT_INSUFFICIENT = 'credit_insufficient'
 const REFUSED_RESOURCE_NOT_PERMITTED = 'resource_not_permitted'
 const REFUSED_ATTRIBUTION_UNAVAILABLE = 'attribution_unavailable'
 
@@ -1033,8 +1033,10 @@ export function classifyError(err: LLMComputeError): RunErrorRecord {
       if (f === 'context_limit') return rec(false, 'context_capacity')
       const code = refusedCode(f) as string
       if (code === REFUSED_CREDENTIALS) return rec(true, REFUSED_CREDENTIALS, 'fix the credential referenced by the current identity, then resume')
-      const condition = code === REFUSED_QUOTA_EXHAUSTED || code === REFUSED_QUOTA_BUDGET_EXCEEDED
-        ? 'the AI token quota does not cover this call; wait for it to reset, lower the output budget, or ask an administrator; do not retry right away'
+      const condition = code === REFUSED_QUOTA_EXHAUSTED
+        ? 'an AI usage limit of this user is used up; wait for its window to reset or ask an administrator; do not retry right away'
+        : code === REFUSED_CREDIT_INSUFFICIENT
+          ? "the user's AI Credit balance is used up; ask an administrator to recharge it, or use a free model; do not retry right away"
         : code === REFUSED_RESOURCE_NOT_PERMITTED ? 'the model is not permitted to this user; choose a permitted model or ask an administrator'
           : code === REFUSED_ATTRIBUTION_UNAVAILABLE ? 'the user whose AI resources this run uses cannot be determined'
             : 'the AI service refused this call under its policy; do not retry right away'

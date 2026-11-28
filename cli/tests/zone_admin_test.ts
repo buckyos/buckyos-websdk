@@ -32,7 +32,14 @@ Deno.test('admin verbs are registered and describable', () => {
       ['ai', 'providers', 'read'],
       ['ai', 'routing', 'read'],
       ['ai', 'usage', 'read'],
-      ['ai', 'quota', 'read'],
+      ['ai', 'policy', 'read'],
+      ['ai', 'policy-effective', 'read'],
+      ['ai', 'policies', 'read'],
+      ['ai', 'prices', 'read'],
+      ['ai', 'credit', 'read'],
+      ['ai', 'credit-ledger', 'read'],
+      ['ai', 'credit-recharge', 'privileged'],
+      ['ai', 'credit-adjust', 'privileged'],
     ]
   ) {
     const described = registry.describe(module, verb)
@@ -141,11 +148,18 @@ Deno.test('ai read views call aicc and usage maps its range options', async () =
     }
     if (method === 'routing.get') return { routing: {}, settings_revision: 1 }
     if (method === 'usage.query') return { total: { total_requests: 0 } }
-    if (method === 'quota.query') return { user_id: 'alice', rules: [], near_limit_count: 0, exhausted_count: 0 }
+    if (method === 'policy.status') return { user_id: 'alice', balance: '0', limits: [], near_limit_count: 0, exhausted_count: 0 }
+    if (method === 'policy.list') return { policies: [] }
+    if (method === 'credit.recharge') return { entry: {}, account: { user_id: 'bob', balance: '100' }, replayed: false }
     throw new Error(`unexpected method ${method}`)
   })
-  assertEquals((await run('ai', 'quota', { app: 'aiworkspace' }, clients)).user_id, 'alice')
+  assertEquals((await run('ai', 'policy', { app: 'aiworkspace' }, clients)).user_id, 'alice')
   assertEquals(calls.pop()?.params, { app_id: 'aiworkspace' })
+  await run('ai', 'policies', { manage: true }, clients)
+  assertEquals(calls.pop()?.params, { scope: 'manage' })
+  await run('ai', 'credit-recharge', { user: 'bob', amount: '100', id: 'order-1', external_ref: '{"gateway":"test"}' }, clients)
+  assertEquals(calls.pop()?.params, { user_id: 'bob', amount: '100', recharge_id: 'order-1', external_ref: { gateway: 'test' } })
+  await assertRejects(() => run('ai', 'credit-recharge', { user: 'bob', amount: '1', id: 'x', external_ref: '{' }, clients), 'INVALID_ARGUMENT')
   assertEquals((await run('ai', 'providers', {}, clients)).settings_revision, 1)
   assertEquals((await run('ai', 'routing', {}, clients)).routing, {})
   await run('ai', 'usage', {}, clients)

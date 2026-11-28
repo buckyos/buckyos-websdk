@@ -1,8 +1,8 @@
-import { c as createSDKModule } from "./aiws_write-83ddc6cc.mjs";
-import { ac, aO, bJ, aT, bK, bP, bO, bL, bN, bQ, bM, bH, bI, bG, af, aU, ap, ao, aq, ar, aW, aV, aY, aX, bX, cp, cf, cg, cb, cc, cd, ce, ch, g, B, cj, ci, cn, cl, l, cD, cC, cB, cA, a4, a3, a2, a1, bk, aj, ab, aE, E, cE, cH, cF, a0, aD, aP, ak, c5, c4, t, M, C, D, z, x, w, H, G, N, F, y, A, aQ, aR, aC, m, R, aF, bo, S, b4, b3, b2, b7, b5, b1, aZ, a_, b6, a$, b8, b0, az, aA, ay, b9, aB, aS, bl, bi, bn, bp, bd, bm, bq, bh, be, bg, a7, a6, V, W, a5, aM, aI, aN, aG, aK, aL, br, aH, aJ, bF, by, bs, bB, bw, bA, bv, bt, bx, bz, bE, bD, bC, bu, Z, ae, cq, bV, bU, bR, bT, _, c8, c6, co, bj, b, f, an, cJ, Y, cV, ax, a8, a9, c9, e, bY, ck, cy, cG, cN, cI, i, k, j, h, cx, cv, ai, ah, L, bS, q, I, bf, aa, at, as, cw, aw, u, v, cW, cT, U, a, d, n, al, P, K, J, X, T, cz, cO, ad, c7, ca, au, ag, p, b$, o, cs, O, av, cS, r, ct, cU, s, cr, cu, cM, cK, cL, bc, ba, bb, cP, cR, cQ, bW, b_, bZ, Q, c2, c1, c0, c3, $, cm, am } from "./aiws_write-83ddc6cc.mjs";
+import { c as createSDKModule } from "./aiws_write-53a27025.mjs";
+import { ac, aO, bJ, aT, bK, bP, bO, bL, bN, bM, bQ, bH, bI, bG, af, aU, ap, ao, aq, ar, aW, aV, aY, aX, bX, cp, cf, cg, cb, cc, cd, ce, ch, g, B, cj, ci, cn, cl, l, cD, cC, cB, cA, a4, a3, a2, a1, bk, aj, ab, aE, E, cE, cH, cF, a0, aD, aP, ak, c5, c4, t, M, C, D, z, x, w, H, G, N, F, y, A, aQ, aR, aC, m, R, aF, bo, S, b4, b3, b2, b7, b5, b1, aZ, a_, b6, a$, b8, b0, az, aA, ay, b9, aB, aS, bl, bi, bn, bp, bd, bm, bq, bh, be, bg, a7, a6, V, W, a5, aM, aI, aN, aG, aK, aL, br, aH, aJ, bF, by, bs, bB, bw, bA, bv, bt, bx, bz, bE, bD, bC, bu, Z, ae, cq, bV, bU, bR, bT, _, c8, c6, co, bj, b, f, an, cJ, Y, cV, ax, a8, a9, c9, e, bY, ck, cy, cG, cN, cI, i, k, j, h, cx, cv, ai, ah, L, bS, q, I, bf, aa, at, as, cw, aw, u, v, cW, cT, U, a, d, n, al, P, K, J, X, T, cz, cO, ad, c7, ca, au, ag, p, b$, o, cs, O, av, cS, r, ct, cU, s, cr, cu, cM, cK, cL, bc, ba, bb, cP, cR, cQ, bW, b_, bZ, Q, c2, c1, c0, c3, $, cm, am } from "./aiws_write-53a27025.mjs";
 import { h as h2 } from "./account-7a7bde6f.mjs";
 import { a as a10, D as D2, N as N2, r as r2, q as q2, g as g2, j as j2, f as f2, c, e as e2, b as b10, d as d2, k as k2, h as h3, i as i2, n as n2, o as o2, m as m2, l as l2, p as p2 } from "./ndn_types-0fac2499.mjs";
-import { e as e3 } from "./content_objid-76434848.mjs";
+import { e as e3 } from "./content_objid-29ac5439.mjs";
 import { APP_OPEN_ACTION, appWindowId, formatAppOpenUrl, isAppPath, parseAppOpenUrl, parseAppWindowId, parseBuckyosUrl, parseSystemOpenApp, readAppOpenRequest, readAppWindowDeclaration, resolveOpenApp, systemOpenAppUrl } from "./open-app.mjs";
 import { g as g3, a as a11, r as r3 } from "./user_preferences-1d49850a.mjs";
 import { A as A2, e as e4, f as f3, d as d3, M as M2, i as i3, a as a12, aj as aj2, H as H2, R as R2, J as J2, K as K2, I as I2, S as S2, ak as ak2, ag as ag2, L as L2, T as T2, W as W2, b as b11, c as c10, al as al2, at as at2, au as au2, P as P2, aa as aa2, a0 as a02, an as an2, av as av2, g as g4, h as h4, as as as2, r as r4, o as o3, q as q3, n as n3, ao as ao2, aq as aq2, $ as $2, F as F2, ab as ab2, ad as ad2, ac as ac2, af as af2, ae as ae2, x as x2, ah as ah2, k as k3, _ as _2, l as l3, m as m3, U as U2, t as t2, a8 as a82, v as v2, Y as Y2, am as am2, D as D3, a7 as a72, V as V2, X as X2, C as C2, p as p3, E as E2, j as j3, G as G2, ar as ar2, ai as ai2, N as N3, B as B2, Z as Z2, a2 as a22, s as s2, Q as Q2, ap as ap2, a3 as a32, a4 as a42, O as O2, a1 as a13, a5 as a52, a6 as a62, a9 as a92, w as w2, y as y2, z as z2, u as u2 } from "./aiws_bind-b851d4db.mjs";
@@ -64,8 +64,8 @@ export {
   bO as AICC_FEATURES,
   bL as AICC_MANAGEMENT_METHODS,
   bN as AICC_METHODS,
+  bM as AICC_POLICY_METHODS,
   bQ as AICC_POLICY_REFUSAL_CODES,
-  bM as AICC_QUOTA_METHODS,
   bH as AICC_SERVICE_SERVICE_NAME,
   bI as AICC_SERVICE_SERVICE_PORT,
   bG as AICC_SERVICE_UNIQUE_ID,

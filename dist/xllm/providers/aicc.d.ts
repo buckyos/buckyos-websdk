@@ -2,7 +2,8 @@ import type { AiccClient, AiccError } from '../../aicc_client';
 import type { AiResponse, JsonValue, LlmClient, LlmInferenceRequest, ProviderFailure } from '../core/types';
 import { LLMComputeException } from '../core/errors';
 export declare const REFUSED_QUOTA_EXHAUSTED = "quota_exhausted";
-export declare const REFUSED_QUOTA_BUDGET_EXCEEDED = "quota_budget_exceeded";
+/** The user's AI Credit balance is used up (not a Provider account balance). */
+export declare const REFUSED_CREDIT_INSUFFICIENT = "credit_insufficient";
 export declare const REFUSED_RESOURCE_NOT_PERMITTED = "resource_not_permitted";
 export declare const REFUSED_ATTRIBUTION_UNAVAILABLE = "attribution_unavailable";
 /** The service refused the caller's credentials: sign in again, then resume. */
