@@ -14,10 +14,13 @@ export declare function anyJsonObjectSchema(): JsonValue;
 export declare function aiccProviderFailure(error: Partial<AiccError>): ProviderFailure | undefined;
 /** A failed AICC call (a rejected kRPC call) as a provider error. */
 export declare function providerErrorFromRpc(context: string, err: unknown): LLMComputeException;
-/** `LlmClient` over the page's AICC client. */
+/** `LlmClient` over the page's AICC client. `route_group`: the routing group of the host's session, sent with routed requests. */
 export declare class AiccLlmClient implements LlmClient {
     private readonly client;
-    constructor(client: AiccClient);
+    private readonly options;
+    constructor(client: AiccClient, options?: {
+        route_group?: string;
+    });
     infer(req: LlmInferenceRequest): Promise<AiResponse>;
 }
 //# sourceMappingURL=aicc.d.ts.map

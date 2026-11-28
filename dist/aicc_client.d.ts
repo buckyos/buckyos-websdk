@@ -72,7 +72,28 @@ export declare const AICC_POLICY_METHODS: {
     readonly CREDIT_RECHARGE_GET: "credit.recharge.get";
     readonly CREDIT_ADJUST: "credit.adjust";
 };
+/** The usecase table, routing groups and App bindings (buckyos doc/aicc/aicc_router.md §11–§12). */
+export declare const AICC_ROUTING_METHODS: {
+    readonly ROUTING_USECASES: "routing.usecases";
+    readonly ROUTING_USECASE_SET: "routing.usecase.set";
+    readonly ROUTING_GROUPS_LIST: "routing.groups.list";
+    readonly ROUTING_GROUPS_CREATE: "routing.groups.create";
+    readonly ROUTING_GROUPS_UPDATE: "routing.groups.update";
+    readonly ROUTING_GROUPS_DELETE: "routing.groups.delete";
+    readonly ROUTING_BINDINGS_LIST: "routing.bindings.list";
+    readonly ROUTING_BINDINGS_SET: "routing.bindings.set";
+    readonly ROUTING_BINDINGS_REMOVE: "routing.bindings.remove";
+};
 export declare const AICC_METHODS: {
+    readonly ROUTING_USECASES: "routing.usecases";
+    readonly ROUTING_USECASE_SET: "routing.usecase.set";
+    readonly ROUTING_GROUPS_LIST: "routing.groups.list";
+    readonly ROUTING_GROUPS_CREATE: "routing.groups.create";
+    readonly ROUTING_GROUPS_UPDATE: "routing.groups.update";
+    readonly ROUTING_GROUPS_DELETE: "routing.groups.delete";
+    readonly ROUTING_BINDINGS_LIST: "routing.bindings.list";
+    readonly ROUTING_BINDINGS_SET: "routing.bindings.set";
+    readonly ROUTING_BINDINGS_REMOVE: "routing.bindings.remove";
     readonly POLICY_LIST: "policy.list";
     readonly POLICY_GET: "policy.get";
     readonly POLICY_UPSERT: "policy.upsert";
@@ -242,7 +263,7 @@ export interface AiArtifact {
     mime?: string;
     metadata?: JsonValue;
 }
-export type AiccErrorCode = 'invalid_request' | 'invalid_method' | 'schema_validation_failed' | 'invalid_model_name' | 'resource_invalid' | 'no_provider_available' | 'no_candidate_model' | 'fallback_not_allowed' | 'provider_start_failed' | 'provider_error' | 'unsupported_execution_mode' | 'timeout' | 'budget_exceeded' | 'policy_denied' | 'idempotency_conflict' | 'settings_revision_conflict' | 'cancelled' | 'internal_error' | 
+export type AiccErrorCode = 'invalid_request' | 'invalid_method' | 'schema_validation_failed' | 'invalid_model_name' | 'resource_invalid' | 'no_provider_available' | 'no_candidate_model' | 'provider_start_failed' | 'provider_error' | 'unsupported_execution_mode' | 'timeout' | 'budget_exceeded' | 'policy_denied' | 'idempotency_conflict' | 'settings_revision_conflict' | 'cancelled' | 'internal_error' | 
 /** A time window limit that applies to the call is used up (`details`: QuotaDenialDetails). */
 'quota_exhausted' | 
 /** The model is priced for the caller and their AI Credit balance is not above zero
@@ -281,9 +302,11 @@ export interface RouteTraceAttempt {
     error_code?: AiccErrorCode;
     fallback_reason?: string;
 }
+/** `fallback`: set when the answer did not come from the usecase's own model. */
 export interface RouteTrace {
     attempts: RouteTraceAttempt[];
     final_model?: string;
+    fallback?: RouteFallback;
 }
 export interface AiToolCall {
     name: string;
@@ -315,11 +338,11 @@ export interface ModelDisable extends Omit<ModelRequirement, "decision" | "video
 }
 export interface HelperModelRequirement extends Omit<ModelRequirement, "decision"> {
 }
+/** `no_fallback`: turn off the usecase's "when unavailable" policy for this request. */
 export interface RoutePolicy {
-    profile?: 'cheap' | 'fast' | 'balanced' | 'quality';
+    profile?: 'fast' | 'balanced' | 'quality';
     local_only?: boolean;
-    allow_fallback?: boolean;
-    runtime_failover?: boolean;
+    no_fallback?: boolean;
     explain?: boolean;
     allowed_provider_instances?: string[];
     blocked_provider_instances?: string[];
@@ -334,28 +357,18 @@ export interface ModelItemPatch {
     target?: string;
     weight?: number;
 }
-export type OverlayMergeMode = 'inherit' | 'replace';
-export type AiccFallbackMode = 'strict' | 'parent' | 'target_exact' | 'target_logical' | 'disabled';
-export interface AiccFallbackRule {
-    mode: AiccFallbackMode;
-    target?: string;
-}
-export type AiccSchedulerProfile = 'cost_first' | 'latency_first' | 'quality_first' | 'balanced' | 'local_first' | 'strict_local';
+export type AiccSchedulerProfile = 'latency_first' | 'quality_first' | 'balanced' | 'local_first' | 'strict_local';
 export type LockedValue<T> = T | {
     value: T;
     locked?: boolean;
 };
 export interface AiccSchedulerProfileWeights {
-    cost?: number;
-    latency?: number;
-    reliability?: number;
     quality?: number;
     preference?: number;
     cache?: number;
     local?: number;
 }
 export interface AiccSchedulerProfileConfig {
-    cost_first?: AiccSchedulerProfileWeights;
     latency_first?: AiccSchedulerProfileWeights;
     quality_first?: AiccSchedulerProfileWeights;
     balanced?: AiccSchedulerProfileWeights;
@@ -366,9 +379,6 @@ export interface AiccPolicyConfig {
     profile?: LockedValue<AiccSchedulerProfile>;
     scheduler_profiles?: LockedValue<AiccSchedulerProfileConfig>;
     local_only?: LockedValue<boolean>;
-    allow_fallback?: LockedValue<boolean>;
-    allow_exact_model_fallback?: LockedValue<boolean>;
-    runtime_failover?: LockedValue<boolean>;
     explain?: LockedValue<boolean>;
     blocked_provider_instances?: LockedValue<string[]>;
     allowed_provider_instances?: LockedValue<string[]>;
@@ -381,37 +391,168 @@ export interface AiccLogicalNodeOverlay {
     item_overrides?: Record<string, ModelItemPatch>;
     exact_model_weights?: Record<string, number>;
     disable_line?: ModelDisable;
-    fallback?: AiccFallbackRule;
     policy?: AiccPolicyConfig;
     route_policy_override?: AiccPolicyConfig;
 }
-export interface AiccLogicalTreeOverlay {
+export type AiccRoutingCommand = {
+    kind: 'vendor_factor';
+    vendor: string;
+    factor: number;
+} | {
+    kind: 'spec_factor';
+    spec: string;
+    factor: number;
+} | {
+    kind: 'model_factor';
+    vendor: string;
+    model: string;
+    factor: number;
+} | {
+    kind: 'item_weight';
     path: string;
-    merge_mode?: OverlayMergeMode;
-    items?: Record<string, ModelItem>;
-    item_overrides?: Record<string, ModelItemPatch>;
-    exact_model_weights?: Record<string, number>;
-    disable_line?: ModelDisable;
-    fallback?: AiccFallbackRule;
-    route_policy_override?: AiccPolicyConfig;
-    source?: string;
-}
-export interface AiccSessionLogicalProfile {
-    name?: string;
-    overlays?: AiccLogicalTreeOverlay[];
-    route_policy_override?: AiccPolicyConfig;
-}
+    item: string;
+    weight: number;
+};
+/** `usecases`: the administrator layer of the usecase table. */
 export interface AiccRouteOverlay {
-    inherit?: string;
     logical_tree?: Record<string, AiccLogicalNodeOverlay>;
-    logical_profile?: AiccSessionLogicalProfile;
-    logical_profiles?: Record<string, AiccSessionLogicalProfile>;
-    active_logical_profile?: string;
     global_exact_model_weights?: Record<string, number>;
     provider_weights?: Record<string, number>;
+    routing_commands?: AiccRoutingCommand[];
     policy?: AiccPolicyConfig;
-    revision?: string;
-    ttl_seconds?: number;
+    usecases?: AiccUsecaseRoutes;
+}
+/** What a usecase does when the Provider of its model is unavailable: `none` (default) returns the real error; `same_model` uses the
+ * same model on another Provider; `not_pricier` routes again without that Provider, only to a model known not to cost more;
+ * `next_model` routes again without that Provider. */
+export type OnUnavailable = 'none' | 'same_model' | 'not_pricier' | 'next_model';
+/** One usecase in a layer or a routing group; absent fields follow the layer below. `model` is `model@provider`;
+ * `enabled` only for `llm.fallback` in the administrator layer. */
+export interface AiccUsecaseRoute {
+    model?: LockedValue<string>;
+    on_unavailable?: LockedValue<OnUnavailable>;
+    enabled?: boolean;
+}
+export type AiccUsecaseRoutes = Record<string, AiccUsecaseRoute>;
+/** `coverage`: the usecase (`from`) had no model and the fallback LLM (`to` = `llm.fallback`) served it;
+ * `unavailable`: the exact model `from` failed and its policy used `to`. */
+export interface RouteFallback {
+    kind: 'coverage' | 'unavailable';
+    from: string;
+    to: string;
+    policy?: OnUnavailable;
+    reason?: string;
+}
+export type UsecaseModelState = 'available' | 'missing' | 'not_permitted' | 'unsuitable';
+/** `fallback_llm`: served by the fallback LLM. */
+export type UsecaseCoverage = 'covered' | 'fallback_llm' | 'uncovered';
+/** `layer`: `zone`, `user` or `group:<id>`. */
+export interface UsecaseLayerValue {
+    layer: string;
+    model?: string;
+    model_locked?: boolean;
+    model_state?: UsecaseModelState;
+    on_unavailable?: OnUnavailable;
+    on_unavailable_locked?: boolean;
+    enabled?: boolean;
+}
+/** `model`: what this view routes the usecase to now; `*_source`: `default` or the layer that set it; `fallback_to`: what the policy
+ * would use if the Provider of `model` were unavailable (`fallback_note` says why it is empty); `detail`: the routing error, for
+ * administrators; `enabled`: the row of `llm.fallback`. */
+export interface UsecaseRow {
+    usecase: string;
+    api_type: string;
+    model?: string;
+    model_source?: string;
+    on_unavailable: OnUnavailable;
+    on_unavailable_source: string;
+    model_locked?: boolean;
+    on_unavailable_locked?: boolean;
+    layers?: UsecaseLayerValue[];
+    fallback_to?: string;
+    fallback_note?: string;
+    coverage: UsecaseCoverage;
+    coverage_reason?: string;
+    detail?: string;
+    enabled?: boolean;
+}
+/** `view`: `self` (default), `zone` (administrators), `group:<id>`, `app:<app_id>`. `without_provider` (administrators): the table
+ * as if that Provider were deleted or disabled. */
+export interface RoutingUsecasesRequest {
+    view?: string;
+    without_provider?: string;
+}
+/** `revision`: what `routing.usecase.set` of this view's layer passes. */
+export interface RoutingUsecasesResponse {
+    view: string;
+    revision: number;
+    settings_revision: number;
+    fallback_llm_enabled: boolean;
+    can_edit: boolean;
+    rows: UsecaseRow[];
+}
+export type UsecaseField = 'model' | 'on_unavailable';
+/** `target`: `zone`, `user` or `group:<id>`; `locked` only for `zone`; `enabled` only for `llm.fallback` in `zone`. A stale
+ * `revision` fails with `settings_revision_conflict`. */
+export interface RoutingUsecaseSetRequest {
+    target: string;
+    usecase: string;
+    model?: LockedValue<string>;
+    on_unavailable?: LockedValue<OnUnavailable>;
+    enabled?: boolean;
+    clear?: UsecaseField[];
+    revision: number;
+}
+export interface RoutingUsecaseSetResponse {
+    ok: boolean;
+    revision: number;
+}
+/** `app_ids`: the Apps (or Agents) the group is bound to. */
+export interface AiccRoutingGroup {
+    group_id: string;
+    name: string;
+    usecases?: AiccUsecaseRoutes;
+    version: number;
+    updated_at_ms: number;
+    app_ids?: string[];
+}
+export interface RoutingGroupsListResponse {
+    groups: AiccRoutingGroup[];
+}
+export interface RoutingGroupCreateRequest {
+    name: string;
+    usecases?: AiccUsecaseRoutes;
+}
+export interface RoutingGroupUpdateRequest {
+    group_id: string;
+    version: number;
+    name?: string;
+    usecases?: AiccUsecaseRoutes;
+}
+export interface RoutingGroupDeleteRequest {
+    group_id: string;
+    version: number;
+}
+export interface RoutingGroupResponse {
+    group: AiccRoutingGroup;
+}
+export interface RoutingOkResponse {
+    ok: boolean;
+}
+export interface AiccRoutingBinding {
+    app_id: string;
+    group_id: string;
+}
+export interface RoutingBindingsListResponse {
+    bindings: AiccRoutingBinding[];
+}
+/** One usecase before and after a Provider is added (`provider.validate`). */
+export interface UsecaseCoverageChange {
+    usecase: string;
+    before?: string;
+    before_coverage: UsecaseCoverage;
+    after?: string;
+    after_coverage: UsecaseCoverage;
 }
 export interface RouteResolveRequest {
     trace_id?: string;
@@ -424,8 +565,8 @@ export interface RouteResolveRequest {
     policy?: RoutePolicy;
     estimated_input_tokens?: number;
     estimated_output_tokens?: number;
-    session_overlay?: AiccRouteOverlay;
-    session_id?: string;
+    /** A routing group of the caller's own user. */
+    route_group?: string;
 }
 export interface RouteResolveResponse {
     selected_exact_model: string;
@@ -440,11 +581,6 @@ export interface RouteResolveResponse {
     operation: string;
     enabled_capabilities?: Feature[];
     disabled_capabilities?: Feature[];
-    fallback_attempts?: Array<{
-        exact_model: string;
-        provider_instance_name: string;
-        provider_model_id: string;
-    }>;
     route_trace?: RouteTrace;
     inventory_revision: string;
 }
@@ -454,7 +590,6 @@ export interface InferenceRequest {
     execution_mode?: AiccExecutionMode;
     idempotency_key?: string;
     task_options?: AiTaskOptions;
-    session_id?: string;
 }
 export interface InferenceResponse {
     task_id: string;
@@ -501,8 +636,7 @@ export interface LlmChatHelperRequest extends ChatFields {
     policy?: RoutePolicy;
     idempotency_key?: string;
     task_options?: AiTaskOptions;
-    session_overlay?: AiccRouteOverlay;
-    session_id?: string;
+    route_group?: string;
 }
 export interface LlmChatInvokeResponse extends InferenceResponse {
     message?: AiMessage;
@@ -519,8 +653,7 @@ export interface TextToImageHelperRequest extends ImageGenerationFields {
     policy?: RoutePolicy;
     idempotency_key?: string;
     task_options?: AiTaskOptions;
-    session_overlay?: AiccRouteOverlay;
-    session_id?: string;
+    route_group?: string;
 }
 export interface TextToImageInvokeResponse extends InferenceResponse {
     images?: ResourceRef[];
@@ -936,8 +1069,7 @@ export interface VideoGenerateHelperRequest extends VideoGenerationFields {
     policy?: RoutePolicy;
     idempotency_key?: string;
     task_options?: AiTaskOptions;
-    session_overlay?: AiccRouteOverlay;
-    session_id?: string;
+    route_group?: string;
 }
 export interface VideoEditRequest extends InferenceRequest {
     video: ResourceRef;
@@ -1412,7 +1544,8 @@ export interface ProviderValidateResponse {
     models_recognized: string[];
     unmatched_models: JsonValue[];
     unavailable_presets: JsonValue[];
-    routing_candidates: Record<string, string[]>;
+    /** Every usecase of the Zone before and after this Provider is added. */
+    usecase_coverage?: UsecaseCoverageChange[];
     warnings: string[];
     base_url_reachable: boolean;
     auth_valid: boolean;
@@ -1488,6 +1621,7 @@ export interface ProviderInstanceView {
     protocol_adapter_id: string;
     base_url: string;
     enabled: boolean;
+    marked_faulty?: boolean;
     auth: ProviderInstanceAuthView;
     inventory: ProviderInstanceInventoryView;
     health: ProviderInstanceHealthView;
@@ -1514,6 +1648,8 @@ export interface ProviderUpdateRequest {
     protocol_adapter_id?: string;
     discovery?: JsonValue;
     instance_rules?: JsonValue;
+    /** Routing is unchanged, calls are not sent: usecases with a "when unavailable" policy switch at once, others fail. */
+    marked_faulty?: boolean;
 }
 export interface ProviderUpdateResponse {
     ok: boolean;
@@ -1547,6 +1683,8 @@ export interface UsageQueryFilters {
     methods?: string[];
     /** `type:*` / `group:*` of the charged user at the time of the call (administrators only). */
     user_groups?: string[];
+    /** Only usage served by a usecase's "when unavailable" policy. */
+    fallback_only?: boolean;
 }
 /** `user_group` counts an event once per `type:*` / `group:*` subject (administrators only). */
 export type UsageQueryGroup = 'provider_model' | 'provider_instance_name' | 'request_model' | 'method' | 'capability' | 'caller_app_id' | 'user_id' | 'tenant_id' | 'user_group';
@@ -1598,6 +1736,8 @@ export interface AiccUsageEvent {
     credit_status?: CreditChargeStatus;
     subjects?: string[];
     created_at_ms: number;
+    /** The exact model the usecase's "when unavailable" policy replaced. */
+    fallback_from?: string;
 }
 export interface UsageGroupedRow {
     group: Record<string, string>;
@@ -1670,7 +1810,8 @@ export interface RoutingGetResponse {
 }
 export interface RoutingUpdateRequest {
     settings_revision: number;
-    provider_weights: Record<string, number>;
+    provider_weights?: Record<string, number>;
+    routing_commands?: AiccRoutingCommand[];
 }
 export interface RoutingUpdateResponse {
     ok: boolean;
@@ -1790,6 +1931,15 @@ export declare class AiccClient {
         account?: CreditAccount | undefined;
     }>;
     adjustCredit(r: CreditAdjustRequest): Promise<CreditEntryResponse>;
+    getRoutingUsecases(r?: RoutingUsecasesRequest): Promise<RoutingUsecasesResponse>;
+    setRoutingUsecase(r: RoutingUsecaseSetRequest): Promise<RoutingUsecaseSetResponse>;
+    listRoutingGroups(): Promise<RoutingGroupsListResponse>;
+    createRoutingGroup(r: RoutingGroupCreateRequest): Promise<RoutingGroupResponse>;
+    updateRoutingGroup(r: RoutingGroupUpdateRequest): Promise<RoutingGroupResponse>;
+    deleteRoutingGroup(groupId: string, version: number): Promise<RoutingOkResponse>;
+    listRoutingBindings(): Promise<RoutingBindingsListResponse>;
+    setRoutingBinding(appId: string, groupId: string): Promise<RoutingOkResponse>;
+    removeRoutingBinding(appId: string): Promise<RoutingOkResponse>;
     getDriverMetadataUpdate(): Promise<DriverMetadataUpdateView>;
     setDriverMetadataUpdate(r: DriverMetadataUpdateSetReq): Promise<DriverMetadataUpdateSetResponse>;
 }

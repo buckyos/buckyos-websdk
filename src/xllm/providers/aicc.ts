@@ -86,9 +86,9 @@ function aiccErrorText(e: AiccError | undefined): string {
   return e ? ` (${e.code}: ${e.message})` : ''
 }
 
-/** `LlmClient` over the page's AICC client. */
+/** `LlmClient` over the page's AICC client. `route_group`: the routing group of the host's session, sent with routed requests. */
 export class AiccLlmClient implements LlmClient {
-  constructor(private readonly client: AiccClient) {}
+  constructor(private readonly client: AiccClient, private readonly options: { route_group?: string } = {}) {}
 
   async infer(req: LlmInferenceRequest): Promise<AiResponse> {
     const tools: AiToolSpec[] = req.allow_tool_calls
@@ -129,6 +129,7 @@ export class AiccLlmClient implements LlmClient {
           logical_model: req.model_alias, ...common,
           ...(Object.keys(requirements).length ? { requirements } : {}),
           ...(Object.keys(disable).length ? { disable } : {}),
+          ...(this.options.route_group ? { route_group: this.options.route_group } : {}),
         }
         response = await this.client.helperLlmChat(r)
       }

@@ -468,7 +468,7 @@ export const XLLM_CASES: XllmCase[] = [
       })
       for (const model of ['llm.chat', 'gpt-x@openai']) {
         const page = notesPage(x)
-        const deps = { llm: new x.AiccLlmClient(aicc), runtime: page.runtime, store: new x.MemoryRunStore(), hostPromptSections: 'NONE' }
+        const deps = { llm: new x.AiccLlmClient(aicc, { route_group: 'rg_1' }), runtime: page.runtime, store: new x.MemoryRunStore(), hostPromptSections: 'NONE' }
         const task = await x.XllmTask.prepareHosted({ model }, 'demo.notes', 'sys', deps)
         const out = await (await x.XllmRun.start(task, deps, { input: 'hi' })).execute()
         eq(out.status, 'completed', model)
@@ -477,6 +477,7 @@ export const XLLM_CASES: XllmCase[] = [
       eq(seen.map(s => s[0]), ['helper.llm_chat', 'chat.completions.create'], 'methods')
       eq(seen[0][1].logical_model, 'llm.chat', 'logical model')
       eq(seen[1][1].exact_model, 'gpt-x@openai', 'exact model')
+      eq([seen[0][1].route_group, seen[1][1].route_group], ['rg_1', undefined], 'the host\'s routing group goes with routed requests only')
       eq(seen[0][1].tools, undefined, 'no tools advertised when tools are off')
     },
   },

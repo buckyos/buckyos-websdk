@@ -1502,7 +1502,18 @@ const AICC_POLICY_METHODS = {
   CREDIT_RECHARGE_GET: "credit.recharge.get",
   CREDIT_ADJUST: "credit.adjust"
 };
-const AICC_METHODS = { ...AICC_AI_METHODS, ...AICC_CORE_METHODS, ...AICC_MANAGEMENT_METHODS, ...AICC_POLICY_METHODS };
+const AICC_ROUTING_METHODS = {
+  ROUTING_USECASES: "routing.usecases",
+  ROUTING_USECASE_SET: "routing.usecase.set",
+  ROUTING_GROUPS_LIST: "routing.groups.list",
+  ROUTING_GROUPS_CREATE: "routing.groups.create",
+  ROUTING_GROUPS_UPDATE: "routing.groups.update",
+  ROUTING_GROUPS_DELETE: "routing.groups.delete",
+  ROUTING_BINDINGS_LIST: "routing.bindings.list",
+  ROUTING_BINDINGS_SET: "routing.bindings.set",
+  ROUTING_BINDINGS_REMOVE: "routing.bindings.remove"
+};
+const AICC_METHODS = { ...AICC_AI_METHODS, ...AICC_CORE_METHODS, ...AICC_MANAGEMENT_METHODS, ...AICC_POLICY_METHODS, ...AICC_ROUTING_METHODS };
 const AICC_FEATURES = {
   PLAN: "plan",
   TOOL_CALL: "tool_call",
@@ -1574,12 +1585,8 @@ function strict(request, allowed) {
   if (mode !== void 0 && mode !== AICC_EXECUTION_MODES.IMMEDIATE && mode !== AICC_EXECUTION_MODES.STREAM) {
     throw new RPCError("execution_mode must be `immediate` or `stream`");
   }
-  const sessionId = request.session_id;
-  if (sessionId !== void 0 && (typeof sessionId !== "string" || !sessionId.trim() || new TextEncoder().encode(sessionId).length > 512)) {
-    throw new RPCError("session_id must contain 1..512 bytes");
-  }
 }
-const common = ["exact_model", "trace_id", "execution_mode", "idempotency_key", "task_options", "session_id"];
+const common = ["exact_model", "trace_id", "execution_mode", "idempotency_key", "task_options"];
 const schemas = {
   [AICC_AI_METHODS.CHAT_COMPLETIONS_CREATE]: [...common, "web_search", "messages", "tools", "response_format", "temperature", "top_p", "max_output_tokens", "seed", "stop", "output"],
   [AICC_AI_METHODS.IMAGES_GENERATE]: [...common, "prompt", "negative_prompt", "n", "aspect_ratio", "size", "quality", "style", "seed", "output"],
@@ -1604,17 +1611,17 @@ const schemas = {
   [AICC_AI_METHODS.VIDEO_EXTEND]: [...common, "video", "prompt", "continuation_handle", "duration_seconds", "resolution"],
   [AICC_AI_METHODS.VIDEO_UPSCALE]: [...common, "video", "target_resolution", "denoise", "sharpen", "output"],
   [AICC_AI_METHODS.AGENT_COMPUTER_USE]: [...common, "task", "environment", "allowed_actions"],
-  [AICC_CORE_METHODS.ROUTE_RESOLVE]: ["trace_id", "execution_mode", "request_id", "api_type", "logical_model", "requirements", "disable", "policy", "estimated_input_tokens", "estimated_output_tokens", "session_overlay", "session_id"],
-  [AICC_CORE_METHODS.HELPER_LLM_CHAT]: ["logical_model", "trace_id", "execution_mode", "requirements", "disable", "policy", "messages", "tools", "response_format", "temperature", "top_p", "max_output_tokens", "seed", "stop", "output", "idempotency_key", "task_options", "session_overlay", "session_id"],
-  [AICC_CORE_METHODS.HELPER_TEXT_TO_IMAGE]: ["logical_model", "trace_id", "execution_mode", "requirements", "disable", "policy", "prompt", "negative_prompt", "n", "aspect_ratio", "size", "quality", "style", "seed", "output", "idempotency_key", "task_options", "session_overlay", "session_id"],
-  [AICC_CORE_METHODS.HELPER_VIDEO_GENERATE]: ["logical_model", "trace_id", "execution_mode", "requirements", "disable", "policy", "prompt", "negative_prompt", "conditions", "output", "seed", "idempotency_key", "task_options", "session_overlay", "session_id"],
+  [AICC_CORE_METHODS.ROUTE_RESOLVE]: ["trace_id", "execution_mode", "request_id", "api_type", "logical_model", "requirements", "disable", "policy", "estimated_input_tokens", "estimated_output_tokens", "route_group"],
+  [AICC_CORE_METHODS.HELPER_LLM_CHAT]: ["logical_model", "trace_id", "execution_mode", "requirements", "disable", "policy", "messages", "tools", "response_format", "temperature", "top_p", "max_output_tokens", "seed", "stop", "output", "idempotency_key", "task_options", "route_group"],
+  [AICC_CORE_METHODS.HELPER_TEXT_TO_IMAGE]: ["logical_model", "trace_id", "execution_mode", "requirements", "disable", "policy", "prompt", "negative_prompt", "n", "aspect_ratio", "size", "quality", "style", "seed", "output", "idempotency_key", "task_options", "route_group"],
+  [AICC_CORE_METHODS.HELPER_VIDEO_GENERATE]: ["logical_model", "trace_id", "execution_mode", "requirements", "disable", "policy", "prompt", "negative_prompt", "conditions", "output", "seed", "idempotency_key", "task_options", "route_group"],
   [AICC_CORE_METHODS.CANCEL]: ["task_id"],
   [AICC_MANAGEMENT_METHODS.SERVICE_RELOAD_SETTINGS]: [],
   [AICC_MANAGEMENT_METHODS.USAGE_QUERY]: ["time_range", "filters", "group_by", "time_bucket", "output_mode", "limit", "cursor", "zone_wide"],
   [AICC_MANAGEMENT_METHODS.TRACE_QUERY]: ["limit", "cursor", "start_time_ms", "end_time_ms", "task_ids", "request_ids", "api_types", "provider_instance_names", "selected_exact_models", "scheduler_profiles", "query", "outcome"],
   [AICC_MANAGEMENT_METHODS.ROUTING_GET]: [],
   [AICC_MANAGEMENT_METHODS.ROUTING_PREVIEW]: ["paths", "explain", "requirements"],
-  [AICC_MANAGEMENT_METHODS.ROUTING_UPDATE]: ["settings_revision", "provider_weights"],
+  [AICC_MANAGEMENT_METHODS.ROUTING_UPDATE]: ["settings_revision", "provider_weights", "routing_commands"],
   [AICC_MANAGEMENT_METHODS.PROVIDER_PREVIEW_RULES]: ["provider_instance_name", "rules_catalog", "model_ids"],
   [AICC_MANAGEMENT_METHODS.PROVIDER_CATALOG]: [],
   [AICC_MANAGEMENT_METHODS.PROTOCOL_ADAPTER_LIST]: [],
@@ -1622,7 +1629,7 @@ const schemas = {
   [AICC_MANAGEMENT_METHODS.PROVIDER_ADD]: ["provider_instance_name", "provider_type", "provider_profile_id", "protocol_family_id", "protocol_adapter_id", "base_url", "credentials", "region", "workspace", "account", "provider_rules_id", "auth", "discovery", "instance_rules", "timeout_ms", "auto_sync_models"],
   [AICC_MANAGEMENT_METHODS.PROVIDER_LIST]: ["method", "view"],
   [AICC_MANAGEMENT_METHODS.PROVIDER_HEALTH]: ["exact_model"],
-  [AICC_MANAGEMENT_METHODS.PROVIDER_UPDATE]: ["provider_rules_id", "provider_instance_name", "settings_revision", "enabled", "base_url", "credential", "provider_profile_id", "protocol_adapter_id", "discovery", "instance_rules"],
+  [AICC_MANAGEMENT_METHODS.PROVIDER_UPDATE]: ["provider_rules_id", "provider_instance_name", "settings_revision", "enabled", "base_url", "credential", "provider_profile_id", "protocol_adapter_id", "discovery", "instance_rules", "marked_faulty"],
   [AICC_MANAGEMENT_METHODS.PROVIDER_DELETE]: ["provider_instance_name"],
   [AICC_MANAGEMENT_METHODS.PROVIDER_REFRESH_MODELS]: ["provider_instance_name"],
   [AICC_MANAGEMENT_METHODS.MODELS_LIST]: ["view"],
@@ -1840,6 +1847,33 @@ class AiccClient {
   }
   adjustCredit(r) {
     return this.call(AICC_POLICY_METHODS.CREDIT_ADJUST, r);
+  }
+  getRoutingUsecases(r = {}) {
+    return this.call(AICC_ROUTING_METHODS.ROUTING_USECASES, r);
+  }
+  setRoutingUsecase(r) {
+    return this.call(AICC_ROUTING_METHODS.ROUTING_USECASE_SET, r);
+  }
+  listRoutingGroups() {
+    return this.call(AICC_ROUTING_METHODS.ROUTING_GROUPS_LIST, {});
+  }
+  createRoutingGroup(r) {
+    return this.call(AICC_ROUTING_METHODS.ROUTING_GROUPS_CREATE, r);
+  }
+  updateRoutingGroup(r) {
+    return this.call(AICC_ROUTING_METHODS.ROUTING_GROUPS_UPDATE, r);
+  }
+  deleteRoutingGroup(groupId, version2) {
+    return this.call(AICC_ROUTING_METHODS.ROUTING_GROUPS_DELETE, { group_id: groupId, version: version2 });
+  }
+  listRoutingBindings() {
+    return this.call(AICC_ROUTING_METHODS.ROUTING_BINDINGS_LIST, {});
+  }
+  setRoutingBinding(appId, groupId) {
+    return this.call(AICC_ROUTING_METHODS.ROUTING_BINDINGS_SET, { app_id: appId, group_id: groupId });
+  }
+  removeRoutingBinding(appId) {
+    return this.call(AICC_ROUTING_METHODS.ROUTING_BINDINGS_REMOVE, { app_id: appId });
   }
   getDriverMetadataUpdate() {
     return this.call(AICC_MANAGEMENT_METHODS.DRIVER_METADATA_UPDATE_GET, {});
@@ -32578,7 +32612,7 @@ export {
   TASK_MANAGER_SERVICE_UNIQUE_ID as ay,
   TASK_MANAGER_SERVICE_NAME as az,
   bns_client as b,
-  parseVideoPrompt as b$,
+  validateDecisionAnswers as b$,
   TASK_ERR_STALE_RUNNER_EPOCH as b0,
   TASK_ERR_INVALID_PHASE as b1,
   TASK_ERR_CONTROL_NOT_AVAILABLE as b2,
@@ -32602,20 +32636,20 @@ export {
   AICC_CORE_METHODS as bK,
   AICC_MANAGEMENT_METHODS as bL,
   AICC_POLICY_METHODS as bM,
-  AICC_METHODS as bN,
-  AICC_FEATURES as bO,
-  AICC_EXECUTION_MODES as bP,
-  AICC_POLICY_REFUSAL_CODES as bQ,
-  aiccRefusalOf as bR,
-  isAiccAiMethod as bS,
-  aiccTextMessage as bT,
-  aiccMessageTextContent as bU,
-  aiccMessageFirstText as bV,
-  validateAiccMessage as bW,
-  AiccClient as bX,
-  decisionRequirements as bY,
-  validateDecisionRequest as bZ,
-  validateDecisionAnswers as b_,
+  AICC_ROUTING_METHODS as bN,
+  AICC_METHODS as bO,
+  AICC_FEATURES as bP,
+  AICC_EXECUTION_MODES as bQ,
+  AICC_POLICY_REFUSAL_CODES as bR,
+  aiccRefusalOf as bS,
+  isAiccAiMethod as bT,
+  aiccTextMessage as bU,
+  aiccMessageTextContent as bV,
+  aiccMessageFirstText as bW,
+  validateAiccMessage as bX,
+  AiccClient as bY,
+  decisionRequirements as bZ,
+  validateDecisionRequest as b_,
   taskMgrTaskEventPath as ba,
   taskMgrTreeEventPath as bb,
   taskMgrErrorCode as bc,
@@ -32643,68 +32677,69 @@ export {
   WorkflowDefinitionStatus as by,
   WorkflowRunStatus as bz,
   createSDKModule as c,
-  validateVideoOutput as c0,
-  validateVideoGeneration as c1,
-  validateVideoEdit as c2,
-  videoGenerationRequirement as c3,
-  KEventReader as c4,
-  KEventClient as c5,
-  appIdFromDid as c6,
-  parseAppId as c7,
-  appDidFromId as c8,
-  createAppInstanceId as c9,
-  COMPUTER_SEMANTIC_FORMAT as cA,
-  COMPUTER_ROLES as cB,
-  COMPUTER_ELEMENT_STATES as cC,
-  COMPUTER_ELEMENT_ACTIONS as cD,
-  ExecutorClient as cE,
-  ExecutorStreamError as cF,
-  encodeExecutorControl as cG,
-  ExecutorCommandStream as cH,
-  fieldNamed as cI,
-  cellValue as cJ,
-  tableInsert as cK,
-  tableSet as cL,
-  tableDelete as cM,
-  fieldAdd as cN,
-  optionAdd as cO,
-  textAppend as cP,
-  textReplaceBlock as cQ,
-  textDeleteBlocks as cR,
-  rename as cS,
-  move as cT,
-  setProps as cU,
-  commitOps as cV,
-  markdownToBlocks as cW,
-  importFiles as cX,
-  ensureUploaded as cY,
-  releaseImportSession as cZ,
-  parseAppInstanceId as ca,
-  BNS_EVM_DEFAULT_GAS_LIMIT as cb,
-  BNS_EVM_DEFAULT_MAX_FEE_PER_GAS as cc,
-  BNS_EVM_DEFAULT_MAX_PRIORITY_FEE_PER_GAS as cd,
-  BNS_MAX_INLINE_DOCUMENT_BYTES as ce,
-  BNS_DNS_TXT_DEFAULT_TTL as cf,
-  BNS_DNS_TXT_DOC_TYPE as cg,
-  BNS_PUBLISH_DOCUMENT_ABI as ch,
-  BnsEvmTxError as ci,
-  BnsEvmTxBuilder as cj,
-  decodeBnsPublishDocumentCalldata as ck,
-  BnsTxExecutorError as cl,
-  walletUserHasSnAccount as cm,
-  BnsTxExecutor as cn,
-  audioCapabilities as co,
-  AudioError as cp,
-  acquireBackgroundAudio as cq,
-  startRecording as cr,
-  pauseRecording as cs,
-  resumeRecording as ct,
-  stopRecording as cu,
-  getRecordingStatus as cv,
-  listRecordings as cw,
-  getRecording as cx,
-  deleteRecording as cy,
-  onRecordingState as cz,
+  parseVideoPrompt as c0,
+  validateVideoOutput as c1,
+  validateVideoGeneration as c2,
+  validateVideoEdit as c3,
+  videoGenerationRequirement as c4,
+  KEventReader as c5,
+  KEventClient as c6,
+  appIdFromDid as c7,
+  parseAppId as c8,
+  appDidFromId as c9,
+  onRecordingState as cA,
+  COMPUTER_SEMANTIC_FORMAT as cB,
+  COMPUTER_ROLES as cC,
+  COMPUTER_ELEMENT_STATES as cD,
+  COMPUTER_ELEMENT_ACTIONS as cE,
+  ExecutorClient as cF,
+  ExecutorStreamError as cG,
+  encodeExecutorControl as cH,
+  ExecutorCommandStream as cI,
+  fieldNamed as cJ,
+  cellValue as cK,
+  tableInsert as cL,
+  tableSet as cM,
+  tableDelete as cN,
+  fieldAdd as cO,
+  optionAdd as cP,
+  textAppend as cQ,
+  textReplaceBlock as cR,
+  textDeleteBlocks as cS,
+  rename as cT,
+  move as cU,
+  setProps as cV,
+  commitOps as cW,
+  markdownToBlocks as cX,
+  importFiles as cY,
+  ensureUploaded as cZ,
+  releaseImportSession as c_,
+  createAppInstanceId as ca,
+  parseAppInstanceId as cb,
+  BNS_EVM_DEFAULT_GAS_LIMIT as cc,
+  BNS_EVM_DEFAULT_MAX_FEE_PER_GAS as cd,
+  BNS_EVM_DEFAULT_MAX_PRIORITY_FEE_PER_GAS as ce,
+  BNS_MAX_INLINE_DOCUMENT_BYTES as cf,
+  BNS_DNS_TXT_DEFAULT_TTL as cg,
+  BNS_DNS_TXT_DOC_TYPE as ch,
+  BNS_PUBLISH_DOCUMENT_ABI as ci,
+  BnsEvmTxError as cj,
+  BnsEvmTxBuilder as ck,
+  decodeBnsPublishDocumentCalldata as cl,
+  BnsTxExecutorError as cm,
+  walletUserHasSnAccount as cn,
+  BnsTxExecutor as co,
+  audioCapabilities as cp,
+  AudioError as cq,
+  acquireBackgroundAudio as cr,
+  startRecording as cs,
+  pauseRecording as ct,
+  resumeRecording as cu,
+  stopRecording as cv,
+  getRecordingStatus as cw,
+  listRecordings as cx,
+  getRecording as cy,
+  deleteRecording as cz,
   ndm_proxy as d,
   createZoneClients as e,
   bucket_client as f,
@@ -32729,4 +32764,4 @@ export {
   NOTIFY_SESSION_PREFIX as y,
   NOTIFY_CHOICE_CONTROL_ID as z
 };
-//# sourceMappingURL=aiws_write-53a27025.mjs.map
+//# sourceMappingURL=aiws_write-9d2c689c.mjs.map

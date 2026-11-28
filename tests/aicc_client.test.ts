@@ -5,6 +5,7 @@ import {
   AICC_EXECUTION_MODES,
   AICC_MANAGEMENT_METHODS,
   AICC_POLICY_METHODS,
+  AICC_ROUTING_METHODS,
   aiccRefusalOf,
   AICC_METHODS,
   AiccError,
@@ -83,7 +84,6 @@ describe('canonical AICC contract', () => {
       trace_id: 'trace-chat-1',
       web_search: true,
       execution_mode: AICC_EXECUTION_MODES.STREAM,
-      session_id: 'session-chat-1',
       messages: [aiccTextMessage('user', 'hello')],
       tools: [{ name: 'weather', description: 'weather', args_json_schema: { type: 'object' } }],
     })
@@ -95,21 +95,20 @@ describe('canonical AICC contract', () => {
         trace_id: 'trace-chat-1',
         web_search: true,
         execution_mode: 'stream',
-        session_id: 'session-chat-1',
-        messages: [{ role: 'user', content: [{ type: 'text', text: 'hello' }] }],
+          messages: [{ role: 'user', content: [{ type: 'text', text: 'hello' }] }],
         tools: [{ name: 'weather', description: 'weather', args_json_schema: { type: 'object' } }],
       },
       sys: [2],
     })
   })
 
-  it('preserves trace_id and session_id on route and helper request bodies', async () => {
+  it('preserves trace_id and route_group on route and helper request bodies', async () => {
     const fetcher = jest.fn().mockResolvedValue(response({}, 1))
     const client = new AiccClient(new kRPCClient('/kapi/aicc/', null, 1, { fetcher }))
-    await client.routeResolve({ trace_id: 'trace-route', execution_mode: 'stream', api_type: 'llm', logical_model: 'llm.chat', session_id: 'session-route' })
+    await client.routeResolve({ trace_id: 'trace-route', execution_mode: 'stream', api_type: 'llm', logical_model: 'llm.chat', route_group: 'rg_route' })
     expect(sent(fetcher).params.trace_id).toBe('trace-route')
     expect(sent(fetcher).params.execution_mode).toBe('stream')
-    expect(sent(fetcher).params.session_id).toBe('session-route')
+    expect(sent(fetcher).params.route_group).toBe('rg_route')
 
     fetcher.mockClear()
     client.setSeq(1)
@@ -117,12 +116,12 @@ describe('canonical AICC contract', () => {
       trace_id: 'trace-chat-helper',
       execution_mode: 'stream',
       logical_model: 'llm.chat',
-      session_id: 'session-chat-helper',
+      route_group: 'rg_chat',
       messages: [aiccTextMessage('user', 'hello')],
     })
     expect(sent(fetcher).params.trace_id).toBe('trace-chat-helper')
     expect(sent(fetcher).params.execution_mode).toBe('stream')
-    expect(sent(fetcher).params.session_id).toBe('session-chat-helper')
+    expect(sent(fetcher).params.route_group).toBe('rg_chat')
 
     fetcher.mockClear()
     client.setSeq(1)
@@ -131,11 +130,11 @@ describe('canonical AICC contract', () => {
       execution_mode: 'stream',
       logical_model: 'image.generate',
       prompt: 'fox',
-      session_id: 'session-image-helper',
+      route_group: 'rg_image',
     })
     expect(sent(fetcher).params.trace_id).toBe('trace-image-helper')
     expect(sent(fetcher).params.execution_mode).toBe('stream')
-    expect(sent(fetcher).params.session_id).toBe('session-image-helper')
+    expect(sent(fetcher).params.route_group).toBe('rg_image')
   })
 
   it('dispatches every canonical typed inference method', async () => {
@@ -182,7 +181,7 @@ describe('canonical AICC contract', () => {
     const client = new AiccClient(new kRPCClient('/kapi/aicc/', null, 1, { fetcher }))
     const coreAndManagementCases: Array<[string, () => Promise<unknown>]> = [
       [AICC_CORE_METHODS.ROUTE_RESOLVE, () => client.routeResolve({ api_type: 'llm', logical_model: 'llm.chat' })],
-      [AICC_CORE_METHODS.HELPER_LLM_CHAT, () => client.helperLlmChat({ logical_model: 'llm.chat', messages: [] })],
+      [AICC_CORE_METHODS.HELPER_LLM_CHAT, () => client.helperLlmChat({ logical_model: 'llm.chat', messages: [], route_group: 'rg_1', policy: { no_fallback: true } })],
       [AICC_CORE_METHODS.HELPER_TEXT_TO_IMAGE, () => client.helperTextToImage({ logical_model: 'image.generate', prompt: 'cat' })],
       [AICC_CORE_METHODS.HELPER_VIDEO_GENERATE, () => client.helperVideoGenerate({ logical_model: 'video.generate', prompt: 'cat' })],
       [AICC_CORE_METHODS.CANCEL, () => client.cancel('task-1')],
@@ -191,7 +190,7 @@ describe('canonical AICC contract', () => {
       [AICC_MANAGEMENT_METHODS.TRACE_QUERY, () => client.queryTrace()],
       [AICC_MANAGEMENT_METHODS.ROUTING_GET, () => client.getRouting()],
       [AICC_MANAGEMENT_METHODS.ROUTING_PREVIEW, () => client.previewRouting({ paths: ['decision'], requirements: {decision: {question_types: ['choice', 'score', 'boolean']}} })],
-      [AICC_MANAGEMENT_METHODS.ROUTING_UPDATE, () => client.updateRouting({ settings_revision: 1, provider_weights: {} })],
+      [AICC_MANAGEMENT_METHODS.ROUTING_UPDATE, () => client.updateRouting({ settings_revision: 1, routing_commands: [{ kind: 'vendor_factor', vendor: 'claude', factor: 1.5 }] })],
       [AICC_MANAGEMENT_METHODS.PROVIDER_PREVIEW_RULES, () => client.previewProviderRules({
         provider_instance_name: 'custom', rules_catalog: { format: 'buckyos.aicc.provider-rules-catalog' }, model_ids: ['openai/gpt-6-sol'],
       })],
@@ -201,7 +200,7 @@ describe('canonical AICC contract', () => {
       [AICC_MANAGEMENT_METHODS.PROVIDER_ADD, () => client.addProvider({ provider_instance_name: 'p', provider_type: 'openai', provider_profile_id: 'openai', base_url: 'https://example.test', credentials: {} })],
       [AICC_MANAGEMENT_METHODS.PROVIDER_LIST, () => client.listProviders()],
       [AICC_MANAGEMENT_METHODS.PROVIDER_HEALTH, () => client.providerHealth({ exact_model: 'm@p' })],
-      [AICC_MANAGEMENT_METHODS.PROVIDER_UPDATE, () => client.updateProvider({ provider_instance_name: 'p', settings_revision: 1 })],
+      [AICC_MANAGEMENT_METHODS.PROVIDER_UPDATE, () => client.updateProvider({ provider_instance_name: 'p', settings_revision: 1, marked_faulty: true })],
       [AICC_MANAGEMENT_METHODS.PROVIDER_DELETE, () => client.deleteProvider({ provider_instance_name: 'p' })],
       [AICC_MANAGEMENT_METHODS.PROVIDER_REFRESH_MODELS, () => client.refreshProviderModels({ provider_instance_name: 'p' })],
       [AICC_MANAGEMENT_METHODS.MODELS_LIST, () => client.listModels()],
@@ -224,9 +223,19 @@ describe('canonical AICC contract', () => {
       [AICC_POLICY_METHODS.CREDIT_RECHARGE, () => client.rechargeCredit({ user_id: 'bob', recharge_id: 'r1', amount: '10' })],
       [AICC_POLICY_METHODS.CREDIT_RECHARGE_GET, () => client.getCreditRecharge('r1')],
       [AICC_POLICY_METHODS.CREDIT_ADJUST, () => client.adjustCredit({ user_id: 'bob', adjust_id: 'a1', amount: '-1', note: 'refund' })],
+      [AICC_ROUTING_METHODS.ROUTING_USECASES, () => client.getRoutingUsecases({ view: 'group:rg_1' })],
+      [AICC_ROUTING_METHODS.ROUTING_USECASE_SET, () => client.setRoutingUsecase({ target: 'zone', usecase: 'llm.code', model: { value: 'gpt-6@openai', locked: true }, on_unavailable: 'same_model', revision: 3 })],
+      [AICC_ROUTING_METHODS.ROUTING_GROUPS_LIST, () => client.listRoutingGroups()],
+      [AICC_ROUTING_METHODS.ROUTING_GROUPS_CREATE, () => client.createRoutingGroup({ name: 'writing', usecases: { 'llm.chat': { on_unavailable: 'next_model' } } })],
+      [AICC_ROUTING_METHODS.ROUTING_GROUPS_UPDATE, () => client.updateRoutingGroup({ group_id: 'rg_1', version: 1, name: 'drafts' })],
+      [AICC_ROUTING_METHODS.ROUTING_GROUPS_DELETE, () => client.deleteRoutingGroup('rg_1', 2)],
+      [AICC_ROUTING_METHODS.ROUTING_BINDINGS_LIST, () => client.listRoutingBindings()],
+      [AICC_ROUTING_METHODS.ROUTING_BINDINGS_SET, () => client.setRoutingBinding('writer', 'rg_1')],
+      [AICC_ROUTING_METHODS.ROUTING_BINDINGS_REMOVE, () => client.removeRoutingBinding('writer')],
     )
     expect(coreAndManagementCases.map(([method]) => method)).toEqual([
       ...Object.values(AICC_CORE_METHODS), ...Object.values(AICC_MANAGEMENT_METHODS), ...Object.values(AICC_POLICY_METHODS),
+      ...Object.values(AICC_ROUTING_METHODS),
     ])
     for (const [method, invoke] of coreAndManagementCases) {
       await invoke()
@@ -262,15 +271,13 @@ describe('canonical AICC contract', () => {
     } as never)).toThrow('unknown field')
     expect(() => client.imagesGenerate({ exact_model: 'logical-model', prompt: 'cat' })).toThrow('exact_model')
     expect(() => client.routeResolve({ api_type: 'llm', logical_model: 'gpt-5@openai-main' })).toThrow('logical_model')
+    expect(() => client.helperLlmChat({ logical_model: 'llm.chat', messages: [], session_overlay: {} } as never)).toThrow('unknown field')
     expect(() => client.embeddingText({
       exact_model: 'embedding@provider', items: [], execution_mode: 'native_task',
     } as never)).toThrow('execution_mode')
     expect(() => client.routeResolve({
-      api_type: 'llm', logical_model: 'llm.chat', session_id: '',
-    })).toThrow('session_id')
-    expect(() => client.routeResolve({
-      api_type: 'llm', logical_model: 'llm.chat', session_id: '界'.repeat(171),
-    })).toThrow('session_id')
+      api_type: 'llm', logical_model: 'llm.chat', session_id: 's',
+    } as never)).toThrow('unknown field')
     expect(fetcher).not.toHaveBeenCalled()
   })
 

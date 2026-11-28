@@ -462,8 +462,9 @@ function aiccErrorText(e) {
   return e ? ` (${e.code}: ${e.message})` : "";
 }
 class AiccLlmClient {
-  constructor(client) {
+  constructor(client, options = {}) {
     this.client = client;
+    this.options = options;
   }
   async infer(req) {
     var _a;
@@ -504,7 +505,8 @@ class AiccLlmClient {
           logical_model: req.model_alias,
           ...common,
           ...Object.keys(requirements).length ? { requirements } : {},
-          ...Object.keys(disable).length ? { disable } : {}
+          ...Object.keys(disable).length ? { disable } : {},
+          ...this.options.route_group ? { route_group: this.options.route_group } : {}
         };
         response = await this.client.helperLlmChat(r);
       }
@@ -579,4 +581,4 @@ export {
   mergeUsage as y,
   rustTextContent as z
 };
-//# sourceMappingURL=aicc-34bc1883.mjs.map
+//# sourceMappingURL=aicc-286ba457.mjs.map

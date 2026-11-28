@@ -31,6 +31,7 @@ Deno.test('admin verbs are registered and describable', () => {
       ['agent', 'profile-set', 'write'],
       ['ai', 'providers', 'read'],
       ['ai', 'routing', 'read'],
+      ['ai', 'usecase', 'write'],
       ['ai', 'usage', 'read'],
       ['ai', 'policy', 'read'],
       ['ai', 'policy-effective', 'read'],
@@ -146,7 +147,7 @@ Deno.test('ai read views call aicc and usage maps its range options', async () =
     if (method === 'provider.list') {
       return { providers: [], settings_revision: 1, inventory_revision: '1:1' }
     }
-    if (method === 'routing.get') return { routing: {}, settings_revision: 1 }
+    if (method === 'routing.usecases') return USECASES
     if (method === 'usage.query') return { total: { total_requests: 0 } }
     if (method === 'policy.status') return { user_id: 'alice', balance: '0', limits: [], near_limit_count: 0, exhausted_count: 0 }
     if (method === 'policy.list') return { policies: [] }
@@ -161,7 +162,29 @@ Deno.test('ai read views call aicc and usage maps its range options', async () =
   assertEquals(calls.pop()?.params, { user_id: 'bob', amount: '100', recharge_id: 'order-1', external_ref: { gateway: 'test' } })
   await assertRejects(() => run('ai', 'credit-recharge', { user: 'bob', amount: '1', id: 'x', external_ref: '{' }, clients), 'INVALID_ARGUMENT')
   assertEquals((await run('ai', 'providers', {}, clients)).settings_revision, 1)
-  assertEquals((await run('ai', 'routing', {}, clients)).routing, {})
+  assertEquals(await run('ai', 'routing', {}, clients), {
+    view: 'self',
+    revision: 4,
+    can_edit: true,
+    usecases: [
+      {
+        usecase: 'llm.code',
+        model: 'gpt-6@openai',
+        source: 'zone, locked',
+        on_unavailable: 'next_model (user)',
+        would_switch_to: 'claude-5@anthropic',
+        coverage: 'covered',
+      },
+      {
+        usecase: 'image.txt2img',
+        model: '',
+        source: '',
+        on_unavailable: 'none',
+        would_switch_to: '',
+        coverage: 'uncovered (no_model_for_api_type)',
+      },
+    ],
+  })
   await run('ai', 'usage', {}, clients)
   await run(
     'ai',
@@ -201,6 +224,80 @@ Deno.test('ai read views call aicc and usage maps its range options', async () =
     () => run('ai', 'usage', { until: '2026-10-01T00:00:00Z' }, clients),
     'INVALID_ARGUMENT',
   )
+})
+
+const USECASES = {
+  view: 'self',
+  revision: 4,
+  settings_revision: 9,
+  fallback_llm_enabled: false,
+  can_edit: true,
+  rows: [
+    {
+      usecase: 'llm.code',
+      api_type: 'llm',
+      model: 'gpt-6@openai',
+      model_source: 'zone',
+      model_locked: true,
+      on_unavailable: 'next_model',
+      on_unavailable_source: 'user',
+      fallback_to: 'claude-5@anthropic',
+      coverage: 'covered',
+    },
+    {
+      usecase: 'image.txt2img',
+      api_type: 'image.txt2img',
+      on_unavailable: 'none',
+      on_unavailable_source: 'default',
+      coverage: 'uncovered',
+      coverage_reason: 'no_model_for_api_type',
+    },
+  ],
+}
+
+Deno.test('ai usecase set reads the revision of the layer it changes; routing-group manages groups and bindings', async () => {
+  const calls: RecordedCall[] = []
+  const clients = clientsFor(calls, (method) => {
+    if (method === 'routing.usecases') return USECASES
+    if (method === 'routing.usecase.set') return { ok: true, revision: 5 }
+    if (method === 'routing.groups.list') return { groups: [{ group_id: 'rg_1', name: 'drafts', version: 3, updated_at_ms: 1 }] }
+    if (method === 'routing.groups.create') return { group: { group_id: 'rg_2', name: 'new', version: 1, updated_at_ms: 1 } }
+    return { ok: true }
+  })
+  assertEquals(await run('ai', 'usecase', { action: 'set', usecase: 'llm.code', model: 'gpt-6@openai', on_unavailable: 'same_model' }, clients), { ok: true, revision: 5 })
+  assertEquals(calls.splice(0), [
+    { service: 'aicc', method: 'routing.usecases', params: { view: 'self' } },
+    { service: 'aicc', method: 'routing.usecase.set', params: { target: 'user', usecase: 'llm.code', model: 'gpt-6@openai', on_unavailable: 'same_model', revision: 4 } },
+  ])
+  await run('ai', 'usecase', { action: 'set', usecase: 'llm.code', zone_default: true, lock: true, model: 'gpt-6@openai', clear: 'on_unavailable' }, clients)
+  assertEquals(calls.splice(0).map((call) => call.params), [
+    { view: 'zone' },
+    { target: 'zone', usecase: 'llm.code', model: { value: 'gpt-6@openai', locked: true }, clear: ['on_unavailable'], revision: 4 },
+  ])
+  await run('ai', 'usecase', { action: 'set', usecase: 'llm.chat', group: 'rg_1', clear: 'model' }, clients)
+  assertEquals(calls.splice(0).map((call) => call.params), [{ view: 'group:rg_1' }, { target: 'group:rg_1', usecase: 'llm.chat', clear: ['model'], revision: 4 }])
+  await assertRejects(() => run('ai', 'usecase', { action: 'set', usecase: 'llm.chat' }, clients), 'MISSING_ARGUMENT')
+  await assertRejects(() => run('ai', 'usecase', { action: 'set', usecase: 'llm.chat', zone_default: true, group: 'rg_1', clear: 'model' }, clients), 'ARGUMENT_CONFLICT')
+  await assertRejects(() => run('ai', 'usecase', { action: 'set', usecase: 'llm.chat', lock: true, clear: 'model' }, clients), 'INVALID_ARGUMENT')
+  await assertRejects(() => run('ai', 'usecase', { action: 'set', usecase: 'llm.chat', clear: 'weight' }, clients), 'INVALID_ARGUMENT')
+  assertEquals(calls, [])
+
+  await run('ai', 'routing-group', { action: 'list' }, clients)
+  await run('ai', 'routing-group', { action: 'create', target: 'new' }, clients)
+  await run('ai', 'routing-group', { action: 'bind', target: 'rg_1', app: 'writer' }, clients)
+  await run('ai', 'routing-group', { action: 'unbind', app: 'writer' }, clients)
+  await run('ai', 'routing-group', { action: 'delete', target: 'rg_1' }, clients)
+  assertEquals(calls.splice(0).map((call) => [call.method, call.params]), [
+    ['routing.groups.list', {}],
+    ['routing.groups.create', { name: 'new' }],
+    ['routing.bindings.set', { app_id: 'writer', group_id: 'rg_1' }],
+    ['routing.bindings.remove', { app_id: 'writer' }],
+    ['routing.groups.list', {}],
+    ['routing.groups.delete', { group_id: 'rg_1', version: 3 }],
+  ])
+  await assertRejects(() => run('ai', 'routing-group', { action: 'delete', target: 'rg_9' }, clients), 'RESOURCE_NOT_FOUND')
+  await assertRejects(() => run('ai', 'routing-group', { action: 'bind', target: 'rg_1' }, clients), 'MISSING_ARGUMENT')
+  await assertRejects(() => run('ai', 'routing-group', { action: 'create' }, clients), 'MISSING_ARGUMENT')
 })
 
 function clientsFor(

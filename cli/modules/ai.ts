@@ -1,5 +1,5 @@
 import type { CommandDefinition, CommandModule, JsonSchema } from '../core/command.ts'
-import { UsageError } from '../core/errors.ts'
+import { ToolError, UsageError } from '../core/errors.ts'
 import type { AccessLevel, OptionDefinition } from '../core/command.ts'
 import {
   callService,
@@ -25,12 +25,15 @@ const GROUPS = [
   'tenant_id',
   'user_group',
 ]
+const ON_UNAVAILABLE = ['none', 'same_model', 'not_pricier', 'next_model']
+const USECASE_FIELDS = ['model', 'on_unavailable']
+const GROUP_ACTIONS = ['list', 'create', 'delete', 'bind', 'unbind']
 
-// Read views of the AICC service (/kapi/aicc); provider and routing changes stay in Control Panel.
+// The AICC service (/kapi/aicc): read views, the usecase table and routing groups; provider changes stay in Control Panel.
 export function createAiModule(): CommandModule {
   return {
     name: 'ai',
-    summary: 'Read AI providers, routing and usage; read AI policies and Credit; recharge Credit',
+    summary: 'Read AI providers, usecase routing and usage; set usecase models and routing groups; read AI policies and Credit; recharge Credit',
     commands: [
       readCommand({
         verb: 'providers',
@@ -39,12 +42,9 @@ export function createAiModule(): CommandModule {
         description:
           'Credentials are reported only as configured/kind; secrets are never returned.',
       }),
-      readCommand({
-        verb: 'routing',
-        summary: 'Get the AICC routing overlay and its settings revision',
-        method: 'routing.get',
-        description: 'An empty routing object means the default routing of the model catalog.',
-      }),
+      routingCommand(),
+      usecaseCommand(),
+      routingGroupCommand(),
       usageCommand(),
       ...policyCommands(),
     ],
@@ -231,6 +231,194 @@ function readCommand(options: {
     examples: [`buckyos ai ${options.verb}`],
     handler: async (ctx) =>
       expectObject(await callService(ctx, AICC, options.method, {}), options.method),
+  }
+}
+
+// The usecase table (buckyos doc/aicc/aicc_router.md §11–§12).
+function routingCommand(): CommandDefinition {
+  return {
+    verb: 'routing',
+    summary: 'Show the usecase table: the model each usecase routes to, who set it, and what happens when it is unavailable',
+    description:
+      'Without --view it is the caller\'s own table. source is the layer that chose the model: default, zone (administrator), user, group:<id> or fallback_llm; "locked" means an administrator fixed it. on_unavailable is none (return the real error), same_model, not_pricier or next_model, with the layer that set it when not the default; would_switch_to is what that policy would use if the model\'s Provider were unavailable. coverage is covered, fallback_llm (served by the fallback LLM) or uncovered, with the reason. The row llm.fallback is the fallback LLM (enabled: whether it is on; off by default). --json returns the whole routing.usecases response: every layer with its value, lock and model state, and the revision a change passes.',
+    options: [
+      { name: 'view', description: 'zone (administrators), group:<id> or app:<app_id>; defaults to the caller', type: 'string' },
+      { name: 'json', description: 'The whole routing.usecases response instead of one line per usecase', type: 'boolean' },
+    ],
+    inputSchema: {
+      type: 'object',
+      properties: { view: { type: 'string', minLength: 1 }, json: { type: 'boolean' } },
+      additionalProperties: false,
+    },
+    outputSchema: OBJECT_OUTPUT,
+    resultSchemaVersion: 1,
+    access: { mode: 'fixed', level: 'read' },
+    asyncMode: 'sync',
+    requiresSession: true,
+    examples: ['buckyos --output table ai routing', 'buckyos ai routing --view zone', 'buckyos ai routing --view app:writer --json'],
+    handler: async (ctx, input) => {
+      const view = inputString(input, 'view')
+      const table = expectObject(await callService(ctx, AICC, 'routing.usecases', view ? { view } : {}), 'routing.usecases')
+      if (input.json === true) return table
+      const rows = Array.isArray(table.rows) ? table.rows as Record<string, unknown>[] : []
+      return {
+        view: table.view,
+        revision: table.revision,
+        can_edit: table.can_edit,
+        usecases: rows.map((row) => {
+          const lock = (locked: unknown) => locked === true ? ', locked' : ''
+          const policySource = row.on_unavailable_source === 'default' && row.on_unavailable_locked !== true
+            ? ''
+            : ` (${row.on_unavailable_source}${lock(row.on_unavailable_locked)})`
+          return {
+            usecase: row.usecase,
+            model: row.model ?? '',
+            source: row.model_source ? `${row.model_source}${lock(row.model_locked)}` : '',
+            on_unavailable: `${row.on_unavailable}${policySource}`,
+            would_switch_to: row.fallback_to ?? (row.fallback_note ? `(${row.fallback_note})` : ''),
+            coverage: row.coverage_reason ? `${row.coverage} (${row.coverage_reason})` : row.coverage,
+            ...(row.enabled !== undefined ? { enabled: row.enabled } : {}),
+          }
+        }),
+      }
+    },
+  }
+}
+
+function usecaseCommand(): CommandDefinition {
+  return {
+    verb: 'usecase',
+    summary: 'Set the model of a usecase, or what it does when that model is unavailable, in your layer, a routing group or the Zone',
+    description:
+      'set <usecase> changes one usecase of a layer: your own by default, one of your routing groups with --group <id>, the administrator layer (the Zone default) with --zone-default (administrators; --lock keeps users and groups from changing what it sets). --model is an exact model <model>@<provider> with the usecase\'s API type that meets its requirements. --on-unavailable: none (return the real error), same_model (the same model on another Provider), not_pricier (route again without that Provider, only to a model known not to cost more), next_model (route again without that Provider). --clear model,on_unavailable makes them follow the layer below again. The layer\'s revision is read first; when it changed in between the call fails with settings_revision_conflict: run it again.',
+    positionals: [
+      { name: 'action', description: 'set', required: true },
+      { name: 'usecase', description: 'A usecase such as llm.code or image.txt2img (buckyos ai routing lists them)', required: true },
+    ],
+    options: [
+      { name: 'model', description: 'Exact model <model>@<provider>', type: 'string' },
+      { name: 'on-unavailable', description: ON_UNAVAILABLE.join(' | '), type: 'string', enum: ON_UNAVAILABLE },
+      { name: 'clear', description: `Comma-separated: ${USECASE_FIELDS.join(', ')}`, type: 'string' },
+      { name: 'zone-default', description: 'The administrator layer, the Zone default (administrators)', type: 'boolean' },
+      { name: 'group', description: 'One of your routing groups, by id', type: 'string' },
+      { name: 'lock', description: 'With --zone-default: what this sets cannot be changed by users or groups', type: 'boolean' },
+    ],
+    inputSchema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['set'] },
+        usecase: { type: 'string', minLength: 1 },
+        model: { type: 'string', minLength: 1 },
+        on_unavailable: { type: 'string', enum: ON_UNAVAILABLE },
+        clear: { type: 'string', minLength: 1 },
+        zone_default: { type: 'boolean' },
+        group: { type: 'string', minLength: 1 },
+        lock: { type: 'boolean' },
+      },
+      required: ['action', 'usecase'],
+      additionalProperties: false,
+    },
+    outputSchema: OBJECT_OUTPUT,
+    resultSchemaVersion: 1,
+    access: { mode: 'fixed', level: 'write' },
+    asyncMode: 'sync',
+    requiresSession: true,
+    examples: [
+      'buckyos ai usecase set llm.code --model gpt-6@openai-main --on-unavailable same_model',
+      'buckyos ai usecase set llm.chat --group rg_1 --clear model',
+      'buckyos ai usecase set image.txt2img --zone-default --model gpt-image-2@openai-main --lock',
+    ],
+    handler: async (ctx, input) => {
+      const group = inputString(input, 'group')
+      if (group && input.zone_default === true) throw new UsageError('ARGUMENT_CONFLICT', '--zone-default cannot be combined with --group')
+      if (input.lock === true && input.zone_default !== true) throw new UsageError('INVALID_ARGUMENT', '--lock requires --zone-default')
+      const model = inputString(input, 'model')
+      const onUnavailable = inputString(input, 'on_unavailable')
+      const clear = splitServices(input.clear)
+      const unknown = clear.filter((field) => !USECASE_FIELDS.includes(field))
+      if (unknown.length > 0) {
+        throw new UsageError('INVALID_ARGUMENT', `unknown --clear ${unknown.join(', ')}; use ${USECASE_FIELDS.join(', ')}`)
+      }
+      if (!model && !onUnavailable && clear.length === 0) {
+        throw new UsageError('MISSING_ARGUMENT', 'give --model, --on-unavailable or --clear')
+      }
+      const target = input.zone_default === true ? 'zone' : group ? `group:${group}` : 'user'
+      const current = expectObject(
+        await callService(ctx, AICC, 'routing.usecases', { view: target === 'user' ? 'self' : target }),
+        'routing.usecases',
+      )
+      const value = (v: string) => input.lock === true ? { value: v, locked: true } : v
+      return expectObject(
+        await callService(ctx, AICC, 'routing.usecase.set', {
+          target,
+          usecase: requiredInputString(input, 'usecase'),
+          ...(model ? { model: value(model) } : {}),
+          ...(onUnavailable ? { on_unavailable: value(onUnavailable) } : {}),
+          ...(clear.length > 0 ? { clear } : {}),
+          revision: current.revision,
+        }),
+        'routing.usecase.set',
+      )
+    },
+  }
+}
+
+function routingGroupCommand(): CommandDefinition {
+  return {
+    verb: 'routing-group',
+    summary: 'List, create and delete your routing groups, and bind Apps to them',
+    description:
+      'A routing group is a set of usecase settings of your own (change them with buckyos ai usecase set --group <id>); calls through an App bound to it use them over your own layer. list shows each group with its usecases, version and bound Apps; create <name> returns the new group with its id; delete <group_id> also removes its App bindings; bind <group_id> --app <app_id> binds an App or Agent (one group per App); unbind --app <app_id> removes its binding.',
+    positionals: [
+      { name: 'action', description: GROUP_ACTIONS.join(' | '), required: true },
+      { name: 'target', description: 'create: the name; delete, bind: the group id', required: false },
+    ],
+    options: [{ name: 'app', description: 'bind, unbind: the App or Agent id', type: 'string' }],
+    inputSchema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: GROUP_ACTIONS },
+        target: { type: 'string', minLength: 1 },
+        app: { type: 'string', minLength: 1 },
+      },
+      required: ['action'],
+      additionalProperties: false,
+    },
+    outputSchema: OBJECT_OUTPUT,
+    resultSchemaVersion: 1,
+    access: { mode: 'operation', operationIdField: 'action', possibleLevels: ['read', 'write', 'destructive'] },
+    asyncMode: 'sync',
+    requiresSession: true,
+    examples: [
+      'buckyos ai routing-group list',
+      "buckyos ai routing-group create 'Cheap drafts'",
+      'buckyos ai routing-group bind rg_1 --app writer',
+      'buckyos ai routing-group unbind --app writer',
+      'buckyos ai routing-group delete rg_1',
+    ],
+    handler: async (ctx, input) => {
+      const call = async (method: string, params: Record<string, unknown>) =>
+        expectObject(await callService(ctx, AICC, method, params), method)
+      const action = input.action
+      const target = inputString(input, 'target')
+      const app = inputString(input, 'app')
+      if (action === 'list') return call('routing.groups.list', {})
+      if ((action === 'bind' || action === 'unbind') && !app) {
+        throw new UsageError('MISSING_ARGUMENT', `${action} requires --app`)
+      }
+      if (action === 'unbind') return call('routing.bindings.remove', { app_id: app })
+      if (!target) {
+        throw new UsageError('MISSING_ARGUMENT', `${action} requires ${action === 'create' ? 'a name' : 'a group id'}`)
+      }
+      if (action === 'create') return call('routing.groups.create', { name: target })
+      if (action === 'bind') return call('routing.bindings.set', { app_id: app, group_id: target })
+      const groups = (await call('routing.groups.list', {})).groups
+      const group = Array.isArray(groups)
+        ? (groups as Record<string, unknown>[]).find((item) => item.group_id === target)
+        : undefined
+      if (!group) throw new ToolError('RESOURCE_NOT_FOUND', `no routing group ${target} of yours`)
+      return call('routing.groups.delete', { group_id: target, version: group.version })
+    },
   }
 }
 
